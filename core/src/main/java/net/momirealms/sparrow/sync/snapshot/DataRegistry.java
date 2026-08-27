@@ -5,9 +5,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.StringJoiner;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -78,12 +81,45 @@ public final class DataRegistry {
             }
         }
 
-        // 有节点没被输出, 说明它们构成依赖环
+        // 有节点没被输出, 说明存在依赖环
         if (order.size() < inDegree.size()) {
-            TreeSet<DataKey> cycle = new TreeSet<>(inDegree.keySet());
-            order.forEach(cycle::remove);
-            throw new IllegalStateException("dependency cycle detected among data keys: " + cycle);
+            throw new IllegalStateException("dependency cycle detected: " + this.describeCycles(inDegree.keySet(), order));
         }
         return order;
+    }
+
+    // 逐个检查未输出节点, 找出包含它的闭合路径
+    private String describeCycles(Set<DataKey> nodes, List<DataKey> ordered) {
+        TreeSet<DataKey> remaining = new TreeSet<>(nodes);
+        remaining.removeAll(ordered);
+        StringJoiner report = new StringJoiner("; ");
+        while (!remaining.isEmpty()) {
+            DataKey start = remaining.pollFirst();
+            List<DataKey> path = new ArrayList<>();
+            path.add(start);
+            if (!this.findCycle(start, start, new HashSet<>(), path)) continue;
+
+            remaining.removeAll(path);
+            StringJoiner cycle = new StringJoiner(" -> ");
+            for (int i = 0; i < path.size(); i++) cycle.add(path.get(i).asString());
+            report.add(cycle.add(start.asString()).toString());
+        }
+        return report.toString();
+    }
+
+    private boolean findCycle(DataKey start, DataKey current, Set<DataKey> onPath, List<DataKey> path) {
+        onPath.add(current);
+        TreeSet<DataKey> dependencies = new TreeSet<>(this.registrations.get(current).dependencies());
+        for (DataKey dependency : dependencies) {
+            if (!this.registrations.containsKey(dependency)) continue;
+            if (dependency.equals(start)) return true;
+            if (onPath.contains(dependency)) continue;
+
+            path.add(dependency);
+            if (this.findCycle(start, dependency, onPath, path)) return true;
+            path.removeLast();
+        }
+        onPath.remove(current);
+        return false;
     }
 }
