@@ -1,0 +1,89 @@
+package net.momirealms.sparrow.sync.snapshot;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * 同步数据类型的注册表.
+ * 注册发生在启动期, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
+ */
+public final class DataRegistry {
+    private final Map<DataKey, DataRegistration> registrations = new ConcurrentHashMap<>();
+
+    /**
+     * 注册一类同步数据.
+     *
+     * @throws IllegalStateException 当该数据标识已被注册时
+     */
+    public void register(@NotNull DataRegistration registration) {
+        DataRegistration existing = this.registrations.putIfAbsent(registration.key(), registration);
+        if (existing != null) {
+            throw new IllegalStateException("data key already registered: " + registration.key());
+        }
+    }
+
+    @Nullable
+    public DataRegistration registration(@NotNull DataKey key) {
+        return this.registrations.get(key);
+    }
+
+    public boolean registered(@NotNull DataKey key) {
+        return this.registrations.containsKey(key);
+    }
+
+    /**
+     * 计算全部已注册类型的应用顺序, 依赖者排在其依赖之后, 同层按 key 字典序保证结果稳定.
+     *
+     * @return 按应用先后排列的数据标识
+     * @throws IllegalStateException 当依赖关系存在环时, 异常信息列出环上的全部节点
+     */
+    @NotNull
+    public List<DataKey> applyOrder() {
+        // 建图. 入度为已注册依赖数, 未注册的依赖直接忽略
+        Map<DataKey, Integer> inDegree = new HashMap<>();
+        Map<DataKey, List<DataKey>> dependents = new HashMap<>();
+        for (DataRegistration registration : this.registrations.values()) {
+            int degree = 0;
+            for (DataKey dependency : registration.dependencies()) {
+                if (!this.registrations.containsKey(dependency)) continue;
+                degree++;
+                dependents.computeIfAbsent(dependency, key -> new ArrayList<>()).add(registration.key());
+            }
+            inDegree.put(registration.key(), degree);
+        }
+
+        // Kahn 拓扑排序, 就绪集用字典序优先队列消除注册顺序的影响
+        PriorityQueue<DataKey> ready = new PriorityQueue<>();
+        for (Map.Entry<DataKey, Integer> entry : inDegree.entrySet()) {
+            if (entry.getValue() == 0) ready.add(entry.getKey());
+        }
+        List<DataKey> order = new ArrayList<>(inDegree.size());
+        while (!ready.isEmpty()) {
+            DataKey key = ready.poll();
+            order.add(key);
+            List<DataKey> next = dependents.get(key);
+            if (next == null) continue;
+            for (int i = 0; i < next.size(); i++) {
+                DataKey dependent = next.get(i);
+                int remaining = inDegree.merge(dependent, -1, Integer::sum);
+                if (remaining == 0) ready.add(dependent);
+            }
+        }
+
+        // 有节点没被输出, 说明它们构成依赖环
+        if (order.size() < inDegree.size()) {
+            TreeSet<DataKey> cycle = new TreeSet<>(inDegree.keySet());
+            order.forEach(cycle::remove);
+            throw new IllegalStateException("dependency cycle detected among data keys: " + cycle);
+        }
+        return order;
+    }
+}
