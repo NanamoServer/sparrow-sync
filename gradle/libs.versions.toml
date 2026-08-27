@@ -42,7 +42,7 @@ datafixerupper = { module = "com.mojang:datafixerupper", version = "8.0.16" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version = "26.0.2" }
 lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref = "mongodb-driver" }
-geantyref = { module = "io.leangen.geantyref:geantyref", version.ref = "geantyref" }
+
 mojang-brigadier = { module = "com.mojang:brigadier", version.ref = "mojang-brigadier" }
 cloud-core = { module = "org.incendo:cloud-core", version.ref = "cloud-core" }
 cloud-services = { module = "org.incendo:cloud-services", version.ref = "cloud-services" }
@@ -50,9 +50,6 @@ cloud-brigadier = { module = "org.incendo:cloud-brigadier", version.ref = "cloud
 cloud-bukkit = { module = "org.incendo:cloud-bukkit", version.ref = "cloud-bukkit" }
 cloud-paper = { module = "org.incendo:cloud-paper", version.ref = "cloud-paper" }
 cloud-minecraft-extras = { module = "org.incendo:cloud-minecraft-extras", version.ref = "cloud-minecraft-extras" }
-option = { module = "net.kyori:option", version.ref = "option" }
-examination-api = { module = "net.kyori:examination-api", version.ref = "examination-api" }
-examination-string = { module = "net.kyori:examination-string", version.ref = "examination-api" }
 
 sparrow-nbt = { module = "net.momirealms:sparrow-nbt", version.ref = "sparrow-nbt" }
 sparrow-nbt-adventure = { module = "net.momirealms:sparrow-nbt-adventure", version.ref = "sparrow-nbt" }
@@ -70,6 +67,10 @@ adventure-text-serializer-legacy = { module = "net.kyori:adventure-text-serializ
 adventure-text-serializer-gson = { module = "net.kyori:adventure-text-serializer-gson", version.ref = "adventure" }
 adventure-text-serializer-json-legacy-impl = { module = "net.kyori:adventure-text-serializer-json-legacy-impl", version.ref = "adventure" }
 adventure-text-serializer-json = { module = "net.kyori:adventure-text-serializer-json", version.ref = "adventure" }
+option = { module = "net.kyori:option", version.ref = "option" }
+geantyref = { module = "io.leangen.geantyref:geantyref", version.ref = "geantyref" }
+examination-api = { module = "net.kyori:examination-api", version.ref = "examination-api" }
+examination-string = { module = "net.kyori:examination-string", version.ref = "examination-api" }
 
 junit-bom = { module = "org.junit:junit-bom", version = "6.0.1" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
