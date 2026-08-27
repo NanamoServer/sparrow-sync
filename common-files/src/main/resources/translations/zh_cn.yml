@@ -1,0 +1,44 @@
+exception.invalid_syntax: <red>语法错误。正确语法：<white><arg:0></white></red>
+exception.invalid_argument: <red>参数无效。原因：<white><arg:0></white></red>
+exception.invalid_sender: <red><arg:0>不允许执行此命令。执行者必须是<arg:1></red>
+exception.unexpected: <red>执行此命令时发生内部错误</red>
+exception.no_permission: <red>抱歉，你没有权限执行此命令</red>
+exception.no_such_command: <red>未知的命令</red>
+argument.entity.notfound.player: <red>未找到玩家</red>
+argument.entity.notfound.entity: <red>未找到实体</red>
+argument.parse.failure.time: <red>“<arg:0>”不是有效的时间格式</red>
+argument.parse.failure.material: <red>“<arg:0>”不是有效的材料名称</red>
+argument.parse.failure.enchantment: <red>“<arg:0>”不是有效的魔咒</red>
+argument.parse.failure.offlineplayer: <red>输入的玩家“<arg:0>”已离线</red>
+argument.parse.failure.player: <red>找不到输入的玩家“<arg:0>”</red>
+argument.parse.failure.world: <red>“<arg:0>”不是有效的Minecraft世界</red>
+argument.parse.failure.location.invalid_format: <red>“<arg:0>”不是有效的位置格式。所需格式为“<arg:1> <arg:2> <arg:3>”</red>
+argument.parse.failure.location.mixed_local_absolute: <red>不能混用相对和绝对坐标。（要么所有坐标都使用“^”，要么都不使用）</red>
+argument.parse.failure.namespacedkey.namespace: <red>命名空间“<arg:0>”无效。必须由[a-z0-9._-]组成</red>
+argument.parse.failure.namespacedkey.key: <red>命名空间ID“<arg:0>”无效。必须由[a-z0-9._-]组成</red>
+argument.parse.failure.namespacedkey.need_namespace: <red>输入“<arg:0>”无效，需要显式命名空间</red>
+argument.parse.failure.boolean: <red>无法从“<arg:0>”解析布尔值</red>
+argument.parse.failure.number: <red>“<arg:0>”不在<arg:1>到<arg:2>的范围内</red>
+argument.parse.failure.char: <red>“<arg:0>”不是有效字符</red>
+argument.parse.failure.string: <red>“<arg:0>”不是<arg:1>类型的有效字符串</red>
+argument.parse.failure.uuid: <red>“<arg:0>”不是有效的UUID</red>
+argument.parse.failure.enum: <red>“<arg:0>”不是以下选项之一：<arg:1></red>
+argument.parse.failure.regex: <red>“<arg:0>”与“<arg:1>”不匹配</red>
+argument.parse.failure.flag.unknown: <red>未知的“<arg:0>”标志</red>
+argument.parse.failure.flag.duplicate_flag: <red>重复的“<arg:0>”标志</red>
+argument.parse.failure.flag.no_flag_started: <red>无法识别的短标志组合“<arg:0>”</red>
+argument.parse.failure.flag.missing_argument: <red>缺少“<arg:0>”参数</red>
+argument.parse.failure.flag.no_permission: <red>你没有权限使用“<arg:0>”标志</red>
+argument.parse.failure.color: <red>“<arg:0>”不是有效的颜色</red>
+argument.parse.failure.duration: <red>“<arg:0>”不是时间长度格式</red>
+argument.parse.failure.aggregate.missing: <red>缺少“<arg:0>”组件</red>
+argument.parse.failure.aggregate.failure: <red>无效的“<arg:0>”组件：<arg:1></red>
+argument.parse.failure.either: <red>无法从“<arg:0>”解析出<arg:1>或<arg:2></red>
+argument.parse.failure.namedtextcolor: <red>“<arg:0>”不是命名的文本颜色</red>
+command.reload.too_fast: <red>你重新加载插件的速度太快了，上一次的重新加载还没有完成</red>
+command.reload.config.failure: <red>无法重新加载配置。请检查控制台日志</red>
+command.reload.config.success: <dark_gray>» </dark_gray><gradient:#F4A460:#FFD700><b>CraftEngine</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<hover:show_text:'<gray>异步/同步'><color:#FFD700><arg:1></color>/<color:#F4A460><arg:2></color></hover>毫秒）</gray>
+plugin.compatibility: "[兼容性] 已挂钩 <arg:0>"
+config.errors_detected: 在config.yml中发现错误 - <arg:0>
+update.available: 新版本<arg:0>已发布：<arg:1>
+update.is_latest: 你正在使用最新版本

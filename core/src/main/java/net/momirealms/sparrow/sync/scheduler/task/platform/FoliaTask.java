@@ -1,0 +1,23 @@
+package net.momirealms.sparrow.sync.scheduler.task.platform;
+
+
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import net.momirealms.sparrow.sync.scheduler.task.SchedulerTask;
+
+public final class FoliaTask implements SchedulerTask {
+    private final ScheduledTask task;
+
+    public FoliaTask(ScheduledTask task) {
+        this.task = task;
+    }
+
+    @Override
+    public void cancel() {
+        this.task.cancel();
+    }
+
+    @Override
+    public boolean cancelled() {
+        return task.isCancelled();
+    }
+}

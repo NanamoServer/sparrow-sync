@@ -1,0 +1,12 @@
+# Do not modify this value
+config-version: "${config_version}"
+
+#
+# For safety reasons, editing this file requires a restart to apply
+#
+
+reload:
+  enable: true
+  permission: ce.command.admin.reload
+  usages:
+    - /template reload
