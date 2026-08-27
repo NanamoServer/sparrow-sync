@@ -112,14 +112,39 @@ public final class PluginConfig {
         Locale forcedLocale = null;
 
         @BlankLineBefore
+        @Comment("Synchronization settings")
+        SynchronizationOptions synchronization = new SynchronizationOptions();
+
+        @BlankLineBefore
         @Comment("Debug")
-        DebugOptions debug = DebugOptions.DISABLE;
+        boolean debug = false;
     }
 
-    public record DebugOptions(
-            boolean common
-    ) {
-        public static DebugOptions DISABLE = new DebugOptions(false);
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class SynchronizationOptions {
+        @Comment({
+                "Number of worker threads handling per-player tasks, rounded up to a power of two",
+                "Tasks of one player always run on the same worker in submission order"
+        })
+        int workerThreads = 4;
+
+        @Comment({
+                "How long to wait for pending saves to reach the storage on shutdown",
+                "Draining 1500 players at 4 workers takes about 8s when a storage write costs 20ms,",
+                "and about 19s at 50ms, so 60 seconds leaves room for a remote or busy database",
+                "A supervisor that stops the server sooner (Docker allows 10s by default)",
+                "cuts the drain short no matter what is set here"
+        })
+        int shutdownTimeoutSeconds = 60;
+
+        public int workerThreads() {
+            return this.workerThreads;
+        }
+
+        public int shutdownTimeoutSeconds() {
+            return this.shutdownTimeoutSeconds;
+        }
     }
 
     public static boolean checkUpdate() {
@@ -132,5 +157,9 @@ public final class PluginConfig {
 
     public static Locale forcedLocale() {
         return instance.config.forcedLocale;
+    }
+
+    public static SynchronizationOptions synchronization() {
+        return instance.config.synchronization;
     }
 }
