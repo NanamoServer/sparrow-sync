@@ -99,7 +99,6 @@ public class SparrowSync implements Plugin, Listener {
         this.setupProxy();
         this.setUpConfigAndLocale();
         this.setUpInternalDataTypes();
-        this.setupStorage();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
     }
 
@@ -119,6 +118,7 @@ public class SparrowSync implements Plugin, Listener {
     public void onPluginLoad() {
         this.successfullyLoaded = true;
         this.compatibilityManager.onLoad(); // 集成插件管理器
+        this.setupStorage();                // 启动存储
     }
 
     @Override
@@ -213,19 +213,18 @@ public class SparrowSync implements Plugin, Listener {
     private void setupStorage() {
         DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(Compressors.DEFLATE));
         PluginConfig.DatabaseOptions database = PluginConfig.database();
-        switch (database.type()) {
-            case MONGODB -> {
-                this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.scheduler.async(), this.logger);
-                this.storageProvider.initialize().whenComplete((unused, error) -> {
-                    if (error != null) {
-                        this.logger.error("Failed to connect to MongoDB at " + database.mongodb().url() + ", player data will NOT be loaded or saved until the storage is reachable", error);
-                    } else {
-                        this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
-                    }
-                });
-
+        try {
+            switch (database.type()) {
+                case MONGODB -> {
+                    this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.logger);
+                    this.storageProvider.initialize();
+                    this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
+                }
+                case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
             }
-            case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
+        } catch (Throwable throwable) {
+            this.logger.error("Failed to set up the storage", throwable);
+            Bukkit.getServer().shutdown();
         }
     }
 
