@@ -9,4 +9,10 @@ reload:
   enable: true
   permission: ce.command.admin.reload
   usages:
-    - /template reload
+    - /sparrow-sync reload
+
+test:
+  enable: true
+  permission: ce.command.admin.test
+  usages:
+    - /sparrow-sync test
