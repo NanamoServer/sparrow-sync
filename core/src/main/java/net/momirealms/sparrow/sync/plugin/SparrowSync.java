@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.data.type.*;
 import net.momirealms.sparrow.sync.dependency.Dependencies;
 import net.momirealms.sparrow.sync.dependency.Dependency;
 import net.momirealms.sparrow.sync.dependency.DependencyManager;
+import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
@@ -50,6 +51,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -72,6 +74,7 @@ public class SparrowSync implements Plugin, Listener {
     private CommandManager commandManager;
     private TranslationManager translationManager;
     private final DataRegistry dataRegistry = new DataRegistry();   // 构造期就绪, 注册窗口一直开到全服插件 enable 完毕
+    private PlayerSerialExecutor playerExecutor;
     private SnapshotApplier snapshotApplier;
     private StorageProvider storageProvider;
 
@@ -98,6 +101,7 @@ public class SparrowSync implements Plugin, Listener {
 
         this.setupProxy();
         this.setUpConfigAndLocale();
+        this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization().workerThreads());
         this.setUpInternalDataTypes();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
     }
@@ -177,6 +181,7 @@ public class SparrowSync implements Plugin, Listener {
 
     @Override
     public void onPluginDisable() {
+        if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization().shutdownTimeoutSeconds(), TimeUnit.SECONDS);
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
         if (this.storageProvider != null) this.storageProvider.close();
@@ -216,7 +221,7 @@ public class SparrowSync implements Plugin, Listener {
         try {
             switch (database.type()) {
                 case MONGODB -> {
-                    this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.logger);
+                    this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.playerExecutor, this.scheduler.async(), this.logger);
                     this.storageProvider.initialize();
                     this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
                 }
@@ -558,6 +563,10 @@ public class SparrowSync implements Plugin, Listener {
 
     public DataRegistry dataRegistry() {
         return this.dataRegistry;
+    }
+
+    public PlayerSerialExecutor playerExecutor() {
+        return this.playerExecutor;
     }
 
     public SnapshotApplier snapshotApplier() {
