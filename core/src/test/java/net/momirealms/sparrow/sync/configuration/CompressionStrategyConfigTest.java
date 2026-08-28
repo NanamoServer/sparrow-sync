@@ -39,12 +39,12 @@ class CompressionStrategyConfigTest {
 
     @Test
     void strategyNameIsCaseInsensitive() throws IOException {
-        assertEquals(CompressorRegistry.SIZE, this.load("compression: size").compression);
+        assertEquals(CompressorRegistry.DEFLATE, this.load("compression: deflate").compression);
     }
 
     @Test
     void missingKeyKeepsTheDefaultStrategy() throws IOException {
-        assertEquals(CompressorRegistry.SPEED, this.load("").compression);
+        assertEquals(CompressorRegistry.ZSTD, this.load("").compression);
     }
 
     @Test
@@ -67,6 +67,6 @@ class CompressionStrategyConfigTest {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class Section {
         @Comment("Mirrors the compression field of SynchronizationOptions")
-        CompressorRegistry compression = CompressorRegistry.SPEED;
+        CompressorRegistry compression = CompressorRegistry.ZSTD;
     }
 }

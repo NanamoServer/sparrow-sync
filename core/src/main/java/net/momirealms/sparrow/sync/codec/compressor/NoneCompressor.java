@@ -7,11 +7,6 @@ import java.io.IOException;
 public final class NoneCompressor implements Compressor {
 
     @Override
-    public byte id() {
-        return 0;
-    }
-
-    @Override
     public byte @NotNull [] compress(byte @NotNull [] data) {
         return data;
     }

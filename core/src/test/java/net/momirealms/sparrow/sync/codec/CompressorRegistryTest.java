@@ -77,8 +77,8 @@ class CompressorRegistryTest {
         // 准备: 高重复度数据, 压缩应当明显缩小
         byte[] data = "sparrow-sync".repeat(200).getBytes();
         // 执行
-        byte[] compressed = CompressorRegistry.SPEED.compress(data);
-        byte[] restored = CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length, NO_LIMIT);
+        byte[] compressed = CompressorRegistry.ZSTD.compress(data);
+        byte[] restored = CompressorRegistry.ZSTD.decompress(compressed, 0, compressed.length, NO_LIMIT);
         // 断言
         assertArrayEquals(data, restored);
         assertTrue(compressed.length < data.length);
@@ -88,46 +88,46 @@ class CompressorRegistryTest {
     void zstdRoundTripRestoresRandomBytes() throws IOException {
         byte[] data = new byte[4096];
         new Random(42).nextBytes(data);
-        byte[] compressed = CompressorRegistry.SPEED.compress(data);
-        assertArrayEquals(data, CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length, NO_LIMIT));
+        byte[] compressed = CompressorRegistry.ZSTD.compress(data);
+        assertArrayEquals(data, CompressorRegistry.ZSTD.decompress(compressed, 0, compressed.length, NO_LIMIT));
     }
 
     @Test
     void zstdDecompressHonorsOffsetAndLength() throws IOException {
         // 载荷前后各垫 3 字节, 模拟帧头场景
         byte[] data = "offset-test".repeat(50).getBytes();
-        byte[] compressed = CompressorRegistry.SPEED.compress(data);
+        byte[] compressed = CompressorRegistry.ZSTD.compress(data);
         byte[] padded = new byte[compressed.length + 6];
         System.arraycopy(compressed, 0, padded, 3, compressed.length);
 
-        assertArrayEquals(data, CompressorRegistry.SPEED.decompress(padded, 3, compressed.length, NO_LIMIT));
+        assertArrayEquals(data, CompressorRegistry.ZSTD.decompress(padded, 3, compressed.length, NO_LIMIT));
     }
 
     @Test
     void zstdRejectsOversizedDecompressedPayload() throws IOException {
         // 1MB 零字节压缩后极小, 帧头声明的原始大小超过 64KB 上限必须在分配前失败
-        byte[] bomb = CompressorRegistry.SPEED.compress(new byte[1024 * 1024]);
+        byte[] bomb = CompressorRegistry.ZSTD.compress(new byte[1024 * 1024]);
 
-        assertThrows(IOException.class, () -> CompressorRegistry.SPEED.decompress(bomb, 0, bomb.length, 64 * 1024));
+        assertThrows(IOException.class, () -> CompressorRegistry.ZSTD.decompress(bomb, 0, bomb.length, 64 * 1024));
     }
 
     @Test
     void zstdCorruptedMagicFailsAsIOException() throws IOException {
         // 帧头 magic 被清零后 content size 不可读, 必须以接口承诺的 IOException 失败
-        byte[] compressed = CompressorRegistry.SPEED.compress("corrupt-me".repeat(100).getBytes());
+        byte[] compressed = CompressorRegistry.ZSTD.compress("corrupt-me".repeat(100).getBytes());
         for (int i = 0; i < 4; i++) {
             compressed[i] = 0;
         }
 
-        assertThrows(IOException.class, () -> CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length, NO_LIMIT));
+        assertThrows(IOException.class, () -> CompressorRegistry.ZSTD.decompress(compressed, 0, compressed.length, NO_LIMIT));
     }
 
     @Test
     void zstdTruncatedFrameFailsAsIOException() throws IOException {
         // 尾部截断在 native 侧以 unchecked 异常浮出, 实现必须转为 IOException 而不是任其逃逸
-        byte[] compressed = CompressorRegistry.SPEED.compress("truncate-me".repeat(100).getBytes());
+        byte[] compressed = CompressorRegistry.ZSTD.compress("truncate-me".repeat(100).getBytes());
 
-        assertThrows(IOException.class, () -> CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length - 8, NO_LIMIT));
+        assertThrows(IOException.class, () -> CompressorRegistry.ZSTD.decompress(compressed, 0, compressed.length - 8, NO_LIMIT));
     }
 
     @Test
@@ -135,7 +135,7 @@ class CompressorRegistryTest {
         // 只有帧头没有载荷的字节 (offset 越过数组末尾, length 为 0), 对应 4 字节裸帧头的解帧场景
         byte[] headerOnly = new byte[4];
 
-        assertThrows(IOException.class, () -> CompressorRegistry.SPEED.decompress(headerOnly, 4, 0, NO_LIMIT));
+        assertThrows(IOException.class, () -> CompressorRegistry.ZSTD.decompress(headerOnly, 4, 0, NO_LIMIT));
     }
 
     @Test
@@ -151,45 +151,31 @@ class CompressorRegistryTest {
         byte[] data = "leveled-frame".repeat(100).getBytes();
         byte[] compressed = new ZstdCompressor(19).compress(data);
 
-        assertArrayEquals(data, CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length, NO_LIMIT));
+        assertArrayEquals(data, CompressorRegistry.ZSTD.decompress(compressed, 0, compressed.length, NO_LIMIT));
     }
 
     @Test
     void everyValueWritesFramesTheRegistryCanReadBack() {
-        // 每个取值写出的帧都要能按 id 找回解码器, 否则用户一改配置就读不了自己刚写的数据
+        // 每个取值写出的帧都要能按 id 找回它自己, 否则用户一改配置就读不了自己刚写的数据
         CompressorRegistry[] values = CompressorRegistry.values();
         for (int i = 0; i < values.length; i++) {
             Compressor decoder = CompressorRegistry.byId(values[i].id());
             assertNotNull(decoder, values[i] + " writes frames no registered compressor can read");
-            assertEquals(values[i].id(), decoder.id());
+            assertSame(values[i], decoder, values[i] + " resolves to another compressor");
         }
-    }
-
-    @Test
-    void sizeFramesStayReadableBySpeed() throws IOException {
-        // 两个取值同为 zstd 但级别不同, 产出的帧必须互相可读, 否则改配置就读不了旧数据
-        byte[] data = "strategy-swap".repeat(100).getBytes();
-        byte[] compressed = CompressorRegistry.SIZE.compress(data);
-
-        assertArrayEquals(data, CompressorRegistry.SPEED.decompress(compressed, 0, compressed.length, NO_LIMIT));
     }
 
     @Test
     void byIdResolvesKnownIdsAndRejectsUnknown() {
         assertSame(CompressorRegistry.NONE, CompressorRegistry.byId((byte) 0));
         assertSame(CompressorRegistry.DEFLATE, CompressorRegistry.byId((byte) 1));
-        assertSame(CompressorRegistry.SPEED, CompressorRegistry.byId((byte) 2));
+        assertSame(CompressorRegistry.ZSTD, CompressorRegistry.byId((byte) 2));
         assertNull(CompressorRegistry.byId((byte) 9));
     }
 
     @Test
     void registerRejectsDuplicateId() {
         Compressor duplicate = new Compressor() {
-            @Override
-            public byte id() {
-                return 1;
-            }
-
             @Override
             public byte @NotNull [] compress(byte @NotNull [] data) {
                 return data;
@@ -200,6 +186,6 @@ class CompressorRegistryTest {
                 return data;
             }
         };
-        assertThrows(IllegalStateException.class, () -> CompressorRegistry.register(duplicate));
+        assertThrows(IllegalStateException.class, () -> CompressorRegistry.register(CompressorRegistry.DEFLATE.id(), duplicate));
     }
 }

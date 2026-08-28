@@ -7,17 +7,11 @@ import java.io.IOException;
 
 public final class ZstdCompressor implements Compressor {
     public static final int DEFAULT_LEVEL = 3;
-    public static final int SIZE_LEVEL = 12;
 
     private final int level;
 
     public ZstdCompressor(int level) {
         this.level = level;
-    }
-
-    @Override
-    public byte id() {
-        return 2;
     }
 
     @Override

@@ -43,14 +43,15 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final String FIELD_MC_DATA = "mcData";
     private static final String FIELD_DATA = "data";
 
-    private final Compressor compressor;
+    private final CompressorRegistry compressor;
     private final int compressThreshold;
 
-    public BinarySnapshotCodec(@NotNull Compressor compressor) {
+    public BinarySnapshotCodec(@NotNull CompressorRegistry compressor) {
         this(compressor, DEFAULT_COMPRESS_THRESHOLD);
     }
 
-    public BinarySnapshotCodec(@NotNull Compressor compressor, int compressThreshold) {
+    // 压缩器取自注册表, 因此帧头 id 必然能被读方查回
+    public BinarySnapshotCodec(@NotNull CompressorRegistry compressor, int compressThreshold) {
         this.compressor = compressor;
         this.compressThreshold = compressThreshold;
     }
@@ -65,7 +66,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      */
     public byte @NotNull [] frame(@NotNull Tag tag) throws IOException {
         byte[] body = NBT.toBytes(tag, false);
-        Compressor used = body.length < this.compressThreshold ? CompressorRegistry.NONE : this.compressor;
+        CompressorRegistry used = body.length < this.compressThreshold ? CompressorRegistry.NONE : this.compressor;
         byte[] compressed = used.compress(body);
         byte[] out = new byte[HEADER_LENGTH + compressed.length];
         out[0] = MAGIC_0;

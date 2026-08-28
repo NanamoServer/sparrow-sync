@@ -7,11 +7,6 @@ import java.io.IOException;
 public interface Compressor {
 
     /**
-     * 写入字节头的算法标识, 全局唯一且一经使用不得变更.
-     */
-    byte id();
-
-    /**
      * 将字节流进行压缩.
      */
     byte @NotNull [] compress(byte @NotNull [] data) throws IOException;

@@ -4,7 +4,7 @@ import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.codec.compressor.Compressor;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
@@ -246,7 +246,7 @@ public class SparrowSync implements Plugin, Listener {
      */
     private void setupStorage() {
         // 预热加载 ZSTD 压缩
-        Compressor compressor = PluginConfig.synchronization().compression();
+        CompressorRegistry compressor = PluginConfig.synchronization().compression();
         try {
             byte[] probe = compressor.compress(new byte[64]);
             compressor.decompress(probe, 0, probe.length, 256);

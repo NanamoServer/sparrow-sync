@@ -8,49 +8,49 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public enum CompressorRegistry implements Compressor {
-    NONE(new NoneCompressor()),             // 明文存储. 快照越大数据库传输越慢.
-    DEFLATE(new DeflateCompressor()),       // 内置 Deflate, 不依赖 native 库, 性能和速度都不好.
-    SPEED(new ZstdCompressor(ZstdCompressor.DEFAULT_LEVEL)),    // Zstd 默认策略, 压缩比 DEFLATE 快约 7 倍, 解压快 3 倍以上.
-    SIZE(new ZstdCompressor(ZstdCompressor.SIZE_LEVEL));        // Zstd Level 12, 比 DEFLATE 再小 8-13%, 但是速度较慢.
+    NONE((byte) 0, new NoneCompressor()),        // 明文存储. 快照越大数据库传输越慢.
+    DEFLATE((byte) 1, new DeflateCompressor()),  // 内置 Deflate, 不依赖 native 库, 性能和速度都不好.
+    ZSTD((byte) 2, new ZstdCompressor(ZstdCompressor.DEFAULT_LEVEL));   // 压缩比 DEFLATE 快约 7 倍, 解压快 3 倍以上.
 
     private static final Map<Byte, Compressor> BY_ID = new ConcurrentHashMap<>(); // 帧头 id -> 解码器
 
     static {
         CompressorRegistry[] values = values();
         for (int i = 0; i < values.length; i++) {
-            BY_ID.putIfAbsent(values[i].id(), values[i]);
+            register(values[i].id, values[i]);
         }
     }
 
+    private final byte id;
     private final Compressor delegate;
 
-    CompressorRegistry(Compressor delegate) {
+    CompressorRegistry(byte id, Compressor delegate) {
+        this.id = id;
         this.delegate = delegate;
     }
 
     /**
-     * 注册内置之外的压缩算法, 使解码方能按字节头中的 id 找到它.
+     * 登记内置之外的压缩算法, 使本服能读到用它写出的帧. 写出用哪个由配置在本枚举里选, 因此登记只服务解码侧.
      *
-     * @throws IllegalStateException 当该 id 已被注册时
+     * @throws IllegalStateException 当该 id 已被登记时
      */
-    public static void register(@NotNull Compressor compressor) {
-        Compressor existing = BY_ID.putIfAbsent(compressor.id(), compressor);
+    public static void register(byte id, @NotNull Compressor compressor) {
+        Compressor existing = BY_ID.putIfAbsent(id, compressor);
         if (existing != null) {
-            throw new IllegalStateException("compressor id already registered: " + compressor.id());
+            throw new IllegalStateException("compressor id already registered: " + id);
         }
     }
 
     /**
-     * 按字节头中的算法标识查找压缩器, 未注册的标识返回 null.
+     * 按字节头中的算法标识查找压缩器, 未登记的标识返回 null.
      */
     @Nullable
     public static Compressor byId(byte id) {
         return BY_ID.get(id);
     }
 
-    @Override
     public byte id() {
-        return this.delegate.id();
+        return this.id;
     }
 
     @Override

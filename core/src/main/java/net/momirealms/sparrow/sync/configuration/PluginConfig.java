@@ -157,13 +157,12 @@ public final class PluginConfig {
 
         @Comment({
                 "How newly written snapshots are compressed, existing data stays readable whatever is set here",
-                "Available: SPEED, SIZE, DEFLATE, NONE",
-                "  SPEED   - Zstd at its default level, the fastest saves and loads (recommended)",
-                "  SIZE    - Zstd level 12, 8-13% smaller than DEFLATE at a longer compression time",
+                "Available: ZSTD, DEFLATE, NONE",
+                "  ZSTD    - the fastest saves and loads at the best ratio (recommended)",
                 "  DEFLATE - the JDK codec, needs no native library, use it if Zstd fails to load here",
                 "  NONE    - plain bytes, note that a bigger snapshot also takes longer to reach the database"
         })
-        CompressorRegistry compression = CompressorRegistry.SPEED;
+        CompressorRegistry compression = CompressorRegistry.ZSTD;
 
         @Comment({
                 "Namespaces of persistent data (PDC) keys to synchronize, e.g. [craftengine, myplugin]",

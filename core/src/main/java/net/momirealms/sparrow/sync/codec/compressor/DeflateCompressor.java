@@ -11,11 +11,6 @@ import java.util.zip.InflaterInputStream;
 public final class DeflateCompressor implements Compressor {
 
     @Override
-    public byte id() {
-        return 1;
-    }
-
-    @Override
     public byte @NotNull [] compress(byte @NotNull [] data) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(Math.max(32, data.length / 3));
         try (DeflaterOutputStream stream = new DeflaterOutputStream(bytes)) {
