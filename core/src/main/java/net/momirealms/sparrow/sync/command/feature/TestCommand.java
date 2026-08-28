@@ -14,11 +14,9 @@ import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.codec.compressor.Compressors;
-import net.momirealms.sparrow.sync.data.PlayerDataTypes;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -39,13 +37,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * 通用真机测试命令, 按参数分发到各测试项, 输出为纯技术文本不进翻译体系.
  * 新测试项只需增加 {@link TestArgument} 枚举值并接上对应方法.
  */
 public final class TestCommand extends BukkitCommandFeature {
+    private static final NamespacedKey SMOKE_MARKER = new NamespacedKey("sparrow_sync", "smoke");
 
     public TestCommand(CommandManager commandManager, SparrowSync plugin) {
         super(commandManager, plugin);
@@ -96,11 +94,14 @@ public final class TestCommand extends BukkitCommandFeature {
 
     private List<String> runSmoke(Player player) {
         List<String> report = new ArrayList<>();
-        // 独立装配一套实例, 不触碰未来的正式装配单例
-        DataRegistry registry = new DataRegistry();
-        SnapshotApplier applier = new SnapshotApplier(registry, PlayerDataTypes.builtinTypes(Set.of(), plugin().logger()), plugin().logger());
+        // 用插件正式装配的那一套, 冒烟覆盖的就是运行期真正生效的类型集合 (含第三方注册的)
+        SnapshotApplier applier = plugin().snapshotApplier();
+        if (applier == null) {
+            report.add("[FAIL] data registry is not assembled yet");
+            return summarize(report);
+        }
         BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(Compressors.DEFLATE);
-        DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(registry, binaryCodec);
+        DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(plugin().dataRegistry(), binaryCodec);
 
         try {
             // 采集原始快照
@@ -155,6 +156,9 @@ public final class TestCommand extends BukkitCommandFeature {
         } catch (Exception exception) {
             report.add("[FAIL] unexpected: " + exception);
             plugin().logger().warn("Smoke test failed for " + player.getName(), exception);
+        } finally {
+            // 全量替换模式下 apply 已经带走了标记键; 合并模式只替换白名单命名空间, 标记键会留在玩家身上
+            player.getPersistentDataContainer().remove(SMOKE_MARKER);
         }
         return summarize(report);
     }
@@ -175,7 +179,7 @@ public final class TestCommand extends BukkitCommandFeature {
         player.setExhaustion(0.0f);
         player.setHealth(Math.max(1.0, player.getHealth() / 2));
         player.setGameMode(player.getGameMode() == GameMode.SPECTATOR ? GameMode.SURVIVAL : GameMode.SPECTATOR);
-        player.getPersistentDataContainer().set(new NamespacedKey("sparrow_sync", "smoke"), PersistentDataType.INTEGER, 1);
+        player.getPersistentDataContainer().set(SMOKE_MARKER, PersistentDataType.INTEGER, 1);
     }
 
     private static SnapshotMeta smokeMeta(Player player) {
