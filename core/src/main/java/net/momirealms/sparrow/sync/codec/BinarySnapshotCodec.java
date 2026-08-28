@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -59,22 +60,6 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         return this.frame(this.toTagTree(snapshot));
     }
 
-    @Override
-    @NotNull
-    public DecodedSnapshot decode(byte @NotNull [] encoded) {
-        try {
-            Tag root = this.deframe(encoded);
-            if (!(root instanceof CompoundTag compound)) {
-                return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "root tag is not a compound");
-            }
-            return new DecodedSnapshot.Valid(fromTagTree(compound));
-        } catch (FormatException exception) {
-            return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
-        } catch (Exception exception) {
-            return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, String.valueOf(exception.getMessage()));
-        }
-    }
-
     /**
      * 把单个 NBT 值封装为自带帧头的字节.
      */
@@ -91,6 +76,23 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         return out;
     }
 
+    @Override
+    @NotNull
+    public DecodedSnapshot decode(byte @NotNull [] encoded) {
+        int format = encoded.length < HEADER_LENGTH ? 0 : encoded[2] & 0xFF;
+        try {
+            Tag root = this.deframe(encoded);
+            if (!(root instanceof CompoundTag compound)) {
+                return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "root tag is not a compound");
+            }
+            return new DecodedSnapshot.Valid(fromTagTree(SnapshotUpgradePipeline.upgrade(compound, format)));
+        } catch (FormatException exception) {
+            return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
+        } catch (Exception exception) {
+            return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, String.valueOf(exception.getMessage()));
+        }
+    }
+
     /**
      * 从字节帧还原 NBT 值, 解压算法按帧头选择, 与本实例配置的压缩器无关.
      *
@@ -105,6 +107,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (bytes[0] != MAGIC_0 || bytes[1] != MAGIC_1) {
             throw new FormatException(InvalidReason.BAD_MAGIC, "unexpected magic bytes");
         }
+        // 低版本经升级管线读入, 高版本一律拒绝.
         int version = bytes[2] & 0xFF;
         if (version < 1 || version > CURRENT_VERSION) {
             throw new FormatException(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + version + ", supported up to " + CURRENT_VERSION);

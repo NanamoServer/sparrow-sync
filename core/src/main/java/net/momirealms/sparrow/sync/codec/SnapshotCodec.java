@@ -13,7 +13,7 @@ import java.io.IOException;
  * @param <T> 载体类型
  */
 public interface SnapshotCodec<T> {
-    int CURRENT_VERSION = 1;    // 快照格式版本, 以 1 字节写入帧头, 取值必须保持在 1..255
+    int CURRENT_VERSION = 2;    // 快照格式版本, 以 1 字节写入帧头, 取值必须保持在 1..255
 
     @NotNull
     T encode(@NotNull Snapshot snapshot) throws IOException;

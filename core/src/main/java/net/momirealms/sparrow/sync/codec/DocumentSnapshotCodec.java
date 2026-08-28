@@ -5,6 +5,7 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.codec.ops.BsonOps;
+import net.momirealms.sparrow.sync.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -87,13 +88,15 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
             if (!(encoded.get(FIELD_FORMAT) instanceof Number formatNumber)) {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
-            int version = formatNumber.intValue();
-            if (version < 1 || version > CURRENT_VERSION) {
-                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + version + ", supported up to " + CURRENT_VERSION);
+            int format = formatNumber.intValue();
+            // 低版本经升级管线读入, 高版本一律拒绝.
+            if (format < 1 || format > CURRENT_VERSION) {
+                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported up to " + CURRENT_VERSION);
             }
-            SnapshotMeta meta = decodeMeta(encoded);
+            Document document = SnapshotUpgradePipeline.upgrade(encoded, format);
+            SnapshotMeta meta = decodeMetaFields(document);
             Map<DataKey, Tag> data = new LinkedHashMap<>();
-            Document values = encoded.get(FIELD_DATA, Document.class);
+            Document values = document.get(FIELD_DATA, Document.class);
             if (values != null) {
                 for (Map.Entry<String, Object> entry : values.entrySet()) {
                     // null 字段视为缺失, EndTag 进入快照会截断二进制帧
@@ -113,10 +116,15 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     /**
      * 解码文档的元数据部分, 供存储层用排除 data 的投影查询快照列表.
      *
-     * @throws IllegalArgumentException 当文档缺少 player 字段时
+     * @throws IllegalArgumentException 当文档缺少 player 或快照 id 字段时
      */
     @NotNull
     public static SnapshotMeta decodeMeta(@NotNull Document document) {
+        int format = document.get(FIELD_FORMAT) instanceof Number number ? number.intValue() : CURRENT_VERSION;
+        return decodeMetaFields(SnapshotUpgradePipeline.upgrade(document, format));
+    }
+
+    private static SnapshotMeta decodeMetaFields(Document document) {
         UUID player = document.get(FIELD_PLAYER, UUID.class);
         if (player == null) throw new IllegalArgumentException("missing player field");
         UUID id = document.get(FIELD_ID, UUID.class);

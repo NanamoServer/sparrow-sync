@@ -21,8 +21,8 @@ public record SnapshotMeta(@NotNull UUID id,
                            @NotNull UUID player,
                            long timestamp,
                            @NotNull SaveCause cause,
-                           boolean pinned, @NotNull
-                           String server,
+                           boolean pinned,
+                           @NotNull String server,
                            int mcDataVersion) {
 
     @NotNull
