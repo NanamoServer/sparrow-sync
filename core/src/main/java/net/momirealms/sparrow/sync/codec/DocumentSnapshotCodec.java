@@ -29,15 +29,15 @@ import java.util.UUID;
  * 文档含原生 UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
  */
 public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
-    private static final String FIELD_PLAYER = "player";
-    private static final String FIELD_VERSION = "version";
-    private static final String FIELD_TIMESTAMP = "ts";
-    private static final String FIELD_CAUSE = "cause";
-    private static final String FIELD_PINNED = "pinned";
-    private static final String FIELD_SERVER = "server";
-    private static final String FIELD_FORMAT = "format";
-    private static final String FIELD_MC_DATA = "mcData";
-    private static final String FIELD_DATA = "data";
+    public static final String FIELD_PLAYER = "player";
+    public static final String FIELD_VERSION = "version";
+    public static final String FIELD_TIMESTAMP = "ts";
+    public static final String FIELD_CAUSE = "cause";
+    public static final String FIELD_PINNED = "pinned";
+    public static final String FIELD_SERVER = "server";
+    public static final String FIELD_FORMAT = "format";
+    public static final String FIELD_MC_DATA = "mcData";
+    public static final String FIELD_DATA = "data";
 
     private final DataRegistry registry;
     private final BinarySnapshotCodec binary;
@@ -68,11 +68,22 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         return document;
     }
 
+    private Object toDocumentValue(DataKey key, Tag tag) throws IOException {
+        DataDeclaration declaration = this.registry.declaration(key);
+        if (declaration != null && declaration.storage() == StorageFormat.BINARY) {
+            return new Binary(this.binary.frame(tag));
+        }
+        // 未注册的二进制字段原样透传, 内容不解释
+        if (declaration == null && tag instanceof ByteArrayTag bytes) {
+            return new Binary(bytes.value());
+        }
+        return NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, tag);
+    }
+
     @Override
     @NotNull
     public DecodedSnapshot decode(@NotNull Document encoded) {
         try {
-            // 元数据宽容读取, 数值字段接受任何 Number 形态, 只有缺失才算损坏
             if (!(encoded.get(FIELD_FORMAT) instanceof Number formatNumber)) {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
@@ -80,19 +91,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
             if (version < 1 || version > CURRENT_VERSION) {
                 return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + version + ", supported up to " + CURRENT_VERSION);
             }
-            UUID player = encoded.get(FIELD_PLAYER, UUID.class);
-            if (player == null) {
-                return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing player field");
-            }
-            SnapshotMeta meta = new SnapshotMeta(
-                    player,
-                    encoded.get(FIELD_VERSION) instanceof Number snapshotVersion ? snapshotVersion.longValue() : 0L,
-                    readTimestamp(encoded.get(FIELD_TIMESTAMP)),
-                    SaveCause.byName(readString(encoded.get(FIELD_CAUSE))),
-                    readBoolean(encoded.get(FIELD_PINNED)),
-                    readString(encoded.get(FIELD_SERVER)),
-                    encoded.get(FIELD_MC_DATA) instanceof Number mcData ? mcData.intValue() : 0
-            );
+            SnapshotMeta meta = decodeMeta(encoded);
             Map<DataKey, Tag> data = new LinkedHashMap<>();
             Document values = encoded.get(FIELD_DATA, Document.class);
             if (values != null) {
@@ -111,16 +110,25 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         }
     }
 
-    private Object toDocumentValue(DataKey key, Tag tag) throws IOException {
-        DataDeclaration declaration = this.registry.declaration(key);
-        if (declaration != null && declaration.storage() == StorageFormat.BINARY) {
-            return new Binary(this.binary.frame(tag));
-        }
-        // 未注册的二进制字段原样透传, 内容不解释
-        if (declaration == null && tag instanceof ByteArrayTag bytes) {
-            return new Binary(bytes.value());
-        }
-        return NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, tag);
+    /**
+     * 解码文档的元数据部分, 供存储层用排除 data 的投影查询快照列表.
+     *
+     * @throws IllegalArgumentException 当文档缺少 player 字段时
+     */
+    @NotNull
+    public static SnapshotMeta decodeMeta(@NotNull Document document) {
+        UUID player = document.get(FIELD_PLAYER, UUID.class);
+        if (player == null) throw new IllegalArgumentException("missing player field");
+        // 数值字段接受任何 Number 形态
+        return new SnapshotMeta(
+                player,
+                document.get(FIELD_VERSION) instanceof Number snapshotVersion ? snapshotVersion.longValue() : 0L,
+                readTimestamp(document.get(FIELD_TIMESTAMP)),
+                SaveCause.byName(readString(document.get(FIELD_CAUSE))),
+                readBoolean(document.get(FIELD_PINNED)),
+                readString(document.get(FIELD_SERVER)),
+                document.get(FIELD_MC_DATA) instanceof Number mcData ? mcData.intValue() : 0
+        );
     }
 
     // 以值的实际类型为准还原, 写读两侧注册形态不一致时字段仍可读, 不拖垮整份快照
