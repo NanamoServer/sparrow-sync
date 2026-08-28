@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.configuration;
 
 import net.momirealms.sparrow.sync.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
@@ -117,6 +118,14 @@ public final class PluginConfig {
         SynchronizationOptions synchronization = new SynchronizationOptions();
 
         @BlankLineBefore
+        @Comment("Redis, backs the cross server session lock and messaging")
+        RedisOptions redis = new RedisOptions();
+
+        @BlankLineBefore
+        @Comment("Where player snapshots are persisted")
+        DatabaseOptions database = new DatabaseOptions();
+
+        @BlankLineBefore
         @Comment("Debug")
         boolean debug = false;
     }
@@ -169,6 +178,154 @@ public final class PluginConfig {
         }
     }
 
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class RedisOptions {
+        @Comment("Connection url, credentials go below instead of into the url")
+        String url = "redis://localhost:6379";
+
+        @Comment("Username, leave empty on a server without ACL users")
+        String username = "";
+
+        @Comment("Password, leave empty when the server requires none")
+        String password = "";
+
+        public String url() {
+            return this.url;
+        }
+
+        public String username() {
+            return this.username;
+        }
+
+        public String password() {
+            return this.password;
+        }
+    }
+
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class DatabaseOptions {
+        @Comment({
+                "Which backend keeps player snapshots, only the matching section below is read",
+                "Available: MONGODB, MYSQL"
+        })
+        StorageType type = StorageType.MONGODB;
+
+        @BlankLineBefore
+        @Comment("Read when type is MONGODB")
+        MongoOptions mongodb = new MongoOptions();
+
+        @BlankLineBefore
+        @Comment("Read when type is MYSQL")
+        MysqlOptions mysql = new MysqlOptions();
+
+        public StorageType type() {
+            return this.type;
+        }
+
+        public MongoOptions mongodb() {
+            return this.mongodb;
+        }
+
+        public MysqlOptions mysql() {
+            return this.mysql;
+        }
+    }
+
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class MongoOptions {
+        @Comment("Connection url, credentials go below instead of into the url")
+        String url = "mongodb://localhost:27017";
+
+        @Comment("Database name")
+        String database = "sparrow_sync";
+
+        @Comment("Username, leave empty to connect without authentication")
+        String username = "";
+
+        @Comment("Password")
+        String password = "";
+
+        @Comment("Authentication source database")
+        String authSource = "admin";
+
+        @Comment("Prefix of every collection created by this plugin")
+        String collectionPrefix = "sparrow_";
+
+        // 配置映射走无参构造加字段注入, 全参构造供程序化装配和测试使用
+        public MongoOptions() {
+        }
+
+        public MongoOptions(String url, String database, String username, String password, String authSource, String collectionPrefix) {
+            this.url = url;
+            this.database = database;
+            this.username = username;
+            this.password = password;
+            this.authSource = authSource;
+            this.collectionPrefix = collectionPrefix;
+        }
+
+        public String url() {
+            return this.url;
+        }
+
+        public String database() {
+            return this.database;
+        }
+
+        public String username() {
+            return this.username;
+        }
+
+        public String password() {
+            return this.password;
+        }
+
+        public String authSource() {
+            return this.authSource;
+        }
+
+        public String collectionPrefix() {
+            return this.collectionPrefix;
+        }
+    }
+
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class MysqlOptions {
+        @Comment("Connection url, credentials go below instead of into the url")
+        String url = "jdbc:mysql://localhost:3306/sparrow_sync";
+
+        @Comment("Username")
+        String username = "root";
+
+        @Comment("Password")
+        String password = "";
+
+        @Comment("Prefix of every table created by this plugin")
+        String tablePrefix = "sparrow_";
+
+        public String url() {
+            return this.url;
+        }
+
+        public String username() {
+            return this.username;
+        }
+
+        public String password() {
+            return this.password;
+        }
+
+        public String tablePrefix() {
+            return this.tablePrefix;
+        }
+    }
+
+
+
     public static boolean checkUpdate() {
         return instance.config.updateChecker;
     }
@@ -183,5 +340,13 @@ public final class PluginConfig {
 
     public static SynchronizationOptions synchronization() {
         return instance.config.synchronization;
+    }
+
+    public static DatabaseOptions database() {
+        return instance.config.database;
+    }
+
+    public static RedisOptions redis() {
+        return instance.config.redis;
     }
 }
