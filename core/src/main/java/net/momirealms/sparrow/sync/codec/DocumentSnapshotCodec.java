@@ -8,7 +8,7 @@ import net.momirealms.sparrow.sync.codec.ops.BsonOps;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistration;
+import net.momirealms.sparrow.sync.snapshot.DataDeclaration;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -112,12 +112,12 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     }
 
     private Object toDocumentValue(DataKey key, Tag tag) throws IOException {
-        DataRegistration registration = this.registry.registration(key);
-        if (registration != null && registration.storage() == StorageFormat.BINARY) {
+        DataDeclaration declaration = this.registry.declaration(key);
+        if (declaration != null && declaration.storage() == StorageFormat.BINARY) {
             return new Binary(this.binary.frame(tag));
         }
         // 未注册的二进制字段原样透传, 内容不解释
-        if (registration == null && tag instanceof ByteArrayTag bytes) {
+        if (declaration == null && tag instanceof ByteArrayTag bytes) {
             return new Binary(bytes.value());
         }
         return NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, tag);
@@ -126,8 +126,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     // 以值的实际类型为准还原, 写读两侧注册形态不一致时字段仍可读, 不拖垮整份快照
     private Tag fromDocumentValue(DataKey key, Object value) throws IOException {
         if (value instanceof Binary || value instanceof byte[]) {
-            DataRegistration registration = this.registry.registration(key);
-            if (registration != null && registration.storage() == StorageFormat.BINARY) {
+            DataDeclaration declaration = this.registry.declaration(key);
+            if (declaration != null && declaration.storage() == StorageFormat.BINARY) {
                 try {
                     return this.binary.deframe(binaryBytes(value));
                 } catch (FormatException exception) {

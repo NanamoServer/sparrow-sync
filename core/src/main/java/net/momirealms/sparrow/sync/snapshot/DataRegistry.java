@@ -4,6 +4,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -15,31 +17,50 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 同步数据类型的注册表.
- * 注册发生在启动期, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
+ * 同步数据类型的注册表, 生命周期与 MC 注册表同款: 插件 onLoad 期开放注册 (第三方在自己的
+ * onLoad 中注册, 依赖声明保证顺序), 装配时冻结, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
  */
 public final class DataRegistry {
-    private final Map<DataKey, DataRegistration> registrations = new ConcurrentHashMap<>();
+    private final Map<DataKey, DataDeclaration> declarations = new ConcurrentHashMap<>();
+    private volatile boolean frozen;
 
     /**
      * 注册一类同步数据.
      *
-     * @throws IllegalStateException 当该数据标识已被注册时
+     * @throws IllegalStateException 当注册表已冻结, 或该数据标识已被注册时
      */
-    public void register(@NotNull DataRegistration registration) {
-        DataRegistration existing = this.registrations.putIfAbsent(registration.key(), registration);
+    public void register(@NotNull DataDeclaration declaration) {
+        if (this.frozen) {
+            throw new IllegalStateException("data registry is frozen, register during plugin onLoad");
+        }
+        DataDeclaration existing = this.declarations.putIfAbsent(declaration.key(), declaration);
         if (existing != null) {
-            throw new IllegalStateException("data key already registered: " + registration.key());
+            throw new IllegalStateException("data key already registered: " + declaration.key());
         }
     }
 
+    /** 关闭注册窗口, 此后一切 register 调用抛出. */
+    public void freeze() {
+        this.frozen = true;
+    }
+
+    public boolean frozen() {
+        return this.frozen;
+    }
+
     @Nullable
-    public DataRegistration registration(@NotNull DataKey key) {
-        return this.registrations.get(key);
+    public DataDeclaration declaration(@NotNull DataKey key) {
+        return this.declarations.get(key);
     }
 
     public boolean registered(@NotNull DataKey key) {
-        return this.registrations.containsKey(key);
+        return this.declarations.containsKey(key);
+    }
+
+    /** 全部已注册声明的只读视图, 装配期从这里收割带行为的类型. */
+    @NotNull
+    public Collection<DataDeclaration> declarations() {
+        return Collections.unmodifiableCollection(this.declarations.values());
     }
 
     /**
@@ -53,14 +74,14 @@ public final class DataRegistry {
         // 建图. 入度为已注册依赖数, 未注册的依赖直接忽略
         Map<DataKey, Integer> inDegree = new HashMap<>();
         Map<DataKey, List<DataKey>> dependents = new HashMap<>();
-        for (DataRegistration registration : this.registrations.values()) {
+        for (DataDeclaration declaration : this.declarations.values()) {
             int degree = 0;
-            for (DataKey dependency : registration.dependencies()) {
-                if (!this.registrations.containsKey(dependency)) continue;
+            for (DataKey dependency : declaration.dependencies()) {
+                if (!this.declarations.containsKey(dependency)) continue;
                 degree++;
-                dependents.computeIfAbsent(dependency, key -> new ArrayList<>()).add(registration.key());
+                dependents.computeIfAbsent(dependency, key -> new ArrayList<>()).add(declaration.key());
             }
-            inDegree.put(registration.key(), degree);
+            inDegree.put(declaration.key(), degree);
         }
 
         // Kahn 拓扑排序, 就绪集用字典序优先队列消除注册顺序的影响
@@ -109,9 +130,9 @@ public final class DataRegistry {
 
     private boolean findCycle(DataKey start, DataKey current, Set<DataKey> onPath, List<DataKey> path) {
         onPath.add(current);
-        TreeSet<DataKey> dependencies = new TreeSet<>(this.registrations.get(current).dependencies());
+        TreeSet<DataKey> dependencies = new TreeSet<>(this.declarations.get(current).dependencies());
         for (DataKey dependency : dependencies) {
-            if (!this.registrations.containsKey(dependency)) continue;
+            if (!this.declarations.containsKey(dependency)) continue;
             if (dependency.equals(start)) return true;
             if (onPath.contains(dependency)) continue;
 

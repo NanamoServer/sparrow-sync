@@ -14,6 +14,11 @@ public record DataKey(@NotNull String namespace, @NotNull String value) implemen
     }
 
     @NotNull
+    public static DataKey sparrow(@NotNull String value) {
+        return new DataKey(DEFAULT_NAMESPACE, value);
+    }
+
+    @NotNull
     public static DataKey parse(@NotNull String key) {
         int separator = key.indexOf(':');
         if (separator < 0) return new DataKey(DEFAULT_NAMESPACE, key);
