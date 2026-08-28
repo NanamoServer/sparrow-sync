@@ -6,7 +6,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -32,7 +32,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final byte MAGIC_0 = 'S';
     private static final byte MAGIC_1 = 'S';
     private static final int HEADER_LENGTH = 4;
-    private static final int MAX_DECODED_SIZE = 16 * 1024 * 1024;   // 解压上限, 对齐 Mongo 单文档上限
+    private static final int MAX_DECODED_SIZE = 16 * 1024 * 1024;   // 单字段解压后的上限
 
     private static final String FIELD_ID = "id";
     private static final String FIELD_PLAYER = "player";
@@ -65,7 +65,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      */
     public byte @NotNull [] frame(@NotNull Tag tag) throws IOException {
         byte[] body = NBT.toBytes(tag, false);
-        Compressor used = body.length < this.compressThreshold ? Compressors.NONE : this.compressor;
+        Compressor used = body.length < this.compressThreshold ? CompressorRegistry.NONE : this.compressor;
         byte[] compressed = used.compress(body);
         byte[] out = new byte[HEADER_LENGTH + compressed.length];
         out[0] = MAGIC_0;
@@ -112,7 +112,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (version < 1 || version > CURRENT_VERSION) {
             throw new FormatException(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + version + ", supported up to " + CURRENT_VERSION);
         }
-        Compressor compressor = Compressors.byId(bytes[3]);
+        Compressor compressor = CompressorRegistry.byId(bytes[3]);
         if (compressor == null) {
             throw new FormatException(InvalidReason.UNSUPPORTED_COMPRESSION, "unknown compression id " + bytes[3]);
         }

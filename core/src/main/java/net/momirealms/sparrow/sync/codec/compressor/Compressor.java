@@ -4,15 +4,16 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
- * 快照字节的压缩算法. id 写入字节头, 读方按 id 选择算法解压, 与写方配置无关.
- * 实现须经 {@link Compressors#register(Compressor)} 注册后才能被解码方识别.
- */
 public interface Compressor {
 
-    /** 写入字节头的算法标识, 全局唯一且一经使用不得变更. */
+    /**
+     * 写入字节头的算法标识, 全局唯一且一经使用不得变更.
+     */
     byte id();
 
+    /**
+     * 将字节流进行压缩.
+     */
     byte @NotNull [] compress(byte @NotNull [] data) throws IOException;
 
     /**

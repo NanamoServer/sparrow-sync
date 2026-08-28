@@ -28,6 +28,7 @@ mongodb-driver = "5.7.0"
 netty = "4.1.132.Final"
 reactive-streams = "1.0.4"
 reactor = "3.8.5"
+zstd = "1.5.7-15"
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
@@ -42,6 +43,7 @@ datafixerupper = { module = "com.mojang:datafixerupper", version = "8.0.16" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version = "26.0.2" }
 lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref = "mongodb-driver" }
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
 mojang-brigadier = { module = "com.mojang:brigadier", version.ref = "mojang-brigadier" }
 cloud-core = { module = "org.incendo:cloud-core", version.ref = "cloud-core" }

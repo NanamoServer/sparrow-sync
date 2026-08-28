@@ -7,7 +7,7 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -55,7 +55,7 @@ class MongoStorageProviderTest {
     @BeforeAll
     void connect() {
         PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(Compressors.DEFLATE));
+        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
         this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
         // 读走内联执行, 写按玩家投递到 worker, 与运行期同构
         this.provider = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);

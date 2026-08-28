@@ -4,7 +4,7 @@ import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
@@ -199,6 +199,35 @@ public class SparrowSync implements Plugin, Listener {
     }
 
     /**
+     * 创建依赖管理器, 下载并加载插件依赖.
+     * 该方法会收集通用依赖与平台依赖, 然后统一交由依赖管理器进行下载和类路径注入.
+     * 依赖由 `commonDependencies()` 和 `platformDependencies()` 的返回结果共同决定.
+     */
+    public void applyDependencies() {
+        ArrayList<Dependency> dependenciesToLoad = new ArrayList<>(this.platformDependencies());
+        this.dependencyManager.loadDependencies(dependenciesToLoad);
+    }
+
+    @Override
+    public void setupProxy() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), getPatches());
+    }
+
+    /**
+     * 初始化配置和语言文件.
+     */
+    public void setUpConfigAndLocale() {
+        this.sparrowYaml = SparrowYaml.builder()
+                .setAllowDuplicateKeys(false)
+                .setAllowObjectKeys(false)
+                .build();
+        this.pluginConfig = new PluginConfig(this);
+        this.pluginConfig.updateConfigCache();
+        this.translationManager = new TranslationManagerImpl(this);
+        this.translationManager.reload();
+    }
+
+    /**
      * 注册内置的数据类型并装配存储.
      */
     private void setUpInternalDataTypes() {
@@ -216,9 +245,20 @@ public class SparrowSync implements Plugin, Listener {
      * 安装并初始化持久化存储.
      */
     private void setupStorage() {
-        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(Compressors.DEFLATE));
+        // 预热加载 ZSTD 压缩
+        Compressor compressor = PluginConfig.synchronization().compression();
+        try {
+            byte[] probe = compressor.compress(new byte[64]);
+            compressor.decompress(probe, 0, probe.length, 256);
+        } catch (Throwable throwable) {
+            this.logger.error("Failed to load the snapshot compressor, check that the runtime dependencies are intact and the temp directory allows executing unpacked natives", throwable);
+            Bukkit.getServer().shutdown();
+            return;
+        }
+        // 加载数据库
         PluginConfig.DatabaseOptions database = PluginConfig.database();
         try {
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(compressor));
             switch (database.type()) {
                 case MONGODB -> {
                     this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.playerExecutor, this.scheduler.async(), this.logger);
@@ -231,35 +271,6 @@ public class SparrowSync implements Plugin, Listener {
             this.logger.error("Failed to set up the storage", throwable);
             Bukkit.getServer().shutdown();
         }
-    }
-
-    /**
-     * 创建依赖管理器, 下载并加载插件依赖.
-     * 该方法会收集通用依赖与平台依赖, 然后统一交由依赖管理器进行下载和类路径注入.
-     * 依赖由 `commonDependencies()` 和 `platformDependencies()` 的返回结果共同决定.
-     */
-    public void applyDependencies() {
-        ArrayList<Dependency> dependenciesToLoad = new ArrayList<>(this.platformDependencies());
-        this.dependencyManager.loadDependencies(dependenciesToLoad);
-    }
-
-    /**
-     * 初始化配置和语言文件.
-     */
-    public void setUpConfigAndLocale() {
-        this.sparrowYaml = SparrowYaml.builder()
-                .setAllowDuplicateKeys(false)
-                .setAllowObjectKeys(false)
-                .build();
-        this.pluginConfig = new PluginConfig(this);
-        this.pluginConfig.updateConfigCache();
-        this.translationManager = new TranslationManagerImpl(this);
-        this.translationManager.reload();
-    }
-
-    @Override
-    public void setupProxy() {
-        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), getPatches());
     }
 
     /**
@@ -338,6 +349,7 @@ public class SparrowSync implements Plugin, Listener {
                 Dependencies.PLUGIN_BUKKIT_PROXY,
                 // Common
                 Dependencies.CAFFEINE,
+                Dependencies.ZSTD_JNI,
                 // MangoDB
                 Dependencies.MONGODB_DRIVER_CORE, Dependencies.MONGODB_DRIVER_SYNC, Dependencies.MONGODB_DRIVER_REACTIVESTREAMS,
                 Dependencies.MONGODB_DRIVER_BSON, Dependencies.MONGODB_DRIVER_KOTLIN_COROUTINE, Dependencies.REACTIVE_STREAMS,

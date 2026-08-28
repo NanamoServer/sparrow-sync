@@ -13,7 +13,7 @@ import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -100,7 +100,8 @@ public final class TestCommand extends BukkitCommandFeature {
             report.add("[FAIL] data registry is not assembled yet");
             return summarize(report);
         }
-        BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(Compressors.DEFLATE);
+        // 与正式装配同一配置来源, 冒烟覆盖的是用户实际选用的压缩器
+        BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(PluginConfig.synchronization().compression());
         DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(plugin().dataRegistry(), binaryCodec);
 
         try {

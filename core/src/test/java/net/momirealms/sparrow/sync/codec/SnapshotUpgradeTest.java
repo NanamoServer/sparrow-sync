@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import org.bson.Document;
@@ -22,8 +22,8 @@ class SnapshotUpgradeTest {
     private static final UUID PLAYER = UUID.fromString("7f2b3c1d-0a9e-4b8c-9d6f-112233445566");
     private static final long TIMESTAMP = 1_756_300_000_000L;
 
-    private final DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(Compressors.DEFLATE));
-    private final BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(Compressors.DEFLATE);
+    private final DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+    private final BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
 
     @Test
     void v1DocumentGainsDerivedIdAndStaysReadable() {

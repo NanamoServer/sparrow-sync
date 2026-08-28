@@ -31,11 +31,13 @@ dependencies {
     compileOnly(libs.datafixerupper)
     compileOnly(libs.lettuce.core)
     compileOnly(libs.mongodb.driver.sync)
+    compileOnly(libs.zstd.jni)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mongodb.driver.sync)
     testImplementation(libs.datafixerupper)
+    testImplementation(libs.zstd.jni)
     testRuntimeOnly(libs.junit.platformLauncher)
     testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)
@@ -57,6 +59,7 @@ buildConfig {
     buildConfigField("CAFFEINE", libs.versions.caffeine.get())
     buildConfigField("MONGODB_DRIVER", libs.versions.mongodb.driver.get())
     buildConfigField("REACTIVE_STREAMS", libs.versions.reactive.streams.get())
+    buildConfigField("ZSTD_JNI", libs.versions.zstd.get())
     // LETTUCE
     buildConfigField("LETTUCE", libs.versions.lettuce.get())
     buildConfigField("JACKSON", libs.versions.jackson.core.get())

@@ -6,7 +6,7 @@ import net.momirealms.sparrow.nbt.DoubleTag;
 import net.momirealms.sparrow.nbt.IntTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.bson.BsonDocument;
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocumentSnapshotCodecTest {
-    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(Compressors.DEFLATE));
+    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
 
     @Test
     void roundTripPreservesSnapshot() throws IOException {
@@ -218,7 +218,7 @@ class DocumentSnapshotCodecTest {
         // BINARY 字段字节自带压缩标识, 与实例配置无关
         Snapshot snapshot = SnapshotFixtures.snapshot();
         Document document = this.codec.encode(snapshot);
-        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(Compressors.NONE));
+        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.NONE));
 
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, plainCodec.decode(document)).snapshot();
 

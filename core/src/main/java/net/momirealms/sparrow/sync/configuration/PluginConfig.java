@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.configuration;
 
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.storage.StorageType;
@@ -155,6 +156,16 @@ public final class PluginConfig {
         int maxSnapshots = 32;
 
         @Comment({
+                "How newly written snapshots are compressed, existing data stays readable whatever is set here",
+                "Available: SPEED, SIZE, DEFLATE, NONE",
+                "  SPEED   - Zstd at its default level, the fastest saves and loads (recommended)",
+                "  SIZE    - Zstd level 12, 8-13% smaller than DEFLATE at a longer compression time",
+                "  DEFLATE - the JDK codec, needs no native library, use it if Zstd fails to load here",
+                "  NONE    - plain bytes, note that a bigger snapshot also takes longer to reach the database"
+        })
+        CompressorRegistry compression = CompressorRegistry.SPEED;
+
+        @Comment({
                 "Namespaces of persistent data (PDC) keys to synchronize, e.g. [craftengine, myplugin]",
                 "Empty list replaces the whole container with the snapshot on apply;",
                 "otherwise only keys under the listed namespaces are replaced and the rest stay untouched"
@@ -171,6 +182,10 @@ public final class PluginConfig {
 
         public int maxSnapshots() {
             return this.maxSnapshots;
+        }
+
+        public CompressorRegistry compression() {
+            return this.compression;
         }
 
         public List<String> pdcMergeNamespaces() {

@@ -45,6 +45,12 @@ public final class Dependencies {
             .withArtifactGroupRelocation()
             .build();
 
+    public static final Dependency ZSTD_JNI = Dependency.builder()
+            .groupId("com{}github{}luben")
+            .artifactId("zstd-jni")
+            .version(DependencyVersions.ZSTD_JNI)
+            .build();
+
     /**
      * Cloud
      */

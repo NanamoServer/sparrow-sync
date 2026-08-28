@@ -43,4 +43,9 @@ bin/
 .DS_Store
 /run/
 /target/
+
+### Local Notepad ###
 /docs/
+
+### Server run logs ###
+core/logs/

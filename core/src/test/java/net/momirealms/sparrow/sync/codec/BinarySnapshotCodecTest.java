@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.compressor.Compressors;
+import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.junit.jupiter.api.Test;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 class BinarySnapshotCodecTest {
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(Compressors.DEFLATE);
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
 
     @Test
     void roundTripPreservesSnapshot() throws IOException {
@@ -26,7 +26,7 @@ class BinarySnapshotCodecTest {
         DecodedSnapshot decoded = this.codec.decode(bytes);
 
         // 大快照走配置的压缩器, 元数据与全部数据字段严格一致
-        assertEquals(Compressors.DEFLATE.id(), bytes[3]);
+        assertEquals(CompressorRegistry.DEFLATE.id(), bytes[3]);
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot, restored);
     }
@@ -38,7 +38,7 @@ class BinarySnapshotCodecTest {
 
         byte[] bytes = this.codec.encode(snapshot);
 
-        assertEquals(Compressors.NONE.id(), bytes[3]);
+        assertEquals(CompressorRegistry.NONE.id(), bytes[3]);
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot());
     }
 
@@ -47,7 +47,7 @@ class BinarySnapshotCodecTest {
         // DEFLATE 配置写出的字节, 由 NONE 配置的实例解码
         Snapshot snapshot = SnapshotFixtures.snapshot();
         byte[] bytes = this.codec.encode(snapshot);
-        BinarySnapshotCodec plainCodec = new BinarySnapshotCodec(Compressors.NONE);
+        BinarySnapshotCodec plainCodec = new BinarySnapshotCodec(CompressorRegistry.NONE);
 
         DecodedSnapshot decoded = plainCodec.decode(bytes);
 
