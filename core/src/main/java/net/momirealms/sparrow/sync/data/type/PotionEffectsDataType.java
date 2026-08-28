@@ -40,11 +40,11 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
     @Override
     protected void applyValue(@NotNull Player player, @NotNull List<MobEffectInstance> value) {
         ServerPlayer handle = handle(player);
-        // 清空后放入的效果不与既有效果合并, 隐藏效果链随实例原样进入玩家
+        // 清空后放入的效果不与既有效果合并, 隐藏效果链随实例原样进入玩家.
         handle.removeAllEffects();
         int size = value.size();
         for (int i = 0; i < size; i++) {
-            handle.addEffect(new MobEffectInstance(value.get(i)));
+            handle.addEffect(value.get(i));
         }
     }
 
