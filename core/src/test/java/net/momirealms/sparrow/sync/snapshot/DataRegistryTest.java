@@ -87,4 +87,16 @@ class DataRegistryTest {
         registry.register(DataRegistration.of(A, StorageFormat.STRUCTURED));
         assertThrows(IllegalStateException.class, () -> registry.register(DataRegistration.of(A, StorageFormat.BINARY)));
     }
+
+    @Test
+    void frozenRegistryRejectsRegistration() {
+        // MC 注册表同款生命周期: 冻结后注册窗口关闭
+        DataRegistry registry = new DataRegistry();
+        registry.register(DataRegistration.of(A, StorageFormat.STRUCTURED));
+        registry.freeze();
+
+        assertThrows(IllegalStateException.class, () -> registry.register(DataRegistration.of(B, StorageFormat.STRUCTURED)));
+        assertTrue(registry.frozen());
+        assertTrue(registry.registered(A));
+    }
 }
