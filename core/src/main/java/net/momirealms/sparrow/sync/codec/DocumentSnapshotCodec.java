@@ -3,6 +3,8 @@ package net.momirealms.sparrow.sync.codec;
 import net.momirealms.sparrow.nbt.ByteArrayTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.codec.ops.BsonOps;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -95,6 +97,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
             Document values = encoded.get(FIELD_DATA, Document.class);
             if (values != null) {
                 for (Map.Entry<String, Object> entry : values.entrySet()) {
+                    // null 字段视为缺失, EndTag 进入快照会截断二进制帧
+                    if (entry.getValue() == null) continue;
                     DataKey key = DataKey.parse(entry.getKey());
                     data.put(key, this.fromDocumentValue(key, entry.getValue()));
                 }
@@ -116,7 +120,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         if (registration == null && tag instanceof ByteArrayTag bytes) {
             return new Binary(bytes.value());
         }
-        return BsonTagConverter.toBson(tag);
+        return NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, tag);
     }
 
     // 以值的实际类型为准还原, 写读两侧注册形态不一致时字段仍可读, 不拖垮整份快照
@@ -132,7 +136,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
             }
             return NBT.createByteArray(binaryBytes(value));
         }
-        return BsonTagConverter.toTag(value);
+        return BsonOps.INSTANCE.convertTo(NBTOps.INSTANCE, value);
     }
 
     private static byte[] binaryBytes(Object value) {

@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 
 public final class PluginConfig {
@@ -138,12 +139,33 @@ public final class PluginConfig {
         })
         int shutdownTimeoutSeconds = 60;
 
+        @Comment({
+                "How many snapshots to keep per player, oldest unpinned ones are rotated out",
+                "Pinned snapshots never count against this limit and are never rotated"
+        })
+        int maxSnapshots = 32;
+
+        @Comment({
+                "Namespaces of persistent data (PDC) keys to synchronize, e.g. [craftengine, myplugin]",
+                "Empty list replaces the whole container with the snapshot on apply;",
+                "otherwise only keys under the listed namespaces are replaced and the rest stay untouched"
+        })
+        List<String> pdcMergeNamespaces = List.of();
+
         public int workerThreads() {
             return this.workerThreads;
         }
 
         public int shutdownTimeoutSeconds() {
             return this.shutdownTimeoutSeconds;
+        }
+
+        public int maxSnapshots() {
+            return this.maxSnapshots;
+        }
+
+        public List<String> pdcMergeNamespaces() {
+            return this.pdcMergeNamespaces;
         }
     }
 

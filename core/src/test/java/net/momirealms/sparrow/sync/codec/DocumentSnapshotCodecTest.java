@@ -103,6 +103,17 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
+    void nullDataFieldIsSkipped() throws IOException {
+        // 人工写入的 null 字段视为缺失, 不落为 EndTag 拖垮后续二进制编码
+        Document document = this.codec.encode(SnapshotFixtures.snapshot());
+        document.get("data", Document.class).put("sparrow_sync:broken", null);
+
+        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(document)).snapshot();
+
+        assertTrue(restored.data().keySet().stream().noneMatch(key -> key.value().equals("broken")));
+    }
+
+    @Test
     void decodeRejectsMissingFormat() {
         Document document = new Document().append("player", SnapshotFixtures.PLAYER);
 
@@ -176,7 +187,7 @@ class DocumentSnapshotCodecTest {
 
     @Test
     void structuredUuidRoundTripsThroughMarkerDocument() throws IOException {
-        // NBT 中 UUID 即 IntArrayTag, 经 $i32a 标记文档无损往返
+        // NBT 中 UUID 即 IntArrayTag, 经 __i32a 标记文档无损往返
         UUID owner = UUID.fromString("11223344-5566-7788-99aa-bbccddeeff00");
         CompoundTag structured = NBT.createCompound();
         structured.putUUID("owner", owner);
