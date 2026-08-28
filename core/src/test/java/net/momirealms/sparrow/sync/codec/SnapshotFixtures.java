@@ -24,6 +24,7 @@ final class SnapshotFixtures {
     static final DataKey UNKNOWN_DOC = DataKey.of("other", "doc");
 
     static final UUID PLAYER = UUID.fromString("7f2b3c1d-0a9e-4b8c-9d6f-112233445566");
+    static final UUID SNAPSHOT_ID = UUID.fromString("11112222-3333-4444-5555-666677778888");
 
     private SnapshotFixtures() {
     }
@@ -38,7 +39,7 @@ final class SnapshotFixtures {
     static SnapshotMeta meta() {
         return SnapshotMeta.builder()
                 .player(PLAYER)
-                .version(42L)
+                .id(SNAPSHOT_ID)
                 .timestamp(1_756_300_000_000L)
                 .cause(SaveCause.DISCONNECT)
                 .server("lobby-1")

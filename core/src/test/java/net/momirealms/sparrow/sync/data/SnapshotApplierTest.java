@@ -179,7 +179,6 @@ class SnapshotApplierTest {
         }
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(UUID.randomUUID())
-                .version(1L)
                 .timestamp(1L)
                 .cause(SaveCause.DISCONNECT)
                 .build();

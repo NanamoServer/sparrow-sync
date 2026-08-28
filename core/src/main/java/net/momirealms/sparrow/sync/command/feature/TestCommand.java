@@ -185,7 +185,6 @@ public final class TestCommand extends BukkitCommandFeature {
     private static SnapshotMeta smokeMeta(Player player) {
         return SnapshotMeta.builder()
                 .player(player.getUniqueId())
-                .version(0L)
                 .timestamp(System.currentTimeMillis())
                 .cause(SaveCause.COMMAND)
                 .server("smoke-test")

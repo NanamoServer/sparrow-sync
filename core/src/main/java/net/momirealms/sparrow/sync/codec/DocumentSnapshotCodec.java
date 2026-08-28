@@ -29,8 +29,8 @@ import java.util.UUID;
  * 文档含原生 UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
  */
 public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
+    public static final String FIELD_ID = "_id";
     public static final String FIELD_PLAYER = "player";
-    public static final String FIELD_VERSION = "version";
     public static final String FIELD_TIMESTAMP = "ts";
     public static final String FIELD_CAUSE = "cause";
     public static final String FIELD_PINNED = "pinned";
@@ -52,8 +52,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public Document encode(@NotNull Snapshot snapshot) throws IOException {
         SnapshotMeta meta = snapshot.meta();
         Document document = new Document();
+        document.append(FIELD_ID, meta.id());
         document.append(FIELD_PLAYER, meta.player());
-        document.append(FIELD_VERSION, meta.version());
         document.append(FIELD_TIMESTAMP, new Date(meta.timestamp()));
         document.append(FIELD_CAUSE, meta.cause().name());
         document.append(FIELD_PINNED, meta.pinned());
@@ -119,10 +119,12 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static SnapshotMeta decodeMeta(@NotNull Document document) {
         UUID player = document.get(FIELD_PLAYER, UUID.class);
         if (player == null) throw new IllegalArgumentException("missing player field");
+        UUID id = document.get(FIELD_ID, UUID.class);
+        if (id == null) throw new IllegalArgumentException("missing snapshot id field");
         // 数值字段接受任何 Number 形态
         return new SnapshotMeta(
+                id,
                 player,
-                document.get(FIELD_VERSION) instanceof Number snapshotVersion ? snapshotVersion.longValue() : 0L,
                 readTimestamp(document.get(FIELD_TIMESTAMP)),
                 SaveCause.byName(readString(document.get(FIELD_CAUSE))),
                 readBoolean(document.get(FIELD_PINNED)),

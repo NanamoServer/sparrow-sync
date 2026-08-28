@@ -77,7 +77,7 @@ public final class SnapshotApplier {
                     return new PreparedSnapshot.Failed(key, String.valueOf(exception.getMessage()));
                 }
                 skipped.add(key);
-                this.logger.warn("Skipping non-critical data " + key + " of snapshot v" + snapshot.meta().version(), exception);
+                this.logger.warn("Skipping non-critical data " + key + " of snapshot " + snapshot.meta().id(), exception);
             }
         }
         return new PreparedSnapshot.Ready(values, skipped);

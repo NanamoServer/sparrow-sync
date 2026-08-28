@@ -67,7 +67,7 @@ class DocumentSnapshotCodecTest {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
 
         assertEquals(SnapshotFixtures.PLAYER, document.get("player"));
-        assertEquals(42L, document.getLong("version"));
+        assertEquals(SnapshotFixtures.SNAPSHOT_ID, document.get("_id"));
         assertEquals("DISCONNECT", document.getString("cause"));
         assertEquals(SnapshotCodec.CURRENT_VERSION, document.getInteger("format"));
         assertEquals(1_756_300_000_000L, document.getDate("ts").getTime());

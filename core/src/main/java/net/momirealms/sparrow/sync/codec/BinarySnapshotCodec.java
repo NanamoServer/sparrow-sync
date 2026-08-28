@@ -33,8 +33,8 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final int HEADER_LENGTH = 4;
     private static final int MAX_DECODED_SIZE = 16 * 1024 * 1024;   // 解压上限, 对齐 Mongo 单文档上限
 
+    private static final String FIELD_ID = "id";
     private static final String FIELD_PLAYER = "player";
-    private static final String FIELD_VERSION = "version";
     private static final String FIELD_TIMESTAMP = "ts";
     private static final String FIELD_CAUSE = "cause";
     private static final String FIELD_PINNED = "pinned";
@@ -121,7 +121,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         SnapshotMeta meta = snapshot.meta();
         CompoundTag root = NBT.createCompound();
         root.putUUID(FIELD_PLAYER, meta.player());
-        root.putLong(FIELD_VERSION, meta.version());
+        root.putUUID(FIELD_ID, meta.id());
         root.putLong(FIELD_TIMESTAMP, meta.timestamp());
         root.putString(FIELD_CAUSE, meta.cause().name());
         root.putBoolean(FIELD_PINNED, meta.pinned());
@@ -138,9 +138,11 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static Snapshot fromTagTree(CompoundTag root) throws IOException {
         UUID player = root.getUUID(FIELD_PLAYER, null);
         if (player == null) throw new IOException("missing player uuid");
+        UUID id = root.getUUID(FIELD_ID, null);
+        if (id == null) throw new IOException("missing snapshot id");
         SnapshotMeta meta = new SnapshotMeta(
+                id,
                 player,
-                root.getLong(FIELD_VERSION),
                 root.getLong(FIELD_TIMESTAMP),
                 SaveCause.byName(root.getString(FIELD_CAUSE, "")),
                 root.getBoolean(FIELD_PINNED),
