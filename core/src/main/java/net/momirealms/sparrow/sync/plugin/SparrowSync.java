@@ -2,11 +2,17 @@ package net.momirealms.sparrow.sync.plugin;
 
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
+import net.momirealms.sparrow.sync.codec.compressor.Compressors;
 import net.momirealms.sparrow.sync.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.data.PlayerDataType;
+import net.momirealms.sparrow.sync.data.PlayerDataTypes;
+import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.dependency.Dependencies;
 import net.momirealms.sparrow.sync.dependency.Dependency;
 import net.momirealms.sparrow.sync.dependency.DependencyManager;
@@ -18,6 +24,9 @@ import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
 import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
@@ -26,6 +35,10 @@ import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,12 +48,13 @@ import java.net.URLConnection;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-public class SparrowSync implements Plugin {
+public class SparrowSync implements Plugin, Listener {
     private static SparrowSync instance;
 
     private final PluginLogger logger;
@@ -58,13 +72,15 @@ public class SparrowSync implements Plugin {
     private PluginConfig pluginConfig;
     private CommandManager commandManager;
     private TranslationManager translationManager;
+    private final DataRegistry dataRegistry = new DataRegistry();   // 构造期就绪, 注册窗口一直开到全服插件 enable 完毕
+    private SnapshotApplier snapshotApplier;
+    private StorageProvider storageProvider;
 
     private JavaPlugin javaPlugin;
     private boolean isReloading;
     private boolean isInitializing;
     private boolean successfullyLoaded = false;
     private boolean successfullyEnabled = false;
-
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -78,10 +94,12 @@ public class SparrowSync implements Plugin {
         this.dependencyManager = new DependencyManager(this);
         this.applyDependencies();
         this.configurationManager = new ConfigurationManager(this);
+        this.configurationManager.onBootstrap();
         this.compatibilityManager = new CompatibilityManager(this);
 
         this.setupProxy();
         this.setUpConfigAndLocale();
+        this.setupStorage();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
     }
 
@@ -95,7 +113,6 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginBootstrap(BootstrapContext context) {
-        this.configurationManager.onBootstrap();
     }
 
     @Override
@@ -136,6 +153,7 @@ public class SparrowSync implements Plugin {
         this.isInitializing = true;
         this.initASMProxies(); // Proxy 类测试, 仅 dev 模式下生效
         this.compatibilityManager.onEnable(); // 集成插件管理器
+        Bukkit.getPluginManager().registerEvents(this, this.javaPlugin);
         // 延迟重载逻辑
         this.scheduler.sync().runDelayed(() -> {
             this.compatibilityManager.onDelayedEnable(); // 集成插件管理器
@@ -149,10 +167,45 @@ public class SparrowSync implements Plugin {
 
     }
 
+    /**
+     * 注册内置数据类型并装配存储. 注册表此刻只写入内置类型不冻结, 第三方在自己的 onLoad 或 onEnable
+     * 里补充; 编解码器只持有注册表引用, 编解码时才查表, 所以连接可以提前到构造期与世界加载并行建立.
+     */
+    private void setupStorage() {
+        for (PlayerDataType<?> type : PlayerDataTypes.builtinTypes(Set.copyOf(PluginConfig.synchronization().pdcMergeNamespaces()), this.logger)) {
+            this.dataRegistry.register(type);
+        }
+        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(Compressors.DEFLATE));
+        PluginConfig.DatabaseOptions database = PluginConfig.database();
+        switch (database.type()) {
+            case MONGODB -> {
+                this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.scheduler.async(), this.logger);
+                this.storageProvider.initialize().whenComplete((unused, error) -> {
+                    if (error != null) {
+                        this.logger.error("Failed to connect to MongoDB at " + database.mongodb().url() + ", player data will NOT be loaded or saved until the storage is reachable", error);
+                    } else {
+                        this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
+                    }
+                });
+
+            }
+            case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onServerStartup(ServerLoadEvent event) {
+        // 冻结注册表并装配快照.
+        if (this.snapshotApplier != null) return;
+        this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
+        this.logger.info("Data registry frozen with " + this.dataRegistry.declarations().size() + " types");
+    }
+
     @Override
     public void onPluginDisable() {
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
+        if (this.storageProvider != null) this.storageProvider.close();
         if (this.dependencyManager != null) this.dependencyManager.close();
         if (!Bukkit.getServer().isStopping()) {
             logger().error(" ");
@@ -492,5 +545,17 @@ public class SparrowSync implements Plugin {
     @Override
     public TranslationManager translationManager() {
         return this.translationManager;
+    }
+
+    public DataRegistry dataRegistry() {
+        return this.dataRegistry;
+    }
+
+    public SnapshotApplier snapshotApplier() {
+        return this.snapshotApplier;
+    }
+
+    public StorageProvider storageProvider() {
+        return this.storageProvider;
     }
 }

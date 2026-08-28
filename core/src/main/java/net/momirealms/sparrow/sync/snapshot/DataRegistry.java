@@ -17,8 +17,8 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 同步数据类型的注册表, 生命周期与 MC 注册表同款: 插件 onLoad 期开放注册 (第三方在自己的
- * onLoad 中注册, 依赖声明保证顺序), 装配时冻结, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
+ * 同步数据类型的注册表, 插件 onLoad 与 onEnable 期开放注册.
+ * ServerLoadEvent 时冻结, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
  */
 public final class DataRegistry {
     private final Map<DataKey, DataDeclaration> declarations = new ConcurrentHashMap<>();
@@ -31,7 +31,7 @@ public final class DataRegistry {
      */
     public void register(@NotNull DataDeclaration declaration) {
         if (this.frozen) {
-            throw new IllegalStateException("data registry is frozen, register during plugin onLoad");
+            throw new IllegalStateException("data registry is frozen, register during onLoad or onEnable");
         }
         DataDeclaration existing = this.declarations.putIfAbsent(declaration.key(), declaration);
         if (existing != null) {
@@ -39,7 +39,6 @@ public final class DataRegistry {
         }
     }
 
-    /** 关闭注册窗口, 此后一切 register 调用抛出. */
     public void freeze() {
         this.frozen = true;
     }
