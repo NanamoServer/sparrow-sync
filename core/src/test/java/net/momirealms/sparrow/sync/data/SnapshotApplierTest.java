@@ -142,7 +142,8 @@ class SnapshotApplierTest {
         FakeType thirdParty = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED));
         registry.register(thirdParty);
         FakeType builtin = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        SnapshotApplier applier = new SnapshotApplier(registry, List.of(builtin), this.logger);
+        registry.register(builtin);
+        SnapshotApplier applier = new SnapshotApplier(registry, this.logger);
 
         PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA, BRAVO)));
         applier.apply(this.player, prepared);
@@ -164,7 +165,11 @@ class SnapshotApplierTest {
     }
 
     private SnapshotApplier createApplier(FakeType... types) {
-        return new SnapshotApplier(new DataRegistry(), List.of(types), this.logger);
+        DataRegistry registry = new DataRegistry();
+        for (FakeType type : types) {
+            registry.register(type);
+        }
+        return new SnapshotApplier(registry, this.logger);
     }
 
     private static Snapshot snapshotWith(DataKey... keys) {

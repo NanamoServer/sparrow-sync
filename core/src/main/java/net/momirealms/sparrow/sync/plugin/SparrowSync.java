@@ -10,9 +10,8 @@ import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.data.PlayerDataType;
-import net.momirealms.sparrow.sync.data.PlayerDataTypes;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.data.type.*;
 import net.momirealms.sparrow.sync.dependency.Dependencies;
 import net.momirealms.sparrow.sync.dependency.Dependency;
 import net.momirealms.sparrow.sync.dependency.DependencyManager;
@@ -99,6 +98,7 @@ public class SparrowSync implements Plugin, Listener {
 
         this.setupProxy();
         this.setUpConfigAndLocale();
+        this.setUpInternalDataTypes();
         this.setupStorage();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
     }
@@ -167,32 +167,6 @@ public class SparrowSync implements Plugin, Listener {
 
     }
 
-    /**
-     * 注册内置数据类型并装配存储. 注册表此刻只写入内置类型不冻结, 第三方在自己的 onLoad 或 onEnable
-     * 里补充; 编解码器只持有注册表引用, 编解码时才查表, 所以连接可以提前到构造期与世界加载并行建立.
-     */
-    private void setupStorage() {
-        for (PlayerDataType<?> type : PlayerDataTypes.builtinTypes(Set.copyOf(PluginConfig.synchronization().pdcMergeNamespaces()), this.logger)) {
-            this.dataRegistry.register(type);
-        }
-        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(Compressors.DEFLATE));
-        PluginConfig.DatabaseOptions database = PluginConfig.database();
-        switch (database.type()) {
-            case MONGODB -> {
-                this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.scheduler.async(), this.logger);
-                this.storageProvider.initialize().whenComplete((unused, error) -> {
-                    if (error != null) {
-                        this.logger.error("Failed to connect to MongoDB at " + database.mongodb().url() + ", player data will NOT be loaded or saved until the storage is reachable", error);
-                    } else {
-                        this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
-                    }
-                });
-
-            }
-            case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
-        }
-    }
-
     @EventHandler(priority = EventPriority.MONITOR)
     public void onServerStartup(ServerLoadEvent event) {
         // 冻结注册表并装配快照.
@@ -216,6 +190,42 @@ public class SparrowSync implements Plugin, Listener {
             logger().error(" ");
             logger().error(" ");
             Bukkit.getServer().shutdown();
+        }
+    }
+
+    /**
+     * 注册内置的数据类型并装配存储.
+     */
+    private void setUpInternalDataTypes() {
+        this.dataRegistry.register(new ExperienceDataType());
+        this.dataRegistry.register(new HealthDataType());
+        this.dataRegistry.register(new HungerDataType());
+        this.dataRegistry.register(new PotionEffectsDataType());
+        this.dataRegistry.register(new GameModeDataType());
+        this.dataRegistry.register(new InventoryDataType(logger));
+        this.dataRegistry.register(new EnderChestDataType(logger));
+        this.dataRegistry.register(new PDCDataType(Set.copyOf(PluginConfig.synchronization().pdcMergeNamespaces())));
+    }
+
+    /**
+     * 安装并初始化持久化存储.
+     */
+    private void setupStorage() {
+        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(Compressors.DEFLATE));
+        PluginConfig.DatabaseOptions database = PluginConfig.database();
+        switch (database.type()) {
+            case MONGODB -> {
+                this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.scheduler.async(), this.logger);
+                this.storageProvider.initialize().whenComplete((unused, error) -> {
+                    if (error != null) {
+                        this.logger.error("Failed to connect to MongoDB at " + database.mongodb().url() + ", player data will NOT be loaded or saved until the storage is reachable", error);
+                    } else {
+                        this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
+                    }
+                });
+
+            }
+            case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
         }
     }
 

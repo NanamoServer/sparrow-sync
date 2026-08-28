@@ -10,7 +10,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,23 +24,14 @@ public final class SnapshotApplier {
     private final List<DataKey> applyOrder;
     private final PluginLogger logger;
 
-    /**
-     * 装配终点: 写入内置类型后冻结注册表, 再从注册表收割全部带行为的声明
-     * (含第三方在其 onLoad 期注册的类型), 注册表是装配集合的唯一事实源.
-     *
-     * @param builtinTypes 本插件自带的类型, 第三方类型经注册表汇入而不经此参数
-     * @throws IllegalStateException 当注册表已冻结或存在重复 key 时
-     */
-    public SnapshotApplier(@NotNull DataRegistry registry, @NotNull Collection<PlayerDataType<?>> builtinTypes, @NotNull PluginLogger logger) {
+    public SnapshotApplier(@NotNull DataRegistry registry, @NotNull PluginLogger logger) {
         this.logger = logger;
-        for (PlayerDataType<?> type : builtinTypes) {
-            registry.register(type);
-        }
+        if (registry.frozen()) throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
         registry.freeze();
         // 收割注册表中一切带行为的声明, 纯声明 (无采集应用能力) 不参与装配
         Map<DataKey, PlayerDataType<?>> byKey = new LinkedHashMap<>();
         for (DataDeclaration declaration : registry.declarations()) {
-            if (declaration instanceof PlayerDataType<?> type) {
+            if (declaration instanceof PlayerDataType<?> type) { // todo 这段一定成功. 过度检查, DataDeclaration 接口是为了测试强拆的, 不是原本的意图
                 byKey.put(type.key(), type);
             }
         }
