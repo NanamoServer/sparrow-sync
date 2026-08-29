@@ -63,21 +63,11 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
         CompoundTag root = NBT.createCompound();
         root.putInt(SIZE_KEY, contents.length);
         root.putInt(HELD_SLOT_KEY, inventory.getHeldItemSlot());
-        int dropped = 0;
         ItemStack cursor = player.getItemOnCursor();
         if (!cursor.isEmpty()) {
-            try {
-                root.put(CURSOR_KEY, ItemCodec.saveItem(cursor));
-            } catch (RuntimeException exception) {
-                dropped++;
-            }
+            root.put(CURSOR_KEY, ItemCodec.saveItem(cursor));
         }
-        ItemCodec.SavedItems saved = ItemCodec.saveItems(contents);
-        root.put(ITEMS_KEY, saved.items());
-        dropped += saved.dropped();
-        if (dropped > 0) {
-            this.logger.warn(TranslationManager.console(LogConstants.DATA_INVENTORY_NOT_ENCODED, String.valueOf(dropped), player.getName()));
-        }
+        root.put(ITEMS_KEY, ItemCodec.saveItems(contents));
         return root;
     }
 

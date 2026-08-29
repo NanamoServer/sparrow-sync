@@ -47,8 +47,6 @@ public interface LogConstants {
 
     String DATA_CAPTURE_SKIPPED = "log.data.capture_skipped";
     String DATA_CAPTURE_FAILED = "log.data.capture_failed";
-    String DATA_INVENTORY_NOT_ENCODED = "log.data.inventory_not_encoded";
-    String DATA_ENDER_CHEST_NOT_ENCODED = "log.data.ender_chest_not_encoded";
     String DATA_DECODE_SKIPPED = "log.data.decode_skipped";
     String DATA_APPLY_FAILED = "log.data.apply_failed";
     String DATA_APPLY_SKIPPED = "log.data.apply_skipped";

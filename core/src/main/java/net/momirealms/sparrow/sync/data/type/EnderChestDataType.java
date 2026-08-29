@@ -57,11 +57,7 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
         ItemStack[] contents = player.getEnderChest().getContents();
         CompoundTag root = NBT.createCompound();
         root.putInt(SIZE_KEY, contents.length);
-        ItemCodec.SavedItems saved = ItemCodec.saveItems(contents);
-        root.put(ITEMS_KEY, saved.items());
-        if (saved.dropped() > 0) {
-            this.logger.warn(TranslationManager.console(LogConstants.DATA_ENDER_CHEST_NOT_ENCODED, String.valueOf(saved.dropped()), player.getName()));
-        }
+        root.put(ITEMS_KEY, ItemCodec.saveItems(contents));
         return root;
     }
 

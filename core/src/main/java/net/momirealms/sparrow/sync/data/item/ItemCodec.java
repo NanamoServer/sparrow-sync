@@ -20,11 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/**
- * 物品与 sparrow NBT 的互转, 经 NMS ItemStack CODEC 一步到位, 不经过 vanilla NBT 中转.
- * 物品数组稀疏存储 (compound 顶层携带 slot, 空槽不落盘), 读取时旧版本数据先经 DataFixerUpper
- * 升级到本服 data version, 槽位越界或冲突的物品重排进第一个空槽.
- */
 public final class ItemCodec {
     private static final String SLOT_KEY = "slot";
     private static final int MAX_CODEC_COUNT = 99;   // vanilla 物品 CODEC 的 count 值域上限
@@ -62,26 +57,18 @@ public final class ItemCodec {
 
     /**
      * 把物品数组编码为稀疏物品列表, null 与空气槽位不落盘.
-     * 编码不了的物品跳过并计入 {@link SavedItems#dropped()}, 一件坏物品不至于毁掉整份快照.
      */
     @NotNull
-    public static SavedItems saveItems(@Nullable ItemStack @NotNull [] items) {
+    public static ListTag saveItems(@Nullable ItemStack @NotNull [] items) {
         ListTag list = NBT.createList();
-        int dropped = 0;
         for (int i = 0; i < items.length; i++) {
             ItemStack item = items[i];
             if (item == null || item.isEmpty()) continue;
-            CompoundTag compound;
-            try {
-                compound = saveItem(item);
-            } catch (RuntimeException exception) {
-                dropped++;
-                continue;
-            }
+            CompoundTag compound = saveItem(item);
             compound.putInt(SLOT_KEY, i);
             list.add(compound);
         }
-        return new SavedItems(list, dropped);
+        return list;
     }
 
     /**
@@ -177,14 +164,5 @@ public final class ItemCodec {
      * @param dropped 重排后仍放不下而被丢弃的物品数, 大于 0 时调用方应告警
      */
     public record LoadedItems(@Nullable ItemStack @NotNull [] items, int dropped) {
-    }
-
-    /**
-     * 编码结果与被跳过的物品数.
-     *
-     * @param items   稀疏物品列表
-     * @param dropped 编码失败被跳过的物品数
-     */
-    public record SavedItems(@NotNull ListTag items, int dropped) {
     }
 }
