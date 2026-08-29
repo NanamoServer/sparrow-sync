@@ -67,7 +67,15 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     public byte @NotNull [] frame(@NotNull Tag tag) throws IOException {
         byte[] body = NBT.toBytes(tag, false);
         CompressorRegistry used = body.length < this.compressThreshold ? CompressorRegistry.NONE : this.compressor;
-        byte[] compressed = used.compress(body);
+        byte[] compressed;
+        try {
+            compressed = used.compress(body);
+        } catch (IOException exception) {
+            // 配置的压缩器压不动就换 JVM 内置的 Deflate.
+            if (used == CompressorRegistry.DEFLATE) throw exception;
+            used = CompressorRegistry.DEFLATE;
+            compressed = used.compress(body);
+        }
         byte[] out = new byte[HEADER_LENGTH + compressed.length];
         out[0] = MAGIC_0;
         out[1] = MAGIC_1;
