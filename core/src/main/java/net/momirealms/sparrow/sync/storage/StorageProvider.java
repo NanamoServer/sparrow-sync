@@ -123,8 +123,10 @@ public interface StorageProvider extends AutoCloseable {
      * 快照写入结果.
      */
     enum SaveResult {
-        SAVED,          // 落库, 且是该玩家目前采集时刻最晚的一份. 在线保存的正常结果.
-        DUPLICATE,      // 同 id 的快照已在库中, 本次写入是幂等重放, 未产生副本.
+        /** 落库, 且是该玩家目前采集时刻最晚的一份. 在线保存的正常结果. */
+        SAVED,
+        /** 落库, 同 id 的快照已在库中, 本次写入是幂等重放, 未产生副本. */
+        DUPLICATE,
         /**
          * 落库, 但库里已存在采集时刻更晚的快照, 因此它落在历史中段.
          * <p> 预期只有在启动时插回本地留存的快照期间出现本结果.
@@ -136,6 +138,25 @@ public interface StorageProvider extends AutoCloseable {
          *   <li>有工具写入过时间戳在未来的快照.</li>
          * </ul>
          */
-        SAVED_OUT_OF_ORDER
+        SAVED_OUT_OF_ORDER,
+        /**
+         * 没落库, 但同一份数据以后重试有希望成功, 例如存储不可达, 选主中, 写关注不满足.
+         * 调用方应保留这份快照并重试, 数据库恢复后补上.
+         */
+        RETRY_LATER,
+        /** 没落库, 快照超出存储的大小上限, 重试不会成功, 需要人工介入. */
+        REJECTED_OVERSIZED,
+        /** 没落库, 快照编码失败或与存储的约束冲突, 重试不会成功, 需要人工介入. */
+        REJECTED_MALFORMED;
+
+        // 数据是否已在库中, 三种已落库结果的区别只在于落到历史的什么位置
+        public boolean stored() {
+            return this == SAVED || this == DUPLICATE || this == SAVED_OUT_OF_ORDER;
+        }
+
+        // 同一份快照重试是否有希望成功
+        public boolean retriable() {
+            return this == RETRY_LATER;
+        }
     }
 }

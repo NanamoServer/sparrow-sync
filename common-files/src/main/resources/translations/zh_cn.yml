@@ -57,6 +57,11 @@ log.storage.ready: MongoDB存储已就绪（数据库：<arg:0>）
 log.storage.mysql_not_implemented: MySQL存储尚未实现，请将database.type改为MONGODB。玩家数据将不会被加载或保存。
 log.storage.setup_failed: 存储装配失败。玩家数据将不会被加载或保存。
 log.storage.out_of_order: <arg:1>的快照<arg:0>（采集于<arg:2>）落在了来自<arg:3>、采集于<arg:4>的更新快照之后
+log.storage.encode_failed: 编码<arg:0>的快照失败，这份数据存不进数据库
+log.storage.oversized: <arg:0>的快照有<arg:1>字节，超过了单份上限，无法写入数据库
+log.storage.constraint_conflict: 写入<arg:0>的快照时撞上了数据库的唯一约束，且这份快照并不在库中
+log.storage.write_retriable: 写入<arg:0>的快照失败，数据库恢复后会重试
+log.storage.write_rejected: 写入<arg:0>的快照失败，重试也不会成功，需要人工处理
 log.storage.stale_index_dropped: 索引结构已更新，移除旧索引<arg:0>
 log.storage.schema_too_new: 数据库的结构代数<arg:0>高于本插件支持的<arg:1>。共用同一数据库的服务器必须运行相同版本的SparrowSync，请先升级本服插件。正在关闭服务器。
 log.executor.unfinished_tasks: 玩家串行执行器关停时仍有<arg:0>个任务未完成
@@ -64,6 +69,8 @@ log.executor.draining: 正在排空玩家任务，剩余<arg:0>个
 log.executor.task_failed: <arg:0>上的一个玩家任务执行失败
 log.sync.saved: 已保存<arg:0>的快照（<arg:1>，<arg:2>，采集<arg:3>毫秒，落库<arg:4>毫秒）
 log.sync.save_failed: 保存<arg:0>的快照失败
+log.sync.save_pending_retry: <arg:0>的快照（<arg:1>）暂时存不进数据库，数据库恢复后会补上
+log.sync.save_needs_attention: <arg:0>的快照（<arg:1>）无法写入数据库且重试无用，请查看上方的错误详情
 log.sync.save_skipped_unsynced: <arg:0>在数据应用完成前退出，跳过保存以免覆盖历史快照
 log.sync.rotate_failed: 轮转<arg:0>的历史快照失败
 log.sync.applied: 已向<arg:0>应用快照（<arg:1>种数据，跳过<arg:2>种，耗时<arg:3>毫秒）

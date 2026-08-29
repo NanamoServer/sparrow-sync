@@ -42,6 +42,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,9 +129,11 @@ class MongoStorageProviderTest {
             try {
                 assertEquals(SaveResult.SAVED, this.provider.saveSnapshot(snapshot(1, false)).join());
 
-                CompletionException failure = assertThrows(CompletionException.class, () -> this.provider.saveSnapshot(snapshot(2, false)).join());
+                // 报成 DUPLICATE 等于把静默丢数据伪装成幂等成功, 这类冲突重试也不会好
+                SaveResult result = this.provider.saveSnapshot(snapshot(2, false)).join();
 
-                assertInstanceOf(MongoWriteException.class, failure.getCause());
+                assertEquals(SaveResult.REJECTED_MALFORMED, result);
+                assertFalse(result.stored());
                 assertEquals(1, this.provider.listSnapshots(this.player).join().size());
             } finally {
                 snapshots.dropIndex(legacyKeys);
@@ -326,9 +329,13 @@ class MongoStorageProviderTest {
         data.put(BLOB, NBT.createByteArray(new byte[16 * 1024 * 1024]));
         Snapshot oversized = new Snapshot(meta(1, false), data);
 
-        CompletionException exception = assertThrows(CompletionException.class, () -> this.provider.saveSnapshot(oversized).join());
+        // 重试也不会变小, 归类为需要人工介入而不是留在重试队列里
+        SaveResult result = this.provider.saveSnapshot(oversized).join();
 
-        assertTrue(String.valueOf(exception.getCause().getMessage()).contains("over the document limit"));
+        assertEquals(SaveResult.REJECTED_OVERSIZED, result);
+        assertFalse(result.stored());
+        assertFalse(result.retriable());
+        assertEquals(0, this.provider.listSnapshots(this.player).join().size());
     }
 
     private Snapshot snapshot(int timeOffset, boolean pinned) {

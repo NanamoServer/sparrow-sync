@@ -130,6 +130,12 @@ public final class SnapshotService implements AutoCloseable {
                 this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, player.getName()), throwable);
                 return;
             }
+            // 如果错误不可重试, 则打印错误并要求人工介入.
+            if (!result.stored()) {
+                String pending = result.retriable() ? LogConstants.SYNC_SAVE_PENDING_RETRY : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
+                this.logger.error(TranslationManager.console(pending, player.getName(), cause.name()));
+                return;
+            }
             this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, player.getName(), cause.name(), result.name(), millis(captureStart, submitAt), millis(submitAt, System.nanoTime())));
             // 落库成功后轮转该玩家的历史.
             try {

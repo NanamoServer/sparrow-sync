@@ -20,6 +20,11 @@ public interface LogConstants {
     String STORAGE_MYSQL_NOT_IMPLEMENTED = "log.storage.mysql_not_implemented";
     String STORAGE_SETUP_FAILED = "log.storage.setup_failed";
     String STORAGE_OUT_OF_ORDER = "log.storage.out_of_order";
+    String STORAGE_ENCODE_FAILED = "log.storage.encode_failed";
+    String STORAGE_OVERSIZED = "log.storage.oversized";
+    String STORAGE_CONSTRAINT_CONFLICT = "log.storage.constraint_conflict";
+    String STORAGE_WRITE_RETRIABLE = "log.storage.write_retriable";
+    String STORAGE_WRITE_REJECTED = "log.storage.write_rejected";
     String STORAGE_STALE_INDEX_DROPPED = "log.storage.stale_index_dropped";
     String STORAGE_SCHEMA_TOO_NEW = "log.storage.schema_too_new";
 
@@ -29,6 +34,8 @@ public interface LogConstants {
 
     String SYNC_SAVED = "log.sync.saved";
     String SYNC_SAVE_FAILED = "log.sync.save_failed";
+    String SYNC_SAVE_PENDING_RETRY = "log.sync.save_pending_retry";
+    String SYNC_SAVE_NEEDS_ATTENTION = "log.sync.save_needs_attention";
     String SYNC_SAVE_SKIPPED_UNSYNCED = "log.sync.save_skipped_unsynced";
     String SYNC_ROTATE_FAILED = "log.sync.rotate_failed";
     String SYNC_APPLIED = "log.sync.applied";

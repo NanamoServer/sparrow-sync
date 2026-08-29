@@ -223,33 +223,40 @@ public final class MongoStorageProvider implements StorageProvider {
     }
 
     // 单份和批量写入共用这里的编码与大小检查
-    private Document encodeGuarded(Snapshot snapshot) throws IOException {
-        Document document = this.codec.encode(snapshot);
-        long payload = payloadBytes(document);
-        if (payload > MAX_PAYLOAD_BYTES) {
-            throw new IOException("snapshot of " + snapshot.meta().player() + " carries " + payload + " payload bytes, over the document limit");
-        }
-        return document;
-    }
-
     // 写入成功后再看一次最新快照, 让调用方知道它是否落进了历史中段
     private SaveResult insert(Snapshot snapshot) {
-        Document document;
-        try {
-            document = this.encodeGuarded(snapshot);
-        } catch (IOException exception) {
-            throw new CompletionException(exception);
-        }
         SnapshotMeta meta = snapshot.meta();
+        Document document;
+        // 编码阶段
+        try {
+            document = this.codec.encode(snapshot);
+        } catch (Throwable throwable) {
+            this.logger.error(TranslationManager.console(LogConstants.STORAGE_ENCODE_FAILED, meta.player().toString()), throwable);
+            return MongoFailureClassifier.classify(throwable);
+        }
+        // 写前守卫, 16 MB 文档上限检查
+        long payload = payloadBytes(document);
+        if (payload > MAX_PAYLOAD_BYTES) {
+            this.logger.error(TranslationManager.console(LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(payload)));
+            return SaveResult.REJECTED_OVERSIZED;
+        }
+        // 开写数据
         try {
             this.snapshotCollection().insertOne(document);
         } catch (MongoWriteException exception) {
-            if (exception.getError().getCategory() != ErrorCategory.DUPLICATE_KEY) throw exception;
+            if (exception.getError().getCategory() != ErrorCategory.DUPLICATE_KEY) {
+                return this.failed(meta, exception);
+            }
             // insertOne 只报撞了唯一索引, 不报撞的是哪一条. 查一次 _id 才能确认这份快照真的在库里, 否则任何其他来源的写入失败都会被当成 DUPLICATE, 导致数据静默丢失
-            if (this.snapshotCollection().find(byId(meta.id())).projection(Projections.include(DocumentSnapshotCodec.FIELD_ID)).first() == null) throw exception;
+            if (this.snapshotCollection().find(byId(meta.id())).projection(Projections.include(DocumentSnapshotCodec.FIELD_ID)).first() == null) {
+                this.logger.error(TranslationManager.console(LogConstants.STORAGE_CONSTRAINT_CONFLICT, meta.player().toString()), exception);
+                return SaveResult.REJECTED_MALFORMED;
+            }
             return SaveResult.DUPLICATE;
+        } catch (Throwable throwable) {
+            return this.failed(meta, throwable);
         }
-        // 数据已经落库, 回查结果只用来报告顺序
+        // 数据已经落库, 回查结果只用来报告顺序 todo 思考这一块, 真的有必要回查吗(回查有一次成本)? 区分 STORAGE_OUT_OF_ORDER 有用吗?
         Document newest = this.snapshotCollection().find(byPlayer(meta.player()))
                 .sort(NEWEST_FIRST)
                 .limit(1)
@@ -263,6 +270,14 @@ public final class MongoStorageProvider implements StorageProvider {
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()),
                 readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest))));
         return SaveResult.SAVED_OUT_OF_ORDER;
+    }
+
+    // 写入失败按可否重试归类, 存储层知道细节所以日志在这里打全
+    private SaveResult failed(SnapshotMeta meta, Throwable throwable) {
+        SaveResult result = MongoFailureClassifier.classify(throwable);
+        String key = result.retriable() ? LogConstants.STORAGE_WRITE_RETRIABLE : LogConstants.STORAGE_WRITE_REJECTED;
+        this.logger.error(TranslationManager.console(key, meta.player().toString()), throwable); // todo 打印的数据全一些, 带上uuid的前几位.
+        return result;
     }
 
     // 查不到文档就返回空, 已存在但损坏的快照交给调用方处理
