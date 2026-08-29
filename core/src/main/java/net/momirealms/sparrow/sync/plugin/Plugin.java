@@ -9,7 +9,6 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.scheduler.SchedulerAdapter;
-import net.momirealms.sparrow.yaml.SparrowYaml;
 
 import java.io.File;
 import java.io.InputStream;
@@ -107,8 +106,6 @@ public interface Plugin {
      * @return 私有类路径追加器
      */
     ClassPathAppender privateClassPathAppender();
-
-    SparrowYaml sparrowYaml();
 
     <W> SchedulerAdapter<W> scheduler();
 

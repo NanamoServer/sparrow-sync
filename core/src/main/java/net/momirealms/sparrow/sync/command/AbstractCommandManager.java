@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.command;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.ComponentLike;
 import net.kyori.adventure.text.TranslatableComponent;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.util.ArrayUtils;
 import net.momirealms.sparrow.sync.util.TriConsumer;
@@ -127,11 +126,11 @@ public abstract class AbstractCommandManager implements CommandManager {
     public void registerDefaultFeatures() {
         try {
             // 读取 commands.yml 并启用自动更新
-            Path commandFilePath = PluginConfig.instance().resolveConfig(commandsFile);
-            YamlDocument defCommandDocument = this.plugin.sparrowYaml().loadFromResource(commandsFile);
-            YamlDocument upgraded = this.plugin.sparrowYaml().upgradeFile(commandFilePath.toFile(), defCommandDocument, this.upgradePipeline, false);
+            Path commandFilePath = this.plugin.configurationManager().resolveConfig(commandsFile);
+            YamlDocument defCommandDocument = this.plugin.configurationManager().sparrowYaml().loadFromResource(commandsFile);
+            YamlDocument upgraded = this.plugin.configurationManager().sparrowYaml().upgradeFile(commandFilePath.toFile(), defCommandDocument, this.upgradePipeline, false);
             // 遍历 features 并按配置 enable 与功能 isAvailable 决定是否注册.
-            this.plugin.sparrowYaml().serializers().register(CommandConfig.class);
+            this.plugin.configurationManager().sparrowYaml().serializers().register(CommandConfig.class);
             this.features().values().forEach(feature -> {
                 CommandConfig config = getCommandConfig(upgraded, feature.getFeatureID());
                 if (config.isEnable() && feature.isAvailable()) {

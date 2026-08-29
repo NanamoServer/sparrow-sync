@@ -31,7 +31,6 @@ import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
-import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
@@ -63,26 +62,23 @@ public class SparrowSync implements Plugin, Listener {
     private final Runnable reloadEventDispatcher;
     private final ClassPathAppender sharedClassPathAppender;
     private final ClassPathAppender privateClassPathAppender;
-
     private final SchedulerAdapter<?> scheduler;
     private final DependencyManager dependencyManager;
-    private final ConfigurationManager configurationManager;
     private final CompatibilityManager compatibilityManager;
-
-    private SparrowYaml sparrowYaml;
-    private PluginConfig pluginConfig;
-    private CommandManager commandManager;
+    private final ConfigurationManager configurationManager;
     private TranslationManager translationManager;
-    private final DataRegistry dataRegistry = new DataRegistry();   // 构造期就绪, 注册窗口一直开到全服插件 enable 完毕
-    private PlayerSerialExecutor playerExecutor;
-    private SnapshotApplier snapshotApplier;
-    private StorageProvider storageProvider;
+    private CommandManager commandManager;
 
     private JavaPlugin javaPlugin;
     private boolean isReloading;
     private boolean isInitializing;
     private boolean successfullyLoaded = false;
     private boolean successfullyEnabled = false;
+
+    private final DataRegistry dataRegistry = new DataRegistry();
+    private PlayerSerialExecutor playerExecutor;
+    private SnapshotApplier snapshotApplier;
+    private StorageProvider storageProvider;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -95,13 +91,13 @@ public class SparrowSync implements Plugin, Listener {
         this.scheduler = new BukkitSchedulerAdapter(this);
         this.dependencyManager = new DependencyManager(this);
         this.applyDependencies();
-        this.configurationManager = new ConfigurationManager(this);
-        this.configurationManager.onBootstrap();
-        this.compatibilityManager = new CompatibilityManager(this);
-
         this.setupProxy();
-        this.setUpConfigAndLocale();
-        this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization().workerThreads());
+        this.configurationManager = new ConfigurationManager(this);
+        this.configurationManager.reload();
+        this.translationManager = new TranslationManagerImpl(this);
+        this.translationManager.reload();
+        this.compatibilityManager = new CompatibilityManager(this);
+        this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization$workerThreads());
         this.setUpInternalDataTypes();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
     }
@@ -181,7 +177,7 @@ public class SparrowSync implements Plugin, Listener {
 
     @Override
     public void onPluginDisable() {
-        if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization().shutdownTimeoutSeconds(), TimeUnit.SECONDS);
+        if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
         if (this.storageProvider != null) this.storageProvider.close();
@@ -214,20 +210,6 @@ public class SparrowSync implements Plugin, Listener {
     }
 
     /**
-     * 初始化配置和语言文件.
-     */
-    public void setUpConfigAndLocale() {
-        this.sparrowYaml = SparrowYaml.builder()
-                .setAllowDuplicateKeys(false)
-                .setAllowObjectKeys(false)
-                .build();
-        this.pluginConfig = new PluginConfig(this);
-        this.pluginConfig.updateConfigCache();
-        this.translationManager = new TranslationManagerImpl(this);
-        this.translationManager.reload();
-    }
-
-    /**
      * 注册内置的数据类型并装配存储.
      */
     private void setUpInternalDataTypes() {
@@ -238,7 +220,7 @@ public class SparrowSync implements Plugin, Listener {
         this.dataRegistry.register(new GameModeDataType());
         this.dataRegistry.register(new InventoryDataType(logger));
         this.dataRegistry.register(new EnderChestDataType(logger));
-        this.dataRegistry.register(new PDCDataType(Set.copyOf(PluginConfig.synchronization().pdcMergeNamespaces())));
+        this.dataRegistry.register(new PDCDataType(Set.copyOf(PluginConfig.synchronization$pdcMergeNamespaces())));
     }
 
     /**
@@ -246,7 +228,7 @@ public class SparrowSync implements Plugin, Listener {
      */
     private void setupStorage() {
         // 预热加载 ZSTD 压缩
-        CompressorRegistry compressor = PluginConfig.synchronization().compression();
+        CompressorRegistry compressor = PluginConfig.synchronization$compression();
         try {
             byte[] probe = compressor.compress(new byte[64]);
             compressor.decompress(probe, 0, probe.length, 256);
@@ -256,14 +238,14 @@ public class SparrowSync implements Plugin, Listener {
             return;
         }
         // 加载数据库
-        PluginConfig.DatabaseOptions database = PluginConfig.database();
         try {
             DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(compressor));
-            switch (database.type()) {
+            switch (PluginConfig.database$type()) {
                 case MONGODB -> {
-                    this.storageProvider = new MongoStorageProvider(database.mongodb(), codec, this.playerExecutor, this.scheduler.async(), this.logger);
+                    PluginConfig.MongoOptions mongodb = PluginConfig.database$mongodb();
+                    this.storageProvider = new MongoStorageProvider(mongodb, codec, this.playerExecutor, this.scheduler.async(), this.logger);
                     this.storageProvider.initialize();
-                    this.logger.info("MongoDB storage ready (database: " + database.mongodb().database() + ")");
+                    this.logger.info("MongoDB storage ready (database: " + mongodb.database() + ")");
                 }
                 case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
             }
@@ -293,6 +275,8 @@ public class SparrowSync implements Plugin, Listener {
                 }
                 this.isReloading = true;
                 long startTime = System.currentTimeMillis();
+                this.configurationManager.reload();
+                this.translationManager.reload();
                 // TODO 执行异步重载任务
 
 
@@ -540,11 +524,6 @@ public class SparrowSync implements Plugin, Listener {
     @Override
     public ClassPathAppender privateClassPathAppender() {
         return this.privateClassPathAppender;
-    }
-
-    @Override
-    public SparrowYaml sparrowYaml() {
-        return this.sparrowYaml;
     }
 
     @SuppressWarnings("unchecked")

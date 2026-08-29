@@ -55,7 +55,7 @@ public final class TranslationManagerImpl implements TranslationManager {
         this.langVersion = DependencyVersions.LANG_VERSION;
         this.supportedLanguages = getSupportedLanguages();
         try {
-            YamlDocument langDocument = this.plugin.sparrowYaml().loadFromResource("translations/en.yml");
+            YamlDocument langDocument = this.plugin.configurationManager().sparrowYaml().loadFromResource("translations/en.yml");
             Map<String, String> data = loadLangData(langDocument);
             if (!data.isEmpty()) {
                 this.translationFallback.putAll(data);
@@ -288,7 +288,7 @@ public final class TranslationManagerImpl implements TranslationManager {
                         else {
                             try (InputStream inputStream = Files.newInputStream(path)) {
                                 // 读取
-                                YamlDocument locLangDocument = plugin.sparrowYaml().load(inputStream);
+                                YamlDocument locLangDocument = plugin.configurationManager().sparrowYaml().load(inputStream);
                                 Map<String, String> langData = loadLangData(locLangDocument);
                                 if (langData.isEmpty()) return FileVisitResult.CONTINUE;
                                 // 更新
@@ -335,7 +335,7 @@ public final class TranslationManagerImpl implements TranslationManager {
                 throw new IOException("Resource not found: translations/" + fileName);
             }
 
-            YamlDocument newDocument = this.plugin.sparrowYaml().load(is);
+            YamlDocument newDocument = this.plugin.configurationManager().sparrowYaml().load(is);
             Map<String, String> newMap = loadLangData(newDocument);
 
             newFileContents.put("lang-version", this.langVersion);
@@ -349,7 +349,7 @@ public final class TranslationManagerImpl implements TranslationManager {
                 }
             }
 
-            YamlDocument outputDocument = this.plugin.sparrowYaml().load("");
+            YamlDocument outputDocument = this.plugin.configurationManager().sparrowYaml().load("");
             for (Map.Entry<String, String> entry : newFileContents.entrySet()) {
                 outputDocument.setAndGet(Route.from(entry.getKey()), entry.getValue());
             }
