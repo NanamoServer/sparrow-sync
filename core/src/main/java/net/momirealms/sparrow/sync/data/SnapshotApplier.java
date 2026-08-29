@@ -44,18 +44,30 @@ public final class SnapshotApplier {
     }
 
     /**
-     * 采集玩家全部已装配类型的数据. 任一类型采集失败即整体失败, 残缺快照不落盘.
-     * <strong>必须在玩家的拥有线程上调用</strong>.
+     * 采集玩家全部已装配类型的数据, <strong>必须在玩家的拥有线程上调用</strong>.
      */
     @NotNull
-    public Map<DataKey, Tag> capture(@NotNull Player player) {
+    public CaptureResult capture(@NotNull Player player) {
         Map<DataKey, Tag> data = new LinkedHashMap<>();
+        List<DataKey> skipped = new ArrayList<>();
         int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
             DataKey key = this.applyOrder.get(i);
-            data.put(key, this.types.get(key).capture(player));
+            PlayerDataType<?> type = this.types.get(key);
+            try {
+                data.put(key, type.capture(player));
+            } catch (Throwable throwable) {
+                // 关键类型采集失败则丢弃整份快照.
+                if (type.critical()) {
+                    this.logger.error(TranslationManager.console(LogConstants.DATA_CAPTURE_FAILED, key.asString(), player.getName()), throwable);
+                    return new CaptureResult.Failed(key, String.valueOf(throwable.getMessage()));
+                }
+                // 非关键类型采集失败则跳过.
+                skipped.add(key);
+                this.logger.warn(TranslationManager.console(LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName()), throwable);
+            }
         }
-        return data;
+        return new CaptureResult.Ready(data, skipped);
     }
 
     /**
@@ -118,6 +130,20 @@ public final class SnapshotApplier {
     @SuppressWarnings("unchecked")
     private static <T> void applyValue(PlayerDataType<T> type, Player player, Object value) {
         type.apply(player, (T) value);
+    }
+
+    /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */
+    public sealed interface CaptureResult {
+
+        record Ready(@NotNull Map<DataKey, Tag> data, @NotNull List<DataKey> skipped) implements CaptureResult {
+            public Ready {
+                data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
+                skipped = List.copyOf(skipped);
+            }
+        }
+
+        record Failed(@NotNull DataKey key, @NotNull String detail) implements CaptureResult {
+        }
     }
 
     /** 预解码结果, Failed 表示关键类型解码失败, 整份快照不应被应用. */

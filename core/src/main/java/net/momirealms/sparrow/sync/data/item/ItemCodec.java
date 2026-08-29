@@ -62,18 +62,26 @@ public final class ItemCodec {
 
     /**
      * 把物品数组编码为稀疏物品列表, null 与空气槽位不落盘.
+     * 编码不了的物品跳过并计入 {@link SavedItems#dropped()}, 一件坏物品不至于毁掉整份快照.
      */
     @NotNull
-    public static ListTag saveItems(@Nullable ItemStack @NotNull [] items) {
+    public static SavedItems saveItems(@Nullable ItemStack @NotNull [] items) {
         ListTag list = NBT.createList();
+        int dropped = 0;
         for (int i = 0; i < items.length; i++) {
             ItemStack item = items[i];
             if (item == null || item.isEmpty()) continue;
-            CompoundTag compound = saveItem(item);
+            CompoundTag compound;
+            try {
+                compound = saveItem(item);
+            } catch (RuntimeException exception) {
+                dropped++;
+                continue;
+            }
             compound.putInt(SLOT_KEY, i);
             list.add(compound);
         }
-        return list;
+        return new SavedItems(list, dropped);
     }
 
     /**
@@ -169,5 +177,14 @@ public final class ItemCodec {
      * @param dropped 重排后仍放不下而被丢弃的物品数, 大于 0 时调用方应告警
      */
     public record LoadedItems(@Nullable ItemStack @NotNull [] items, int dropped) {
+    }
+
+    /**
+     * 编码结果与被跳过的物品数.
+     *
+     * @param items   稀疏物品列表
+     * @param dropped 编码失败被跳过的物品数
+     */
+    public record SavedItems(@NotNull ListTag items, int dropped) {
     }
 }

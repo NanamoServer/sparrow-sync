@@ -129,9 +129,13 @@ public final class TestCommand extends BukkitCommandFeature {
 
         try {
             // 采集原始快照
-            Map<DataKey, Tag> originalData = applier.capture(player);
+            if (!(applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
+                check(report, "capture", false, "critical data could not be captured");
+                return summarize(report);
+            }
+            Map<DataKey, Tag> originalData = captured.data();
             Snapshot original = new Snapshot(smokeMeta(player), originalData);
-            check(report, "capture (" + originalData.size() + " types)", true, "");
+            check(report, "capture (" + originalData.size() + " types, " + captured.skipped().size() + " skipped)", true, "");
 
             // 二进制形态逐位往返
             Snapshot roundTripped = original;
@@ -171,7 +175,11 @@ public final class TestCommand extends BukkitCommandFeature {
             check(report, "apply", true, "");
 
             // 复采集并逐类型比对
-            Map<DataKey, Tag> after = applier.capture(player);
+            if (!(applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready recaptured)) {
+                check(report, "re-capture", false, "critical data could not be captured");
+                return summarize(report);
+            }
+            Map<DataKey, Tag> after = recaptured.data();
             for (Map.Entry<DataKey, Tag> entry : originalData.entrySet()) {
                 Tag restored = after.get(entry.getKey());
                 boolean equal = Objects.equals(entry.getValue(), restored);

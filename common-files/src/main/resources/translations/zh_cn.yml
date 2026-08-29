@@ -71,6 +71,10 @@ log.sync.no_snapshot: <arg:0>没有历史快照，跳过应用
 log.sync.load_failed: 加载<arg:0>的快照失败：<arg:1>
 log.sync.user_failed: 刷新<arg:0>的名字映射失败
 log.sync.shutdown_saved: 关服保存：正在落库<arg:0>名在线玩家的快照
+log.data.capture_skipped: 采集<arg:1>的非关键数据<arg:0>失败，本次快照不含这项
+log.data.capture_failed: 采集<arg:1>的关键数据<arg:0>失败，本次不产出快照
+log.data.inventory_not_encoded: <arg:1>的<arg:0>件背包物品无法编码，已从本次快照中跳过
+log.data.ender_chest_not_encoded: <arg:1>的<arg:0>件末影箱物品无法编码，已从本次快照中跳过
 log.data.decode_skipped: 跳过快照<arg:1>中的非关键数据<arg:0>
 log.data.apply_failed: 关键数据<arg:0>应用到<arg:1>时失败
 log.data.apply_skipped: 应用到<arg:1>时跳过了非关键数据<arg:0>

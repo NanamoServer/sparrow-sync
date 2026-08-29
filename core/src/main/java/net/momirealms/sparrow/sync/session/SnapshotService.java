@@ -113,13 +113,16 @@ public final class SnapshotService implements AutoCloseable {
     }
 
     /**
-     * 采集玩家当前状态并投递落库, 落库成功后轮转该玩家的历史.
-     * <strong>必须在玩家的拥有线程上调用</strong>.
+     * 采集玩家当前状态并投递落库, <strong>必须在玩家线程上调用</strong>.
      */
     @NotNull
     public CompletableFuture<SaveResult> captureAndSave(@NotNull Player player, @NotNull SaveCause cause) {
         long captureStart = System.nanoTime();
-        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), this.applier.capture(player));
+        // 关键数据采集不出来时不产出快照.
+        if (!(this.applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready ready)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
+        }
+        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
         long submitAt = System.nanoTime();
         CompletableFuture<SaveResult> save = this.storage.saveSnapshot(snapshot);
         save.whenComplete((result, throwable) -> {
@@ -128,6 +131,7 @@ public final class SnapshotService implements AutoCloseable {
                 return;
             }
             this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, player.getName(), cause.name(), result.name(), millis(captureStart, submitAt), millis(submitAt, System.nanoTime())));
+            // 落库成功后轮转该玩家的历史.
             try {
                 this.storage.rotate(player.getUniqueId(), PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, rotateThrowable) -> {
                     if (rotateThrowable != null) {

@@ -45,6 +45,33 @@ class SnapshotApplierTest {
     });
 
     @Test
+    void captureSkipsFailingNonCriticalType() {
+        // 非关键类型采集失败只跳过自己, 其余数据照常进快照
+        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
+        FakeType bravo = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED)).failingCapture();
+        SnapshotApplier applier = createApplier(alpha, bravo);
+
+        SnapshotApplier.CaptureResult result = applier.capture(this.player);
+
+        SnapshotApplier.CaptureResult.Ready ready = assertInstanceOf(SnapshotApplier.CaptureResult.Ready.class, result);
+        assertEquals(Set.of(ALPHA), ready.data().keySet());
+        assertEquals(List.of(BRAVO), ready.skipped());
+        assertTrue(this.logger.warnings > 0);
+    }
+
+    @Test
+    void captureFailsEntirelyWhenCriticalTypeFails() {
+        // 关键类型缺失的快照还原不了玩家, 这次不产出快照
+        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
+        FakeType critical = new FakeType(DataRegistration.of(BRAVO, StorageFormat.BINARY, true, Set.of())).failingCapture();
+        SnapshotApplier applier = createApplier(alpha, critical);
+
+        SnapshotApplier.CaptureResult result = applier.capture(this.player);
+
+        assertEquals(BRAVO, assertInstanceOf(SnapshotApplier.CaptureResult.Failed.class, result).key());
+    }
+
+    @Test
     void appliesInTopologicalOrder() {
         // bravo 依赖 alpha, charlie 依赖 bravo, 注册顺序故意打乱
         FakeType charlie = new FakeType(DataRegistration.of(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO)));
@@ -188,9 +215,15 @@ class SnapshotApplierTest {
     // 不经线程断言的假类型, 声明委托纯声明 record, apply 记录调用顺序; 编排器测试不依赖 Bukkit 运行时
     private class FakeType implements PlayerDataType<String> {
         private final DataRegistration declaration;
+        private boolean captureFails;
 
         private FakeType(DataRegistration declaration) {
             this.declaration = declaration;
+        }
+
+        private FakeType failingCapture() {
+            this.captureFails = true;
+            return this;
         }
 
         @Override
@@ -219,6 +252,9 @@ class SnapshotApplierTest {
         @Override
         @NotNull
         public Tag capture(@NotNull Player player) {
+            if (this.captureFails) {
+                throw new IllegalStateException("capture of " + this.declaration.key() + " failed");
+            }
             return NBT.createString(this.declaration.key().asString());
         }
 
