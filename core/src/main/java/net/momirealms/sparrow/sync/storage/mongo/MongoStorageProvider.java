@@ -8,7 +8,7 @@ import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
-import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -189,7 +189,7 @@ public final class MongoStorageProvider implements StorageProvider {
                     documents.add(this.encodeGuarded(snapshot));
                     encoded.add(snapshot);
                 } catch (Exception exception) {
-                    this.logger.warn(TranslationManager.console(MessageConstants.LOG_STORAGE_SNAPSHOT_ENCODE_FAILED, snapshot.meta().player().toString()), exception);
+                    this.logger.warn(TranslationManager.console(LogConstants.STORAGE_SNAPSHOT_ENCODE_FAILED, snapshot.meta().player().toString()), exception);
                 }
             }
             int saved = 0;
@@ -211,7 +211,7 @@ public final class MongoStorageProvider implements StorageProvider {
                     this.insert(snapshot);
                     saved++;
                 } catch (RuntimeException exception) {
-                    this.logger.warn(TranslationManager.console(MessageConstants.LOG_STORAGE_SNAPSHOT_SAVE_FAILED, snapshot.meta().player().toString()), exception);
+                    this.logger.warn(TranslationManager.console(LogConstants.STORAGE_SNAPSHOT_SAVE_FAILED, snapshot.meta().player().toString()), exception);
                 }
             }
             return saved;
@@ -314,7 +314,7 @@ public final class MongoStorageProvider implements StorageProvider {
             return SaveResult.SAVED;
         }
         // 调用方按场景裁决: 启动插回历史是预期的, 在线保存走到这里意味着会话锁失效
-        this.logger.warn(TranslationManager.console(MessageConstants.LOG_STORAGE_OUT_OF_ORDER,
+        this.logger.warn(TranslationManager.console(LogConstants.STORAGE_OUT_OF_ORDER,
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()),
                 readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest))));
         return SaveResult.SAVED_OUT_OF_ORDER;

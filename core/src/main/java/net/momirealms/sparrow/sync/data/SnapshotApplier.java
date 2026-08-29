@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.data;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.snapshot.DataDeclaration;
@@ -79,7 +79,7 @@ public final class SnapshotApplier {
                     return new PreparedSnapshot.Failed(key, String.valueOf(exception.getMessage()));
                 }
                 skipped.add(key);
-                this.logger.warn(TranslationManager.console(MessageConstants.LOG_DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString()), exception);
+                this.logger.warn(TranslationManager.console(LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString()), exception);
             }
         }
         return new PreparedSnapshot.Ready(values, skipped);
@@ -104,11 +104,11 @@ public final class SnapshotApplier {
             } catch (Throwable throwable) {
                 // 类型实现是分级隔离的边界, 关键失败中止, 已应用部分不回滚由调用方保持锁定处理
                 if (type.critical()) {
-                    this.logger.error(TranslationManager.console(MessageConstants.LOG_DATA_APPLY_FAILED, key.asString(), player.getName()), throwable);
+                    this.logger.error(TranslationManager.console(LogConstants.DATA_APPLY_FAILED, key.asString(), player.getName()), throwable);
                     return new ApplyResult.Failure(key, String.valueOf(throwable.getMessage()), applied);
                 }
                 skipped.add(key);
-                this.logger.warn(TranslationManager.console(MessageConstants.LOG_DATA_APPLY_SKIPPED, key.asString(), player.getName()), throwable);
+                this.logger.warn(TranslationManager.console(LogConstants.DATA_APPLY_SKIPPED, key.asString(), player.getName()), throwable);
             }
         }
         return new ApplyResult.Success(applied, skipped);

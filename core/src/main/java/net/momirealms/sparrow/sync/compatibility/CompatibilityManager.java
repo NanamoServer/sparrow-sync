@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility;
 
-import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.bukkit.Bukkit;
@@ -40,7 +40,7 @@ public final class CompatibilityManager {
     }
 
     private void logHook(String plugin) {
-        this.plugin.logger().info(TranslationManager.console(MessageConstants.PLUGIN_COMPATIBILITY, plugin));
+        this.plugin.logger().info(TranslationManager.console(LogConstants.PLUGIN_COMPATIBILITY, plugin));
     }
 
     private void runCatchingHook(ThrowableRunnable runnable, String plugin) {
@@ -48,7 +48,7 @@ public final class CompatibilityManager {
             runnable.run();
             logHook(plugin);
         } catch (Throwable e) {
-            this.plugin.logger().warn(TranslationManager.console(MessageConstants.PLUGIN_COMPATIBILITY_FAILED, plugin), e);
+            this.plugin.logger().warn(TranslationManager.console(LogConstants.PLUGIN_COMPATIBILITY_FAILED, plugin), e);
         }
     }
 

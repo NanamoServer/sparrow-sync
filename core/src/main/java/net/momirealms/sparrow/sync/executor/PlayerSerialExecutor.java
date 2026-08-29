@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.executor;
 
-import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import org.jetbrains.annotations.NotNull;
@@ -104,7 +104,7 @@ public final class PlayerSerialExecutor {
             remaining += worker.queue.size();
         }
         if (remaining > 0) {
-            this.logger.warn(TranslationManager.console(MessageConstants.LOG_EXECUTOR_UNFINISHED_TASKS, String.valueOf(remaining)));
+            this.logger.warn(TranslationManager.console(LogConstants.EXECUTOR_UNFINISHED_TASKS, String.valueOf(remaining)));
         }
         return remaining;
     }
@@ -121,7 +121,7 @@ public final class PlayerSerialExecutor {
                 return false;
             }
             if (worker.thread.isAlive()) {
-                this.logger.info(TranslationManager.console(MessageConstants.LOG_EXECUTOR_DRAINING, String.valueOf(this.pendingTasks())));
+                this.logger.info(TranslationManager.console(LogConstants.EXECUTOR_DRAINING, String.valueOf(this.pendingTasks())));
             }
         }
         return true;
@@ -171,7 +171,7 @@ public final class PlayerSerialExecutor {
                 } catch (Throwable throwable) {
                     // 任务是各业务提交的回调, 单任务失败计数上报.
                     failures.incrementAndGet();
-                    logger.warn(TranslationManager.console(MessageConstants.LOG_EXECUTOR_TASK_FAILED, this.thread.getName()), throwable);
+                    logger.warn(TranslationManager.console(LogConstants.EXECUTOR_TASK_FAILED, this.thread.getName()), throwable);
                 }
             }
         }

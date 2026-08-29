@@ -46,7 +46,7 @@ public interface TranslationManager {
      * 按控制台语言取一条纯文本消息, 供 {@link net.momirealms.sparrow.sync.plugin.logger.PluginLogger} 输出时保留日志级别与插件前缀.
      * <strong>翻译体系尚未装配时原样返回翻译键</strong>, 因此早于它初始化的日志不要用本方法.
      *
-     * @param key {@link MessageConstants} 中的翻译键常量
+     * @param key {@link LogConstants} 中的翻译键常量
      */
     static String console(String key, String... arguments) {
         TranslationManager manager = TranslationManagerImpl.instance;

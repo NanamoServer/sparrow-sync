@@ -4,39 +4,50 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 
 public interface MessageConstants {
+    TranslatableComponent.Builder EXCEPTION_INVALID_SYNTAX = Component.translatable().key("exception.invalid_syntax");
+    TranslatableComponent.Builder EXCEPTION_INVALID_ARGUMENT = Component.translatable().key("exception.invalid_argument");
+    TranslatableComponent.Builder EXCEPTION_INVALID_SENDER = Component.translatable().key("exception.invalid_sender");
+    TranslatableComponent.Builder EXCEPTION_UNEXPECTED = Component.translatable().key("exception.unexpected");
+    TranslatableComponent.Builder EXCEPTION_NO_PERMISSION = Component.translatable().key("exception.no_permission");
+    TranslatableComponent.Builder EXCEPTION_NO_SUCH_COMMAND = Component.translatable().key("exception.no_such_command");
+
+    TranslatableComponent.Builder ARGUMENT_ENTITY_NOTFOUND_PLAYER = Component.translatable().key("argument.entity.notfound.player");
+    TranslatableComponent.Builder ARGUMENT_ENTITY_NOTFOUND_ENTITY = Component.translatable().key("argument.entity.notfound.entity");
+
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_TIME = Component.translatable().key("argument.parse.failure.time");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_MATERIAL = Component.translatable().key("argument.parse.failure.material");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_ENCHANTMENT = Component.translatable().key("argument.parse.failure.enchantment");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_OFFLINEPLAYER = Component.translatable().key("argument.parse.failure.offlineplayer");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_PLAYER = Component.translatable().key("argument.parse.failure.player");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_WORLD = Component.translatable().key("argument.parse.failure.world");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_LOCATION_INVALID_FORMAT = Component.translatable().key("argument.parse.failure.location.invalid_format");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_LOCATION_MIXED_LOCAL_ABSOLUTE = Component.translatable().key("argument.parse.failure.location.mixed_local_absolute");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_NAMESPACEDKEY_NAMESPACE = Component.translatable().key("argument.parse.failure.namespacedkey.namespace");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_NAMESPACEDKEY_KEY = Component.translatable().key("argument.parse.failure.namespacedkey.key");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_NAMESPACEDKEY_NEED_NAMESPACE = Component.translatable().key("argument.parse.failure.namespacedkey.need_namespace");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_BOOLEAN = Component.translatable().key("argument.parse.failure.boolean");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_NUMBER = Component.translatable().key("argument.parse.failure.number");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_CHAR = Component.translatable().key("argument.parse.failure.char");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_STRING = Component.translatable().key("argument.parse.failure.string");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_UUID = Component.translatable().key("argument.parse.failure.uuid");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_ENUM = Component.translatable().key("argument.parse.failure.enum");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_REGEX = Component.translatable().key("argument.parse.failure.regex");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_COLOR = Component.translatable().key("argument.parse.failure.color");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_DURATION = Component.translatable().key("argument.parse.failure.duration");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_EITHER = Component.translatable().key("argument.parse.failure.either");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_NAMEDTEXTCOLOR = Component.translatable().key("argument.parse.failure.namedtextcolor");
+
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_FLAG_UNKNOWN = Component.translatable().key("argument.parse.failure.flag.unknown");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_FLAG_DUPLICATE_FLAG = Component.translatable().key("argument.parse.failure.flag.duplicate_flag");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_FLAG_NO_FLAG_STARTED = Component.translatable().key("argument.parse.failure.flag.no_flag_started");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_FLAG_MISSING_ARGUMENT = Component.translatable().key("argument.parse.failure.flag.missing_argument");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_FLAG_NO_PERMISSION = Component.translatable().key("argument.parse.failure.flag.no_permission");
+
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_AGGREGATE_MISSING = Component.translatable().key("argument.parse.failure.aggregate.missing");
+    TranslatableComponent.Builder ARGUMENT_PARSE_FAILURE_AGGREGATE_FAILURE = Component.translatable().key("argument.parse.failure.aggregate.failure");
+
     TranslatableComponent.Builder COMMAND_RELOAD_TOO_FAST = Component.translatable().key("command.reload.too_fast");
     TranslatableComponent.Builder COMMAND_RELOAD_CONFIG_SUCCESS = Component.translatable().key("command.reload.config.success");
     TranslatableComponent.Builder COMMAND_RELOAD_CONFIG_ISSUES = Component.translatable().key("command.reload.config.issues");
     TranslatableComponent.Builder COMMAND_RELOAD_CONFIG_FAILURE = Component.translatable().key("command.reload.config.failure");
-
-    String PLUGIN_COMPATIBILITY = "plugin.compatibility";
-    String PLUGIN_COMPATIBILITY_FAILED = "plugin.compatibility_failed";
-    String CONFIG_ERRORS_DETECTED = "config.errors_detected";
-    String UPDATE_AVAILABLE = "update.available";
-    String UPDATE_IS_LATEST = "update.is_latest";
-
-    String LOG_PLUGIN_RELOAD_AT_RUNTIME = "log.plugin.reload_at_runtime";
-    String LOG_PLUGIN_LOAD_FAILED = "log.plugin.load_failed";
-    String LOG_PLUGIN_DISABLE_AT_RUNTIME = "log.plugin.disable_at_runtime";
-    String LOG_PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen";
-    String LOG_PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
-
-    String LOG_STORAGE_COMPRESSOR_FAILED = "log.storage.compressor_failed";
-    String LOG_STORAGE_READY = "log.storage.ready";
-    String LOG_STORAGE_MYSQL_NOT_IMPLEMENTED = "log.storage.mysql_not_implemented";
-    String LOG_STORAGE_SETUP_FAILED = "log.storage.setup_failed";
-    String LOG_STORAGE_SNAPSHOT_ENCODE_FAILED = "log.storage.snapshot_encode_failed";
-    String LOG_STORAGE_SNAPSHOT_SAVE_FAILED = "log.storage.snapshot_save_failed";
-    String LOG_STORAGE_OUT_OF_ORDER = "log.storage.out_of_order";
-
-    String LOG_EXECUTOR_UNFINISHED_TASKS = "log.executor.unfinished_tasks";
-    String LOG_EXECUTOR_DRAINING = "log.executor.draining";
-    String LOG_EXECUTOR_TASK_FAILED = "log.executor.task_failed";
-
-    String LOG_DATA_DECODE_SKIPPED = "log.data.decode_skipped";
-    String LOG_DATA_APPLY_FAILED = "log.data.apply_failed";
-    String LOG_DATA_APPLY_SKIPPED = "log.data.apply_skipped";
-    String LOG_DATA_INVENTORY_DROPPED = "log.data.inventory_dropped";
-    String LOG_DATA_ENDER_CHEST_DROPPED = "log.data.ender_chest_dropped";
-    String LOG_LOCALE_MISSING_FILE = "log.locale.missing_file";
 }

@@ -387,7 +387,7 @@ public final class TranslationManagerImpl implements TranslationManager {
         }
 
         this.selectedLocale = DEFAULT_LOCALE;
-        this.plugin.logger().warn(this.plainTranslation("log.locale.missing_file", DEFAULT_LOCALE, localLocale.toString().toLowerCase(Locale.ENGLISH), DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH)));
+        this.plugin.logger().warn(this.plainTranslation(LogConstants.LOCALE_MISSING_FILE, DEFAULT_LOCALE, localLocale.toString().toLowerCase(Locale.ENGLISH), DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH)));
     }
 
     /**
