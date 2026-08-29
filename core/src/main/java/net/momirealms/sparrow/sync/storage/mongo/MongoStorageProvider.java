@@ -77,7 +77,7 @@ public final class MongoStorageProvider implements StorageProvider {
             MongoCollection<Document> metaCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "meta");
             MongoCollection<Document> userCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "users");
             MongoCollection<Document> snapshotCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "snapshots");
-            new IndexReconciler(this.logger).reconcile(metaCollection, userCollection, snapshotCollection);
+            IndexReconciler.reconcile(this.logger, metaCollection, userCollection, snapshotCollection);
             this.users = userCollection;
             this.snapshots = snapshotCollection;
         } catch (Throwable throwable) {
