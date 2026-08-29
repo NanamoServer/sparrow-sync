@@ -37,8 +37,33 @@ argument.parse.failure.either: <red>无法从“<arg:0>”解析出<arg:1>或<ar
 argument.parse.failure.namedtextcolor: <red>“<arg:0>”不是命名的文本颜色</red>
 command.reload.too_fast: <red>你重新加载插件的速度太快了，上一次的重新加载还没有完成</red>
 command.reload.config.failure: <red>无法重新加载配置。请检查控制台日志</red>
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#F4A460:#FFD700><b>CraftEngine</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<hover:show_text:'<gray>异步/同步'><color:#FFD700><arg:1></color>/<color:#F4A460><arg:2></color></hover>毫秒）</gray>
+command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<hover:show_text:'<gray>异步/同步'><color:#2E86C1><arg:1></color>/<color:#7FB3D5><arg:2></color></hover>毫秒）</gray>
+command.reload.config.issues: <yellow>重新加载时报告了<arg:0>个问题，详见控制台</yellow>
 plugin.compatibility: "[兼容性] 已挂钩 <arg:0>"
+plugin.compatibility_failed: "[兼容性] 挂钩 <arg:0> 失败"
 config.errors_detected: 在config.yml中发现错误 - <arg:0>
 update.available: 新版本<arg:0>已发布：<arg:1>
 update.is_latest: 你正在使用最新版本
+
+# 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
+log.plugin.reload_at_runtime: 请不要在服务器运行时重启插件。
+log.plugin.load_failed: 插件启用失败，请检查加载阶段的日志。为减少数据损失，正在关闭服务器。
+log.plugin.disable_at_runtime: 请不要在服务器运行时卸载插件。
+log.plugin.registry_frozen: 数据类型注册表已冻结，共<arg:0>种类型
+log.plugin.reload_failed: 插件重新加载失败
+log.storage.compressor_failed: 快照压缩器加载失败。请检查运行时依赖是否完整，以及临时目录是否允许执行解包出的本地库。
+log.storage.ready: MongoDB存储已就绪（数据库：<arg:0>）
+log.storage.mysql_not_implemented: MySQL存储尚未实现，请将database.type改为MONGODB。玩家数据将不会被加载或保存。
+log.storage.setup_failed: 存储装配失败。玩家数据将不会被加载或保存。
+log.storage.snapshot_encode_failed: 批量保存时跳过了<arg:0>的快照
+log.storage.snapshot_save_failed: 批量回落保存<arg:0>的快照失败
+log.storage.out_of_order: <arg:1>的快照<arg:0>（采集于<arg:2>）落在了来自<arg:3>、采集于<arg:4>的更新快照之后
+log.executor.unfinished_tasks: 玩家串行执行器关停时仍有<arg:0>个任务未完成
+log.executor.draining: 正在排空玩家任务，剩余<arg:0>个
+log.executor.task_failed: <arg:0>上的一个玩家任务执行失败
+log.data.decode_skipped: 跳过快照<arg:1>中的非关键数据<arg:0>
+log.data.apply_failed: 关键数据<arg:0>应用到<arg:1>时失败
+log.data.apply_skipped: 应用到<arg:1>时跳过了非关键数据<arg:0>
+log.data.inventory_dropped: 向<arg:1>应用快照时丢弃了<arg:0>件放不下的背包物品
+log.data.ender_chest_dropped: 向<arg:1>应用快照时丢弃了<arg:0>件放不下的末影箱物品
+log.locale.missing_file: translations/<arg:0>.yml不存在，回退到<arg:1>.yml

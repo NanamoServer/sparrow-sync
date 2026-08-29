@@ -37,8 +37,33 @@ argument.parse.failure.either: <red>Could not resolve <arg:1> or <arg:2> from '<
 argument.parse.failure.namedtextcolor: <red>'<arg:0>' is not a named text color</red>
 command.reload.too_fast: <red>You are reloading the plugin too quickly; the previous reload has not yet completed
 command.reload.config.failure: <red>Failed to reload configs. Please check console logs
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#F4A460:#FFD700><b>CraftEngine</b></gradient> <gray>•</gray> <white>Configs reloaded <gray>(<hover:show_text:'<gray>Async/Sync'><color:#FFD700><arg:1></color>/<color:#F4A460><arg:2></color></hover> ms)</gray>
+command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>Configs reloaded <gray>(<hover:show_text:'<gray>Async/Sync'><color:#2E86C1><arg:1></color>/<color:#7FB3D5><arg:2></color></hover> ms)</gray>
+command.reload.config.issues: <yellow><arg:0> issue(s) were reported while reloading, see the console
 plugin.compatibility: "[Compatibility] <arg:0> hooked"
+plugin.compatibility_failed: "[Compatibility] Failed to hook <arg:0>"
 config.errors_detected: Error found in config.yml - <arg:0>
 update.available: 'New version <arg:0> is available: <arg:1>'
 update.is_latest: You're running the latest version
+
+# Console messages. Their language follows forced-locale in config.yml, or the system locale when it is empty.
+log.plugin.reload_at_runtime: Please do not restart plugins at runtime.
+log.plugin.load_failed: Failed to enable the plugin, check the log of the loading stage. Shutting the server down to limit the damage.
+log.plugin.disable_at_runtime: Please do not disable plugins at runtime.
+log.plugin.registry_frozen: 'Data registry frozen with <arg:0> types'
+log.plugin.reload_failed: Failed to reload the plugin
+log.storage.compressor_failed: Failed to load the snapshot compressor. Check that the runtime dependencies are intact and that the temp directory allows executing unpacked native libraries.
+log.storage.ready: 'MongoDB storage ready (database: <arg:0>)'
+log.storage.mysql_not_implemented: MySQL storage is not implemented yet, set database.type to MONGODB. Player data will NOT be loaded or saved.
+log.storage.setup_failed: Failed to set up the storage. Player data will NOT be loaded or saved.
+log.storage.snapshot_encode_failed: 'Skipping the snapshot of <arg:0> in a bulk save'
+log.storage.snapshot_save_failed: 'Failed to save the snapshot of <arg:0> in the bulk fallback'
+log.storage.out_of_order: 'Snapshot <arg:0> of <arg:1> captured at <arg:2> landed behind a newer one from <arg:3> captured at <arg:4>'
+log.executor.unfinished_tasks: 'Player serial executor shut down with <arg:0> unfinished task(s)'
+log.executor.draining: 'Draining player tasks, <arg:0> remaining'
+log.executor.task_failed: 'A player task failed on <arg:0>'
+log.data.decode_skipped: 'Skipping non-critical data <arg:0> of snapshot <arg:1>'
+log.data.apply_failed: 'Critical data <arg:0> failed to apply to <arg:1>'
+log.data.apply_skipped: 'Skipping non-critical data <arg:0> while applying to <arg:1>'
+log.data.inventory_dropped: 'Dropped <arg:0> overflowing inventory item(s) while applying the snapshot to <arg:1>'
+log.data.ender_chest_dropped: 'Dropped <arg:0> overflowing ender chest item(s) while applying the snapshot to <arg:1>'
+log.locale.missing_file: 'translations/<arg:0>.yml does not exist, falling back to <arg:1>.yml'

@@ -5,7 +5,6 @@ import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.translation.Translator;
 import net.momirealms.sparrow.sync.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.util.AdventureHelper;
-import org.incendo.cloud.suggestion.Suggestion;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -31,7 +30,6 @@ public interface TranslationManager {
             "tt_ru", "tzo_mx", "uk_ua", "val_es", "vec_it", "vi_vn", "vp_vl", "yi_de",
             "yo_ng", "zh_cn", "zh_hk", "zh_tw", "zlm_arab"
     );
-    List<Suggestion> ALL_LANG_SUGGESTIONS = ALL_LANG.stream().map(Suggestion::suggestion).toList();
     Map<String, List<String>> LOCALE_2_COUNTRIES = ALL_LANG.stream()
             .map(lang -> lang.split("_"))
             .filter(split -> split.length >= 2)
@@ -42,6 +40,17 @@ public interface TranslationManager {
 
     static TranslationManager instance() {
         return TranslationManagerImpl.instance;
+    }
+
+    /**
+     * 按控制台语言取一条纯文本消息, 供 {@link net.momirealms.sparrow.sync.plugin.logger.PluginLogger} 输出时保留日志级别与插件前缀.
+     * <strong>翻译体系尚未装配时原样返回翻译键</strong>, 因此早于它初始化的日志不要用本方法.
+     *
+     * @param key {@link MessageConstants} 中的翻译键常量
+     */
+    static String console(String key, String... arguments) {
+        TranslationManager manager = TranslationManagerImpl.instance;
+        return manager == null ? key : manager.plainTranslation(key, arguments);
     }
 
     void reload();

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.configuration;
 
 import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.dependency.DependencyVersions;
+import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.yaml.SparrowYaml;
@@ -13,6 +14,7 @@ import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
 import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -60,8 +62,11 @@ public final class PluginConfig {
         @Comment("Enables automatic update checks")
         boolean updateChecker = true;
 
-        @Comment("Forces a specific locale (e.g., zh_cn)")
-        Locale forcedLocale = null;
+        @Comment({
+                "Language of console messages, e.g. zh_cn",
+                "Leave empty to follow the system locale, any locale without a translation file falls back to en"
+        })
+        String forcedLocale = "";
 
         @BlankLineBefore
         @Comment("Synchronization settings")
@@ -268,8 +273,9 @@ public final class PluginConfig {
         return config.metrics;
     }
 
+    @Nullable
     public static Locale forcedLocale() {
-        return config.forcedLocale;
+        return TranslationManager.parseLocale(config.forcedLocale);
     }
 
     public static boolean debug() {

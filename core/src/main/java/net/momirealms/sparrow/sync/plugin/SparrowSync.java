@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.dependency.Dependencies;
 import net.momirealms.sparrow.sync.dependency.Dependency;
 import net.momirealms.sparrow.sync.dependency.DependencyManager;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
@@ -127,7 +128,7 @@ public class SparrowSync implements Plugin, Listener {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
-            logger().error("Please do not restart plugins at runtime.");
+            logger().error(TranslationManager.console(MessageConstants.LOG_PLUGIN_RELOAD_AT_RUNTIME));
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -139,8 +140,7 @@ public class SparrowSync implements Plugin, Listener {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
-            logger().error("Failed to enable plugin. Please check the log on loading stage.");
-            logger().error("To reduce the loss caused by plugin not loaded, now shutting down the server");
+            logger().error(TranslationManager.console(MessageConstants.LOG_PLUGIN_LOAD_FAILED));
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -172,7 +172,7 @@ public class SparrowSync implements Plugin, Listener {
         // 冻结注册表并装配快照.
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
-        this.logger.info("Data registry frozen with " + this.dataRegistry.declarations().size() + " types");
+        this.logger.info(TranslationManager.console(MessageConstants.LOG_PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
     }
 
     @Override
@@ -186,7 +186,7 @@ public class SparrowSync implements Plugin, Listener {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
-            logger().error("Please do not disable plugins at runtime.");
+            logger().error(TranslationManager.console(MessageConstants.LOG_PLUGIN_DISABLE_AT_RUNTIME));
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -233,7 +233,7 @@ public class SparrowSync implements Plugin, Listener {
             byte[] probe = compressor.compress(new byte[64]);
             compressor.decompress(probe, 0, probe.length, 256);
         } catch (Throwable throwable) {
-            this.logger.error("Failed to load the snapshot compressor, check that the runtime dependencies are intact and the temp directory allows executing unpacked natives", throwable);
+            this.logger.error(TranslationManager.console(MessageConstants.LOG_STORAGE_COMPRESSOR_FAILED), throwable);
             Bukkit.getServer().shutdown();
             return;
         }
@@ -245,12 +245,12 @@ public class SparrowSync implements Plugin, Listener {
                     PluginConfig.MongoOptions mongodb = PluginConfig.database$mongodb();
                     this.storageProvider = new MongoStorageProvider(mongodb, codec, this.playerExecutor, this.scheduler.async(), this.logger);
                     this.storageProvider.initialize();
-                    this.logger.info("MongoDB storage ready (database: " + mongodb.database() + ")");
+                    this.logger.info(TranslationManager.console(MessageConstants.LOG_STORAGE_READY, mongodb.database()));
                 }
-                case MYSQL -> this.logger.error("MySQL storage is not implemented yet, set database.type to MONGODB; player data will NOT be loaded or saved");
+                case MYSQL -> this.logger.error(TranslationManager.console(MessageConstants.LOG_STORAGE_MYSQL_NOT_IMPLEMENTED));
             }
         } catch (Throwable throwable) {
-            this.logger.error("Failed to set up the storage", throwable);
+            this.logger.error(TranslationManager.console(MessageConstants.LOG_STORAGE_SETUP_FAILED), throwable);
             Bukkit.getServer().shutdown();
         }
     }
@@ -282,7 +282,7 @@ public class SparrowSync implements Plugin, Listener {
 
                 asyncTime = System.currentTimeMillis() - startTime;
             } catch (Throwable e) {
-                this.logger().warn("Failed to reload", e);
+                this.logger().warn(TranslationManager.console(MessageConstants.LOG_PLUGIN_RELOAD_FAILED), e);
                 future.complete(ReloadResult.failure());
             } finally {
                 long finalAsyncTime = asyncTime;
@@ -297,7 +297,7 @@ public class SparrowSync implements Plugin, Listener {
                         this.reloadEventDispatcher.run();
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, issues));
                     } catch (Throwable e) {
-                        this.logger().warn("Failed to run sync tasks", e);
+                        this.logger().warn(TranslationManager.console(MessageConstants.LOG_PLUGIN_RELOAD_FAILED), e);
                         future.complete(ReloadResult.failure());
                     } finally {
                         this.isReloading = false;

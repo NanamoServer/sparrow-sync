@@ -386,8 +386,8 @@ public final class TranslationManagerImpl implements TranslationManager {
             return;
         }
 
-        this.plugin.logger().warn("translations/" + localLocale.toString().toLowerCase(Locale.ENGLISH) + ".yml not exists, using " + DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH) + ".yml as default locale.");
         this.selectedLocale = DEFAULT_LOCALE;
+        this.plugin.logger().warn(this.plainTranslation("log.locale.missing_file", DEFAULT_LOCALE, localLocale.toString().toLowerCase(Locale.ENGLISH), DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH)));
     }
 
     /**
