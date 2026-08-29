@@ -110,6 +110,14 @@ public final class PluginConfig {
         int maxSnapshots = 32;
 
         @Comment({
+                "How many times a snapshot that could not reach the database is put back in the queue",
+                "-1 keeps retrying until the database comes back, which is what you want on an outage",
+                "A snapshot that runs out of attempts is written to disk instead, never dropped",
+                "Snapshots that fail for reasons retrying cannot fix (too large, encoding errors) skip this entirely"
+        })
+        int maxSaveRetries = -1;
+
+        @Comment({
                 "How newly written snapshots are compressed, existing data stays readable whatever is set here",
                 "Available: ZSTD, DEFLATE, NONE",
                 "  ZSTD    - the fastest saves and loads at the best ratio (recommended)",
@@ -288,6 +296,10 @@ public final class PluginConfig {
 
     public static int synchronization$shutdownTimeoutSeconds() {
         return config.synchronization.shutdownTimeoutSeconds;
+    }
+
+    public static int synchronization$maxSaveRetries() {
+        return config.synchronization.maxSaveRetries;
     }
 
     public static int synchronization$maxSnapshots() {

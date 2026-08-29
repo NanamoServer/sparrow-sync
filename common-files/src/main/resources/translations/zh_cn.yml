@@ -69,8 +69,9 @@ log.executor.draining: 正在排空玩家任务，剩余<arg:0>个
 log.executor.task_failed: <arg:0>上的一个玩家任务执行失败
 log.sync.saved: 已保存<arg:0>的快照（<arg:1>，<arg:2>，采集<arg:3>毫秒，落库<arg:4>毫秒）
 log.sync.save_failed: 保存<arg:0>的快照失败
-log.sync.save_pending_retry: <arg:0>的快照（<arg:1>）暂时存不进数据库，数据库恢复后会补上
-log.sync.save_needs_attention: <arg:0>的快照（<arg:1>）无法写入数据库且重试无用，请查看上方的错误详情
+log.sync.save_pending_retry: <arg:0>的快照暂时存不进数据库（已尝试<arg:1>次），会一直排队重试到数据库恢复
+log.sync.save_retries_exhausted: <arg:0>的快照（<arg:1>）重试<arg:2>次仍未存进数据库，将改为保存到本地
+log.sync.save_needs_attention: <arg:0>的快照（<arg:1>）无法写入数据库且重试无用（第<arg:2>次尝试），请查看上方的错误详情
 log.sync.save_skipped_unsynced: <arg:0>在数据应用完成前退出，跳过保存以免覆盖历史快照
 log.sync.rotate_failed: 轮转<arg:0>的历史快照失败
 log.sync.applied: 已向<arg:0>应用快照（<arg:1>种数据，跳过<arg:2>种，耗时<arg:3>毫秒）

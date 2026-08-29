@@ -77,23 +77,25 @@ public final class SnapshotService implements AutoCloseable {
                 return CompletableFuture.completedFuture(new LoadOutcome.Empty());
             }
             // 在读库线程上预解码, 关键数据解不开则整份不应用
-            SnapshotApplier.PreparedSnapshot prepared = this.applier.prepare(latest.get());
-            if (!(prepared instanceof SnapshotApplier.PreparedSnapshot.Ready ready)) {
-                SnapshotApplier.PreparedSnapshot.Failed failed = (SnapshotApplier.PreparedSnapshot.Failed) prepared;
-                String detail = failed.key().asString() + ": " + failed.detail();
-                this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), detail));
-                return CompletableFuture.completedFuture(new LoadOutcome.Failed(detail));
-            }
-            // 应用段回玩家拥有线程, 调度前玩家离开则以 Gone 收尾
-            CompletableFuture<LoadOutcome> outcome = new CompletableFuture<>();
-            player.getScheduler().run(this.plugin.javaPlugin(), task -> {
-                try {
-                    outcome.complete(this.applyPrepared(player, ready, loadStart));
-                } catch (Throwable throwable) {
-                    outcome.completeExceptionally(throwable);
+            return switch (this.applier.prepare(latest.get())) {
+                case SnapshotApplier.PreparedSnapshot.Failed failed -> {
+                    String detail = failed.key().asString() + ": " + failed.detail();
+                    this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), detail));
+                    yield CompletableFuture.completedFuture(new LoadOutcome.Failed(detail));
                 }
-            }, () -> outcome.complete(new LoadOutcome.Gone()));
-            return outcome;
+                // 应用段回玩家拥有线程, 调度前玩家离开则以 Gone 收尾
+                case SnapshotApplier.PreparedSnapshot.Ready ready -> {
+                    CompletableFuture<LoadOutcome> outcome = new CompletableFuture<>();
+                    player.getScheduler().run(this.plugin.javaPlugin(), task -> {
+                        try {
+                            outcome.complete(this.applyPrepared(player, ready, loadStart));
+                        } catch (Throwable throwable) {
+                            outcome.completeExceptionally(throwable);
+                        }
+                    }, () -> outcome.complete(new LoadOutcome.Gone()));
+                    yield outcome;
+                }
+            };
         }).whenComplete((outcome, throwable) -> {
             if (throwable != null) {
                 this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), String.valueOf(throwable)), throwable);
@@ -102,14 +104,19 @@ public final class SnapshotService implements AutoCloseable {
     }
 
     private LoadOutcome applyPrepared(Player player, SnapshotApplier.PreparedSnapshot.Ready ready, long loadStart) {
-        SnapshotApplier.ApplyResult result = this.applier.apply(player, ready);
-        if (result instanceof SnapshotApplier.ApplyResult.Success success) {
-            this.logger.info(TranslationManager.console(LogConstants.SYNC_APPLIED, player.getName(),
-                    String.valueOf(success.applied().size()), String.valueOf(success.skipped().size()), millis(loadStart, System.nanoTime())));
-            return new LoadOutcome.Applied(success.applied().size(), success.skipped().size());
-        }
-        SnapshotApplier.ApplyResult.Failure failure = (SnapshotApplier.ApplyResult.Failure) result;
-        return new LoadOutcome.Failed(failure.failedKey().asString() + ": " + failure.detail());
+        return switch (this.applier.apply(player, ready)) {
+            case SnapshotApplier.ApplyResult.Success success -> {
+                this.logger.info(TranslationManager.console(
+                        LogConstants.SYNC_APPLIED,
+                        player.getName(),
+                        String.valueOf(success.applied().size()),
+                        String.valueOf(success.skipped().size()),
+                        millis(loadStart, System.nanoTime())
+                ));
+                yield new LoadOutcome.Applied(success.applied().size(), success.skipped().size());
+            }
+            case SnapshotApplier.ApplyResult.Failure failure -> new LoadOutcome.Failed(failure.failedKey().asString() + ": " + failure.detail());
+        };
     }
 
     /**
@@ -123,34 +130,65 @@ public final class SnapshotService implements AutoCloseable {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
         }
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
-        long submitAt = System.nanoTime();
-        CompletableFuture<SaveResult> save = this.storage.saveSnapshot(snapshot);
-        save.whenComplete((result, throwable) -> {
-            if (throwable != null) {
-                this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, player.getName()), throwable);
-                return;
-            }
-            // 如果错误不可重试, 则打印错误并要求人工介入.
-            if (!result.stored()) {
-                String pending = result.retriable() ? LogConstants.SYNC_SAVE_PENDING_RETRY : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
-                this.logger.error(TranslationManager.console(pending, player.getName(), cause.name()));
-                return;
-            }
-            this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, player.getName(), cause.name(), result.name(), millis(captureStart, submitAt), millis(submitAt, System.nanoTime())));
-            // 落库成功后轮转该玩家的历史.
-            try {
-                this.storage.rotate(player.getUniqueId(), PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, rotateThrowable) -> {
-                    if (rotateThrowable != null) {
-                        this.logger.warn(TranslationManager.console(LogConstants.SYNC_ROTATE_FAILED, player.getName()), rotateThrowable);
-                    }
-                });
-            } catch (RejectedExecutionException ignored) {
-                // 关服排空期间执行器拒收新任务, 轮转顺延到下次保存即可
-            }
-        });
-        return save;
+        CompletableFuture<SaveResult> outcome = new CompletableFuture<>();
+        this.submitSave(new SaveAttempt(snapshot, player.getName(), 1, PluginConfig.synchronization$maxSaveRetries(), captureStart), outcome);
+        return outcome;
     }
 
+    // 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败
+    private void submitSave(SaveAttempt attempt, CompletableFuture<SaveResult> outcome) {
+        long submitAt = System.nanoTime();
+        CompletableFuture<SaveResult> save;
+        try {
+            save = this.storage.saveSnapshot(attempt.snapshot());
+        } catch (RejectedExecutionException exception) {
+            // 关服排空期间执行器拒收新任务, 这份快照留给本地备份
+            this.abandon(attempt, SaveResult.RETRY_LATER, outcome);
+            return;
+        }
+        save.whenComplete((result, throwable) -> {
+            if (throwable != null) {
+                this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, attempt.playerName()), throwable);
+                outcome.completeExceptionally(throwable);
+                return;
+            }
+            if (result.stored()) {
+                this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime())));
+                this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
+                outcome.complete(result);
+                return;
+            }
+            if (result.retriable() && attempt.retryAllowed()) {
+                if (attempt.worthLogging()) {
+                    this.logger.warn(TranslationManager.console(LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number())));
+                }
+                this.submitSave(attempt.next(), outcome);
+                return;
+            }
+            this.abandon(attempt, result, outcome);
+        });
+    }
+
+    // 重试到此为止, 快照交给本地备份 (第四步接上), 在那之前至少让运维知道这份数据卡在哪
+    private void abandon(SaveAttempt attempt, SaveResult result, CompletableFuture<SaveResult> outcome) {
+        String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
+        this.logger.error(TranslationManager.console(key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number())));
+        outcome.complete(result);
+    }
+
+    // 轮转快照
+    private void rotate(UUID player, String playerName) {
+        try {
+            this.storage.rotate(player, PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, throwable) -> {
+                if (throwable != null) {
+                    this.logger.warn(TranslationManager.console(LogConstants.SYNC_ROTATE_FAILED, playerName), throwable);
+                }
+            });
+        } catch (RejectedExecutionException ignored) {
+        }
+    }
+
+    // 构建 SnapshotMeta.
     private SnapshotMeta metaOf(Player player, SaveCause cause) {
         return SnapshotMeta.builder()
                 .player(player.getUniqueId())
@@ -186,6 +224,35 @@ public final class SnapshotService implements AutoCloseable {
 
     private static String millis(long fromNanos, long toNanos) {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
+    }
+
+    /**
+     * 一次落库尝试.
+     *
+     * @param number     第几次尝试, 从 1 开始
+     * @param maxRetries 首次失败后还能重排队尾几次, -1 表示一直重试到数据库回来
+     */
+    record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureStart) {
+        private static final int LOG_INTERVAL = 10;
+
+        @NotNull
+        String cause() {
+            return this.snapshot.meta().cause().name();
+        }
+
+        boolean retryAllowed() {
+            return this.maxRetries < 0 || this.number <= this.maxRetries;
+        }
+
+        // 数据库不可达时每次尝试都要等选主超时, 重试自带节奏, 日志仍按次数收敛免得刷屏
+        boolean worthLogging() {
+            return this.number == 1 || this.number % LOG_INTERVAL == 0;
+        }
+
+        @NotNull
+        SaveAttempt next() {
+            return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureStart);
+        }
     }
 
     /** 一次读取应用的结果. */
