@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.configuration;
 
-import net.momirealms.sparrow.sync.dependency.DependencyVersions;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;

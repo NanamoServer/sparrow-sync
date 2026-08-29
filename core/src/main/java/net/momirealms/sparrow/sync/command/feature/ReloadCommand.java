@@ -56,7 +56,7 @@ public final class ReloadCommand extends BukkitCommandFeature {
     }
 
     /**
-     * 返回该功能在 commands.yml 中对应的配置节点标识.
+     * 返回内置命令配置使用的 Feature 标识.
      *
      * @return 功能标识, 固定为 "reload"
      */

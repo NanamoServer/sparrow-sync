@@ -11,15 +11,6 @@ tasks {
             }
         }
     }
-    // 替换配置文件内的版本占位符
-    processResources {
-        filteringCharset = "UTF-8"
-        filesMatching(arrayListOf("commands.yml", "config.yml")) {
-            expand(
-                "config_version" to libs.versions.config.version.get()
-            )
-        }
-    }
 }
 
 

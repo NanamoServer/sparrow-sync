@@ -10,8 +10,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class ConfigurationManager {
-    private final Plugin plugin;
-    private final SparrowYaml sparrowYaml;
+    public final Plugin plugin;
+    public final SparrowYaml sparrowYaml;
+    private final CommandsConfig commandsConfig;
     private final PluginConfig pluginConfig;
     private final ServerConfig serverConfig;
 
@@ -23,6 +24,7 @@ public class ConfigurationManager {
                 .build();
         this.pluginConfig = new PluginConfig(plugin, this.sparrowYaml);
         this.serverConfig = new ServerConfig(plugin, this.sparrowYaml);
+        this.commandsConfig = new CommandsConfig(plugin.dataFolderPath(), this.sparrowYaml);
     }
 
     public void reload() {
@@ -33,6 +35,10 @@ public class ConfigurationManager {
     @NotNull
     public SparrowYaml sparrowYaml() {
         return this.sparrowYaml;
+    }
+
+    public CommandsConfig commandsConfig() {
+        return this.commandsConfig;
     }
 
     /**

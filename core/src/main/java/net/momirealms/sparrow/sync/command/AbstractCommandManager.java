@@ -3,13 +3,10 @@ package net.momirealms.sparrow.sync.command;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.ComponentLike;
 import net.kyori.adventure.text.TranslatableComponent;
+import net.momirealms.sparrow.sync.configuration.CommandsConfig;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.util.ArrayUtils;
 import net.momirealms.sparrow.sync.util.TriConsumer;
-import net.momirealms.sparrow.yaml.YamlDocument;
-import net.momirealms.sparrow.yaml.route.Route;
-import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
-import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
 import org.bukkit.command.CommandSender;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.incendo.cloud.Command;
@@ -21,8 +18,6 @@ import org.incendo.cloud.exception.handling.ExceptionContext;
 import org.incendo.cloud.minecraft.extras.MinecraftExceptionHandler;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -32,7 +27,6 @@ public abstract class AbstractCommandManager implements CommandManager {
     protected final HashSet<CommandComponent<CommandSender>> registeredRootCommandComponents = new HashSet<>();
     protected final HashSet<CommandFeature> registeredFeatures = new HashSet<>();
     protected final org.incendo.cloud.CommandManager<CommandSender> commandManager;
-    protected final YamlUpgradePipeline upgradePipeline;
     protected final Plugin plugin;
     private final CloudCaptionFormatter captionFormatter;
     private final MinecraftExceptionHandler.Decorator<CommandSender> decorator = (formatter, ctx, msg) -> msg;
@@ -44,7 +38,6 @@ public abstract class AbstractCommandManager implements CommandManager {
         this.inject(); // 修改默认异常处理器.
         this.feedbackConsumer = defaultFeedbackConsumer();
         this.captionFormatter = new CloudCaptionFormatter(plugin.translationManager());
-        this.upgradePipeline = this.buildUpgradePipeline();
     }
 
     @Override
@@ -57,12 +50,6 @@ public abstract class AbstractCommandManager implements CommandManager {
         return ((sender, node, component) -> {
             sender.sendMessage(component);
         });
-    }
-
-    protected YamlUpgradePipeline buildUpgradePipeline() {
-        return YamlUpgradePipeline.builder()
-                .versionExtractor(new FieldVersionExtractor("config-version"))
-                .build();
     }
 
     /**
@@ -87,11 +74,6 @@ public abstract class AbstractCommandManager implements CommandManager {
                 handleCommandFeedback(ctx.context().sender(), key.key(), decorator.decorate(captionFormatter, ctx, message.asComponent()).asComponent());
             }
         });
-    }
-
-    @Override
-    public CommandConfig getCommandConfig(YamlDocument document, String featureID) {
-        return (CommandConfig) document.get(CommandConfig.class, Route.from(featureID));
     }
 
     @Override
@@ -124,21 +106,12 @@ public abstract class AbstractCommandManager implements CommandManager {
 
     @Override
     public void registerDefaultFeatures() {
-        try {
-            // 读取 commands.yml 并启用自动更新
-            Path commandFilePath = this.plugin.configurationManager().resolveConfig(commandsFile);
-            YamlDocument defCommandDocument = this.plugin.configurationManager().sparrowYaml().loadFromResource(commandsFile);
-            YamlDocument upgraded = this.plugin.configurationManager().sparrowYaml().upgradeFile(commandFilePath.toFile(), defCommandDocument, this.upgradePipeline, false);
-            // 遍历 features 并按配置 enable 与功能 isAvailable 决定是否注册.
-            this.plugin.configurationManager().sparrowYaml().serializers().register(CommandConfig.class);
-            this.features().values().forEach(feature -> {
-                CommandConfig config = getCommandConfig(upgraded, feature.getFeatureID());
-                if (config.isEnable() && feature.isAvailable()) {
-                    registerFeature(feature, config);
-                }
-            });
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        CommandsConfig.ConfigDefinition commands = this.plugin.configurationManager().commandsConfig().configDefinition();
+        for (CommandFeature feature : this.features().values()) {
+            CommandConfig config = commands.command(feature.getFeatureID());
+            if (config.isEnable() && feature.isAvailable()) {
+                this.registerFeature(feature, config);
+            }
         }
     }
 

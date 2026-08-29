@@ -5,8 +5,8 @@ import java.util.List;
 
 public class CommandConfig {
     private boolean enable = false;
-    private List<String> usages = new ArrayList<>();
     private String permission = null;
+    private List<String> usages = new ArrayList<>();
 
     private CommandConfig() {}
 

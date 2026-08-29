@@ -4,7 +4,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.util.Index;
 import net.momirealms.sparrow.sync.util.TriConsumer;
-import net.momirealms.sparrow.yaml.YamlDocument;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.Command;
 import org.jetbrains.annotations.NotNull;
@@ -12,8 +11,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 
 public interface CommandManager {
-    String commandsFile = "commands.yml";
-
     /**
      * 使用给定命令实现与命令配置注册一个命令功能.
      *
@@ -45,14 +42,6 @@ public interface CommandManager {
      * 创建一个默认的命令反馈的输出.
      */
     TriConsumer<CommandSender, String, Component> defaultFeedbackConsumer();
-
-    /**
-     * 从 YAML 文档中读取 permission, usage 与 enable 等字段, 并构造 {@link CommandConfig} 返回.
-     *
-     * @param document 命令配置文档
-     * @param featureID 命令节点标识
-     */
-    CommandConfig getCommandConfig(YamlDocument document, String featureID);
 
     /**
      * 根据 CommandConfig 构建 Cloud 命令构建器集合.
