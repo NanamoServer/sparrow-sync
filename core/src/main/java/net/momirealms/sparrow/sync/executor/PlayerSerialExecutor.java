@@ -98,9 +98,8 @@ public final class PlayerSerialExecutor {
         for (int i = 0; i < this.workers.length; i++) {
             if (!this.awaitWorker(this.workers[i], deadline)) break;
         }
-        // 仍在运行的 worker 强制中断, 剩余任务只统计上报
-        // todo 这里需要改进一下, 如果保存失败则想办法dump到本地, 然后在下次服务器启动时将快照插入回数据库的正确位置, SaveCause 也许要扩展一个字段, 代表保存失败后, 启动时/命令恢复. .
-        // todo 恢复完之后记得把就文件删了.
+        // 仍在运行的 worker 强制中断, 剩余任务只统计上报;
+        // 没保存完的快照由 SnapshotService.stashUnsettled 落盘.
         int remaining = 0;
         for (int i = 0; i < this.workers.length; i++) {
             Worker worker = this.workers[i];

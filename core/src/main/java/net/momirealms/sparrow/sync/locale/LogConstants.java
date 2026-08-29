@@ -45,6 +45,16 @@ public interface LogConstants {
     String SYNC_USER_FAILED = "log.sync.user_failed";
     String SYNC_SHUTDOWN_SAVED = "log.sync.shutdown_saved";
 
+    String STASH_PENDING = "log.stash.pending";
+    String STASH_EXCEPTION = "log.stash.exception";
+    String STASH_WRITE_FAILED = "log.stash.write_failed";
+    String STASH_RESTORE_FOUND = "log.stash.restore_found";
+    String STASH_RESTORE_DONE = "log.stash.restore_done";
+    String STASH_RESTORE_UNAVAILABLE = "log.stash.restore_unavailable";
+    String STASH_RESTORE_REJECTED = "log.stash.restore_rejected";
+    String STASH_RESTORE_FAILED = "log.stash.restore_failed";
+    String STASH_CORRUPTED = "log.stash.corrupted";
+
     String DATA_CAPTURE_SKIPPED = "log.data.capture_skipped";
     String DATA_CAPTURE_FAILED = "log.data.capture_failed";
     String DATA_DECODE_SKIPPED = "log.data.decode_skipped";

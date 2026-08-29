@@ -28,6 +28,7 @@ import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.session.SnapshotStash;
 import net.momirealms.sparrow.sync.session.TemporarySyncListener;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -84,6 +85,7 @@ public class SparrowSync implements Plugin, Listener {
     private PlayerSerialExecutor playerExecutor;
     private SnapshotApplier snapshotApplier;
     private StorageProvider storageProvider;
+    private SnapshotStash snapshotStash;
     private SnapshotService snapshotService;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
@@ -185,7 +187,7 @@ public class SparrowSync implements Plugin, Listener {
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
-        this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.logger);
+        this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
         // 预热 DFU 的 ITEM_STACK CODEC.
         this.scheduler.async().execute(ItemCodec::warmUp);
     }
@@ -194,6 +196,8 @@ public class SparrowSync implements Plugin, Listener {
     public void onPluginDisable() {
         if (this.snapshotService != null) this.snapshotService.close();
         if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
+        if (this.snapshotService != null) this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
+
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
         if (this.storageProvider != null) this.storageProvider.close();
@@ -255,13 +259,17 @@ public class SparrowSync implements Plugin, Listener {
         }
         // 加载数据库
         try {
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, new BinarySnapshotCodec(compressor));
+            BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(compressor);
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, binaryCodec);
+            this.snapshotStash = new SnapshotStash(this.dataFolderPath, binaryCodec, this.logger);
             switch (PluginConfig.database$type()) {
                 case MONGODB -> {
                     PluginConfig.MongoOptions mongodb = PluginConfig.database$mongodb();
                     this.storageProvider = new MongoStorageProvider(mongodb, codec, this.playerExecutor, this.scheduler.async(), this.logger);
                     this.storageProvider.initialize();
                     this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, mongodb.database()));
+                    // 上次没能落库的本地快照插回数据库
+                    this.scheduler.async().execute(() -> this.snapshotStash.restorePending(this.storageProvider));
                 }
                 case MYSQL -> this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
             }

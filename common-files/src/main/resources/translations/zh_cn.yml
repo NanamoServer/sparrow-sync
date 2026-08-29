@@ -79,6 +79,15 @@ log.sync.no_snapshot: <arg:0>没有历史快照，跳过应用
 log.sync.load_failed: 加载<arg:0>的快照失败：<arg:1>
 log.sync.user_failed: 刷新<arg:0>的名字映射失败
 log.sync.shutdown_saved: 关服保存：正在落库<arg:0>名在线玩家的快照
+log.stash.pending: <arg:0>的快照已写入本地文件<arg:1>，下次启动时自动插回数据库
+log.stash.exception: <arg:0>的快照已写入<arg:1>，需要管理员处理
+log.stash.write_failed: 为<arg:0>写本地快照文件失败，这份数据已经丢失
+log.stash.restore_found: 发现<arg:0>份未落库的本地快照，正在插回数据库
+log.stash.restore_done: 本地快照插回完成：成功<arg:0>份，移入exception<arg:1>份，留待下次<arg:2>份
+log.stash.restore_unavailable: 数据库仍不可用，剩余<arg:0>份本地快照留待下次启动
+log.stash.restore_rejected: 本地快照<arg:0>被数据库拒绝（<arg:1>），移入exception目录
+log.stash.restore_failed: 处理本地快照<arg:0>时出错
+log.stash.corrupted: 本地快照文件<arg:0>已损坏，移入exception/corrupted
 log.data.capture_skipped: 采集<arg:1>的非关键数据<arg:0>失败，本次快照不含这项
 log.data.capture_failed: 采集<arg:1>的关键数据<arg:0>失败，本次不产出快照
 log.data.decode_skipped: 跳过快照<arg:1>中的非关键数据<arg:0>

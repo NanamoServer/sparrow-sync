@@ -30,19 +30,22 @@ public final class SnapshotService implements AutoCloseable {
     private final PluginLogger logger;
     private final SnapshotApplier applier;
     private final StorageProvider storage;
+    private final SnapshotStash stash;
     private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
+    private final ConcurrentHashMap<CompletableFuture<SaveResult>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未 settle 的保存, 关服清算用.
 
-    public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull PluginLogger logger) {
+    public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PluginLogger logger) {
         this.plugin = plugin;
         this.applier = applier;
         this.storage = storage;
+        this.stash = stash;
         this.logger = logger;
     }
 
 
 
-
-    // join 流程走完 (应用成功或确认无历史) 的玩家才允许保存, 半加载状态存出去会覆盖好数据, todo 未来删除
+    // todo 未来删除
+    // join 流程走完 (应用成功或确认无历史) 的玩家才允许保存, 半加载状态存出去会覆盖好数据.
     private final Set<UUID> syncedPlayers = ConcurrentHashMap.newKeySet();
 
     // todo 未来删除
@@ -132,7 +135,10 @@ public final class SnapshotService implements AutoCloseable {
         }
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
         CompletableFuture<SaveResult> outcome = new CompletableFuture<>();
-        this.submitSave(SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart), outcome);
+        SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart);
+        this.inflight.put(outcome, attempt);
+        outcome.whenComplete((result, throwable) -> this.inflight.remove(outcome));
+        this.submitSave(attempt, outcome);
         return outcome;
     }
 
@@ -181,10 +187,11 @@ public final class SnapshotService implements AutoCloseable {
         }
     }
 
-    // 重试到此为止, 快照交给本地备份 (第四步接上), 在那之前至少让运维知道这份数据卡在哪
+    // 重试到此为止, 快照落盘本地, 可重试的进 pending 下次启动插回, 其余进 exception 等管理员处置
     private void abandon(SaveAttempt attempt, SaveResult result, CompletableFuture<SaveResult> outcome) {
         String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
         this.logger.error(TranslationManager.console(key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number())));
+        this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
         outcome.complete(result);
     }
 
@@ -231,6 +238,19 @@ public final class SnapshotService implements AutoCloseable {
         }
         if (submitted > 0) {
             this.logger.info(TranslationManager.console(LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(submitted)));
+        }
+    }
+
+    /**
+     * 执行器排空超时后调用, 把没等到 settle 的保存落盘到 pending.
+     */
+    public void stashUnsettled() {
+        for (var entry : this.inflight.entrySet()) {
+            SaveAttempt attempt = entry.getValue();
+            // complete 的原子性保证与 worker 尾段收工的那份不落两次盘.
+            if (entry.getKey().complete(SaveResult.RETRY_LATER)) {
+                this.stash.stash(attempt.snapshot(), attempt.playerName(), SaveResult.RETRY_LATER);
+            }
         }
     }
 
