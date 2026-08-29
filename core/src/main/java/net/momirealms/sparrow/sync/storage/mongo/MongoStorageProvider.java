@@ -30,6 +30,16 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 public final class MongoStorageProvider implements StorageProvider {
+    // 预热心跳事件类.
+    // 首次使用是在关服时, 但是可能会落在关服竞争窗口里: mongoClient.close() 只中断 monitor 线程不等它退出.才会加载.
+    // Paper 随后关闭插件类加载器, 导致 monitor 的最后一轮心跳必然失败并首次索要这个类, 于是会以 NoClassDefFoundError 结束.
+    @SuppressWarnings("unused")
+    private static final Class<?>[] HEARTBEAT_EVENT_CLASSES = {
+            com.mongodb.event.ServerHeartbeatStartedEvent.class,
+            com.mongodb.event.ServerHeartbeatSucceededEvent.class,
+            com.mongodb.event.ServerHeartbeatFailedEvent.class
+    };
+
     public static final String USER_FIELD_NAME = "name";          // lookupUser 按这个字段查名字
     public static final String USER_FIELD_LAST_SEEN = "lastSeen"; // 同名记录按这个时间取最近一条
     private static final long MAX_PAYLOAD_BYTES = 15L * 1024 * 1024; // 二进制载荷上限, 给 MongoDB 的 16 MB 文档限制留出余量

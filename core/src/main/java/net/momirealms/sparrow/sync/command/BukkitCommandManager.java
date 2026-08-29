@@ -3,6 +3,9 @@ package net.momirealms.sparrow.sync.command;
 import net.kyori.adventure.util.Index;
 import net.momirealms.sparrow.sync.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.command.feature.TestCommand;
+import net.momirealms.sparrow.sync.command.feature.debug.DebugApplyCommand;
+import net.momirealms.sparrow.sync.command.feature.debug.DebugSaveBinaryCommand;
+import net.momirealms.sparrow.sync.command.feature.debug.DebugSaveJsonCommand;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -30,7 +33,10 @@ public final class BukkitCommandManager extends AbstractCommandManager {
         this.plugin = plugin;
         this.index = Index.create(CommandFeature::getFeatureID, List.of(
                 new ReloadCommand(this, plugin),
-                new TestCommand(this, plugin)
+                new TestCommand(this, plugin),
+                new DebugSaveBinaryCommand(this, plugin),
+                new DebugSaveJsonCommand(this, plugin),
+                new DebugApplyCommand(this, plugin)
         ));
         final LegacyPaperCommandManager<CommandSender> manager = (LegacyPaperCommandManager<CommandSender>) getCommandManager();
         // 开启 ALLOW_UNSAFE_REGISTRATION, 以允许在部分运行环境中完成命令注册.

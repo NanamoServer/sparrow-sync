@@ -34,14 +34,14 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final int HEADER_LENGTH = 4;
     private static final int MAX_DECODED_SIZE = 16 * 1024 * 1024;   // 单字段解压后的上限
 
-    private static final String FIELD_ID = "id";
-    private static final String FIELD_PLAYER = "player";
-    private static final String FIELD_TIMESTAMP = "ts";
-    private static final String FIELD_CAUSE = "cause";
-    private static final String FIELD_PINNED = "pinned";
-    private static final String FIELD_SERVER = "server";
-    private static final String FIELD_MC_DATA = "mcData";
-    private static final String FIELD_DATA = "data";
+    static final String FIELD_ID = "id";
+    static final String FIELD_PLAYER = "player";
+    static final String FIELD_TIMESTAMP = "ts";
+    static final String FIELD_CAUSE = "cause";
+    static final String FIELD_PINNED = "pinned";
+    static final String FIELD_SERVER = "server";
+    static final String FIELD_MC_DATA = "mcData";
+    static final String FIELD_DATA = "data";
 
     private final CompressorRegistry compressor;
     private final int compressThreshold;
@@ -147,7 +147,8 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         return root;
     }
 
-    private static Snapshot fromTagTree(CompoundTag root) throws IOException {
+    // 树形态的读取半侧, JSON 形态解码同构的树后同样经这里还原, 保持一份宽容读取逻辑
+    static Snapshot fromTagTree(CompoundTag root) throws IOException {
         UUID player = root.getUUID(FIELD_PLAYER, null);
         if (player == null) throw new IOException("missing player uuid");
         UUID id = root.getUUID(FIELD_ID, null);
