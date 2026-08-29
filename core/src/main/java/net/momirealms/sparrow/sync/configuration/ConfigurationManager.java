@@ -13,6 +13,7 @@ public class ConfigurationManager {
     private final Plugin plugin;
     private final SparrowYaml sparrowYaml;
     private final PluginConfig pluginConfig;
+    private final ServerConfig serverConfig;
 
     public ConfigurationManager(Plugin plugin) {
         this.plugin = plugin;
@@ -21,10 +22,12 @@ public class ConfigurationManager {
                 .setAllowObjectKeys(false)
                 .build();
         this.pluginConfig = new PluginConfig(plugin, this.sparrowYaml);
+        this.serverConfig = new ServerConfig(plugin, this.sparrowYaml);
     }
 
     public void reload() {
         this.pluginConfig.reload();
+        this.serverConfig.reload();
     }
 
     @NotNull

@@ -51,6 +51,7 @@ log.plugin.load_failed: Failed to enable the plugin, check the log of the loadin
 log.plugin.disable_at_runtime: Please do not disable plugins at runtime.
 log.plugin.registry_frozen: 'Data registry frozen with <arg:0> types'
 log.plugin.reload_failed: Failed to reload the plugin
+log.server.id_missing: server-id is empty in server.yml and could not be derived from the server directory. Set it manually, every server sharing the database needs its own id. Shutting the server down.
 log.storage.compressor_failed: Failed to load the snapshot compressor. Check that the runtime dependencies are intact and that the temp directory allows executing unpacked native libraries.
 log.storage.ready: 'MongoDB storage ready (database: <arg:0>)'
 log.storage.mysql_not_implemented: MySQL storage is not implemented yet, set database.type to MONGODB. Player data will NOT be loaded or saved.

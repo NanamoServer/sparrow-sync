@@ -13,6 +13,8 @@ public interface LogConstants {
     String PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen";
     String PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
 
+    String SERVER_ID_MISSING = "log.server.id_missing";
+
     String STORAGE_COMPRESSOR_FAILED = "log.storage.compressor_failed";
     String STORAGE_READY = "log.storage.ready";
     String STORAGE_MYSQL_NOT_IMPLEMENTED = "log.storage.mysql_not_implemented";

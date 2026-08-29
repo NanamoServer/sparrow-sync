@@ -10,6 +10,7 @@ import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.data.type.*;
 import net.momirealms.sparrow.sync.dependency.Dependencies;
@@ -119,6 +120,12 @@ public class SparrowSync implements Plugin, Listener {
     public void onPluginLoad() {
         this.successfullyLoaded = true;
         this.compatibilityManager.onLoad(); // 集成插件管理器
+        // 服务器身份缺失时不放行
+        if (ServerConfig.serverId().isEmpty()) {
+            this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_MISSING));
+            Bukkit.getServer().shutdown();
+            return;
+        }
         this.setupStorage();                // 启动存储
     }
 

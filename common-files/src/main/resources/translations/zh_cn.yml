@@ -51,6 +51,7 @@ log.plugin.load_failed: 插件启用失败，请检查加载阶段的日志。�
 log.plugin.disable_at_runtime: 请不要在服务器运行时卸载插件。
 log.plugin.registry_frozen: 数据类型注册表已冻结，共<arg:0>种类型
 log.plugin.reload_failed: 插件重新加载失败
+log.server.id_missing: server.yml 里的 server-id 为空，也无法从服务器目录名推导出来。请手工填写，共用同一个数据库的每台服务器都需要各自的 id。正在关闭服务器。
 log.storage.compressor_failed: 快照压缩器加载失败。请检查运行时依赖是否完整，以及临时目录是否允许执行解包出的本地库。
 log.storage.ready: MongoDB存储已就绪（数据库：<arg:0>）
 log.storage.mysql_not_implemented: MySQL存储尚未实现，请将database.type改为MONGODB。玩家数据将不会被加载或保存。
