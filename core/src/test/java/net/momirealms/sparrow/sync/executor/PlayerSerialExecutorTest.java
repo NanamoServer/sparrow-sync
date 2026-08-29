@@ -32,6 +32,63 @@ class PlayerSerialExecutorTest {
     }
 
     @Test
+    void delayedTaskDoesNotHoldUpOtherPlayers() throws InterruptedException {
+        // 同一个桶里, 没到点的任务既不占线程也不挡别人
+        executor = new PlayerSerialExecutor(logger, 1);
+        List<String> order = new CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(2);
+
+        executor.submitDelayed(ALICE, () -> {
+            order.add("delayed");
+            done.countDown();
+        }, 300, TimeUnit.MILLISECONDS);
+        executor.submit(BOB, () -> {
+            order.add("immediate");
+            done.countDown();
+        });
+
+        assertTrue(done.await(3, TimeUnit.SECONDS), "both tasks should have run");
+        assertEquals(List.of("immediate", "delayed"), order);
+    }
+
+    @Test
+    void delayedTaskHoldsBackLaterTasksOfTheSamePlayer() throws InterruptedException {
+        // 同一玩家的提交序不能被冷却打乱, 后面的任务跟着一起等
+        executor = new PlayerSerialExecutor(logger, 1);
+        List<String> order = new CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(2);
+
+        executor.submitDelayed(ALICE, () -> {
+            order.add("first");
+            done.countDown();
+        }, 200, TimeUnit.MILLISECONDS);
+        executor.submit(ALICE, () -> {
+            order.add("second");
+            done.countDown();
+        });
+
+        assertTrue(done.await(3, TimeUnit.SECONDS), "both tasks should have run");
+        assertEquals(List.of("first", "second"), order);
+    }
+
+    @Test
+    void delayedTaskWaitsWithoutBurningTheWorker() throws InterruptedException {
+        // 到点之前 worker 应当在等而不是空转, 等待期间不产生任何任务执行
+        executor = new PlayerSerialExecutor(logger, 1);
+        AtomicInteger runs = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+
+        executor.submitDelayed(ALICE, () -> {
+            runs.incrementAndGet();
+            done.countDown();
+        }, 400, TimeUnit.MILLISECONDS);
+
+        assertEquals(0, runs.get());
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(1, runs.get());
+    }
+
+    @Test
     void tasksOfSamePlayerRunInSubmissionOrder() throws InterruptedException {
         executor = new PlayerSerialExecutor(logger, 4);
         int taskCount = 1000;
@@ -77,37 +134,6 @@ class PlayerSerialExecutorTest {
         assertEquals(1, threads.size());
     }
 
-    @Test
-    void submitFirstRunsBeforeQueuedTasks() throws InterruptedException {
-        executor = new PlayerSerialExecutor(logger, 1);
-        CountDownLatch blockerStarted = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(2);
-        List<String> order = new CopyOnWriteArrayList<>();
-
-        // 占住 worker, 让后续两个任务都停在队列里
-        executor.submit(ALICE, () -> {
-            blockerStarted.countDown();
-            try {
-                release.await();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
-        executor.submit(ALICE, () -> {
-            order.add("tail");
-            done.countDown();
-        });
-        executor.submitFirst(ALICE, () -> {
-            order.add("head");
-            done.countDown();
-        });
-        release.countDown();
-
-        assertTrue(done.await(5, TimeUnit.SECONDS));
-        assertEquals(List.of("head", "tail"), order);
-    }
 
     @Test
     void failingTaskDoesNotKillWorker() throws InterruptedException {
@@ -184,8 +210,8 @@ class PlayerSerialExecutorTest {
 
         assertThrows(RejectedExecutionException.class, () -> executor.submit(ALICE, () -> {
         }));
-        assertThrows(RejectedExecutionException.class, () -> executor.submitFirst(ALICE, () -> {
-        }));
+        assertThrows(RejectedExecutionException.class, () -> executor.submitDelayed(ALICE, () -> {
+        }, 1, TimeUnit.SECONDS));
     }
 
     @Test

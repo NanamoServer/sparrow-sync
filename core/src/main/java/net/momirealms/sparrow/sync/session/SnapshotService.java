@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public final class SnapshotService implements AutoCloseable {
     private final SparrowSync plugin;
@@ -131,7 +132,7 @@ public final class SnapshotService implements AutoCloseable {
         }
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
         CompletableFuture<SaveResult> outcome = new CompletableFuture<>();
-        this.submitSave(new SaveAttempt(snapshot, player.getName(), 1, PluginConfig.synchronization$maxSaveRetries(), captureStart), outcome);
+        this.submitSave(SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart), outcome);
         return outcome;
     }
 
@@ -162,11 +163,22 @@ public final class SnapshotService implements AutoCloseable {
                 if (attempt.worthLogging()) {
                     this.logger.warn(TranslationManager.console(LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number())));
                 }
-                this.submitSave(attempt.next(), outcome);
+                this.scheduleRetry(attempt.next(), outcome);
                 return;
             }
             this.abandon(attempt, result, outcome);
         });
+    }
+
+    // 冷却交给执行器, 任务带着就绪时刻排在队尾, 到点之前不占线程, 同桶的其他玩家照常推进
+    private void scheduleRetry(SaveAttempt attempt, CompletableFuture<SaveResult> outcome) {
+        try {
+            this.plugin.playerExecutor().submitDelayed(attempt.snapshot().meta().player(),
+                    () -> this.submitSave(attempt, outcome), attempt.cooldownMillis(), TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException exception) {
+            // 关服排空期间执行器拒收新任务, 这份快照留给本地备份
+            this.abandon(attempt, SaveResult.RETRY_LATER, outcome);
+        }
     }
 
     // 重试到此为止, 快照交给本地备份 (第四步接上), 在那之前至少让运维知道这份数据卡在哪
@@ -233,7 +245,15 @@ public final class SnapshotService implements AutoCloseable {
      * @param maxRetries 首次失败后还能重排队尾几次, -1 表示一直重试到数据库回来
      */
     record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureStart) {
+        private static final int FREE_ATTEMPTS = 5;     // 前几次不等, 抖动和主从切换通常几十毫秒就过去了
+        private static final long COOLDOWN_STEP_MILLIS = 100;
+        private static final long MAX_COOLDOWN_MILLIS = 1000;
         private static final int LOG_INTERVAL = 10;
+
+        @NotNull
+        static SaveAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureStart) {
+            return new SaveAttempt(snapshot, playerName, 1, maxRetries, captureStart);
+        }
 
         @NotNull
         String cause() {
@@ -244,7 +264,16 @@ public final class SnapshotService implements AutoCloseable {
             return this.maxRetries < 0 || this.number <= this.maxRetries;
         }
 
-        // 数据库不可达时每次尝试都要等选主超时, 重试自带节奏, 日志仍按次数收敛免得刷屏
+        /**
+         * 本次尝试前要等多久.
+         * 前 {@value FREE_ATTEMPTS} 次不等, 之后每次多等 100 毫秒, 封顶 1 秒.
+         */
+        long cooldownMillis() {
+            if (this.number <= FREE_ATTEMPTS) return 0;
+            return Math.min((this.number - FREE_ATTEMPTS) * COOLDOWN_STEP_MILLIS, MAX_COOLDOWN_MILLIS);
+        }
+
+        // 重试速率被冷却封顶, 日志按次数收敛就等于按时间收敛
         boolean worthLogging() {
             return this.number == 1 || this.number % LOG_INTERVAL == 0;
         }

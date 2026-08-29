@@ -5,18 +5,25 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 按玩家 UUID 分桶的串行执行器. 同一玩家的任务永远落在同一条 worker 线程上并严格按提交序执行.
+ * 任务可以带一个就绪时刻, 没到点的任务不占线程空转, worker 会等到它到点, 期间新任务照常唤醒.
  */
 public final class PlayerSerialExecutor {
-    private static final Runnable SHUTDOWN_SIGNAL = () -> {};    // 排在队尾的退出哨兵, 前面的任务跑完才会被取到
+    private static final UUID SHUTDOWN_PLAYER = new UUID(0, 0);
+    private static final QueuedTask SHUTDOWN_SIGNAL = new QueuedTask(SHUTDOWN_PLAYER, () -> {}, 0);   // 排在队尾的退出哨兵
     private static final long DRAIN_REPORT_MILLIS = 5_000;       // 排空进度的播报间隔
 
     private final PluginLogger logger;
@@ -44,24 +51,24 @@ public final class PlayerSerialExecutor {
      * @throws RejectedExecutionException 当执行器已关停时
      */
     public void submit(@NotNull UUID player, @NotNull Runnable task) {
-        if (this.shutdown) {
-            throw new RejectedExecutionException("player serial executor is shut down");
-        }
-        this.worker(player).queue.addLast(task);
+        this.enqueue(new QueuedTask(player, task, System.nanoTime()));
     }
 
     /**
-     * 把任务插到该玩家所在桶的队首, 供交接请求把保存任务提前.
-     * <strong>插队会越过桶内既有任务, 包括同一玩家更早提交的任务; 仅当该玩家此刻没有未决任务,
-     * 或插队任务与它们的顺序无关时使用</strong>, 否则破坏该玩家的提交序契约.
+     * 把任务追加到队尾, 但在指定延迟之前不执行.
+     * 到点之前该玩家的后续任务一起等, 同桶其他玩家照常推进.
      *
      * @throws RejectedExecutionException 当执行器已关停时
      */
-    public void submitFirst(@NotNull UUID player, @NotNull Runnable task) {
+    public void submitDelayed(@NotNull UUID player, @NotNull Runnable task, long delay, @NotNull TimeUnit unit) {
+        this.enqueue(new QueuedTask(player, task, System.nanoTime() + unit.toNanos(delay)));
+    }
+
+    private void enqueue(QueuedTask task) {
         if (this.shutdown) {
             throw new RejectedExecutionException("player serial executor is shut down");
         }
-        this.worker(player).queue.addFirst(task);
+        this.worker(task.player()).enqueue(task);
     }
 
     private Worker worker(UUID player) {
@@ -85,7 +92,7 @@ public final class PlayerSerialExecutor {
     public int shutdown(long timeout, @NotNull TimeUnit unit) {
         this.shutdown = true;
         for (int i = 0; i < this.workers.length; i++) {
-            this.workers[i].queue.addLast(SHUTDOWN_SIGNAL);
+            this.workers[i].enqueue(SHUTDOWN_SIGNAL);
         }
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         for (int i = 0; i < this.workers.length; i++) {
@@ -100,8 +107,7 @@ public final class PlayerSerialExecutor {
             if (worker.thread.isAlive()) {
                 worker.thread.interrupt();
             }
-            worker.queue.remove(SHUTDOWN_SIGNAL);
-            remaining += worker.queue.size();
+            remaining += worker.dropSentinelAndCount();
         }
         if (remaining > 0) {
             this.logger.warn(TranslationManager.console(LogConstants.EXECUTOR_UNFINISHED_TASKS, String.valueOf(remaining)));
@@ -134,7 +140,7 @@ public final class PlayerSerialExecutor {
     public int pendingTasks() {
         int pending = 0;
         for (int i = 0; i < this.workers.length; i++) {
-            pending += this.workers[i].queue.size();
+            pending += this.workers[i].pending();
         }
         return pending;
     }
@@ -143,8 +149,13 @@ public final class PlayerSerialExecutor {
         return this.failures.get();
     }
 
+    private record QueuedTask(@NotNull UUID player, @NotNull Runnable task, long readyAtNanos) {
+    }
+
     private final class Worker implements Runnable {
-        private final LinkedBlockingDeque<Runnable> queue = new LinkedBlockingDeque<>();
+        private final ArrayDeque<QueuedTask> queue = new ArrayDeque<>();
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition arrived = this.lock.newCondition();
         private final Thread thread;
 
         private Worker(int index) {
@@ -153,21 +164,83 @@ public final class PlayerSerialExecutor {
             this.thread.start();
         }
 
+        private void enqueue(QueuedTask task) {
+            this.lock.lock();
+            try {
+                this.queue.addLast(task);
+                this.arrived.signal();
+            } finally {
+                this.lock.unlock();
+            }
+        }
+
+        private int pending() {
+            this.lock.lock();
+            try {
+                return this.queue.size();
+            } finally {
+                this.lock.unlock();
+            }
+        }
+
+        private int dropSentinelAndCount() {
+            this.lock.lock();
+            try {
+                this.queue.remove(SHUTDOWN_SIGNAL);
+                return this.queue.size();
+            } finally {
+                this.lock.unlock();
+            }
+        }
+
+        /**
+         * 取出队列里第一个到点的任务. 某玩家有任务没到点时, 他后面的任务一起跳过以保住提交序.
+         * 其他玩家的任务照常被取走; 全都没到点就等到最早的那个, 期间新任务会提前唤醒.
+         */
+        private QueuedTask takeReady() throws InterruptedException {
+            this.lock.lock();
+            try {
+                while (true) {
+                    long waitNanos = Long.MAX_VALUE;
+                    List<UUID> waiting = null;
+                    for (Iterator<QueuedTask> iterator = this.queue.iterator(); iterator.hasNext(); ) {
+                        QueuedTask candidate = iterator.next();
+                        if (waiting != null && waiting.contains(candidate.player())) continue;
+                        long remaining = candidate.readyAtNanos() - System.nanoTime();
+                        if (remaining <= 0) {
+                            iterator.remove();
+                            return candidate;
+                        }
+                        if (waiting == null) waiting = new ArrayList<>(2);
+                        waiting.add(candidate.player());
+                        waitNanos = Math.min(waitNanos, remaining);
+                    }
+                    if (waitNanos == Long.MAX_VALUE) {
+                        this.arrived.await();
+                    } else {
+                        this.arrived.awaitNanos(waitNanos);
+                    }
+                }
+            } finally {
+                this.lock.unlock();
+            }
+        }
+
         @Override
         public void run() {
             while (true) {
-                Runnable task;
+                QueuedTask queued;
                 try {
-                    task = this.queue.takeFirst();
+                    queued = this.takeReady();
                 } catch (InterruptedException exception) {
                     // 关停超时后的强制退出
                     Thread.currentThread().interrupt();
                     return;
                 }
                 // 哨兵排在关停时刻的队尾, 取到它说明本桶已排空
-                if (task == SHUTDOWN_SIGNAL) return;
+                if (queued == SHUTDOWN_SIGNAL) return;
                 try {
-                    task.run();
+                    queued.task().run();
                 } catch (Throwable throwable) {
                     // 任务是各业务提交的回调, 单任务失败计数上报.
                     failures.incrementAndGet();

@@ -45,6 +45,25 @@ class SaveAttemptTest {
     }
 
     @Test
+    void cooldownRampsUpAndCapsAtOneSecond() {
+        // 抖动和主从切换通常几十毫秒就过去, 前 5 次不等; 第 6 次起每次多等 100 毫秒, 封顶 1 秒
+        SaveAttempt attempt = attemptWith(-1);
+        for (int i = 1; i <= 5; i++) {
+            assertEquals(0, attempt.cooldownMillis(), "attempt " + i + " should not wait");
+            attempt = attempt.next();
+        }
+        assertEquals(100, attempt.cooldownMillis());
+        assertEquals(200, attempt.next().cooldownMillis());
+        assertEquals(300, attempt.next().next().cooldownMillis());
+
+        SaveAttempt late = attemptWith(-1);
+        for (int i = 1; i < 20; i++) {
+            late = late.next();
+        }
+        assertEquals(1000, late.cooldownMillis());
+    }
+
+    @Test
     void nextKeepsSnapshotAndPolicy() {
         SaveAttempt first = attemptWith(5);
         SaveAttempt second = first.next();
@@ -62,6 +81,6 @@ class SaveAttemptTest {
                 .cause(SaveCause.DISCONNECT)
                 .server("test")
                 .build();
-        return new SaveAttempt(new Snapshot(meta, Map.of()), "TestPlayer", 1, maxRetries, 0L);
+        return SaveAttempt.first(new Snapshot(meta, Map.of()), "TestPlayer", maxRetries, 0L);
     }
 }
