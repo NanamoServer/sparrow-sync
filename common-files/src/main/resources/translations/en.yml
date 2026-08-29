@@ -75,7 +75,6 @@ log.sync.save_needs_attention: 'The snapshot of <arg:0> (<arg:1>) cannot be writ
 log.sync.save_skipped_unsynced: '<arg:0> left before their data finished applying, skipping the save to protect snapshot history'
 log.sync.rotate_failed: 'Failed to rotate snapshot history of <arg:0>'
 log.sync.applied: 'Applied a snapshot to <arg:0> (<arg:1> data type(s), <arg:2> skipped, took <arg:3>ms)'
-log.sync.no_snapshot: '<arg:0> has no snapshot history, nothing to apply'
 log.sync.load_failed: 'Failed to load a snapshot of <arg:0>: <arg:1>'
 log.sync.user_failed: 'Failed to refresh the name mapping of <arg:0>'
 log.sync.shutdown_saved: 'Shutdown save: storing snapshots of <arg:0> online player(s)'

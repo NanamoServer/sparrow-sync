@@ -40,7 +40,6 @@ public interface LogConstants {
     String SYNC_SAVE_SKIPPED_UNSYNCED = "log.sync.save_skipped_unsynced";
     String SYNC_ROTATE_FAILED = "log.sync.rotate_failed";
     String SYNC_APPLIED = "log.sync.applied";
-    String SYNC_NO_SNAPSHOT = "log.sync.no_snapshot";
     String SYNC_LOAD_FAILED = "log.sync.load_failed";
     String SYNC_USER_FAILED = "log.sync.user_failed";
     String SYNC_SHUTDOWN_SAVED = "log.sync.shutdown_saved";

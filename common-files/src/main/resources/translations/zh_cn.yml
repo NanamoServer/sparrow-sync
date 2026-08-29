@@ -75,7 +75,6 @@ log.sync.save_needs_attention: <arg:0>的快照（<arg:1>）无法写入数据�
 log.sync.save_skipped_unsynced: <arg:0>在数据应用完成前退出，跳过保存以免覆盖历史快照
 log.sync.rotate_failed: 轮转<arg:0>的历史快照失败
 log.sync.applied: 已向<arg:0>应用快照（<arg:1>种数据，跳过<arg:2>种，耗时<arg:3>毫秒）
-log.sync.no_snapshot: <arg:0>没有历史快照，跳过应用
 log.sync.load_failed: 加载<arg:0>的快照失败：<arg:1>
 log.sync.user_failed: 刷新<arg:0>的名字映射失败
 log.sync.shutdown_saved: 关服保存：正在落库<arg:0>名在线玩家的快照

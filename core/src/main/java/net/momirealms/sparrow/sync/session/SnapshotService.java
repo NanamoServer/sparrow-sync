@@ -76,12 +76,7 @@ public final class SnapshotService implements AutoCloseable {
         long loadStart = System.nanoTime();
         return this.storage.latestSnapshot(player.getUniqueId()).thenCompose(latest -> {
             // 没有历史的新玩家, 本服状态即权威
-            if (latest.isEmpty()) {
-                this.logger.info(TranslationManager.console(LogConstants.SYNC_NO_SNAPSHOT, player.getName()));
-                return CompletableFuture.completedFuture(new LoadOutcome.Empty());
-            }
-            // 在读库线程上预解码, 关键数据解不开则整份不应用
-            return switch (this.applier.prepare(latest.get())) {
+            return latest.<java.util.concurrent.CompletionStage<LoadOutcome>>map(snapshot -> switch (this.applier.prepare(snapshot)) {
                 case SnapshotApplier.PreparedSnapshot.Failed failed -> {
                     String detail = failed.key().asString() + ": " + failed.detail();
                     this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), detail));
@@ -99,7 +94,8 @@ public final class SnapshotService implements AutoCloseable {
                     }, () -> outcome.complete(new LoadOutcome.Gone()));
                     yield outcome;
                 }
-            };
+            }).orElseGet(() -> CompletableFuture.completedFuture(new LoadOutcome.Empty()));
+            // 在读库线程上预解码, 关键数据解不开则整份不应用
         }).whenComplete((outcome, throwable) -> {
             if (throwable != null) {
                 this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), String.valueOf(throwable)), throwable);
