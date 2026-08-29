@@ -29,23 +29,16 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
-/**
- * MongoDB 存储实现. 集合: {prefix}users 与 {prefix}snapshots,
- * 快照经 {@link DocumentSnapshotCodec} 编解码, 以 _id 幂等, 以 timestamp 定序.
- * <p> 写入按玩家 UUID 投递到 {@link PlayerSerialExecutor} 的 worker, 同一玩家严格串行;
- * 读取与无顺序要求的写入走公共异步池. 投递收在本类内部, 调用方拿到的是尚未完成的 future.
- */
 public final class MongoStorageProvider implements StorageProvider {
-    private static final String USER_FIELD_NAME = "name";
-    private static final String USER_FIELD_LAST_SEEN = "lastSeen";
-    private static final long MAX_PAYLOAD_BYTES = 15L * 1024 * 1024;   // 写前守卫, 对 16MB 文档上限留余量
-    // 采集时刻降序, 同毫秒时以 id 兜底保证结果稳定 (同毫秒本身是采集侧的契约违规)
-    private static final Bson NEWEST_FIRST = Sorts.descending(DocumentSnapshotCodec.FIELD_TIMESTAMP, DocumentSnapshotCodec.FIELD_ID);
+    public static final String USER_FIELD_NAME = "name";          // lookupUser 按这个字段查名字
+    public static final String USER_FIELD_LAST_SEEN = "lastSeen"; // 同名记录按这个时间取最近一条
+    private static final long MAX_PAYLOAD_BYTES = 15L * 1024 * 1024; // 二进制载荷上限, 给 MongoDB 的 16 MB 文档限制留出余量
+    private static final Bson NEWEST_FIRST = Sorts.descending(DocumentSnapshotCodec.FIELD_TIMESTAMP, DocumentSnapshotCodec.FIELD_ID); // 新快照在前, _id 确定同一采集时间下的顺序
 
     private final PluginConfig.MongoOptions options;
     private final DocumentSnapshotCodec codec;
-    private final PlayerSerialExecutor serialExecutor;  // 写: 按玩家 UUID 分桶, 同一玩家严格串行
-    private final Executor asyncExecutor;               // 读: 无顺序要求
+    private final PlayerSerialExecutor serialExecutor; // 同一玩家的写入和轮转排队执行
+    private final Executor asyncExecutor;              // 没有顺序要求的数据库操作执行器
     private final PluginLogger logger;
 
     private MongoClient mongoClient;
@@ -65,7 +58,7 @@ public final class MongoStorageProvider implements StorageProvider {
     @Override
     public void initialize() {
         try {
-            // 建立链接
+            // UUID 使用标准 BSON 表示, 与 DocumentSnapshotCodec 的读写约定保持一致
             MongoClientSettings.Builder builder = MongoClientSettings.builder()
                     .uuidRepresentation(UuidRepresentation.STANDARD)
                     .applyToClusterSettings(cluster -> cluster.serverSelectionTimeout(10, TimeUnit.SECONDS))
@@ -81,10 +74,10 @@ public final class MongoStorageProvider implements StorageProvider {
             this.mongoDatabase = this.mongoClient.getDatabase(this.options.database());
             this.mongoDatabase.runCommand(new Document("ping", 1));
             // 读取文档集合 & 建立索引
+            MongoCollection<Document> metaCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "meta");
             MongoCollection<Document> userCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "users");
             MongoCollection<Document> snapshotCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "snapshots");
-            userCollection.createIndex(Indexes.ascending(USER_FIELD_NAME));
-            snapshotCollection.createIndex(Indexes.compoundIndex(Indexes.ascending(DocumentSnapshotCodec.FIELD_PLAYER), Indexes.descending(DocumentSnapshotCodec.FIELD_TIMESTAMP, DocumentSnapshotCodec.FIELD_ID)));
+            new IndexReconciler(this.logger).reconcile(metaCollection, userCollection, snapshotCollection);
             this.users = userCollection;
             this.snapshots = snapshotCollection;
         } catch (Throwable throwable) {
@@ -92,7 +85,6 @@ public final class MongoStorageProvider implements StorageProvider {
         }
     }
 
-    // 未完成初始化 (连接失败或索引冲突) 时明确失败, 调用方按存储不可用裁决
     private MongoCollection<Document> snapshotCollection() {
         MongoCollection<Document> collection = this.snapshots;
         if (collection == null) {
@@ -135,7 +127,7 @@ public final class MongoStorageProvider implements StorageProvider {
     @NotNull
     public CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query) {
         return CompletableFuture.supplyAsync(() -> {
-            // 投影排除数据体, 列表查询不搬运物品字节
+            // 列表只读元数据, 数据体通常很大, 不从 MongoDB 拉回进程
             FindIterable<Document> found = this.snapshotCollection().find(filterOf(query))
                     .projection(Projections.exclude(DocumentSnapshotCodec.FIELD_DATA))
                     .sort(NEWEST_FIRST);
@@ -150,7 +142,7 @@ public final class MongoStorageProvider implements StorageProvider {
         }, this.asyncExecutor);
     }
 
-    // 未设置的条件不下发谓词, 免得给索引塞一个极值边界
+    // UNBOUNDED_* 是 Java 侧哨兵值, 没有边界时不向 MongoDB 添加对应条件
     private static Bson filterOf(SnapshotQuery query) {
         List<Bson> filters = new ArrayList<>(4);
         filters.add(byPlayer(query.player()));
@@ -177,60 +169,17 @@ public final class MongoStorageProvider implements StorageProvider {
 
     @Override
     @NotNull
-    public CompletableFuture<Integer> saveSnapshots(@NotNull Collection<Snapshot> snapshots) {
-        return CompletableFuture.supplyAsync(() -> {
-            // 一批文档一次往返, 冲突或超限的个别快照回落到单份守卫路径
-            // documents 与 encoded 同序, 批量写错误按下标精确映射回快照, 同玩家多份也不会张冠李戴
-            List<Document> documents = new ArrayList<>(snapshots.size());
-            List<Snapshot> encoded = new ArrayList<>(snapshots.size());
-            List<Snapshot> fallback = new ArrayList<>();
-            for (Snapshot snapshot : snapshots) {
-                try {
-                    documents.add(this.encodeGuarded(snapshot));
-                    encoded.add(snapshot);
-                } catch (Exception exception) {
-                    this.logger.warn(TranslationManager.console(LogConstants.STORAGE_SNAPSHOT_ENCODE_FAILED, snapshot.meta().player().toString()), exception);
-                }
-            }
-            int saved = 0;
-            if (!documents.isEmpty()) {
-                try {
-                    this.snapshotCollection().insertMany(documents, new InsertManyOptions().ordered(false));
-                    saved = documents.size();
-                } catch (MongoBulkWriteException exception) {
-                    saved = exception.getWriteResult().getInsertedCount();
-                    for (BulkWriteError error : exception.getWriteErrors()) {
-                        fallback.add(encoded.get(error.getIndex()));
-                    }
-                }
-            }
-            // 单份回落失败只影响自己, 已落库的份数照常返回
-            for (int i = 0; i < fallback.size(); i++) {
-                Snapshot snapshot = fallback.get(i);
-                try {
-                    this.insert(snapshot);
-                    saved++;
-                } catch (RuntimeException exception) {
-                    this.logger.warn(TranslationManager.console(LogConstants.STORAGE_SNAPSHOT_SAVE_FAILED, snapshot.meta().player().toString()), exception);
-                }
-            }
-            return saved;
-        }, this.asyncExecutor);
-    }
-
-    @Override
-    @NotNull
     public CompletableFuture<Integer> rotate(@NotNull UUID player, int maxUnpinned) {
-        // 轮转要删的正是该玩家刚写进去的历史, 与他的写入有先后关系, 因此同样落在他的 worker 上
+        // 轮转和写入都进玩家自己的队列, 两种操作按提交顺序执行
         return CompletableFuture.supplyAsync(() -> {
             Bson unpinned = Filters.and(byPlayer(player), Filters.eq(DocumentSnapshotCodec.FIELD_PINNED, false));
-            // 上限为 0 表示未固定的历史一份不留
+            // 0 表示不保留未固定快照
             if (maxUnpinned <= 0) {
                 return (int) this.snapshotCollection().deleteMany(unpinned).getDeletedCount();
             }
             long count = this.snapshotCollection().countDocuments(unpinned);
             if (count <= maxUnpinned) return 0;
-            // 第 maxUnpinned 新的未固定快照是保留下界, 采集时刻早于它的全部删除
+            // 找到最后一份需要保留的快照, 比它更早的记录都可以删除
             Document boundary = this.snapshotCollection().find(unpinned)
                     .sort(NEWEST_FIRST)
                     .skip(maxUnpinned - 1).limit(1)
@@ -246,27 +195,26 @@ public final class MongoStorageProvider implements StorageProvider {
     @Override
     @NotNull
     public CompletableFuture<Boolean> setPinned(@NotNull UUID snapshotId, boolean pinned) {
-        // 只有 snapshotId 无从分桶; 改的是已存在快照的标志位, 与落库次序无关, 走公共池即可
         return CompletableFuture.supplyAsync(() -> this.snapshotCollection().updateOne(byId(snapshotId),
                 new Document("$set", new Document(DocumentSnapshotCodec.FIELD_PINNED, pinned))).getModifiedCount() > 0, this.asyncExecutor);
     }
 
-    @Override
     @NotNull
+    @Override
     public CompletableFuture<Boolean> deleteSnapshot(@NotNull UUID snapshotId) {
         return CompletableFuture.supplyAsync(() -> this.snapshotCollection().deleteOne(byId(snapshotId)).getDeletedCount() > 0, this.asyncExecutor);
     }
 
-    @Override
     @NotNull
+    @Override
     public CompletableFuture<Void> ensureUser(@NotNull UUID player, @NotNull String name) {
         return CompletableFuture.runAsync(() -> this.userCollection().replaceOne(Filters.eq("_id", player),
                 new Document("_id", player).append(USER_FIELD_NAME, name).append(USER_FIELD_LAST_SEEN, new Date()),
                 new ReplaceOptions().upsert(true)), this.asyncExecutor);
     }
 
-    @Override
     @NotNull
+    @Override
     public CompletableFuture<Optional<UUID>> lookupUser(@NotNull String name) {
         return CompletableFuture.supplyAsync(() -> {
             Document document = this.userCollection().find(Filters.eq(USER_FIELD_NAME, name)).sort(Sorts.descending(USER_FIELD_LAST_SEEN)).limit(1).first();
@@ -274,7 +222,7 @@ public final class MongoStorageProvider implements StorageProvider {
         }, this.asyncExecutor);
     }
 
-    // 编码 + 大小守卫, 单份与批量共用
+    // 单份和批量写入共用这里的编码与大小检查
     private Document encodeGuarded(Snapshot snapshot) throws IOException {
         Document document = this.codec.encode(snapshot);
         long payload = payloadBytes(document);
@@ -284,13 +232,7 @@ public final class MongoStorageProvider implements StorageProvider {
         return document;
     }
 
-    /**
-     * 写入一份快照. 主键是快照 id, 因此重复写入同一份是幂等的; 写入不改变次序, 落库后回查一次
-     * 确认自己是不是采集时刻最晚的一份, 以此把"插回历史中段"与"有第二个写方"报给调用方.
-     * <p>
-     * 先写后查是有意的: 无论次序判定结果如何, 数据先落地. 回查与写入之间可能有别人插入,
-     * 因此次序结果是诊断信号而不是并发控制手段 —— 互斥由会话锁负责.
-     */
+    // 写入成功后再看一次最新快照, 让调用方知道它是否落进了历史中段
     private SaveResult insert(Snapshot snapshot) {
         Document document;
         try {
@@ -303,8 +245,11 @@ public final class MongoStorageProvider implements StorageProvider {
             this.snapshotCollection().insertOne(document);
         } catch (MongoWriteException exception) {
             if (exception.getError().getCategory() != ErrorCategory.DUPLICATE_KEY) throw exception;
+            // insertOne 只报撞了唯一索引, 不报撞的是哪一条. 查一次 _id 才能确认这份快照真的在库里, 否则任何其他来源的写入失败都会被当成 DUPLICATE, 导致数据静默丢失
+            if (this.snapshotCollection().find(byId(meta.id())).projection(Projections.include(DocumentSnapshotCodec.FIELD_ID)).first() == null) throw exception;
             return SaveResult.DUPLICATE;
         }
+        // 数据已经落库, 回查结果只用来报告顺序
         Document newest = this.snapshotCollection().find(byPlayer(meta.player()))
                 .sort(NEWEST_FIRST)
                 .limit(1)
@@ -313,14 +258,14 @@ public final class MongoStorageProvider implements StorageProvider {
         if (newest == null || meta.id().equals(newest.get(DocumentSnapshotCodec.FIELD_ID, UUID.class))) {
             return SaveResult.SAVED;
         }
-        // 调用方按场景裁决: 启动插回历史是预期的, 在线保存走到这里意味着会话锁失效
+        // 启动恢复时插入旧快照很正常, 在线保存出现乱序通常说明会话锁失效
         this.logger.warn(TranslationManager.console(LogConstants.STORAGE_OUT_OF_ORDER,
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()),
                 readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest))));
         return SaveResult.SAVED_OUT_OF_ORDER;
     }
 
-    // 解码为空表示不存在, 损坏快照以异常上抛让调用方裁决而不是伪装成不存在
+    // 查不到文档就返回空, 已存在但损坏的快照交给调用方处理
     private Optional<Snapshot> decodeDocument(@Nullable Document document) {
         if (document == null) return Optional.empty();
         DecodedSnapshot decoded = this.codec.decode(document);
@@ -331,7 +276,7 @@ public final class MongoStorageProvider implements StorageProvider {
         throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
     }
 
-    // 递归统计数据体中全部二进制载荷, 结构化字段任意深度的 Binary 也计入守卫
+    // data 里可能嵌套 Document 和 List, 所有层级的二进制内容都计入大小
     private static long payloadBytes(Document document) {
         Document data = document.get(DocumentSnapshotCodec.FIELD_DATA, Document.class);
         return data == null ? 0 : binaryBytesOf(data);

@@ -6,7 +6,6 @@ import net.momirealms.sparrow.sync.storage.SnapshotQuery.PinFilter;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -82,15 +81,6 @@ public interface StorageProvider extends AutoCloseable {
      */
     @NotNull
     CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot);
-
-    /**
-     * 批量写入多名玩家的快照, 供关服排空场景压缩存储往返. 单份失败回落到单份写入路径.
-     * 关服排空时本服仍持有全部会话锁, 次序无从被他人插队, 因此不逐份回报次序结果.
-     *
-     * @return 落库的份数, 含幂等命中的既有快照
-     */
-    @NotNull
-    CompletableFuture<Integer> saveSnapshots(@NotNull Collection<Snapshot> snapshots);
 
     /**
      * 轮转玩家的历史快照: 未固定的快照多于 maxUnpinned 时删除采集时刻最早的超量部分, 固定快照永不轮转.

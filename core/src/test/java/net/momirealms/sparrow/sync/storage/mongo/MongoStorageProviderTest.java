@@ -1,7 +1,11 @@
 package net.momirealms.sparrow.sync.storage.mongo;
 
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.IndexOptions;
+import com.mongodb.client.model.Indexes;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -18,6 +22,8 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,6 +42,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -106,6 +113,85 @@ class MongoStorageProviderTest {
         assertEquals(SaveResult.DUPLICATE, this.provider.saveSnapshot(snapshot).join());
 
         assertEquals(1, this.provider.listSnapshots(this.player).join().size());
+    }
+
+    @Test
+    void duplicateKeyFromForeignUniqueIndexFailsInsteadOfReportingDuplicate() {
+        // 模拟 beta 遗留的 (player, version) 唯一索引: 新文档不带 version, 同一玩家第二份起统统撞 null 键.
+        // 这类冲突是写入失败, 报成 DUPLICATE 等于把静默丢数据伪装成幂等成功
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            MongoCollection<Document> snapshots = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
+            // 先清掉其他测试的存量文档, 它们的 version 同为 null, 会让唯一索引建不起来
+            snapshots.deleteMany(new Document());
+            Bson legacyKeys = Indexes.compoundIndex(Indexes.ascending("player"), Indexes.descending("version"));
+            snapshots.createIndex(legacyKeys, new IndexOptions().unique(true));
+            try {
+                assertEquals(SaveResult.SAVED, this.provider.saveSnapshot(snapshot(1, false)).join());
+
+                CompletionException failure = assertThrows(CompletionException.class, () -> this.provider.saveSnapshot(snapshot(2, false)).join());
+
+                assertInstanceOf(MongoWriteException.class, failure.getCause());
+                assertEquals(1, this.provider.listSnapshots(this.player).join().size());
+            } finally {
+                snapshots.dropIndex(legacyKeys);
+            }
+        }
+    }
+
+    @Test
+    void indexesAreReconciledToDeclarationOnInitialize() {
+        // 从旧版升级上来的库带着 (player, version) 唯一索引与已退场字段的查询索引,
+        // 启动对账必须清掉一切未声明的索引并建出声明的, 否则遗留唯一索引让每名玩家只能存一份
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            MongoCollection<Document> snapshots = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
+            snapshots.deleteMany(new Document());
+            snapshots.dropIndexes();
+            snapshots.createIndex(Indexes.compoundIndex(Indexes.ascending("player"), Indexes.descending("version")), new IndexOptions().unique(true));
+            snapshots.createIndex(Indexes.ascending("cause"));
+
+            PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            MongoStorageProvider upgraded = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
+            try {
+                upgraded.initialize();
+
+                assertEquals(SaveResult.SAVED, upgraded.saveSnapshot(snapshot(1, false)).join());
+                assertEquals(SaveResult.SAVED, upgraded.saveSnapshot(snapshot(2, false)).join());
+                List<String> names = new ArrayList<>();
+                for (Document index : snapshots.listIndexes()) {
+                    names.add(index.getString("name"));
+                }
+                names.sort(String::compareTo);
+                assertEquals(List.of("_id_", "player_1_ts_-1__id_-1"), names);
+                // 对账完成后本版的 schema 代数被写回, 此后更旧的插件版本连不上这个库
+                Document schema = client.getDatabase(TEST_DATABASE).getCollection("it_meta").find(new Document("_id", "schema")).first();
+                assertEquals(1, schema.getInteger("version"));
+            } finally {
+                upgraded.close();
+            }
+        }
+    }
+
+    @Test
+    void newerSchemaGenerationRefusesToStart() {
+        // 共库的另一台服务器已用更新版本的插件升级了库结构, 本插件 (更旧) 必须拒绝启动,
+        // 否则它的对账会把新版索引拆回旧样, 两个版本互相改写没有尽头
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            MongoCollection<Document> meta = client.getDatabase(TEST_DATABASE).getCollection("it_meta");
+            meta.replaceOne(new Document("_id", "schema"),
+                    new Document("_id", "schema").append("version", 999),
+                    new com.mongodb.client.model.ReplaceOptions().upsert(true));
+
+            PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            MongoStorageProvider outdated = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
+            try {
+                assertThrows(IllegalStateException.class, outdated::initialize);
+            } finally {
+                outdated.close();
+                meta.deleteOne(new Document("_id", "schema"));
+            }
+        }
     }
 
     @Test
@@ -243,21 +329,6 @@ class MongoStorageProviderTest {
         CompletionException exception = assertThrows(CompletionException.class, () -> this.provider.saveSnapshot(oversized).join());
 
         assertTrue(String.valueOf(exception.getCause().getMessage()).contains("over the document limit"));
-    }
-
-    @Test
-    void bulkSaveWritesAllAndFallsBackOnDuplicate() {
-        UUID other = UUID.randomUUID();
-        Snapshot existing = snapshot(1, false);
-        this.provider.saveSnapshot(existing).join();
-
-        // 同一份快照重复出现在批里走幂等回落, 另一玩家的快照正常批量落库
-        Snapshot fresh = new Snapshot(metaOf(other, 1, false), payload());
-        int saved = this.provider.saveSnapshots(List.of(existing, fresh)).join();
-
-        assertEquals(2, saved);
-        assertEquals(1, this.provider.listSnapshots(this.player).join().size());
-        assertEquals(1, this.provider.listSnapshots(other).join().size());
     }
 
     private Snapshot snapshot(int timeOffset, boolean pinned) {

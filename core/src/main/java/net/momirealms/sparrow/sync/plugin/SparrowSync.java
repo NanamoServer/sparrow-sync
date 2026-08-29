@@ -12,6 +12,7 @@ import net.momirealms.sparrow.sync.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.data.type.*;
 import net.momirealms.sparrow.sync.dependency.Dependencies;
 import net.momirealms.sparrow.sync.dependency.Dependency;
@@ -26,6 +27,8 @@ import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.session.TemporarySyncListener;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
@@ -81,6 +84,7 @@ public class SparrowSync implements Plugin, Listener {
     private PlayerSerialExecutor playerExecutor;
     private SnapshotApplier snapshotApplier;
     private StorageProvider storageProvider;
+    private SnapshotService snapshotService;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -161,6 +165,7 @@ public class SparrowSync implements Plugin, Listener {
         this.initASMProxies(); // Proxy 类测试, 仅 dev 模式下生效
         this.compatibilityManager.onEnable(); // 集成插件管理器
         Bukkit.getPluginManager().registerEvents(this, this.javaPlugin);
+        Bukkit.getPluginManager().registerEvents(new TemporarySyncListener(this), this.javaPlugin); // 临时测试挂点, 登录管线就位后移除 todo 未来删除
         // 延迟重载逻辑
         this.scheduler.sync().runDelayed(() -> {
             this.compatibilityManager.onDelayedEnable(); // 集成插件管理器
@@ -180,10 +185,14 @@ public class SparrowSync implements Plugin, Listener {
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
+        this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.logger);
+        // 预热 DFU 的 ITEM_STACK CODEC.
+        this.scheduler.async().execute(ItemCodec::warmUp);
     }
 
     @Override
     public void onPluginDisable() {
+        if (this.snapshotService != null) this.snapshotService.close();
         if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
@@ -470,8 +479,8 @@ public class SparrowSync implements Plugin, Listener {
         return this.javaPlugin;
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
     @Override
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public void saveResource(String resourcePath) {
         if (resourcePath.isEmpty()) {
             throw new IllegalArgumentException("ResourcePath cannot be null or empty");
@@ -569,6 +578,10 @@ public class SparrowSync implements Plugin, Listener {
 
     public SnapshotApplier snapshotApplier() {
         return this.snapshotApplier;
+    }
+
+    public SnapshotService snapshotService() {
+        return this.snapshotService;
     }
 
     public StorageProvider storageProvider() {
