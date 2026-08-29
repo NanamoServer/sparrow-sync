@@ -1,9 +1,9 @@
-package net.momirealms.sparrow.sync.scheduler;
+package net.momirealms.sparrow.sync.plugin.scheduler;
 
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.scheduler.executor.BukkitExecutor;
-import net.momirealms.sparrow.sync.scheduler.executor.FoliaExecutor;
-import net.momirealms.sparrow.sync.scheduler.executor.RegionExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.BukkitExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.FoliaExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.World;
 

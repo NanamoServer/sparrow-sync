@@ -1,8 +1,8 @@
-package net.momirealms.sparrow.sync.scheduler.executor;
+package net.momirealms.sparrow.sync.plugin.scheduler.executor;
 
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.scheduler.task.SchedulerTask;
-import net.momirealms.sparrow.sync.scheduler.task.platform.FoliaTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.platform.FoliaTask;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.jetbrains.annotations.NotNull;

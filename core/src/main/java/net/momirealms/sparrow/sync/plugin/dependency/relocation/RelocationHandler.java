@@ -1,9 +1,9 @@
-package net.momirealms.sparrow.sync.dependency.relocation;
+package net.momirealms.sparrow.sync.plugin.dependency.relocation;
 
-import net.momirealms.sparrow.sync.dependency.Dependencies;
-import net.momirealms.sparrow.sync.dependency.Dependency;
-import net.momirealms.sparrow.sync.dependency.DependencyManager;
-import net.momirealms.sparrow.sync.dependency.classloader.IsolatedClassLoader;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
+import net.momirealms.sparrow.sync.plugin.dependency.classloader.IsolatedClassLoader;
 
 import java.io.File;
 import java.io.IOException;

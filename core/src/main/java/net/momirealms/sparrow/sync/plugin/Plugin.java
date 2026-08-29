@@ -3,12 +3,12 @@ package net.momirealms.sparrow.sync.plugin;
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.configuration.ConfigurationManager;
-import net.momirealms.sparrow.sync.dependency.Dependency;
-import net.momirealms.sparrow.sync.dependency.DependencyManager;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
-import net.momirealms.sparrow.sync.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 
 import java.io.File;
 import java.io.InputStream;

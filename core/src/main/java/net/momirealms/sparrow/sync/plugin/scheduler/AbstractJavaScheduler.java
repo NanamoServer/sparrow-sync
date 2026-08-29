@@ -1,9 +1,9 @@
-package net.momirealms.sparrow.sync.scheduler;
+package net.momirealms.sparrow.sync.plugin.scheduler;
 
 import net.momirealms.sparrow.sync.plugin.Plugin;
-import net.momirealms.sparrow.sync.scheduler.task.AsyncTask;
-import net.momirealms.sparrow.sync.scheduler.task.LazyAsyncTask;
-import net.momirealms.sparrow.sync.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.AsyncTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.LazyAsyncTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Arrays;

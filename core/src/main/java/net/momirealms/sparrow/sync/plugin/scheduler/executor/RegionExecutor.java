@@ -1,6 +1,6 @@
-package net.momirealms.sparrow.sync.scheduler.executor;
+package net.momirealms.sparrow.sync.plugin.scheduler.executor;
 
-import net.momirealms.sparrow.sync.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 
 import java.util.concurrent.Executor;
 

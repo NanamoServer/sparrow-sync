@@ -1,6 +1,6 @@
-package net.momirealms.sparrow.sync.dependency;
+package net.momirealms.sparrow.sync.plugin.dependency;
 
-import net.momirealms.sparrow.sync.dependency.exception.DependencyDownloadException;
+import net.momirealms.sparrow.sync.plugin.dependency.exception.DependencyDownloadException;
 
 import java.io.IOException;
 import java.io.InputStream;

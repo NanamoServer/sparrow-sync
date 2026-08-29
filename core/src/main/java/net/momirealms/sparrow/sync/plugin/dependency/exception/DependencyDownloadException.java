@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.dependency.exception;
+package net.momirealms.sparrow.sync.plugin.dependency.exception;
 
 public class DependencyDownloadException extends Exception {
 

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.dependency.classloader;
+package net.momirealms.sparrow.sync.plugin.dependency.classloader;
 
 import java.net.URL;
 import java.net.URLClassLoader;

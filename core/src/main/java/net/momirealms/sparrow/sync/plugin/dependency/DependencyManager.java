@@ -1,9 +1,9 @@
-package net.momirealms.sparrow.sync.dependency;
+package net.momirealms.sparrow.sync.plugin.dependency;
 
-import net.momirealms.sparrow.sync.dependency.classloader.IsolatedClassLoader;
-import net.momirealms.sparrow.sync.dependency.exception.DependencyDownloadException;
-import net.momirealms.sparrow.sync.dependency.relocation.Relocation;
-import net.momirealms.sparrow.sync.dependency.relocation.RelocationHandler;
+import net.momirealms.sparrow.sync.plugin.dependency.classloader.IsolatedClassLoader;
+import net.momirealms.sparrow.sync.plugin.dependency.exception.DependencyDownloadException;
+import net.momirealms.sparrow.sync.plugin.dependency.relocation.Relocation;
+import net.momirealms.sparrow.sync.plugin.dependency.relocation.RelocationHandler;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
 import net.momirealms.sparrow.sync.util.FileUtils;

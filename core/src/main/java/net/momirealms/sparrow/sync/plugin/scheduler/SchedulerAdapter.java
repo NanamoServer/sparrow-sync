@@ -1,7 +1,7 @@
-package net.momirealms.sparrow.sync.scheduler;
+package net.momirealms.sparrow.sync.plugin.scheduler;
 
-import net.momirealms.sparrow.sync.scheduler.executor.RegionExecutor;
-import net.momirealms.sparrow.sync.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;

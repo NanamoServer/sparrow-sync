@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.dependency.relocation;
+package net.momirealms.sparrow.sync.plugin.dependency.relocation;
 
 import java.util.Objects;
 

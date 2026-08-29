@@ -1,6 +1,6 @@
-package net.momirealms.sparrow.sync.dependency;
+package net.momirealms.sparrow.sync.plugin.dependency;
 
-import net.momirealms.sparrow.sync.dependency.relocation.Relocation;
+import net.momirealms.sparrow.sync.plugin.dependency.relocation.Relocation;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;

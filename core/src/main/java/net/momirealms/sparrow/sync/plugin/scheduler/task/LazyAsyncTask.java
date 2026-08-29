@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.scheduler.task;
+package net.momirealms.sparrow.sync.plugin.scheduler.task;
 
 import org.jetbrains.annotations.Nullable;
 

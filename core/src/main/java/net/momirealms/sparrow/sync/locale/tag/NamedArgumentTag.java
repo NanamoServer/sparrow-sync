@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.tag;
+package net.momirealms.sparrow.sync.locale.tag;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.Context;

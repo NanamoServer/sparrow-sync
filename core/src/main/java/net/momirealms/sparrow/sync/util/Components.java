@@ -4,7 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
-import net.momirealms.sparrow.sync.tag.NamedArgumentTag;
+import net.momirealms.sparrow.sync.locale.tag.NamedArgumentTag;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Map;

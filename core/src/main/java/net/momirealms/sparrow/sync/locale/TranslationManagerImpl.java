@@ -7,7 +7,7 @@ import net.kyori.adventure.text.TranslatableComponent;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.Plugin;
-import net.momirealms.sparrow.sync.tag.IndexedArgumentTag;
+import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.util.AdventureHelper;
 import net.momirealms.sparrow.sync.util.FileUtils;
 import net.momirealms.sparrow.sync.util.GsonHelper;

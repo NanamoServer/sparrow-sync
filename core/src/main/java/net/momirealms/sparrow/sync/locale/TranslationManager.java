@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.locale;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.translation.Translator;
-import net.momirealms.sparrow.sync.tag.IndexedArgumentTag;
+import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.util.AdventureHelper;
 import org.jetbrains.annotations.Nullable;
 

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.dependency;
+package net.momirealms.sparrow.sync.plugin.dependency;
 
 public final class Dependencies {
     private Dependencies() {}
