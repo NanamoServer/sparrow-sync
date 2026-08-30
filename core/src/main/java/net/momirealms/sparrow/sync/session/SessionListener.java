@@ -66,8 +66,8 @@ public final class SessionListener implements Listener {
             return;
         }
         // 应用失败
-        String detail = outcome instanceof LoadOutcome.Failed(String det) ? det : String.valueOf(outcome);
-        this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), detail);
+        LoadOutcome.Failed failed = (LoadOutcome.Failed) outcome;
+        this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), failed.detail());
         this.kickOnOwningThread(session, player);
     }
 

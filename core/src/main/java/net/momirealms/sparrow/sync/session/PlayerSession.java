@@ -14,7 +14,6 @@ public final class PlayerSession {
     private final CompletableFuture<Void> released = new CompletableFuture<>();
 
     private SessionState state = SessionState.PREPARING;
-    private long lastTransitionAt = System.currentTimeMillis();
     private PreparedOutcome.Ready prepared;
 
     PlayerSession(@NotNull UUID player, @NotNull String playerName) {
@@ -42,10 +41,6 @@ public final class PlayerSession {
         return this.state;
     }
 
-    public synchronized long lastTransitionAt() {
-        return this.lastTransitionAt;
-    }
-
     /**
      * 转移到目标状态.
      *
@@ -56,7 +51,6 @@ public final class PlayerSession {
             throw new IllegalStateException("illegal session transition " + this.state + " -> " + to + " for " + this.playerName);
         }
         this.state = to;
-        this.lastTransitionAt = System.currentTimeMillis();
     }
 
     /**
@@ -65,7 +59,6 @@ public final class PlayerSession {
     public synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState to) {
         if (this.state != expected || !this.state.canTransitionTo(to)) return false;
         this.state = to;
-        this.lastTransitionAt = System.currentTimeMillis();
         return true;
     }
 

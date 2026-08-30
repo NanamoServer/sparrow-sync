@@ -157,7 +157,7 @@ public final class PacketConfigGate {
     // 加载失败, 拒绝进服.
     private void refuse(ServerConfigurationPacketListenerImpl listener, PlayerSession session, String name, String reason) {
         this.sessionManager.close(session, SaveCause.DISCONNECT);
-        this.plugin.logger().file(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
+        this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
         listener.paperConnection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 }

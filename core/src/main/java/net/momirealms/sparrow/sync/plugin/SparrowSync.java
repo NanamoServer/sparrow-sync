@@ -84,7 +84,7 @@ public class SparrowSync implements Plugin {
     private final AtomicBoolean reloading = new AtomicBoolean();
 
     private final DataRegistry dataRegistry = new DataRegistry();
-    private PlayerSerialExecutor playerExecutor;
+    private final PlayerSerialExecutor playerExecutor;
     private SnapshotApplier snapshotApplier; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
     private StorageProvider storageProvider; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
     private SnapshotStash snapshotStash;     // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
@@ -315,6 +315,7 @@ public class SparrowSync implements Plugin {
             return CompletableFuture.completedFuture(ReloadResult.failure());
         }
         CompletableFuture<ReloadResult> future = new CompletableFuture<>();
+        // 执行异步重载任务
         asyncExecutor.execute(() -> {
             long asyncTime = -1;
             int issues = 0;
@@ -322,9 +323,6 @@ public class SparrowSync implements Plugin {
                 long startTime = System.currentTimeMillis();
                 this.configurationManager.reload();
                 this.translationManager.reload();
-                // TODO 执行异步重载任务
-
-
                 asyncTime = System.currentTimeMillis() - startTime;
             } catch (Throwable e) {
                 this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
@@ -332,13 +330,10 @@ public class SparrowSync implements Plugin {
                 future.complete(ReloadResult.failure());
             } finally {
                 long finalAsyncTime = asyncTime;
+                // 执行同步重载任务
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
-                        // TODO 执行同步重载任务
-
-
-
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));

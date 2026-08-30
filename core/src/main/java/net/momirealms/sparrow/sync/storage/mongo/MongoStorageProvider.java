@@ -276,7 +276,7 @@ public final class MongoStorageProvider implements StorageProvider {
         } catch (Throwable throwable) {
             return this.failed(meta, throwable);
         }
-        // 数据已经落库, 回查结果只用来报告顺序 todo 思考这一块, 真的有必要回查吗(回查有一次成本)? 区分 STORAGE_OUT_OF_ORDER 有用吗?
+        // 数据已经落库, 回查结果只用来报告顺序
         Document newest = this.snapshotCollection().find(byPlayer(meta.player()))
                 .sort(NEWEST_FIRST)
                 .limit(1)

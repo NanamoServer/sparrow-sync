@@ -25,11 +25,4 @@ public enum SessionState {
             case CLOSED -> false;
         };
     }
-
-    /**
-     * 会话是否停在中间态 (非 ACTIVE 非 CLOSED), 即进服或退出保存尚未走完.
-     */
-    public boolean transitional() {
-        return this != ACTIVE && this != CLOSED;
-    }
 }

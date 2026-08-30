@@ -65,18 +65,6 @@ class PlayerSessionTest {
     }
 
     @Test
-    void legalTransitionAdvancesStateAndTimestamp() throws InterruptedException {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
-        long before = session.lastTransitionAt();
-
-        Thread.sleep(2);
-        session.transition(SessionState.APPLYING);
-
-        assertEquals(SessionState.APPLYING, session.state());
-        assertTrue(session.lastTransitionAt() > before);
-    }
-
-    @Test
     void tryTransitionFailsOnStaleExpectation() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         session.transition(SessionState.APPLYING);
