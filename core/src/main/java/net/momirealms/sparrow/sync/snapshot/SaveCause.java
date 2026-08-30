@@ -7,7 +7,8 @@ import org.jetbrains.annotations.NotNull;
  */
 public enum SaveCause {
     DISCONNECT,         // 离线
-    WORLD_SAVE,         // 切换世界
+    WORLD_CHANGE,       // 切换世界
+    GAME_MODE_CHANGE,   // 切换游戏模式
     DEATH,              // 死亡
     SHUTDOWN,           // 服务器关闭
     INTERVAL,           // 定时

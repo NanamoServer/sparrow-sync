@@ -6,8 +6,8 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 
 /**
- * 快照与某种载体形态之间的编解码器. 每种载体一个实现: 二进制形态用于跨服消息等非落库载体,
- * 文档形态用于 MongoDB 落库, 未来的行形态用于 MySQL.
+ * 快照与某种载体形态之间的编解码器. 每种载体一个实现: 二进制形态用于跨服消息与本地落盘,
+ * 文档形态用于 MongoDB 落库, JSON 形态用于调试导出, 未来的行形态用于 MySQL.
  * 编码失败向上抛出, 解码失败落为 {@link DecodedSnapshot.Invalid} 并携带原因.
  *
  * @param <T> 载体类型

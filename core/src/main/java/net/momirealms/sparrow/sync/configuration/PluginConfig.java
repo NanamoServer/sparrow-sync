@@ -118,6 +118,12 @@ public final class PluginConfig {
         int maxSaveRetries = -1;
 
         @Comment({
+                "How long the login gate waits for player data before giving up, in seconds",
+                "A player whose data is not ready in time is disconnected, never let in unsynced"
+        })
+        int loginTimeoutSeconds = 15;
+
+        @Comment({
                 "How newly written snapshots are compressed, existing data stays readable whatever is set here",
                 "Available: ZSTD, DEFLATE, NONE",
                 "  ZSTD    - the fastest saves and loads at the best ratio (recommended)",
@@ -296,6 +302,10 @@ public final class PluginConfig {
 
     public static int synchronization$shutdownTimeoutSeconds() {
         return config.synchronization.shutdownTimeoutSeconds;
+    }
+
+    public static int synchronization$loginTimeoutSeconds() {
+        return config.synchronization.loginTimeoutSeconds;
     }
 
     public static int synchronization$maxSaveRetries() {
