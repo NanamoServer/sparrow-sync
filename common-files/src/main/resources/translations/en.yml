@@ -68,6 +68,8 @@ log.storage.write_retriable: 'Failed to write the snapshot of <arg:0>, it will b
 log.storage.write_rejected: 'Failed to write the snapshot of <arg:0>, retrying will not help and it needs manual handling'
 log.storage.stale_index_dropped: 'Index layout updated, dropped the old index <arg:0>'
 log.storage.schema_too_new: 'The database schema generation <arg:0> is newer than this plugin supports (<arg:1>). Every server sharing the database must run the same SparrowSync version, update this server first. Shutting the server down.'
+log.redis.ready: 'Connected to Redis'
+log.redis.setup_failed: Failed to connect Redis. Cross server synchronization depends on it, check the redis section. Shutting the server down.
 log.executor.unfinished_tasks: 'The player serial executor shut down with <arg:0> unfinished task(s)'
 log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on thread <arg:0>'

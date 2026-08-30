@@ -1,7 +1,7 @@
 [versions]
 project-version = "beta.1"
-config-version = "2"
-lang-version = "2"
+config-version = "3"
+lang-version = "3"
 
 paper-api = "1.21.8-R0.1-SNAPSHOT"
 asm = "9.9.1"

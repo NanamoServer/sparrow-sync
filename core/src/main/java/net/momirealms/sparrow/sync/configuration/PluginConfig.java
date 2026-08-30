@@ -69,6 +69,14 @@ public final class PluginConfig {
         String forcedLocale = "";
 
         @BlankLineBefore
+        @Comment({
+                "Identifies the cluster this server belongs to",
+                "Every server sharing the same database and Redis must use the same value,",
+                "it prefixes every Redis key so two clusters can share one Redis without interfering"
+        })
+        String clusterId = "main";
+
+        @BlankLineBefore
         @Comment("Synchronization settings")
         SynchronizationOptions synchronization = new SynchronizationOptions();
 
@@ -326,6 +334,11 @@ public final class PluginConfig {
 
     public static boolean debug() {
         return config.debug;
+    }
+
+    @NotNull
+    public static String clusterId() {
+        return config.clusterId;
     }
 
     public static boolean logging$localFile() {

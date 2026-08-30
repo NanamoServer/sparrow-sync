@@ -36,6 +36,7 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mongodb.driver.sync)
+    testImplementation(libs.lettuce.core)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
     testRuntimeOnly(libs.junit.platformLauncher)

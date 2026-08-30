@@ -30,6 +30,8 @@ import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
 import net.momirealms.sparrow.sync.plugin.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.lock.SessionLock;
+import net.momirealms.sparrow.sync.message.RedisConnector;
 import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
@@ -85,10 +87,12 @@ public class SparrowSync implements Plugin {
 
     private final DataRegistry dataRegistry = new DataRegistry();
     private final PlayerSerialExecutor playerExecutor;
-    private SnapshotApplier snapshotApplier; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
-    private StorageProvider storageProvider; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
-    private SnapshotStash snapshotStash;     // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
+    private SnapshotApplier snapshotApplier;
+    private StorageProvider storageProvider;
+    private SnapshotStash snapshotStash;
     private SnapshotService snapshotService;
+    private RedisConnector redisConnector;
+    private SessionLock sessionLock;
     private SessionManager sessionManager;
     private PacketConfigGate packetConfigGate;
 
@@ -142,7 +146,8 @@ public class SparrowSync implements Plugin {
             Bukkit.getServer().shutdown();
             return;
         }
-        // 启动存储
+        // 链接 Redis 与 持久化存储
+        this.setupRedis();
         this.setupStorage();
         this.successfullyLoaded = true;
     }
@@ -219,6 +224,7 @@ public class SparrowSync implements Plugin {
 
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
+        if (this.redisConnector != null) this.redisConnector.shutdown();
         if (this.storageProvider != null) this.storageProvider.shutdown();
         if (this.dependencyManager != null) this.dependencyManager.shutdown();
         if (this.logger != null) this.logger.close();
@@ -298,6 +304,20 @@ public class SparrowSync implements Plugin {
             }
         } catch (Throwable throwable) {
             this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED), throwable);
+            Bukkit.getServer().shutdown();
+        }
+    }
+
+    /**
+     * 建立 Redis 连接并装配跨服会话锁, 连不上与数据库同规格关闭服务器.
+     */
+    private void setupRedis() {
+        try {
+            this.redisConnector = new RedisConnector(PluginConfig.redis(), this.logger);
+            this.redisConnector.initialize();
+            this.sessionLock = new SessionLock(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId());
+        } catch (Throwable throwable) {
+            this.logger.error(TranslationManager.console(LogConstants.REDIS_SETUP_FAILED), throwable);
             Bukkit.getServer().shutdown();
         }
     }
@@ -610,6 +630,14 @@ public class SparrowSync implements Plugin {
 
     public SessionManager sessionManager() {
         return this.sessionManager;
+    }
+
+    public RedisConnector redisConnector() {
+        return this.redisConnector;
+    }
+
+    public SessionLock sessionLock() {
+        return this.sessionLock;
     }
 
     public StorageProvider storageProvider() {

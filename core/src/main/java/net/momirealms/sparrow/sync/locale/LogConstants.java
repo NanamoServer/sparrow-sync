@@ -28,6 +28,9 @@ public interface LogConstants {
     String STORAGE_STALE_INDEX_DROPPED = "log.storage.stale_index_dropped";
     String STORAGE_SCHEMA_TOO_NEW = "log.storage.schema_too_new";
 
+    String REDIS_READY = "log.redis.ready";
+    String REDIS_SETUP_FAILED = "log.redis.setup_failed";
+
     String EXECUTOR_UNFINISHED_TASKS = "log.executor.unfinished_tasks";
     String EXECUTOR_DRAINING = "log.executor.draining";
     String EXECUTOR_TASK_FAILED = "log.executor.task_failed";
