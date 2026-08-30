@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.sync.session.gate;
 
 import com.destroystokyo.paper.profile.PlayerProfile;
+import io.netty.channel.Channel;
+import io.netty.util.AttributeKey;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacket;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
@@ -31,6 +33,8 @@ import java.util.concurrent.TimeoutException;
 
 @SuppressWarnings("UnstableApiUsage")
 public final class PacketConfigGate {
+    private static final AttributeKey<Boolean> GATE_PASSED = AttributeKey.valueOf(PacketConfigGate.class, "gate-passed");
+
     private final SparrowSync plugin;
     private final SessionManager sessionManager;
     private final SnapshotService snapshotService;
@@ -54,7 +58,8 @@ public final class PacketConfigGate {
 
     // 运行在连接的 eventLoop 上, 不得阻塞
     private void onFinishConfiguration(NetworkUser user, NMSPacketEvent event) {
-        if (!(user.channel().pipeline().get("packet_handler") instanceof Connection connection)) return;
+        Channel channel = user.channel();
+        if (!(channel.pipeline().get("packet_handler") instanceof Connection connection)) return;
         if (!(connection.getPacketListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
         // 获取基本信息
         PlayerProfile profile = listener.paperConnection.getProfile();
@@ -62,21 +67,39 @@ public final class PacketConfigGate {
         String name = profile.getName();
         assert uuid != null;
         assert name != null;
-        // 上一会话的状态决定这次连入的去向
+        // channel 属性区分同一物理连接的 reconfiguration 与新连接快速重入
+        boolean passed = Boolean.TRUE.equals(channel.attr(GATE_PASSED).get());
         PlayerSession existing = this.sessionManager.session(uuid);
-        if (existing != null && existing.state() != SessionState.CLOSED) {
-            // ACTIVE = 在线玩家被送回配置阶段再返回 (Reconfiguration, 插件 API 触发时不处理).
-            if (existing.state() == SessionState.ACTIVE) return;
-            // 上一会话仍在收尾或另一次登录仍在进行就拒绝连入.
+        if (existing != null) {
+            SessionState state = existing.state();
+            // 如果是新连接并且旧连接还未释放, 就在旧连接Channel上注册关闭时进行登录的回调, 然后持续等待.
+            if (passed && (state == SessionState.SAVING || state == SessionState.CLOSED)) {
+                event.cancelled(true);
+                ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
+                existing.released().thenRun(() -> channel.eventLoop().execute(() -> {
+                    if (channel.isActive()) {
+                        this.beginLogin(user, listener, uuid, name);
+                    }
+                }));
+                return;
+            }
             event.cancelled(true);
-            this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, "previous session is still " + existing.state());
-            listener.paperConnection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
+            this.rejectTooFast(listener, uuid, name, "previous session is still " + state);
             return;
         }
-        // 取消数据包, 翻转 isClosed 字段, 取消服务端 15 秒限制.
+        // 扣住终结包, 加载期间暂停 vanilla 的 15 秒 finish 应答计时
         event.cancelled(true);
         ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
-        PlayerSession session = this.sessionManager.open(uuid, name);
+        this.beginLogin(user, listener, uuid, name);
+    }
+
+    // 原子注册会话并启动配置阶段的数据准备
+    private void beginLogin(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
+        PlayerSession session = this.sessionManager.tryOpen(uuid, name);
+        if (session == null) {
+            this.rejectTooFast(listener, uuid, name, "another connection won session registration");
+            return;
+        }
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD, name);
         // 如果配置阶段就断线, 则直接清理掉.
         user.channel().closeFuture().addListener(future -> {
@@ -104,19 +127,31 @@ public final class PacketConfigGate {
                     switch (outcome) {
                         case PreparedOutcome.Failed failed -> this.refuse(listener, session, name, failed.detail());
                         // 无历史的新玩家只放行不暂存, join 段把会话转 ACTIVE
-                        case PreparedOutcome.Empty ignored -> this.release(user, uuid, name);
+                        case PreparedOutcome.Empty ignored -> this.release(user, listener, uuid, name);
                         case PreparedOutcome.Ready ready -> {
                             session.prepared(ready);
-                            this.release(user, uuid, name);
+                            this.release(user, listener, uuid, name);
                         }
                     }
                 });
     }
 
-    // 补发被扣下的终结包.
-    private void release(NetworkUser user, UUID uuid, String name) {
-        this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
-        this.networkManager.send(user, ClientboundFinishConfigurationPacket.INSTANCE);
+    // 恢复 vanilla finish 应答计时并补发终结包
+    private void release(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
+        Channel channel = user.channel();
+        channel.eventLoop().execute(() -> {
+            channel.attr(GATE_PASSED).set(true);
+            ServerCommonPacketListenerImplProxy.INSTANCE.setClosedListenerTime(listener, TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
+            ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, true);
+            this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
+            this.networkManager.send(user, ClientboundFinishConfigurationPacket.INSTANCE);
+        });
+    }
+
+    // 拒绝无法取得会话占位的连接
+    private void rejectTooFast(ServerConfigurationPacketListenerImpl listener, UUID uuid, String name, String reason) {
+        this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, reason);
+        listener.paperConnection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
     }
 
     // 加载失败, 拒绝进服.

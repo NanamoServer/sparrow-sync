@@ -10,4 +10,7 @@ public interface ServerCommonPacketListenerImplProxy {
 
     @FieldSetter(name = "closed", activeIf = "min_version=1.20.6")
     void setClosed(Object target, boolean closed);
+
+    @FieldSetter(name = "closedListenerTime", activeIf = "min_version=1.20.6")
+    void setClosedListenerTime(Object target, long closedListenerTime);
 }

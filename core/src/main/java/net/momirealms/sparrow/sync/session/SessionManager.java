@@ -23,11 +23,10 @@ public final class SessionManager {
         this.logger = logger;
     }
 
-    @NotNull
-    public PlayerSession open(@NotNull UUID uuid, @NotNull String name) {
+    @Nullable
+    public PlayerSession tryOpen(@NotNull UUID uuid, @NotNull String name) {
         PlayerSession session = new PlayerSession(uuid, name);
-        this.sessions.put(uuid, session);
-        return session;
+        return this.sessions.putIfAbsent(uuid, session) == null ? session : null;
     }
 
     /**
@@ -70,6 +69,7 @@ public final class SessionManager {
     private void release(PlayerSession session) {
         this.sessions.remove(session.uuid(), session);
         // todo 释放分布式会话锁
+        session.released().complete(null);
     }
 
     @Nullable

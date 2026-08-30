@@ -5,10 +5,13 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public final class PlayerSession {
     private final UUID uuid;
     private final String playerName;
+    // 一次性的 “会话释放完成” 信号, 可以用 thenRun 注册 Channel 关闭时的回调.
+    private final CompletableFuture<Void> released = new CompletableFuture<>();
 
     private SessionState state = SessionState.PREPARING;
     private long lastTransitionAt = System.currentTimeMillis();
@@ -27,6 +30,11 @@ public final class PlayerSession {
     @NotNull
     public String playerName() {
         return this.playerName;
+    }
+
+    @NotNull
+    public CompletableFuture<Void> released() {
+        return this.released;
     }
 
     @NotNull
