@@ -51,14 +51,21 @@ public final class SnapshotService {
             // 没有历史的新玩家, 本服状态即权威
             return latest.<PreparedOutcome>map(snapshot ->
                     switch (this.applier.prepare(snapshot)) {
-                        case SnapshotApplier.PreparedSnapshot.Ready ready -> new PreparedOutcome.Ready(ready, System.nanoTime() - loadStart);
+                        case SnapshotApplier.PreparedSnapshot.Ready ready -> {
+                            long asyncNanos = System.nanoTime() - loadStart;
+                            this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, asyncNanos));
+                            yield new PreparedOutcome.Ready(ready, asyncNanos);
+                        }
                         case SnapshotApplier.PreparedSnapshot.Failed failed -> {
                             String detail = failed.key().asString() + ": " + failed.detail();
                             this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, detail);
                             yield new PreparedOutcome.Failed(detail);
                         }
                     }
-            ).orElseGet(PreparedOutcome.Empty::new);
+            ).orElseGet(() -> {
+                this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName);
+                return new PreparedOutcome.Empty();
+            });
         }).whenComplete((outcome, throwable) -> {
             if (throwable != null) this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable));
         });
@@ -70,6 +77,7 @@ public final class SnapshotService {
     @NotNull
     public LoadOutcome applyPrepared(@NotNull Player player, @NotNull SnapshotApplier.PreparedSnapshot.Ready ready, long asyncNanos) {
         long applyStart = System.nanoTime();
+        this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(), LogConstants.SYNC_APPLY_STARTED, player.getName());
         return switch (this.applier.apply(player, ready)) {
             case SnapshotApplier.ApplyResult.Success success -> {
                 this.logger.info(LogCategory.APPLY, player.getUniqueId(), player.getName(),
@@ -121,6 +129,7 @@ public final class SnapshotService {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
         }
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
+        this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_STARTED, player.getName(), cause.name(), snapshot.meta().id().toString());
         CompletableFuture<SaveResult> outcome = new CompletableFuture<>();
         SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart);
         this.inflight.put(outcome, attempt);

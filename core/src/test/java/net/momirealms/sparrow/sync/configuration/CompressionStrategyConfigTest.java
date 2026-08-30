@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * 锁定压缩策略在配置文件里的取值契约. 用与 {@link PluginConfig.SynchronizationOptions} 同款的注解类,
@@ -48,10 +47,12 @@ class CompressionStrategyConfigTest {
     }
 
     @Test
-    void unknownStrategyFailsTheWholeLoad() {
-        // 当前 sparrow-yaml 行为: 未知枚举值让整份配置加载失败而不是回退到默认值.
-        // 上层因此拿不到 config, 一个拼错的取值会连带其余配置一起丢失; 修复在 sparrow-yaml 侧
-        assertThrows(Exception.class, () -> this.load("compression: ZTSD"));
+    void unknownStrategyFallsBackToTheDefault() throws IOException {
+        // sparrow-yaml 1.0.21 起: 未知枚举值不再让整份配置加载失败 —— 有默认值的字段静默保留默认,
+        // 且不拖累同一份文件里的其余字段 (无默认值的枚举字段仍整份失败, 无处可退时不硬塞 null)
+        Section section = this.load("compression: ZTSD\nmax-snapshots: 64");
+        assertEquals(CompressorRegistry.ZSTD, section.compression);
+        assertEquals(64, section.maxSnapshots);
     }
 
     private Section load(String yaml) throws IOException {
@@ -68,5 +69,8 @@ class CompressionStrategyConfigTest {
     public static class Section {
         @Comment("Mirrors the compression field of SynchronizationOptions")
         CompressorRegistry compression = CompressorRegistry.ZSTD;
+
+        @Comment("A bystander field, proves a misspelled enum does not poison the rest of the file")
+        int maxSnapshots = 32;
     }
 }

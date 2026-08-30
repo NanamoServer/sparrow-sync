@@ -35,8 +35,14 @@ public interface LogConstants {
     String SESSION_JOIN = "log.session.join";
     String SESSION_QUIT = "log.session.quit";
 
+    String GATE_HELD = "log.gate.held";
+    String GATE_RELEASED = "log.gate.released";
     String GATE_KICKED = "log.gate.kicked";
 
+    String SYNC_LOAD_READY = "log.sync.load_ready";
+    String SYNC_LOAD_EMPTY = "log.sync.load_empty";
+    String SYNC_APPLY_STARTED = "log.sync.apply_started";
+    String SYNC_SAVE_STARTED = "log.sync.save_started";
     String SYNC_SAVED = "log.sync.saved";
     String SYNC_SAVE_FAILED = "log.sync.save_failed";
     String SYNC_SAVE_PENDING_RETRY = "log.sync.save_pending_retry";

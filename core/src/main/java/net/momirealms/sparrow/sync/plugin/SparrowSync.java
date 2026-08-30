@@ -42,6 +42,7 @@ import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.state.ListSignal;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
@@ -126,19 +127,23 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginBootstrap(BootstrapContext context) {
+        // todo 解决初始化问题, 未来删除
+        ListSignal.wrap(new ArrayList<>()).iterator();
     }
 
     @Override
     public void onPluginLoad() {
-        this.successfullyLoaded = true;
-        this.compatibilityManager.onLoad(); // 集成插件管理器
+        // 集成插件管理器
+        this.compatibilityManager.onLoad();
         // 服务器身份缺失时不放行
         if (ServerConfig.serverId().isEmpty()) {
             this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_MISSING));
             Bukkit.getServer().shutdown();
             return;
         }
-        this.setupStorage();                // 启动存储
+        // 启动存储
+        this.setupStorage();
+        this.successfullyLoaded = true;
     }
 
     @Override

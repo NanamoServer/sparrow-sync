@@ -77,6 +77,7 @@ public final class PacketConfigGate {
         event.cancelled(true);
         ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
         PlayerSession session = this.sessionManager.open(uuid, name);
+        this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD, name);
         // 如果配置阶段就断线, 则直接清理掉.
         user.channel().closeFuture().addListener(future -> {
             if (session.state() == SessionState.PREPARING) {
@@ -103,17 +104,18 @@ public final class PacketConfigGate {
                     switch (outcome) {
                         case PreparedOutcome.Failed failed -> this.refuse(listener, session, name, failed.detail());
                         // 无历史的新玩家只放行不暂存, join 段把会话转 ACTIVE
-                        case PreparedOutcome.Empty ignored -> this.release(user);
+                        case PreparedOutcome.Empty ignored -> this.release(user, uuid, name);
                         case PreparedOutcome.Ready ready -> {
                             session.prepared(ready);
-                            this.release(user);
+                            this.release(user, uuid, name);
                         }
                     }
                 });
     }
 
     // 补发被扣下的终结包.
-    private void release(NetworkUser user) {
+    private void release(NetworkUser user, UUID uuid, String name) {
+        this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
         this.networkManager.send(user, ClientboundFinishConfigurationPacket.INSTANCE);
     }
 
