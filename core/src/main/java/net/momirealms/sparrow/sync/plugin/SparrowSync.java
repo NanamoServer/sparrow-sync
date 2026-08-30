@@ -59,6 +59,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -77,10 +78,10 @@ public class SparrowSync implements Plugin {
     private CommandManager commandManager;
 
     private JavaPlugin javaPlugin;
-    private boolean isReloading;
     private boolean isInitializing;
     private boolean successfullyLoaded = false;
     private boolean successfullyEnabled = false;
+    private final AtomicBoolean reloading = new AtomicBoolean();
 
     private final DataRegistry dataRegistry = new DataRegistry();
     private PlayerSerialExecutor playerExecutor;
@@ -310,16 +311,14 @@ public class SparrowSync implements Plugin {
      * @return 一个异步完成的重载结果对象, 包含成功状态, 异步耗时, 同步耗时和问题数量
      */
     public CompletableFuture<ReloadResult> reloadPlugin(Executor asyncExecutor, Executor syncExecutor) {
+        if (!this.reloading.compareAndSet(false, true)) {
+            return CompletableFuture.completedFuture(ReloadResult.failure());
+        }
         CompletableFuture<ReloadResult> future = new CompletableFuture<>();
         asyncExecutor.execute(() -> {
             long asyncTime = -1;
             int issues = 0;
             try {
-                if (this.isReloading) {
-                    future.complete(ReloadResult.failure());
-                    return;
-                }
-                this.isReloading = true;
                 long startTime = System.currentTimeMillis();
                 this.configurationManager.reload();
                 this.translationManager.reload();
@@ -329,6 +328,7 @@ public class SparrowSync implements Plugin {
                 asyncTime = System.currentTimeMillis() - startTime;
             } catch (Throwable e) {
                 this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
+                this.reloading.set(false);
                 future.complete(ReloadResult.failure());
             } finally {
                 long finalAsyncTime = asyncTime;
@@ -340,12 +340,12 @@ public class SparrowSync implements Plugin {
 
 
                         long syncTime = System.currentTimeMillis() - syncStartTime;
-                        future.complete(ReloadResult.success(finalAsyncTime, syncTime, issues));
+                        this.reloading.set(false);
+                        future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));
                     } catch (Throwable e) {
                         this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
+                        this.reloading.set(false);
                         future.complete(ReloadResult.failure());
-                    } finally {
-                        this.isReloading = false;
                     }
                 });
             }
@@ -548,7 +548,7 @@ public class SparrowSync implements Plugin {
 
     @Override
     public boolean isReloading() {
-        return this.isReloading;
+        return this.reloading.get();
     }
 
     @Override

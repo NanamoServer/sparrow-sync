@@ -5,6 +5,7 @@ import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.translation.Translator;
 import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.util.AdventureHelper;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -73,9 +74,11 @@ public interface TranslationManager {
      * @param locale 目标语言环境, 传入 null 时由实现决定使用当前选定语言
      * @return 翻译后的 MiniMessage 字符串
      */
-    String miniMessageTranslation(String key, @Nullable Locale locale);
+    @NotNull
+    String miniMessageTranslation(@NotNull String key, @Nullable Locale locale);
 
-    default String miniMessageTranslation(String key) {
+    @NotNull
+    default String miniMessageTranslation(@NotNull String key) {
         return miniMessageTranslation(key, null);
     }
 
@@ -86,9 +89,11 @@ public interface TranslationManager {
      * @param locale 目标语言环境, 传入 null 时由实现决定使用当前选定语言
      * @return 渲染后的 Adventure 组件
      */
-    Component render(TranslatableComponent component, @Nullable Locale locale);
+    @NotNull
+    Component render(@NotNull TranslatableComponent component, @Nullable Locale locale);
 
-    default Component render(TranslatableComponent component) {
+    @NotNull
+    default Component render(@NotNull TranslatableComponent component) {
         return render(component, null);
     }
 
@@ -101,20 +106,16 @@ public interface TranslationManager {
      * @param arguments 用于替换翻译模板中索引占位符的参数列表
      * @return 渲染后的纯文本字符串, 若翻译缺失则返回原始键
      */
-    default String plainTranslation(String key, @Nullable Locale locale, String... arguments) {
+    @NotNull
+    default String plainTranslation(@NotNull String key, @Nullable Locale locale, @NotNull String... arguments) {
         String translation = miniMessageTranslation(key, locale);
-        if (translation == null) {
-            return key;
-        }
         Component deserialize = AdventureHelper.customMiniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(arguments).map(Component::text).toList()));
         return AdventureHelper.plainTextContent(deserialize);
     }
 
-    default String plainTranslation(String key, String... arguments) {
+    @NotNull
+    default String plainTranslation(@NotNull String key, @NotNull String... arguments) {
         String translation = miniMessageTranslation(key);
-        if (translation == null) {
-            return key;
-        }
         Component deserialize = AdventureHelper.customMiniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(arguments).map(Component::text).toList()));
         return AdventureHelper.plainTextContent(deserialize);
     }
@@ -126,7 +127,8 @@ public interface TranslationManager {
      * @param locale 形如 `zh_cn` 或 `en_us` 的语言环境字符串
      * @return 解析得到的 `Locale`, 若输入为空则返回 null
      */
-    static @Nullable Locale parseLocale(@Nullable String locale) {
+    @Nullable
+    static Locale parseLocale(@Nullable String locale) {
         return locale == null || locale.isEmpty() ? null : Translator.parseLocale(locale);
     }
 
@@ -160,7 +162,7 @@ public interface TranslationManager {
      * @param id 翻译键
      * @param args 用于填充索引占位符的参数列表
      */
-    void log(String id, String... args);
+    void log(@NotNull String id, @NotNull String... args);
 
     /**
      * 获取客户端语言数据Map的只读视图.

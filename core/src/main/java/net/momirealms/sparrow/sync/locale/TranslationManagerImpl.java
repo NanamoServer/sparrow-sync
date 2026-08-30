@@ -33,16 +33,14 @@ public final class TranslationManagerImpl implements TranslationManager {
     private static final Locale DEFAULT_LOCALE = Locale.ENGLISH;
     static TranslationManager instance;
     private final Plugin plugin;
-    private final Set<Locale> installed = ConcurrentHashMap.newKeySet();
     private final Path translationsDirectory;
     private final String langVersion;
     private final Set<String> supportedLanguages;
     private final Map<String, String> translationFallback = new LinkedHashMap<>();
-    private Locale selectedLocale = DEFAULT_LOCALE;
     // LangId -> (TranslationKey -> Value)
-    private final Map<String, ClientLangData> clientLangData = new HashMap<>();
+    private volatile Map<String, ClientLangData> clientLangData = new ConcurrentHashMap<>();
     // TranslationKey -> (Lang -> Value)
-    private final Map<String, ServerLangData> serverLangData = new HashMap<>();
+    private volatile ServerTranslations serverTranslations = new ServerTranslations(DEFAULT_LOCALE, Map.of());
     private Map<Locale, CachedTranslation> cachedTranslations = Map.of();
 
     public TranslationManagerImpl(Plugin plugin) {
@@ -72,7 +70,7 @@ public final class TranslationManagerImpl implements TranslationManager {
      * 延迟处理客户端翻译数据.
      * 当前实现会在全部客户端语言数据注册完成后, 对每个语言包执行一次键处理器展开.
      */
-    public void delayedLoad() {
+    public synchronized void delayedLoad() {
         this.clientLangData.values().forEach(ClientLangData::processTranslations);
     }
 
@@ -80,20 +78,25 @@ public final class TranslationManagerImpl implements TranslationManager {
      * 重新加载全部翻译数据.
      */
     @Override
-    public void reload() {
-        // clear old data
-        this.clientLangData.clear();
-        this.serverLangData.clear();
-        this.installed.clear();
-
-        // save resources
+    public synchronized void reload() {
         for (String lang : this.supportedLanguages) {
             this.plugin.saveResource("translations/" + lang + ".yml");
         }
 
-        this.loadFromFileSystem(this.translationsDirectory);
-        this.loadFromCache();
-        this.setSelectedLocale();
+        Map<Locale, CachedTranslation> cachedTranslations = this.readFromFileSystem(this.translationsDirectory);
+        Map<String, ServerLangData> serverLangData = new HashMap<>();
+        Set<Locale> installed = new HashSet<>();
+        this.loadFromCache(cachedTranslations, serverLangData, installed);
+        LocaleSelection selection = this.selectLocale(installed);
+
+        this.cachedTranslations = cachedTranslations;
+        this.clientLangData = new ConcurrentHashMap<>();
+        // 默认语言与翻译表同代发布, 每次查询只会读到一份完整状态
+        this.serverTranslations = new ServerTranslations(selection.selectedLocale(), Map.copyOf(serverLangData));
+        if (selection.missingLocale() != null) {
+            Locale missingLocale = selection.missingLocale();
+            this.plugin.logger().warn(this.plainTranslation(LogConstants.LOCALE_MISSING_FILE, DEFAULT_LOCALE, missingLocale.toString().toLowerCase(Locale.ENGLISH), DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH)));
+        }
     }
 
     /**
@@ -106,13 +109,15 @@ public final class TranslationManagerImpl implements TranslationManager {
      * @return 对应的 MiniMessage 翻译文本, 或原始键
      */
     @Override
-    public String miniMessageTranslation(String key, @Nullable Locale locale) {
-        ServerLangData serverLangData = this.serverLangData.get(key);
+    @NotNull
+    public String miniMessageTranslation(@NotNull String key, @Nullable Locale locale) {
+        ServerTranslations snapshot = this.serverTranslations;
+        ServerLangData serverLangData = snapshot.translations().get(key);
         if (serverLangData == null) {
             return key;
         }
         if (locale == null) {
-            locale = this.selectedLocale;
+            locale = snapshot.selectedLocale();
         }
         return Optional.ofNullable(serverLangData.translate(locale)).orElse(key);
     }
@@ -120,7 +125,7 @@ public final class TranslationManagerImpl implements TranslationManager {
     /**
      * 渲染一个可翻译 Adventure 组件.
      * 该方法会先查询翻译文本, 再根据组件参数决定是否使用 `IndexedArgumentTag` 进行参数填充, 最后保留原组件的 children 结构.
-     * 若翻译为空字符串则返回空组件, 若翻译缺失则回退为原组件或原始键对应结果.
+     * 若翻译为空字符串则返回空组件, 若翻译缺失则以原始键渲染.
      *
      * @param component 需要渲染的可翻译组件
      * @param locale 目标语言环境, 为 null 时使用当前选定语言
@@ -128,11 +133,9 @@ public final class TranslationManagerImpl implements TranslationManager {
      * @throws RuntimeException 当 MiniMessage 解析失败或参数展开失败时, 底层实现可能抛出运行时异常
      */
     @Override
-    public Component render(TranslatableComponent component, @Nullable Locale locale) {
+    @NotNull
+    public Component render(@NotNull TranslatableComponent component, @Nullable Locale locale) {
         String miniMessageTranslation = miniMessageTranslation(component.key(), locale);
-        if (miniMessageTranslation == null) {
-            return component;
-        }
         if (miniMessageTranslation.isEmpty()) {
             return Component.empty();
         }
@@ -147,15 +150,17 @@ public final class TranslationManagerImpl implements TranslationManager {
     }
 
     @Override
-    public void log(String id, String... args) {
+    public void log(@NotNull String id, @NotNull String... args) {
         String translation = miniMessageTranslation(id);
-        if (translation == null || translation.isEmpty()) translation = id;
+        if (translation.isEmpty()) {
+            translation = id;
+        }
         Bukkit.getServer().getConsoleSender().sendMessage(AdventureHelper.miniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(args).map(Component::text).toList())));
     }
 
     @Override
     public Set<String> translationKeys() {
-        return this.serverLangData.keySet();
+        return this.serverTranslations.translations().keySet();
     }
 
     @Override
@@ -164,72 +169,88 @@ public final class TranslationManagerImpl implements TranslationManager {
     }
 
     @Override
-    public void addClientTranslation(String langId, Map<String, String> translations) {
+    public synchronized void addClientTranslation(String langId, Map<String, String> translations) {
+        Map<String, ClientLangData> clientLangData = this.clientLangData;
         // `all`, 向全部已知客户端语言广播追加.
         if ("all".equals(langId)) {
-            ALL_LANG.forEach(lang -> this.clientLangData.computeIfAbsent(lang, k -> new ClientLangData())
+            ALL_LANG.forEach(lang -> clientLangData.computeIfAbsent(lang, k -> new ClientLangData())
                     .addTranslations(translations));
             return;
         }
         // 完整语言标识, 仅向该语言追加.
         if (ALL_LANG.contains(langId)) {
-            this.clientLangData.computeIfAbsent(langId, k -> new ClientLangData())
+            clientLangData.computeIfAbsent(langId, k -> new ClientLangData())
                     .addTranslations(translations);
             return;
         }
         // 仅语言前缀, 向该语言对应的所有国家或地区变体追加.
         List<String> langCountries = LOCALE_2_COUNTRIES.getOrDefault(langId, Collections.emptyList());
         for (String lang : langCountries) {
-            this.clientLangData.computeIfAbsent(langId + "_" + lang, k -> new ClientLangData())
+            clientLangData.computeIfAbsent(langId + "_" + lang, k -> new ClientLangData())
                     .addTranslations(translations);
         }
     }
 
     /**
-     * 将文件系统缓存翻译数据注册到运行期翻译表中.
+     * 从文件缓存组装一份待发布的服务端翻译表.
      * 为提高兼容性, 该方法分两个阶段执行:
      * 第一步先注册仅包含语言代码的语言环境, 避免后续完整语言环境覆盖其回退语义.
      * 第二步再注册包含国家或地区信息的完整语言环境, 并在需要时补充注册仅语言代码版本.
+     *
+     * @param cachedTranslations 已加载的语言文件缓存
+     * @param serverLangData 正在组装的服务端翻译表
+     * @param installed 已载入的语言环境
      */
-    private void loadFromCache() {
+    private void loadFromCache(
+            Map<Locale, CachedTranslation> cachedTranslations,
+            Map<String, ServerLangData> serverLangData,
+            Set<Locale> installed
+    ) {
         // 第一阶段, 先注册所有没有国家或地区的 locale.
-        for (Map.Entry<Locale, CachedTranslation> entry : this.cachedTranslations.entrySet()) {
+        for (Map.Entry<Locale, CachedTranslation> entry : cachedTranslations.entrySet()) {
             Locale locale = entry.getKey();
             // 只处理没有国家或地区的 locale.
             if (locale.getCountry().isEmpty()) {
-                registerAll(locale, entry.getValue().translations);
+                this.registerAll(locale, entry.getValue().translations, serverLangData, installed);
             }
         }
 
         // 第二阶段, 再注册其他完整的 locale, 即包含国家或地区信息的 locale.
-        for (Map.Entry<Locale, CachedTranslation> entry : this.cachedTranslations.entrySet()) {
+        for (Map.Entry<Locale, CachedTranslation> entry : cachedTranslations.entrySet()) {
             Locale locale = entry.getKey();
             // 跳过已在第一阶段处理过的无国家 locale.
             if (!locale.getCountry().isEmpty()) {
-                registerAll(locale, entry.getValue().translations);
+                this.registerAll(locale, entry.getValue().translations, serverLangData, installed);
 
                 // 如有需要, 也为完整 locale 补一个仅语言代码的兼容版本.
                 Locale localeWithoutCountry = Locale.of(locale.getLanguage());
-                if (!this.installed.contains(localeWithoutCountry) && !localeWithoutCountry.equals(DEFAULT_LOCALE)) {
-                    registerAll(localeWithoutCountry, entry.getValue().translations);
+                if (!installed.contains(localeWithoutCountry) && !localeWithoutCountry.equals(DEFAULT_LOCALE)) {
+                    this.registerAll(localeWithoutCountry, entry.getValue().translations, serverLangData, installed);
                 }
             }
         }
     }
 
     /**
-     * 将某个语言环境下的全部翻译键值对注册到服务端翻译表中.
+     * 将某个语言环境下的全部翻译键值对注册到待发布的服务端翻译表中.
      * 若某个翻译键尚未出现, 会先创建 `ServerLangData` 并注入回退文本, 再将当前语言环境对应的翻译加入其中.
      *
      * @param locale 需要注册的语言环境
      * @param cachedTranslation 该语言环境下缓存的全部翻译键值对
+     * @param serverLangData 正在构建的服务端翻译表
+     * @param installed 已载入的语言环境
      */
-    private void registerAll(Locale locale, Map<String, String> cachedTranslation) {
+    private void registerAll(
+            Locale locale,
+            Map<String, String> cachedTranslation,
+            Map<String, ServerLangData> serverLangData,
+            Set<Locale> installed
+    ) {
         for (Map.Entry<String, String> translation : cachedTranslation.entrySet()) {
-            this.serverLangData.computeIfAbsent(translation.getKey(), k -> new ServerLangData(this.translationFallback.get(translation.getKey())))
+            serverLangData.computeIfAbsent(translation.getKey(), k -> new ServerLangData(this.translationFallback.get(translation.getKey())))
                     .addTranslation(locale, translation.getValue());
         }
-        this.installed.add(locale);
+        installed.add(locale);
     }
 
     /**
@@ -261,13 +282,18 @@ public final class TranslationManagerImpl implements TranslationManager {
      *
      * @param directory 需要扫描的翻译目录
      */
-    public void loadFromFileSystem(Path directory) {
+    public synchronized void loadFromFileSystem(Path directory) {
+        this.cachedTranslations = this.readFromFileSystem(directory);
+    }
+
+    private Map<Locale, CachedTranslation> readFromFileSystem(Path directory) {
         Map<Locale, CachedTranslation> previousTranslations = this.cachedTranslations;
-        this.cachedTranslations = new HashMap<>();
+        Map<Locale, CachedTranslation> loadedTranslations = new HashMap<>();
         try {
             Files.walkFileTree(directory, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE, new SimpleFileVisitor<>() {
                 @Override
-                public @NotNull FileVisitResult visitFile(@NotNull Path path, @NotNull BasicFileAttributes attrs) {
+                @NotNull
+                public FileVisitResult visitFile(@NotNull Path path, @NotNull BasicFileAttributes attrs) {
                     String fileName = path.getFileName().toString();
                     if (Files.isRegularFile(path) && fileName.endsWith(".yml")) {
                         // 检查文件名是否规范
@@ -282,7 +308,7 @@ public final class TranslationManagerImpl implements TranslationManager {
                         long lastModifiedTime = attrs.lastModifiedTime().toMillis();
                         long size = attrs.size();
                         if (cachedFile != null && cachedFile.lastModified() == lastModifiedTime && cachedFile.size() == size) {
-                            TranslationManagerImpl.this.cachedTranslations.put(locale, cachedFile);
+                            loadedTranslations.put(locale, cachedFile);
                         }
                         // 读取文件
                         else {
@@ -301,7 +327,7 @@ public final class TranslationManagerImpl implements TranslationManager {
                                 }
                                 // 缓存
                                 cachedFile = new CachedTranslation(langData, lastModifiedTime, size);
-                                TranslationManagerImpl.this.cachedTranslations.put(locale, cachedFile);
+                                loadedTranslations.put(locale, cachedFile);
                             } catch (IOException e) {
                                 TranslationManagerImpl.this.plugin.logger().error("Error while reading translation file: " + path, e);
                                 return FileVisitResult.CONTINUE;
@@ -314,6 +340,7 @@ public final class TranslationManagerImpl implements TranslationManager {
         } catch (IOException e) {
             this.plugin.logger().warn("Failed to load translation file from folder", e);
         }
+        return loadedTranslations;
     }
 
     /**
@@ -366,28 +393,24 @@ public final class TranslationManagerImpl implements TranslationManager {
     /**
      * 选择当前生效的服务端语言环境.
      * 优先级依次为强制指定语言, 本机完整语言环境, 本机仅语言代码环境, 最后回退到默认英语.
-     * 若无法找到对应语言文件, 会输出警告日志.
      */
-    private void setSelectedLocale() {
-        if (PluginConfig.forcedLocale() != null) {
-            this.selectedLocale = PluginConfig.forcedLocale();
-            return;
+    private LocaleSelection selectLocale(Set<Locale> installed) {
+        Locale forcedLocale = PluginConfig.forcedLocale();
+        if (forcedLocale != null) {
+            return new LocaleSelection(forcedLocale, null);
         }
 
         Locale localLocale = Locale.getDefault();
-        if (this.installed.contains(localLocale)) {
-            this.selectedLocale = localLocale;
-            return;
+        if (installed.contains(localLocale)) {
+            return new LocaleSelection(localLocale, null);
         }
 
         Locale langLocale = Locale.of(localLocale.getLanguage());
-        if (this.installed.contains(langLocale)) {
-            this.selectedLocale = langLocale;
-            return;
+        if (installed.contains(langLocale)) {
+            return new LocaleSelection(langLocale, null);
         }
 
-        this.selectedLocale = DEFAULT_LOCALE;
-        this.plugin.logger().warn(this.plainTranslation(LogConstants.LOCALE_MISSING_FILE, DEFAULT_LOCALE, localLocale.toString().toLowerCase(Locale.ENGLISH), DEFAULT_LOCALE.toString().toLowerCase(Locale.ENGLISH)));
+        return new LocaleSelection(DEFAULT_LOCALE, localLocale);
     }
 
     /**
@@ -429,7 +452,7 @@ public final class TranslationManagerImpl implements TranslationManager {
             if (node.isSequence()) {
                 StringJoiner stringJoiner = new StringJoiner("<reset><newline>");
                 SequenceNode sequenceNode = (SequenceNode) node;
-                sequenceNode.value().forEach(yamlNode -> stringJoiner.add(String.valueOf(node.value())));
+                sequenceNode.value().forEach(yamlNode -> stringJoiner.add(String.valueOf(yamlNode.value())));
                 data.put(langKey, stringJoiner.toString());
             } else if (node.isScalar()) {
                 data.put(langKey, node.get(String.class));
@@ -448,5 +471,11 @@ public final class TranslationManagerImpl implements TranslationManager {
      * @param size 文件大小, 单位为字节
      */
     private record CachedTranslation(Map<String, String> translations, long lastModified, long size) {
+    }
+
+    private record ServerTranslations(@NotNull Locale selectedLocale, @NotNull Map<String, ServerLangData> translations) {
+    }
+
+    private record LocaleSelection(@NotNull Locale selectedLocale, @Nullable Locale missingLocale) {
     }
 }
