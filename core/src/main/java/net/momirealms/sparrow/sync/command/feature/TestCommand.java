@@ -26,6 +26,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
@@ -77,6 +78,8 @@ public final class TestCommand extends BukkitCommandFeature {
                         case PIN -> this.pinTest(context, true);
                         case UNPIN -> this.pinTest(context, false);
                         case ROTATE -> this.rotateTest(context);
+                        case KILL -> this.killTest(context);
+                        case REVIVE -> this.reviveTest(context);
                     }
                 });
     }
@@ -94,7 +97,9 @@ public final class TestCommand extends BukkitCommandFeature {
         LIST,       // 列出最近 count 份快照元数据, 与数据库对照
         PIN,        // 固定最新一份, 配合 ROTATE 验证豁免
         UNPIN,
-        ROTATE      // 手动触发一次轮转
+        ROTATE,     // 手动触发一次轮转
+        KILL,       // 静默杀死: 纯状态写入不走死亡流程, 构造/演示 Q8 的"快照死"象限
+        REVIVE      // 从死亡状态经正常重生流程复活, 便于反复测试
     }
 
     // ---- SMOKE: 对执行者走一遍完整链路 —— 采集, 双形态编解码往返, 扰动玩家状态, 应用还原, 再采集逐类型比对.
@@ -449,6 +454,36 @@ public final class TestCommand extends BukkitCommandFeature {
             context.sender().sendMessage(Component.text("console must specify a player: /sparrow-sync test <case> <player>", NamedTextColor.RED));
         }
         return target;
+    }
+
+    // ---- KILL / REVIVE: Q8 四象限的真机验收原语, 静默改写死活状态以构造各象限的初态.
+
+    // 与 HealthDataType 的"快照死"分支同一套写入: 若它正确, 这里也应当无死亡消息, 无掉落, 且重生按钮可用
+    private void killTest(CommandContext<CommandSender> context) {
+        CommandSender sender = context.sender();
+        Player target = target(context);
+        if (target == null) return;
+        target.getScheduler().run(plugin().javaPlugin(), task -> {
+            CraftPlayer craft = (CraftPlayer) target;
+            craft.setRealHealth(0.0);
+            craft.updateScaledHealth(true);
+            send(sender, "[PASS] silently killed " + target.getName() + ", expect: death screen, working respawn button, no death message, no drops", true);
+        }, null);
+    }
+
+    private void reviveTest(CommandContext<CommandSender> context) {
+        CommandSender sender = context.sender();
+        Player target = target(context);
+        if (target == null) return;
+        target.getScheduler().run(plugin().javaPlugin(), task -> {
+            if (target.getHealth() > 0.0) {
+                send(sender, "[PASS] " + target.getName() + " is alive, nothing to revive", true);
+                return;
+            }
+            // 在线玩家的客户端可能停在死亡界面, 必须走正常重生流程而不是纯状态写入 (Q8 的 restore 警告)
+            target.spigot().respawn();
+            send(sender, "[PASS] respawned " + target.getName() + " through the normal respawn flow", true);
+        }, null);
     }
 
     private SnapshotService readyService(CommandSender sender) {
