@@ -11,10 +11,12 @@ import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -141,21 +143,22 @@ public final class SnapshotService {
     // 提交落库请求, 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败.
     private void submitSave(SaveAttempt attempt, CompletableFuture<SaveResult> outcome) {
         long submitAt = System.nanoTime();
-        CompletableFuture<SaveResult> save;
+        CompletableFuture<SaveOutcome> save;
         try {
-            save = this.storage.saveSnapshot(attempt.snapshot());
+            save = this.storage.saveSnapshotOutcome(attempt.snapshot());
         } catch (RejectedExecutionException exception) {
             // 关服排空期间执行器拒收新任务, 这份快照留给本地备份
-            this.abandon(attempt, SaveResult.RETRY_LATER, outcome);
+            this.abandon(attempt, SaveResult.RETRY_LATER, null, outcome);
             return;
         }
-        save.whenComplete((result, throwable) -> {
+        save.whenComplete((saved, throwable) -> {
             // 保存失败
             if (throwable != null) {
                 this.logger.error(LogCategory.SAVE, attempt.player(), attempt.playerName(), throwable, LogConstants.SYNC_SAVE_FAILED, attempt.playerName());
                 outcome.completeExceptionally(throwable);
                 return;
             }
+            SaveResult result = saved.result();
             // 已保存, 轮转快照
             if (result.stored()) {
                 this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
@@ -164,13 +167,33 @@ public final class SnapshotService {
                 return;
             }
             // 可重试
-            if (result.retriable() && attempt.retryAllowed()) {
-                if (attempt.worthLogging()) this.logger.warn(LogCategory.RETRY, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
-                this.scheduleRetry(attempt.next(), outcome);
-                return;
+            if (result.retriable()) {
+                logRetry(this.logger, attempt, saved.failure());
+                if (attempt.retryAllowed()) {
+                    this.scheduleRetry(attempt.next(), outcome);
+                    return;
+                }
             }
-            this.abandon(attempt, result, outcome);
+            this.abandon(attempt, result, saved.failure(), outcome);
         });
+    }
+
+    static void logRetry(@NotNull SyncLogger logger, @NotNull SaveAttempt attempt, @Nullable Throwable failure) {
+        if (!attempt.retryAllowed() || !attempt.worthLogging()) return;
+        if (attempt.number() == 1 && failure != null) {
+            logger.warnWithFileCause(LogCategory.RETRY, attempt.player(), attempt.playerName(), failure, LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
+            return;
+        }
+        logger.warn(LogCategory.RETRY, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
+    }
+
+    static void logFinalFailure(@NotNull SyncLogger logger, @NotNull SaveAttempt attempt, @NotNull SaveResult result, @Nullable Throwable failure) {
+        String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
+        if (failure != null) {
+            logger.errorWithFileCause(LogCategory.RETRY, attempt.player(), attempt.playerName(), failure, key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
+            return;
+        }
+        logger.error(LogCategory.RETRY, attempt.player(), attempt.playerName(), key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
     }
 
     // 冷却交给执行器, 任务带着就绪时刻排在队尾, 到点之前不占线程, 同桶的其他玩家照常推进
@@ -180,14 +203,13 @@ public final class SnapshotService {
                     () -> this.submitSave(attempt, outcome), attempt.cooldownMillis(), TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException exception) {
             // 关服排空期间执行器拒收新任务, 这份快照留给本地备份
-            this.abandon(attempt, SaveResult.RETRY_LATER, outcome);
+            this.abandon(attempt, SaveResult.RETRY_LATER, null, outcome);
         }
     }
 
     // 重试到此为止, 快照落盘本地, 可重试的进 pending 下次启动插回, 其余进 exception 等管理员处置
-    private void abandon(SaveAttempt attempt, SaveResult result, CompletableFuture<SaveResult> outcome) {
-        String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
-        this.logger.error(LogCategory.RETRY, attempt.player(), attempt.playerName(), key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
+    private void abandon(SaveAttempt attempt, SaveResult result, @Nullable Throwable failure, CompletableFuture<SaveResult> outcome) {
+        logFinalFailure(this.logger, attempt, result, failure);
         this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
         outcome.complete(result);
     }

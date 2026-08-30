@@ -74,6 +74,15 @@ class SaveAttemptTest {
         assertEquals(first.number() + 1, second.number());
     }
 
+    @Test
+    void retryLoggingUsesTheFirstAndEveryTenthAttempt() {
+        SaveAttempt attempt = attemptWith(-1);
+        for (int number = 1; number <= 20; number++) {
+            assertEquals(number == 1 || number % 10 == 0, attempt.worthLogging(), "attempt " + number);
+            attempt = attempt.next();
+        }
+    }
+
     private static SaveAttempt attemptWith(int maxRetries) {
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(UUID.randomUUID())

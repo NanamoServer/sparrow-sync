@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery.PinFilter;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
@@ -82,6 +83,14 @@ public interface StorageProvider {
     CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot);
 
     /**
+     * 写入快照并保留可重试失败的原始原因, 供重试编排层收敛日志.
+     */
+    @NotNull
+    default CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot) {
+        return this.saveSnapshot(snapshot).thenApply(result -> new SaveOutcome(result, null));
+    }
+
+    /**
      * 轮转玩家的历史快照: 未固定的快照多于 maxUnpinned 时删除采集时刻最早的超量部分, 固定快照永不轮转.
      *
      * @return 删除的快照数
@@ -118,9 +127,11 @@ public interface StorageProvider {
     @NotNull
     CompletableFuture<Optional<UUID>> lookupUser(@NotNull String name);
 
-    /**
-     * 快照写入结果.
-     */
+    /** 一次写入的分类结果与可重试失败原因. */
+    record SaveOutcome(@NotNull SaveResult result, @Nullable Throwable failure) {
+    }
+
+    /** 快照写入结果. */
     enum SaveResult {
         /** 落库, 且是该玩家目前采集时刻最晚的一份. 在线保存的正常结果. */
         SAVED,

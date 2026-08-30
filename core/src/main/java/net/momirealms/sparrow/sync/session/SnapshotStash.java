@@ -8,6 +8,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.jetbrains.annotations.NotNull;
 
@@ -103,19 +104,23 @@ public final class SnapshotStash {
             this.moveToException(file, "corrupted");
             return RestoreOutcome.DISCARDED;
         }
-        SaveResult result;
+        SaveOutcome saved;
         try {
-            result = storage.saveSnapshot(valid.snapshot()).join();
+            saved = storage.saveSnapshotOutcome(valid.snapshot()).join();
         } catch (RuntimeException exception) {
             this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
+        SaveResult result = saved.result();
         // 落库结果三分: 已在库中的删掉文件, 数据库不可用的整轮收工, 被拒的移去给管理员
         if (result.stored()) {
             this.delete(file);
             return RestoreOutcome.RESTORED;
         }
         if (result.retriable()) {
+            if (saved.failure() != null) {
+                this.logger.file(LogCategory.STORAGE, valid.snapshot().meta().player(), null, saved.failure(), LogConstants.STORAGE_WRITE_RETRIABLE, valid.snapshot().meta().player().toString());
+            }
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
         this.logger.error(LogCategory.STASH, LogConstants.STASH_RESTORE_REJECTED, file.getFileName().toString(), result.name());

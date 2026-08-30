@@ -2,7 +2,10 @@ package net.momirealms.sparrow.sync.storage.mongo;
 
 import com.mongodb.*;
 import com.mongodb.client.*;
-import com.mongodb.client.model.*;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.model.Sorts;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
@@ -173,6 +176,12 @@ public final class MongoStorageProvider implements StorageProvider {
     @Override
     @NotNull
     public CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
+        return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot) {
         return CompletableFuture.supplyAsync(() -> this.insert(snapshot), this.serialExecutor.executor(snapshot.meta().player()));
     }
 
@@ -233,21 +242,23 @@ public final class MongoStorageProvider implements StorageProvider {
 
     // 单份和批量写入共用这里的编码与大小检查
     // 写入成功后再看一次最新快照, 让调用方知道它是否落进了历史中段
-    private SaveResult insert(Snapshot snapshot) {
+    private SaveOutcome insert(Snapshot snapshot) {
         SnapshotMeta meta = snapshot.meta();
         Document document;
         // 编码阶段
         try {
             document = this.codec.encode(snapshot);
         } catch (Throwable throwable) {
+            SaveResult result = MongoFailureClassifier.classify(throwable);
+            if (result.retriable()) return new SaveOutcome(result, throwable);
             this.logger.error(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_ENCODE_FAILED, meta.player().toString());
-            return MongoFailureClassifier.classify(throwable);
+            return new SaveOutcome(result, null);
         }
         // 写前守卫, 16 MB 文档上限检查
         long payload = payloadBytes(document);
         if (payload > MAX_PAYLOAD_BYTES) {
             this.logger.error(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(payload));
-            return SaveResult.REJECTED_OVERSIZED;
+            return new SaveOutcome(SaveResult.REJECTED_OVERSIZED, null);
         }
         // 开写数据
         try {
@@ -259,9 +270,9 @@ public final class MongoStorageProvider implements StorageProvider {
             // insertOne 只报撞了唯一索引, 不报撞的是哪一条. 查一次 _id 才能确认这份快照真的在库里, 否则任何其他来源的写入失败都会被当成 DUPLICATE, 导致数据静默丢失
             if (this.snapshotCollection().find(byId(meta.id())).projection(Projections.include(DocumentSnapshotCodec.FIELD_ID)).first() == null) {
                 this.logger.error(LogCategory.STORAGE, meta.player(), null, exception, LogConstants.STORAGE_CONSTRAINT_CONFLICT, meta.player().toString());
-                return SaveResult.REJECTED_MALFORMED;
+                return new SaveOutcome(SaveResult.REJECTED_MALFORMED, null);
             }
-            return SaveResult.DUPLICATE;
+            return new SaveOutcome(SaveResult.DUPLICATE, null);
         } catch (Throwable throwable) {
             return this.failed(meta, throwable);
         }
@@ -272,24 +283,23 @@ public final class MongoStorageProvider implements StorageProvider {
                 .projection(Projections.include(DocumentSnapshotCodec.FIELD_ID, DocumentSnapshotCodec.FIELD_TIMESTAMP, DocumentSnapshotCodec.FIELD_SERVER))
                 .first();
         if (newest == null || meta.id().equals(newest.get(DocumentSnapshotCodec.FIELD_ID, UUID.class))) {
-            return SaveResult.SAVED;
+            return new SaveOutcome(SaveResult.SAVED, null);
         }
         // 启动恢复时插入旧快照很正常, 在线保存出现乱序通常说明会话锁失效
         this.logger.file(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OUT_OF_ORDER,
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()),
                 readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest)));
-        return SaveResult.SAVED_OUT_OF_ORDER;
+        return new SaveOutcome(SaveResult.SAVED_OUT_OF_ORDER, null);
     }
 
-    // 写入失败按可否重试归类, 存储层知道细节所以日志在这里打全; 可重试的重试进展由保存链播报, 这里只留档
-    private SaveResult failed(SnapshotMeta meta, Throwable throwable) {
+    // 确定性失败在存储边界详细记录, 可重试失败交给保存链按尝试次数收敛
+    private SaveOutcome failed(SnapshotMeta meta, Throwable throwable) {
         SaveResult result = MongoFailureClassifier.classify(throwable);
         if (result.retriable()) {
-            this.logger.file(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_WRITE_RETRIABLE, meta.player().toString());
-        } else {
-            this.logger.error(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_WRITE_REJECTED, meta.player().toString()); // todo 打印的数据全一些, 带上uuid的前几位.
+            return new SaveOutcome(result, throwable);
         }
-        return result;
+        this.logger.error(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_WRITE_REJECTED, meta.player().toString());
+        return new SaveOutcome(result, null);
     }
 
     // 查不到文档就返回空, 已存在但损坏的快照交给调用方处理

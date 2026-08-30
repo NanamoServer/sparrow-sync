@@ -3,17 +3,28 @@ package net.momirealms.sparrow.sync.plugin.logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileLogWriterTest {
@@ -80,21 +91,77 @@ class FileLogWriterTest {
         // Arrange
         FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
         long now = System.currentTimeMillis();
-        writer.submit(now, LogCategory.SAVE, null, null, "kept", null, null);
+        assertTrue(writer.submit(now, LogCategory.SAVE, null, null, "kept", null, null));
 
         // Act
         writer.close();
-        writer.submit(now, LogCategory.SAVE, null, null, "dropped", null, null);
+        assertFalse(writer.submit(now, LogCategory.SAVE, null, null, "dropped", null, null));
 
         // Assert
         String content = Files.readString(this.todayFile(now));
         assertTrue(content.contains("kept"));
-        assertTrue(!content.contains("dropped"));
+        assertFalse(content.contains("dropped"));
+    }
+
+    @Test
+    void continuesAfterOneEntryFailsToFormat() throws IOException {
+        RecordingLogger fallback = new RecordingLogger();
+        FileLogWriter writer = new FileLogWriter(this.directory, fallback);
+        long now = System.currentTimeMillis();
+
+        writer.submit(now, LogCategory.STORAGE, null, null, "broken", null, new BrokenStackTraceException());
+        writer.submit(now, LogCategory.SAVE, null, null, "still written", null, null);
+        writer.close();
+
+        String content = Files.readString(this.todayFile(now));
+        assertEquals(1, fallback.warnings.size());
+        assertTrue(fallback.warnings.getFirst().contains("Failed to format a local log entry"));
+        assertFalse(content.contains("broken"));
+        assertTrue(content.contains("still written"));
+    }
+
+    @Test
+    void reopensWriterAfterIOExceptionEvenWhenCloseAlsoFails() throws Exception {
+        RecordingLogger fallback = new RecordingLogger();
+        AtomicInteger opened = new AtomicInteger();
+        Function<Path, BufferedWriter> factory = file -> {
+            if (opened.incrementAndGet() == 1) return failingWriter();
+            try {
+                return Files.newBufferedWriter(file, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException exception) {
+                throw new UncheckedIOException(exception);
+            }
+        };
+        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM-dd", fallback, factory);
+        long now = System.currentTimeMillis();
+
+        writer.submit(now, LogCategory.STORAGE, null, null, "failed write", null, null);
+        assertTrue(fallback.warning.await(5, TimeUnit.SECONDS));
+        writer.submit(now, LogCategory.STORAGE, null, null, "recovered write", null, null);
+        writer.close();
+
+        assertEquals(2, opened.get());
+        assertTrue(Files.readString(this.todayFile(now)).contains("recovered write"));
     }
 
     private Path todayFile(long epochMillis) {
         LocalDate day = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate();
         return this.directory.resolve(DAY_FORMAT.format(day) + ".log");
+    }
+
+    private static BufferedWriter failingWriter() {
+        return new BufferedWriter(Writer.nullWriter()) {
+
+            @Override
+            public void write(String string, int offset, int length) throws IOException {
+                throw new IOException("write failed");
+            }
+
+            @Override
+            public void close() throws IOException {
+                throw new IOException("close failed");
+            }
+        };
     }
 
     private static final class QuietLogger implements PluginLogger {
@@ -116,6 +183,42 @@ class FileLogWriterTest {
 
         @Override
         public void error(String s, Throwable t) {
+        }
+    }
+
+    private static final class RecordingLogger implements PluginLogger {
+        private final List<String> warnings = new ArrayList<>();
+        private final CountDownLatch warning = new CountDownLatch(1);
+
+        @Override
+        public void info(String s) {
+        }
+
+        @Override
+        public void warn(String s) {
+            this.warnings.add(s);
+            this.warning.countDown();
+        }
+
+        @Override
+        public void warn(String s, Throwable t) {
+            this.warn(s);
+        }
+
+        @Override
+        public void error(String s) {
+        }
+
+        @Override
+        public void error(String s, Throwable t) {
+        }
+    }
+
+    private static final class BrokenStackTraceException extends RuntimeException {
+
+        @Override
+        public void printStackTrace(PrintWriter writer) {
+            throw new IllegalStateException("broken stack trace");
         }
     }
 }

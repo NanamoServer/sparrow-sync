@@ -75,6 +75,11 @@ public final class SyncLogger implements PluginLogger {
         this.submit(category, player, playerName, key, args, cause);
     }
 
+    public void warnWithFileCause(@NotNull LogCategory category, @Nullable UUID player, @Nullable String playerName, @NotNull Throwable cause, @NotNull String key, @NotNull String... args) {
+        this.console.warn(TranslationManager.console(key, args));
+        this.submit(category, player, playerName, key, args, cause);
+    }
+
     public void error(@NotNull LogCategory category, @NotNull String key, @NotNull String... args) {
         this.error(category, null, null, key, args);
     }
@@ -86,6 +91,11 @@ public final class SyncLogger implements PluginLogger {
 
     public void error(@NotNull LogCategory category, @Nullable UUID player, @Nullable String playerName, @NotNull Throwable cause, @NotNull String key, @NotNull String... args) {
         this.console.error(TranslationManager.console(key, args), cause);
+        this.submit(category, player, playerName, key, args, cause);
+    }
+
+    public void errorWithFileCause(@NotNull LogCategory category, @Nullable UUID player, @Nullable String playerName, @NotNull Throwable cause, @NotNull String key, @NotNull String... args) {
+        this.console.error(TranslationManager.console(key, args));
         this.submit(category, player, playerName, key, args, cause);
     }
 

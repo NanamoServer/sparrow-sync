@@ -8,6 +8,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class FileLogWriter implements AutoCloseable {
@@ -43,11 +45,12 @@ public final class FileLogWriter implements AutoCloseable {
     private final Path directory;
     private final DateTimeFormatter timeFormat;
     private final DateTimeFormatter dayFormat;
+    private final Function<Path, BufferedWriter> writerFactory;
     private final ZoneId zone = ZoneId.systemDefault();
     private final PluginLogger fallback; // 磁盘写不进去时的告警出口, 必须是纯控制台的实现
     private final LinkedBlockingQueue<Entry> queue = new LinkedBlockingQueue<>();
     private final Thread worker;
-    private volatile boolean closed;
+    private boolean closed;
 
     // 以下状态只被 worker 线程触碰
     private BufferedWriter writer;
@@ -59,10 +62,15 @@ public final class FileLogWriter implements AutoCloseable {
     }
 
     public FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, @NotNull PluginLogger fallback) {
+        this(directory, timePattern, fileDatePattern, fallback, FileLogWriter::openWriter);
+    }
+
+    FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, @NotNull PluginLogger fallback, @NotNull Function<Path, BufferedWriter> writerFactory) {
         this.directory = directory;
         this.fallback = fallback;
         this.timeFormat = pattern(timePattern, DEFAULT_TIME_PATTERN, fallback);
         this.dayFormat = pattern(fileDatePattern, DEFAULT_DAY_PATTERN, fallback);
+        this.writerFactory = writerFactory;
         this.worker = new Thread(this::drainLoop, "sparrow-sync-file-log");
         this.worker.setDaemon(true);
         this.worker.start();
@@ -84,63 +92,101 @@ public final class FileLogWriter implements AutoCloseable {
     }
 
     // 时间由参数给出, 供测试驱动跨天滚动
-    void submit(long epochMillis, @NotNull LogCategory category, @Nullable UUID player, @Nullable String playerName,
-                @NotNull String text, @Nullable String[] args, @Nullable Throwable cause) {
-        if (this.closed) return;
-        this.queue.offer(new Entry(epochMillis, category, player, playerName, text, args, cause));
+    boolean submit(
+            long epochMillis,
+            @NotNull LogCategory category,
+            @Nullable UUID player,
+            @Nullable String playerName,
+            @NotNull String text,
+            @Nullable String[] args,
+            @Nullable Throwable cause
+    ) {
+        synchronized (this) {
+            if (this.closed) return false;
+            this.queue.offer(new Entry(epochMillis, category, player, playerName, text, args, cause));
+            return true;
+        }
     }
 
     private void drainLoop() {
         List<Entry> batch = new ArrayList<>(MAX_BATCH);
-        while (true) {
-            try {
-                batch.add(this.queue.take());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                this.closeWriter();
-                return;
+        try {
+            while (true) {
+                try {
+                    batch.add(this.queue.take());
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                this.queue.drainTo(batch, MAX_BATCH - 1);
+                boolean closing = this.writeBatch(batch);
+                batch.clear();
+                if (closing) return;
             }
-            this.queue.drainTo(batch, MAX_BATCH - 1);
-            boolean closing = this.writeBatch(batch);
-            batch.clear();
-            if (closing) {
-                this.closeWriter();
-                return;
+        } finally {
+            synchronized (this) {
+                this.closed = true;
+                this.queue.clear();
             }
+            this.closeWriter();
         }
     }
 
-    // 返回 true 表示批内遇到了关闭信号, 信号之前的条目已经写出
+    // 关闭信号位于最后一批末尾, 返回 true 后 worker 可以收尾
     private boolean writeBatch(List<Entry> batch) {
+        boolean closing = batch.get(batch.size() - 1) == CLOSE_SIGNAL;
+        int size = closing ? batch.size() - 1 : batch.size();
         try {
-            for (int i = 0; i < batch.size(); i++) {
+            for (int i = 0; i < size; i++) {
                 Entry entry = batch.get(i);
-                if (entry == CLOSE_SIGNAL) {
-                    if (this.writer != null) this.writer.flush();
-                    return true;
+                String line;
+                try {
+                    line = this.format(entry);
+                } catch (RuntimeException exception) {
+                    this.fallback.warn("Failed to format a local log entry, the entry was dropped", exception);
+                    continue;
                 }
                 this.ensureWriter(Instant.ofEpochMilli(entry.epochMillis()).atZone(this.zone).toLocalDate());
-                this.writer.write(this.format(entry));
+                this.writer.write(line);
             }
-            if (this.writer != null) this.writer.flush();
-            this.failureReported = false;
-        } catch (IOException e) {
+            if (this.writer != null) {
+                this.writer.flush();
+                this.failureReported = false;
+            }
+        } catch (IOException exception) {
+            this.closeWriter();
             // 首次失败告警一次, 恢复前的后续失败静默, 磁盘回来后自愈
             if (!this.failureReported) {
                 this.failureReported = true;
-                this.fallback.warn("Failed to write the local log file, entries are dropped until the disk recovers", e);
+                this.fallback.warn("Failed to write the local log file, entries are dropped until the disk recovers", exception);
             }
         }
-        return false;
+        return closing;
     }
 
     private void ensureWriter(LocalDate day) throws IOException {
         if (this.writer != null && day.equals(this.writerDay)) return;
-        if (this.writer != null) this.writer.close();
+        BufferedWriter previous = this.writer;
+        this.writer = null;
+        this.writerDay = null;
+        if (previous != null) {
+            previous.close();
+        }
         Files.createDirectories(this.directory);
-        this.writer = Files.newBufferedWriter(this.directory.resolve(this.dayFormat.format(day) + ".log"),
-                StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        try {
+            this.writer = this.writerFactory.apply(this.directory.resolve(this.dayFormat.format(day) + ".log"));
+        } catch (UncheckedIOException exception) {
+            throw exception.getCause();
+        }
         this.writerDay = day;
+    }
+
+    private static BufferedWriter openWriter(Path file) {
+        try {
+            return Files.newBufferedWriter(file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
     }
 
     private String format(Entry entry) {
@@ -173,20 +219,25 @@ public final class FileLogWriter implements AutoCloseable {
         try {
             if (this.writer != null) {
                 this.writer.close();
-                this.writer = null;
             }
         } catch (IOException ignored) {
+        } finally {
+            this.writer = null;
+            this.writerDay = null;
         }
     }
 
     @Override
     public void close() {
-        if (this.closed) return;
-        this.closed = true;
-        this.queue.offer(CLOSE_SIGNAL);
+        synchronized (this) {
+            if (!this.closed) {
+                this.closed = true;
+                this.queue.offer(CLOSE_SIGNAL);
+            }
+        }
         try {
             this.worker.join(3000L);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
     }
