@@ -2,8 +2,8 @@ package net.momirealms.sparrow.sync.data;
 
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataDeclaration;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
@@ -24,9 +24,9 @@ import java.util.Map;
 public final class SnapshotApplier {
     private final Map<DataKey, PlayerDataType<?>> types;
     private final List<DataKey> applyOrder;
-    private final PluginLogger logger;
+    private final SyncLogger logger;
 
-    public SnapshotApplier(@NotNull DataRegistry registry, @NotNull PluginLogger logger) {
+    public SnapshotApplier(@NotNull DataRegistry registry, @NotNull SyncLogger logger) {
         this.logger = logger;
         if (registry.frozen()) throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
         registry.freeze();
@@ -59,12 +59,12 @@ public final class SnapshotApplier {
             } catch (Throwable throwable) {
                 // 关键类型采集失败则丢弃整份快照.
                 if (type.critical()) {
-                    this.logger.error(TranslationManager.console(LogConstants.DATA_CAPTURE_FAILED, key.asString(), player.getName()), throwable);
+                    this.logger.error(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_FAILED, key.asString(), player.getName());
                     return new CaptureResult.Failed(key, String.valueOf(throwable.getMessage()));
                 }
                 // 非关键类型采集失败则跳过.
                 skipped.add(key);
-                this.logger.warn(TranslationManager.console(LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName()), throwable);
+                this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName());
             }
         }
         return new CaptureResult.Ready(data, skipped);
@@ -91,7 +91,7 @@ public final class SnapshotApplier {
                     return new PreparedSnapshot.Failed(key, String.valueOf(exception.getMessage()));
                 }
                 skipped.add(key);
-                this.logger.warn(TranslationManager.console(LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString()), exception);
+                this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
             }
         }
         return new PreparedSnapshot.Ready(values, skipped);
@@ -116,11 +116,11 @@ public final class SnapshotApplier {
             } catch (Throwable throwable) {
                 // 类型实现是分级隔离的边界, 关键失败中止, 已应用部分不回滚由调用方保持锁定处理
                 if (type.critical()) {
-                    this.logger.error(TranslationManager.console(LogConstants.DATA_APPLY_FAILED, key.asString(), player.getName()), throwable);
+                    this.logger.error(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_APPLY_FAILED, key.asString(), player.getName());
                     return new ApplyResult.Failure(key, String.valueOf(throwable.getMessage()), applied);
                 }
                 skipped.add(key);
-                this.logger.warn(TranslationManager.console(LogConstants.DATA_APPLY_SKIPPED, key.asString(), player.getName()), throwable);
+                this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_APPLY_SKIPPED, key.asString(), player.getName());
             }
         }
         return new ApplyResult.Success(applied, skipped);

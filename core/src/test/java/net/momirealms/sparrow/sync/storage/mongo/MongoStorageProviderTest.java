@@ -14,6 +14,7 @@ import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -53,7 +54,7 @@ class MongoStorageProviderTest {
     private static final DataKey BLOB = DataKey.of("test", "blob");
     private static final long BASE_TIME = 1_756_300_000_000L;
 
-    private final QuietLogger logger = new QuietLogger();
+    private final SyncLogger logger = new SyncLogger(new QuietLogger());
     private PlayerSerialExecutor serialExecutor;
     private MongoStorageProvider provider;
     private UUID player;

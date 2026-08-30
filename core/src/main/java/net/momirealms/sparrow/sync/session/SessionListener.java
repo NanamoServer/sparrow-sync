@@ -2,8 +2,8 @@ package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.session.SnapshotService.LoadOutcome;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.bukkit.entity.Player;
@@ -33,10 +33,11 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
         // 会话不存在说明本次进服没有经过配置阶段的挂起加载数据, 直接踢出.
         if (session == null) {
-            this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), "no session, the login gate did not cover this join"));
+            this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), "no session, the login gate did not cover this join");
             player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
             return;
         }
+        this.plugin.logger().file(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SESSION_JOIN);
         this.applyStored(session, player);
     }
 
@@ -55,7 +56,7 @@ public final class SessionListener implements Listener {
         try {
             outcome = this.snapshotService.applyPrepared(player, prepared.prepared(), prepared.asyncNanos());
         } catch (Throwable throwable) {
-            this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), String.valueOf(throwable)), throwable);
+            this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), throwable, LogConstants.GATE_KICKED, player.getName(), String.valueOf(throwable));
             this.kickOnOwningThread(session, player);
             return;
         }
@@ -66,7 +67,7 @@ public final class SessionListener implements Listener {
         }
         // 应用失败
         String detail = outcome instanceof LoadOutcome.Failed(String det) ? det : String.valueOf(outcome);
-        this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), detail));
+        this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), detail);
         this.kickOnOwningThread(session, player);
     }
 
@@ -82,9 +83,10 @@ public final class SessionListener implements Listener {
         Player player = event.getPlayer();
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
         if (session == null) return; // 说明会话已经被关闭, 无需处理.
+        this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
         if (!this.sessionManager.close(session, SaveCause.DISCONNECT)) {
-            // 会话从未就绪, 没有保存这一步; 半加载状态存出去会覆盖好数据 todo 信息意义不大, 存储到单独日志
-            this.plugin.logger().warn(TranslationManager.console(LogConstants.SYNC_SAVE_SKIPPED_UNSYNCED, player.getName()));
+            // 会话从未就绪, 没有保存这一步; 半加载状态存出去会覆盖好数据
+            this.plugin.logger().file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_SKIPPED_UNSYNCED, player.getName());
         }
     }
 }

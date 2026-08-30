@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -45,7 +46,7 @@ class SnapshotStashTest {
 
     @BeforeEach
     void setUp() {
-        stash = new SnapshotStash(dataFolder, codec, new QuietLogger());
+        stash = new SnapshotStash(dataFolder, codec, new SyncLogger(new QuietLogger()));
     }
 
     @Test

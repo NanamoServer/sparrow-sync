@@ -6,8 +6,8 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.data.PlayerDataType;
 import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
@@ -27,9 +27,9 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
     private static final String ITEMS_KEY = "items";
     private static final String SIZE_KEY = "size";
 
-    private final PluginLogger logger;
+    private final SyncLogger logger;
 
-    public EnderChestDataType(@NotNull PluginLogger logger) {
+    public EnderChestDataType(@NotNull SyncLogger logger) {
         this.logger = logger;
     }
 
@@ -80,7 +80,7 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
         ItemCodec.LoadedItems fitted = ItemCodec.fit(value.items(), enderChest.getSize());
         int dropped = value.dropped() + fitted.dropped();
         if (dropped > 0) {
-            this.logger.warn(TranslationManager.console(LogConstants.DATA_ENDER_CHEST_DROPPED, String.valueOf(dropped), player.getName()));
+            this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), LogConstants.DATA_ENDER_CHEST_DROPPED, String.valueOf(dropped), player.getName());
         }
         enderChest.setContents(fitted.items());
     }

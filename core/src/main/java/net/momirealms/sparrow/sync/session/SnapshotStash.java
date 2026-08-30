@@ -3,8 +3,8 @@ package net.momirealms.sparrow.sync.session;
 import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -33,9 +33,9 @@ public final class SnapshotStash {
     private final Path pendingDirectory;        // 待办队列, 启动时插回数据库并删除.
     private final Path exceptionDirectory;      // 证物档案, 只等管理员处置.
     private final BinarySnapshotCodec codec;
-    private final PluginLogger logger;
+    private final SyncLogger logger;
 
-    public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull PluginLogger logger) {
+    public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger) {
         this.pendingDirectory = dataFolder.resolve("pending");
         this.exceptionDirectory = dataFolder.resolve("exception");
         this.codec = codec;
@@ -56,10 +56,10 @@ public final class SnapshotStash {
             Files.write(temporary, this.codec.encode(snapshot));
             atomicMove(temporary, file);
             String key = pending ? LogConstants.STASH_PENDING : LogConstants.STASH_EXCEPTION;
-            this.logger.warn(TranslationManager.console(key, playerName, file.toString()));
+            this.logger.warn(LogCategory.STASH, snapshot.meta().player(), playerName, key, playerName, file.toString());
         } catch (Throwable throwable) {
             // 最后的防线也失败, 这份数据已经没有去处, 如实报出
-            this.logger.error(TranslationManager.console(LogConstants.STASH_WRITE_FAILED, playerName), throwable);
+            this.logger.error(LogCategory.STASH, snapshot.meta().player(), playerName, throwable, LogConstants.STASH_WRITE_FAILED, playerName);
         }
     }
 
@@ -71,7 +71,7 @@ public final class SnapshotStash {
     public void restorePending(@NotNull StorageProvider storage) {
         List<Path> files = this.listPendingFiles();
         if (files.isEmpty()) return;
-        this.logger.info(TranslationManager.console(LogConstants.STASH_RESTORE_FOUND, String.valueOf(files.size())));
+        this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_FOUND, String.valueOf(files.size()));
         int restored = 0;
         int leftover = 0;
         for (int i = 0; i < files.size(); i++) {
@@ -80,11 +80,11 @@ public final class SnapshotStash {
             // 数据库又不行了, 剩下的文件原样留给下次启动
             if (outcome == RestoreOutcome.STORAGE_UNAVAILABLE) {
                 leftover = files.size() - i;
-                this.logger.warn(TranslationManager.console(LogConstants.STASH_RESTORE_UNAVAILABLE, String.valueOf(leftover)));
+                this.logger.warn(LogCategory.STASH, LogConstants.STASH_RESTORE_UNAVAILABLE, String.valueOf(leftover));
                 break;
             }
         }
-        this.logger.info(TranslationManager.console(LogConstants.STASH_RESTORE_DONE, String.valueOf(restored), String.valueOf(files.size() - restored - leftover), String.valueOf(leftover)));
+        this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_DONE, String.valueOf(restored), String.valueOf(files.size() - restored - leftover), String.valueOf(leftover));
     }
 
     // 单份文件的插回结果决定它的去向: 删除, 移进 exception, 或原样保留
@@ -93,13 +93,13 @@ public final class SnapshotStash {
         try {
             decoded = this.codec.decode(Files.readAllBytes(file));
         } catch (IOException exception) {
-            this.logger.error(TranslationManager.console(LogConstants.STASH_CORRUPTED, file.getFileName().toString()), exception);
+            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_CORRUPTED, file.getFileName().toString());
             this.moveToException(file, "corrupted");
             return RestoreOutcome.DISCARDED;
         }
         if (!(decoded instanceof DecodedSnapshot.Valid valid)) {
             DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
-            this.logger.error(TranslationManager.console(LogConstants.STASH_CORRUPTED, file.getFileName() + " (" + invalid.reason() + ": " + invalid.detail() + ")"));
+            this.logger.error(LogCategory.STASH, LogConstants.STASH_CORRUPTED, file.getFileName() + " (" + invalid.reason() + ": " + invalid.detail() + ")");
             this.moveToException(file, "corrupted");
             return RestoreOutcome.DISCARDED;
         }
@@ -107,7 +107,7 @@ public final class SnapshotStash {
         try {
             result = storage.saveSnapshot(valid.snapshot()).join();
         } catch (RuntimeException exception) {
-            this.logger.error(TranslationManager.console(LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString()), exception);
+            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
         // 落库结果三分: 已在库中的删掉文件, 数据库不可用的整轮收工, 被拒的移去给管理员
@@ -118,7 +118,7 @@ public final class SnapshotStash {
         if (result.retriable()) {
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
-        this.logger.error(TranslationManager.console(LogConstants.STASH_RESTORE_REJECTED, file.getFileName().toString(), result.name()));
+        this.logger.error(LogCategory.STASH, LogConstants.STASH_RESTORE_REJECTED, file.getFileName().toString(), result.name());
         this.moveToException(file, directoryOf(result));
         return RestoreOutcome.DISCARDED;
     }
@@ -138,7 +138,7 @@ public final class SnapshotStash {
                 }
             }
         } catch (IOException exception) {
-            this.logger.error(TranslationManager.console(LogConstants.STASH_RESTORE_FAILED, this.pendingDirectory.toString()), exception);
+            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, this.pendingDirectory.toString());
             return List.of();
         }
         files.sort(null);
@@ -151,7 +151,7 @@ public final class SnapshotStash {
             Files.createDirectories(directory);
             Files.move(file, directory.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException exception) {
-            this.logger.error(TranslationManager.console(LogConstants.STASH_RESTORE_FAILED, file.toString()), exception);
+            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.toString());
         }
     }
 
@@ -159,7 +159,7 @@ public final class SnapshotStash {
         try {
             Files.delete(file);
         } catch (IOException exception) {
-            this.logger.error(TranslationManager.console(LogConstants.STASH_RESTORE_FAILED, file.toString()), exception);
+            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.toString());
         }
     }
 

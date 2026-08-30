@@ -4,9 +4,9 @@ import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -25,14 +25,14 @@ import java.util.concurrent.TimeUnit;
 
 public final class SnapshotService {
     private final SparrowSync plugin;
-    private final PluginLogger logger;
+    private final SyncLogger logger;
     private final SnapshotApplier applier;
     private final StorageProvider storage;
     private final SnapshotStash stash;
     private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
     private final ConcurrentHashMap<CompletableFuture<SaveResult>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未 settle 的保存, 关服清算用.
 
-    public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PluginLogger logger) {
+    public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull SyncLogger logger) {
         this.plugin = plugin;
         this.applier = applier;
         this.storage = storage;
@@ -54,13 +54,13 @@ public final class SnapshotService {
                         case SnapshotApplier.PreparedSnapshot.Ready ready -> new PreparedOutcome.Ready(ready, System.nanoTime() - loadStart);
                         case SnapshotApplier.PreparedSnapshot.Failed failed -> {
                             String detail = failed.key().asString() + ": " + failed.detail();
-                            this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, playerName, detail));
+                            this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, detail);
                             yield new PreparedOutcome.Failed(detail);
                         }
                     }
             ).orElseGet(PreparedOutcome.Empty::new);
         }).whenComplete((outcome, throwable) -> {
-            if (throwable != null) this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable)), throwable);
+            if (throwable != null) this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable));
         });
     }
 
@@ -72,14 +72,14 @@ public final class SnapshotService {
         long applyStart = System.nanoTime();
         return switch (this.applier.apply(player, ready)) {
             case SnapshotApplier.ApplyResult.Success success -> {
-                this.logger.info(TranslationManager.console(
+                this.logger.info(LogCategory.APPLY, player.getUniqueId(), player.getName(),
                         LogConstants.SYNC_APPLIED,
                         player.getName(),
                         String.valueOf(success.applied().size()),
                         String.valueOf(success.skipped().size()),
                         millis(0, asyncNanos),
                         millis(applyStart, System.nanoTime())
-                ));
+                );
                 yield new LoadOutcome.Applied(success.applied().size(), success.skipped().size());
             }
             case SnapshotApplier.ApplyResult.Failure failure -> new LoadOutcome.Failed(failure.failedKey().asString() + ": " + failure.detail());
@@ -143,20 +143,20 @@ public final class SnapshotService {
         save.whenComplete((result, throwable) -> {
             // 保存失败
             if (throwable != null) {
-                this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, attempt.playerName()), throwable);
+                this.logger.error(LogCategory.SAVE, attempt.player(), attempt.playerName(), throwable, LogConstants.SYNC_SAVE_FAILED, attempt.playerName());
                 outcome.completeExceptionally(throwable);
                 return;
             }
             // 已保存, 轮转快照
             if (result.stored()) {
-                this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime())));
+                this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(result);
                 return;
             }
             // 可重试
             if (result.retriable() && attempt.retryAllowed()) {
-                if (attempt.worthLogging()) this.logger.warn(TranslationManager.console(LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number())));
+                if (attempt.worthLogging()) this.logger.warn(LogCategory.RETRY, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
                 this.scheduleRetry(attempt.next(), outcome);
                 return;
             }
@@ -178,7 +178,7 @@ public final class SnapshotService {
     // 重试到此为止, 快照落盘本地, 可重试的进 pending 下次启动插回, 其余进 exception 等管理员处置
     private void abandon(SaveAttempt attempt, SaveResult result, CompletableFuture<SaveResult> outcome) {
         String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
-        this.logger.error(TranslationManager.console(key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number())));
+        this.logger.error(LogCategory.RETRY, attempt.player(), attempt.playerName(), key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
         this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
         outcome.complete(result);
     }
@@ -188,7 +188,7 @@ public final class SnapshotService {
         try {
             this.storage.rotate(player, PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, throwable) -> {
                 if (throwable != null) {
-                    this.logger.warn(TranslationManager.console(LogConstants.SYNC_ROTATE_FAILED, playerName), throwable);
+                    this.logger.file(LogCategory.STORAGE, player, playerName, throwable, LogConstants.SYNC_ROTATE_FAILED, playerName);
                 }
             });
         } catch (RejectedExecutionException ignored) {
@@ -248,6 +248,11 @@ public final class SnapshotService {
         @NotNull
         String cause() {
             return this.snapshot.meta().cause().name();
+        }
+
+        @NotNull
+        UUID player() {
+            return this.snapshot.meta().player();
         }
 
         boolean retryAllowed() {

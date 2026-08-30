@@ -81,8 +81,40 @@ public final class PluginConfig {
         DatabaseOptions database = new DatabaseOptions();
 
         @BlankLineBefore
+        @Comment("Local activity log")
+        LoggingOptions logging = new LoggingOptions();
+
+        @BlankLineBefore
         @Comment("Debug")
         boolean debug = false;
+    }
+
+    // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class LoggingOptions {
+        @Comment({
+                "Writes every plugin log line, including those hidden from the console,",
+                "to a <date>.log file per day under the directory below",
+                "Grep a player uuid there to get their full join/apply/save/quit timeline",
+                "Read once at startup, reloading does not start or stop the writer"
+        })
+        boolean localFile = true;
+
+        @Comment({
+                "Where the log files go, resolved against the plugin data folder unless absolute"
+        })
+        String directory = "logs";
+
+        @Comment({
+                "Timestamp format of each log line, a java DateTimeFormatter pattern"
+        })
+        String timeFormat = "HH:mm:ss";
+
+        @Comment({
+                "Date format of the daily log file names, a java DateTimeFormatter pattern",
+                "It decides when a new file starts, e.g. yyyy-MM would roll monthly instead of daily"
+        })
+        String fileDateFormat = "yyyy-MM-dd";
     }
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
@@ -294,6 +326,22 @@ public final class PluginConfig {
 
     public static boolean debug() {
         return config.debug;
+    }
+
+    public static boolean logging$localFile() {
+        return config.logging.localFile;
+    }
+
+    public static String logging$directory() {
+        return config.logging.directory;
+    }
+
+    public static String logging$timeFormat() {
+        return config.logging.timeFormat;
+    }
+
+    public static String logging$fileDateFormat() {
+        return config.logging.fileDateFormat;
     }
 
     public static int synchronization$workerThreads() {

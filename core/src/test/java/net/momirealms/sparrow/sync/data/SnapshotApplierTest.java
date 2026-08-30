@@ -5,6 +5,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.data.SnapshotApplier.ApplyResult;
 import net.momirealms.sparrow.sync.data.SnapshotApplier.PreparedSnapshot;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistration;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
@@ -22,8 +23,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -34,11 +35,13 @@ class SnapshotApplierTest {
     private static final DataKey BRAVO = DataKey.of("test", "bravo");
     private static final DataKey CHARLIE = DataKey.of("test", "charlie");
 
-    private final QuietLogger logger = new QuietLogger();
+    private final QuietLogger console = new QuietLogger();
+    private final SyncLogger logger = new SyncLogger(this.console);
     private final List<DataKey> applied = new ArrayList<>();
-    // 只响应 getName 的代理玩家, 其余任何调用直接失败, 顺带证明编排器不解引用玩家状态
+    // 只响应身份查询 (getName/getUniqueId, 供日志检索列) 的代理玩家, 其余任何调用直接失败, 顺带证明编排器不解引用玩家状态
     private final Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> switch (method.getName()) {
         case "getName", "toString" -> "TestPlayer";
+        case "getUniqueId" -> UUID.fromString("00000000-0000-0000-0000-000000000042");
         case "hashCode" -> 0;
         case "equals" -> proxy == args[0];
         default -> throw new UnsupportedOperationException(method.getName());
@@ -56,7 +59,7 @@ class SnapshotApplierTest {
         SnapshotApplier.CaptureResult.Ready ready = assertInstanceOf(SnapshotApplier.CaptureResult.Ready.class, result);
         assertEquals(Set.of(ALPHA), ready.data().keySet());
         assertEquals(List.of(BRAVO), ready.skipped());
-        assertTrue(this.logger.warnings > 0);
+        assertTrue(this.console.warnings > 0);
     }
 
     @Test
@@ -120,7 +123,7 @@ class SnapshotApplierTest {
 
         assertEquals(List.of(ALPHA), result.applied());
         assertEquals(List.of(BRAVO), result.skipped());
-        assertEquals(1, this.logger.warnings);
+        assertEquals(1, this.console.warnings);
     }
 
     @Test

@@ -7,8 +7,8 @@ import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
@@ -69,7 +69,7 @@ public final class PacketConfigGate {
             if (existing.state() == SessionState.ACTIVE) return;
             // 上一会话仍在收尾或另一次登录仍在进行就拒绝连入.
             event.cancelled(true);
-            this.plugin.logger().warn(TranslationManager.console(LogConstants.GATE_KICKED, name, "previous session is still " + existing.state()));
+            this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, "previous session is still " + existing.state());
             listener.paperConnection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
             return;
         }
@@ -83,10 +83,10 @@ public final class PacketConfigGate {
                 this.sessionManager.close(session, SaveCause.DISCONNECT);
             }
         });
-        // 写用户名映射与读快照作为一组完成才放人; 名字映射失败不阻断进服, 只告警
+        // 写用户名映射与读快照作为一组完成才放人, 名字映射失败不阻断进服, 只发日志警告.
         CompletableFuture<Void> userReady = this.plugin.storageProvider().ensureUser(uuid, name).handle((ignored, throwable) -> {
             if (throwable != null) {
-                this.plugin.logger().warn(TranslationManager.console(LogConstants.SYNC_USER_FAILED, name), throwable);
+                this.plugin.logger().file(LogCategory.STORAGE, uuid, name, throwable, LogConstants.SYNC_USER_FAILED, name);
             }
             return null;
         });
@@ -120,7 +120,7 @@ public final class PacketConfigGate {
     // 加载失败, 拒绝进服.
     private void refuse(ServerConfigurationPacketListenerImpl listener, PlayerSession session, String name, String reason) {
         this.sessionManager.close(session, SaveCause.DISCONNECT);
-        this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, name, reason));
+        this.plugin.logger().file(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
         listener.paperConnection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 }

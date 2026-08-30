@@ -23,7 +23,9 @@ import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
 import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
 import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
+import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
 import net.momirealms.sparrow.sync.plugin.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
@@ -62,7 +64,7 @@ import java.util.zip.ZipInputStream;
 public class SparrowSync implements Plugin {
     private static SparrowSync instance;
 
-    private final PluginLogger logger;
+    private final SyncLogger logger;
     private final Path dataFolderPath;
     private final ClassPathAppender sharedClassPathAppender;
     private final ClassPathAppender privateClassPathAppender;
@@ -90,7 +92,7 @@ public class SparrowSync implements Plugin {
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
-        this.logger = logger;
+        this.logger = new SyncLogger(logger);
         this.dataFolderPath = dataFolderPath;
         this.sharedClassPathAppender = sharedClassPathAppender;
         this.privateClassPathAppender = privateClassPathAppender;
@@ -103,6 +105,11 @@ public class SparrowSync implements Plugin {
         this.configurationManager.reload();
         this.translationManager = new TranslationManagerImpl(this);
         this.translationManager.reload();
+        // resolve 对绝对路径原样返回, 因此配置里的相对目录落在数据目录下, 绝对目录按原样使用
+        if (PluginConfig.logging$localFile()) {
+            this.logger.attachFile(new FileLogWriter(this.dataFolderPath.resolve(PluginConfig.logging$directory()),
+                    PluginConfig.logging$timeFormat(), PluginConfig.logging$fileDateFormat(), logger));
+        }
         this.compatibilityManager = new CompatibilityManager(this);
         this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization$workerThreads());
         this.setUpInternalDataTypes();
@@ -208,6 +215,7 @@ public class SparrowSync implements Plugin {
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
         if (this.storageProvider != null) this.storageProvider.shutdown();
         if (this.dependencyManager != null) this.dependencyManager.shutdown();
+        if (this.logger != null) this.logger.close();
         if (!Bukkit.getServer().isStopping()) {
             logger().error(" ");
             logger().error(" ");
@@ -544,7 +552,7 @@ public class SparrowSync implements Plugin {
     }
 
     @Override
-    public PluginLogger logger() {
+    public SyncLogger logger() {
         return this.logger;
     }
 

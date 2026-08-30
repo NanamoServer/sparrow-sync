@@ -1,9 +1,9 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -15,10 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class SessionManager {
     private final SparrowSync plugin;
-    private final PluginLogger logger;
+    private final SyncLogger logger;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
 
-    public SessionManager(@NotNull SparrowSync plugin, @NotNull PluginLogger logger) {
+    public SessionManager(@NotNull SparrowSync plugin, @NotNull SyncLogger logger) {
         this.plugin = plugin;
         this.logger = logger;
     }
@@ -88,7 +88,7 @@ public final class SessionManager {
             if (this.close(session, SaveCause.SHUTDOWN)) submitted++;
         }
         if (submitted > 0) {
-            this.logger.info(TranslationManager.console(LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(submitted)));
+            this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(submitted));
         }
     }
 }

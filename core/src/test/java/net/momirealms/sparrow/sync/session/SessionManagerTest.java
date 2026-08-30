@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 // 只覆盖不触碰玩家实体的状态编排; ACTIVE 分支与关服收尾依赖 Bukkit, 由真机验收
 class SessionManagerTest {
     // 保存路径在本测试中不可达, plugin 缺席不影响状态编排
-    private final SessionManager manager = new SessionManager(null, new QuietLogger());
+    private final SessionManager manager = new SessionManager(null, new SyncLogger(new QuietLogger()));
 
     @Test
     void openRegistersPreparingSession() {

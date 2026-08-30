@@ -89,7 +89,7 @@ tasks {
             attributes["paperweight-mappings-namespace"] = "mojang"
         }
         from(project(":bukkit-proxy").tasks.shadowJar.flatMap { it.archiveFile })
-        archiveFileName = "sprrow-sync-${libs.versions.project.version.get()}.jar"
+        archiveFileName = "sparrow-sync-${libs.versions.project.version.get()}.jar"
         destinationDirectory.set(file("$rootDir/target"))
     }
 

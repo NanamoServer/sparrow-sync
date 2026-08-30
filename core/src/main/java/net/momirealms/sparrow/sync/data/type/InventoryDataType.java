@@ -6,8 +6,8 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.data.PlayerDataType;
 import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
@@ -31,9 +31,9 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
     private static final String HELD_SLOT_KEY = "heldSlot";
     private static final String CURSOR_KEY = "cursor";
 
-    private final PluginLogger logger;
+    private final SyncLogger logger;
 
-    public InventoryDataType(@NotNull PluginLogger logger) {
+    public InventoryDataType(@NotNull SyncLogger logger) {
         this.logger = logger;
     }
 
@@ -93,7 +93,7 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
         ItemCodec.LoadedItems fitted = ItemCodec.fit(value.contents(), inventory.getSize());
         int dropped = value.dropped() + fitted.dropped();
         if (dropped > 0) {
-            this.logger.warn(TranslationManager.console(LogConstants.DATA_INVENTORY_DROPPED, String.valueOf(dropped), player.getName()));
+            this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), LogConstants.DATA_INVENTORY_DROPPED, String.valueOf(dropped), player.getName());
         }
         inventory.setContents(fitted.items());
         inventory.setHeldItemSlot(value.heldSlot());

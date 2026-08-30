@@ -8,8 +8,8 @@ import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
@@ -48,7 +48,7 @@ public final class MongoStorageProvider implements StorageProvider {
     private final DocumentSnapshotCodec codec;
     private final PlayerSerialExecutor serialExecutor; // 同一玩家的写入和轮转排队执行
     private final Executor asyncExecutor;              // 没有顺序要求的数据库操作执行器
-    private final PluginLogger logger;
+    private final SyncLogger logger;
 
     private MongoClient mongoClient;
     private MongoDatabase mongoDatabase;
@@ -56,7 +56,7 @@ public final class MongoStorageProvider implements StorageProvider {
     private volatile MongoCollection<Document> snapshots;
 
     public MongoStorageProvider(@NotNull PluginConfig.MongoOptions options, @NotNull DocumentSnapshotCodec codec,
-                                @NotNull PlayerSerialExecutor serialExecutor, @NotNull Executor asyncExecutor, @NotNull PluginLogger logger) {
+                                @NotNull PlayerSerialExecutor serialExecutor, @NotNull Executor asyncExecutor, @NotNull SyncLogger logger) {
         this.options = options;
         this.codec = codec;
         this.serialExecutor = serialExecutor;
@@ -240,13 +240,13 @@ public final class MongoStorageProvider implements StorageProvider {
         try {
             document = this.codec.encode(snapshot);
         } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_ENCODE_FAILED, meta.player().toString()), throwable);
+            this.logger.error(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_ENCODE_FAILED, meta.player().toString());
             return MongoFailureClassifier.classify(throwable);
         }
         // 写前守卫, 16 MB 文档上限检查
         long payload = payloadBytes(document);
         if (payload > MAX_PAYLOAD_BYTES) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(payload)));
+            this.logger.error(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(payload));
             return SaveResult.REJECTED_OVERSIZED;
         }
         // 开写数据
@@ -258,7 +258,7 @@ public final class MongoStorageProvider implements StorageProvider {
             }
             // insertOne 只报撞了唯一索引, 不报撞的是哪一条. 查一次 _id 才能确认这份快照真的在库里, 否则任何其他来源的写入失败都会被当成 DUPLICATE, 导致数据静默丢失
             if (this.snapshotCollection().find(byId(meta.id())).projection(Projections.include(DocumentSnapshotCodec.FIELD_ID)).first() == null) {
-                this.logger.error(TranslationManager.console(LogConstants.STORAGE_CONSTRAINT_CONFLICT, meta.player().toString()), exception);
+                this.logger.error(LogCategory.STORAGE, meta.player(), null, exception, LogConstants.STORAGE_CONSTRAINT_CONFLICT, meta.player().toString());
                 return SaveResult.REJECTED_MALFORMED;
             }
             return SaveResult.DUPLICATE;
@@ -275,17 +275,20 @@ public final class MongoStorageProvider implements StorageProvider {
             return SaveResult.SAVED;
         }
         // 启动恢复时插入旧快照很正常, 在线保存出现乱序通常说明会话锁失效
-        this.logger.warn(TranslationManager.console(LogConstants.STORAGE_OUT_OF_ORDER,
+        this.logger.file(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OUT_OF_ORDER,
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()),
-                readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest))));
+                readString(newest.get(DocumentSnapshotCodec.FIELD_SERVER)), String.valueOf(readTimestamp(newest)));
         return SaveResult.SAVED_OUT_OF_ORDER;
     }
 
-    // 写入失败按可否重试归类, 存储层知道细节所以日志在这里打全
+    // 写入失败按可否重试归类, 存储层知道细节所以日志在这里打全; 可重试的重试进展由保存链播报, 这里只留档
     private SaveResult failed(SnapshotMeta meta, Throwable throwable) {
         SaveResult result = MongoFailureClassifier.classify(throwable);
-        String key = result.retriable() ? LogConstants.STORAGE_WRITE_RETRIABLE : LogConstants.STORAGE_WRITE_REJECTED;
-        this.logger.error(TranslationManager.console(key, meta.player().toString()), throwable); // todo 打印的数据全一些, 带上uuid的前几位.
+        if (result.retriable()) {
+            this.logger.file(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_WRITE_RETRIABLE, meta.player().toString());
+        } else {
+            this.logger.error(LogCategory.STORAGE, meta.player(), null, throwable, LogConstants.STORAGE_WRITE_REJECTED, meta.player().toString()); // todo 打印的数据全一些, 带上uuid的前几位.
+        }
         return result;
     }
 

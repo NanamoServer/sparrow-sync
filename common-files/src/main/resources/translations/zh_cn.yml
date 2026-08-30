@@ -39,63 +39,66 @@ command.reload.too_fast: <red>你重新加载插件的速度太快了，上一�
 command.reload.config.failure: <red>无法重新加载配置。请检查控制台日志</red>
 command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<hover:show_text:'<gray>异步/同步'><color:#2E86C1><arg:1></color>/<color:#7FB3D5><arg:2></color></hover>毫秒）</gray>
 command.reload.config.issues: <yellow>重新加载时报告了<arg:0>个问题，详见控制台</yellow>
-plugin.compatibility: "[兼容性] 已挂钩 <arg:0>"
-plugin.compatibility_failed: "[兼容性] 挂钩 <arg:0> 失败"
-config.errors_detected: 在config.yml中发现错误 - <arg:0>
-update.available: 新版本<arg:0>已发布：<arg:1>
+plugin.compatibility: '[兼容性] 已挂钩 <arg:0>'
+plugin.compatibility_failed: '[兼容性] 挂钩 <arg:0> 失败'
+config.errors_detected: '在 config.yml 中发现错误 - <arg:0>'
+update.available: '新版本 <arg:0> 已发布：<arg:1>'
 update.is_latest: 你正在使用最新版本
 
-# 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
-log.plugin.reload_at_runtime: 请不要在服务器运行时重启插件。
-log.plugin.load_failed: 插件启用失败，请检查加载阶段的日志。为减少数据损失，正在关闭服务器。
-log.plugin.disable_at_runtime: 请不要在服务器运行时卸载插件。
-log.plugin.registry_frozen: 数据类型注册表已冻结，共<arg:0>种类型
-log.plugin.reload_failed: 插件重新加载失败
-log.server.id_missing: server.yml 里的 server-id 为空，也无法从服务器目录名推导出来。请手工填写，共用同一个数据库的每台服务器都需要各自的 id。正在关闭服务器。
-log.storage.compressor_failed: 快照压缩器加载失败。请检查运行时依赖是否完整，以及临时目录是否允许执行解包出的本地库。
-log.storage.ready: MongoDB存储已就绪（数据库：<arg:0>）
-log.storage.mysql_not_implemented: MySQL存储尚未实现，请将database.type改为MONGODB。玩家数据将不会被加载或保存。
-log.storage.setup_failed: 存储装配失败。玩家数据将不会被加载或保存。
-log.storage.out_of_order: <arg:1>的快照<arg:0>（采集于<arg:2>）落在了来自<arg:3>、采集于<arg:4>的更新快照之后
-log.storage.encode_failed: 编码<arg:0>的快照失败，这份数据存不进数据库
-log.storage.oversized: <arg:0>的快照有<arg:1>字节，超过了单份上限，无法写入数据库
-log.storage.constraint_conflict: 写入<arg:0>的快照时撞上了数据库的唯一约束，且这份快照并不在库中
-log.storage.write_retriable: 写入<arg:0>的快照失败，数据库恢复后会重试
-log.storage.write_rejected: 写入<arg:0>的快照失败，重试也不会成功，需要人工处理
-log.storage.stale_index_dropped: 索引结构已更新，移除旧索引<arg:0>
-log.storage.schema_too_new: 数据库的结构代数<arg:0>高于本插件支持的<arg:1>。共用同一数据库的服务器必须运行相同版本的SparrowSync，请先升级本服插件。正在关闭服务器。
-log.executor.unfinished_tasks: 玩家串行执行器关停时仍有<arg:0>个任务未完成
-log.executor.draining: 正在排空玩家任务，剩余<arg:0>个
-log.executor.task_failed: <arg:0>上的一个玩家任务执行失败
+# 踢出消息，发送给玩家。
 sync.kick.not_ready: <red>你的数据尚未同步完成，请稍后重新连接。若多次出现请联系管理员。</red>
 sync.kick.too_fast: <red>你重新连接得太快了，上一次的数据还在保存中，请稍后再试。</red>
-log.gate.kicked: 已断开<arg:0>的连接（<arg:1>）
-log.session.player_gone: <arg:0>的会话仍处于活跃状态，但已取不到玩家实例，无法采集数据，该会话被原样留下
-log.sync.saved: 已保存<arg:0>的快照（<arg:1>，<arg:2>，采集<arg:3>毫秒，落库<arg:4>毫秒）
-log.sync.save_failed: 保存<arg:0>的快照失败
-log.sync.save_pending_retry: <arg:0>的快照暂时存不进数据库（已尝试<arg:1>次），会一直排队重试到数据库恢复
-log.sync.save_retries_exhausted: <arg:0>的快照（<arg:1>）重试<arg:2>次仍未存进数据库，将改为保存到本地
-log.sync.save_needs_attention: <arg:0>的快照（<arg:1>）无法写入数据库且重试无用（第<arg:2>次尝试），请查看上方的错误详情
-log.sync.save_skipped_unsynced: <arg:0>在数据应用完成前退出，跳过保存以免覆盖历史快照
-log.sync.rotate_failed: 轮转<arg:0>的历史快照失败
-log.sync.applied: 已向<arg:0>应用快照（<arg:1>种数据，跳过<arg:2>种，异步花费 <arg:3>毫秒，同步花费 <arg:4>毫秒）
-log.sync.load_failed: 加载<arg:0>的快照失败：<arg:1>
-log.sync.user_failed: 刷新<arg:0>的名字映射失败
-log.sync.shutdown_saved: 关服保存：正在落库<arg:0>名在线玩家的快照
-log.stash.pending: <arg:0>的快照已写入本地文件<arg:1>，下次启动时自动插回数据库
-log.stash.exception: <arg:0>的快照已写入<arg:1>，需要管理员处理
-log.stash.write_failed: 为<arg:0>写本地快照文件失败，这份数据已经丢失
-log.stash.restore_found: 发现<arg:0>份未落库的本地快照，正在插回数据库
-log.stash.restore_done: 本地快照插回完成：成功<arg:0>份，移入exception<arg:1>份，留待下次<arg:2>份
-log.stash.restore_unavailable: 数据库仍不可用，剩余<arg:0>份本地快照留待下次启动
-log.stash.restore_rejected: 本地快照<arg:0>被数据库拒绝（<arg:1>），移入exception目录
-log.stash.restore_failed: 处理本地快照<arg:0>时出错
-log.stash.corrupted: 本地快照文件<arg:0>已损坏，移入exception/corrupted
-log.data.capture_skipped: 采集<arg:1>的非关键数据<arg:0>失败，本次快照不含这项
-log.data.capture_failed: 采集<arg:1>的关键数据<arg:0>失败，本次不产出快照
-log.data.decode_skipped: 跳过快照<arg:1>中的非关键数据<arg:0>
-log.data.apply_failed: 关键数据<arg:0>应用到<arg:1>时失败
-log.data.apply_skipped: 应用到<arg:1>时跳过了非关键数据<arg:0>
-log.data.inventory_dropped: 向<arg:1>应用快照时丢弃了<arg:0>件放不下的背包物品
-log.data.ender_chest_dropped: 向<arg:1>应用快照时丢弃了<arg:0>件放不下的末影箱物品
-log.locale.missing_file: translations/<arg:0>.yml不存在，回退到<arg:1>.yml
+
+# 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
+log.plugin.reload_at_runtime: '请不要在服务器运行时重启插件。'
+log.plugin.load_failed: '插件启用失败，请检查加载阶段的日志。为减少数据损失，正在关闭服务器。'
+log.plugin.disable_at_runtime: '请不要在服务器运行时卸载插件。'
+log.plugin.registry_frozen: '已启用 <arg:0> 种数据类型的同步'
+log.plugin.reload_failed: '重新加载插件时发生错误'
+log.server.id_missing: 'server.yml 里的 server-id 是空的，也没能从服务器目录名推导出来。请手动填写一个，共用同一个数据库的每台服务器都需要自己的 id。正在关闭服务器。'
+log.storage.compressor_failed: '加载快照压缩器时发生错误。请检查运行时依赖是否完整，以及临时目录是否允许执行解包出的本地库。'
+log.storage.ready: '已连接 MongoDB（数据库：<arg:0>）'
+log.storage.mysql_not_implemented: 'MySQL 存储还没有实现，请把 database.type 改为 MONGODB。玩家数据将不会被加载或保存。'
+log.storage.setup_failed: '连接数据库时发生错误，玩家数据将不会被加载或保存。'
+log.storage.out_of_order: '<arg:1> 的快照 <arg:0>（采集于 <arg:2>）落在了来自 <arg:3>、采集于 <arg:4> 的更新快照之后'
+log.storage.encode_failed: '编码 <arg:0> 的快照时发生错误，这份数据存不进数据库'
+log.storage.oversized: '<arg:0> 的快照有 <arg:1> 字节，超过了单份快照的上限，无法写入数据库'
+log.storage.constraint_conflict: '写入 <arg:0> 的快照时撞上了数据库的唯一约束，而这份快照并不在库里'
+log.storage.write_retriable: '写入 <arg:0> 的快照失败，数据库恢复后会自动重试'
+log.storage.write_rejected: '写入 <arg:0> 的快照失败，重试也不会成功，需要人工处理'
+log.storage.stale_index_dropped: '索引结构已更新，移除了旧索引 <arg:0>'
+log.storage.schema_too_new: '数据库的结构代数 <arg:0> 比本插件支持的 <arg:1> 更新。共用同一个数据库的服务器必须运行相同版本的 SparrowSync，请先升级这台服务器的插件。正在关闭服务器。'
+log.executor.unfinished_tasks: '玩家串行执行器关停时还有 <arg:0> 个任务没做完'
+log.executor.draining: '正在排空玩家任务，还剩 <arg:0> 个'
+log.executor.task_failed: '线程 <arg:0> 上的一个玩家任务出错了'
+log.session.join: '进入服务器'
+log.session.quit: '退出服务器'
+log.gate.kicked: '已断开 <arg:0> 的连接（<arg:1>）'
+log.sync.saved: '已保存 <arg:0> 的快照（<arg:1>，<arg:2>，同步数据采集花费 <arg:3> 毫秒，异步落库花费 <arg:4> 毫秒）'
+log.sync.save_failed: '保存 <arg:0> 的快照时发生错误'
+log.sync.save_pending_retry: '<arg:0> 的快照暂时存不进数据库（已尝试 <arg:1> 次），会一直排队重试到数据库恢复'
+log.sync.save_retries_exhausted: '<arg:0> 的快照（<arg:1>）重试 <arg:2> 次仍没存进数据库，改为保存到本地'
+log.sync.save_needs_attention: '<arg:0> 的快照（<arg:1>）无法写入数据库且重试无用（第 <arg:2> 次尝试），请查看上方的错误详情'
+log.sync.save_skipped_unsynced: '<arg:0> 在数据应用完成前就退出了，跳过保存以免覆盖历史快照'
+log.sync.rotate_failed: '清理 <arg:0> 的历史快照时发生错误'
+log.sync.applied: '已向 <arg:0> 应用快照（一共 <arg:1> 种数据，失败跳过 <arg:2> 种非关键数据，异步读取花费 <arg:3> 毫秒，同步应用花费 <arg:4> 毫秒）'
+log.sync.load_failed: '加载 <arg:0> 的快照时发生错误：<arg:1>'
+log.sync.user_failed: '刷新 <arg:0> 的名字映射时发生错误'
+log.sync.shutdown_saved: '关服保存：正在落库 <arg:0> 名在线玩家的快照'
+log.stash.pending: '<arg:0> 的快照已写到本地文件 <arg:1>，下次启动时会自动插回数据库'
+log.stash.exception: '<arg:0> 的快照已写到 <arg:1>，需要管理员处理'
+log.stash.write_failed: '为 <arg:0> 写本地快照文件时也失败了，这份数据已经丢失'
+log.stash.restore_found: '发现 <arg:0> 份没能落库的本地快照，正在插回数据库'
+log.stash.restore_done: '本地快照插回完成：成功 <arg:0> 份，移入 exception <arg:1> 份，留待下次 <arg:2> 份'
+log.stash.restore_unavailable: '数据库仍然不可用，剩下的 <arg:0> 份本地快照留待下次启动'
+log.stash.restore_rejected: '本地快照 <arg:0> 被数据库拒绝（<arg:1>），已移入 exception 目录'
+log.stash.restore_failed: '处理本地快照 <arg:0> 时出错'
+log.stash.corrupted: '本地快照文件 <arg:0> 已损坏，移入 exception/corrupted'
+log.data.capture_skipped: '采集 <arg:1> 的非关键数据 <arg:0> 时出错，这次的快照不含这一项'
+log.data.capture_failed: '采集 <arg:1> 的关键数据 <arg:0> 时出错，这次不产出快照'
+log.data.decode_skipped: '跳过了快照 <arg:1> 里的非关键数据 <arg:0>'
+log.data.apply_failed: '向 <arg:1> 应用关键数据 <arg:0> 时出错'
+log.data.apply_skipped: '向 <arg:1> 应用时跳过了非关键数据 <arg:0>'
+log.data.inventory_dropped: '向 <arg:1> 应用快照时丢弃了 <arg:0> 件放不下的背包物品'
+log.data.ender_chest_dropped: '向 <arg:1> 应用快照时丢弃了 <arg:0> 件放不下的末影箱物品'
+log.locale.missing_file: 'translations/<arg:0>.yml 不存在，回退到 <arg:1>.yml'

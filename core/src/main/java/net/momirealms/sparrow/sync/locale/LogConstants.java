@@ -32,7 +32,8 @@ public interface LogConstants {
     String EXECUTOR_DRAINING = "log.executor.draining";
     String EXECUTOR_TASK_FAILED = "log.executor.task_failed";
 
-    String SESSION_PLAYER_GONE = "log.session.player_gone";
+    String SESSION_JOIN = "log.session.join";
+    String SESSION_QUIT = "log.session.quit";
 
     String GATE_KICKED = "log.gate.kicked";
 

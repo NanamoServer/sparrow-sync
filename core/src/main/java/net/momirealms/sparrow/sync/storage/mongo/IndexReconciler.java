@@ -5,8 +5,8 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import net.momirealms.sparrow.sync.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
-import net.momirealms.sparrow.sync.locale.TranslationManager;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
 
@@ -39,7 +39,7 @@ final class IndexReconciler {
 
     // 按当前版本准备业务索引
     static void reconcile(
-            @NotNull PluginLogger logger,
+            @NotNull SyncLogger logger,
             @NotNull MongoCollection<Document> metaCollection,
             @NotNull MongoCollection<Document> userCollection,
             @NotNull MongoCollection<Document> snapshotCollection
@@ -48,7 +48,7 @@ final class IndexReconciler {
         Document schema = metaCollection.find(new Document("_id", SCHEMA_DOCUMENT_ID)).first();
         int stored = schema != null && schema.get(SCHEMA_FIELD_VERSION) instanceof Number number ? number.intValue() : 0;
         if (stored > SCHEMA_VERSION) {
-            logger.error(TranslationManager.console(LogConstants.STORAGE_SCHEMA_TOO_NEW, String.valueOf(stored), String.valueOf(SCHEMA_VERSION)));
+            logger.error(LogCategory.STORAGE, LogConstants.STORAGE_SCHEMA_TOO_NEW, String.valueOf(stored), String.valueOf(SCHEMA_VERSION));
             throw new IllegalStateException("database schema generation " + stored + " is newer than this plugin supports (" + SCHEMA_VERSION + ")");
         }
         // 版本门禁通过后再整理两个业务集合
@@ -63,7 +63,7 @@ final class IndexReconciler {
     }
 
     // 每次启动都以当前声明为准, 旧版本留下或手工添加的索引会在这里清掉
-    private static void reconcileIndexes(PluginLogger logger, MongoCollection<Document> collection, List<IndexDeclaration> declarations) {
+    private static void reconcileIndexes(SyncLogger logger, MongoCollection<Document> collection, List<IndexDeclaration> declarations) {
         List<Document> existing = new ArrayList<>();
         collection.listIndexes().into(existing);
         // _id_ 由 MongoDB 管理, 不参与业务索引对账
@@ -80,7 +80,7 @@ final class IndexReconciler {
             }
             if (!declared) {
                 collection.dropIndex(name);
-                logger.info(TranslationManager.console(LogConstants.STORAGE_STALE_INDEX_DROPPED, name));
+                logger.file(LogCategory.STORAGE, null, null, LogConstants.STORAGE_STALE_INDEX_DROPPED, name);
             }
         }
         // 当前版本缺哪条索引就补哪条
