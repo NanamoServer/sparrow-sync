@@ -123,8 +123,7 @@ public final class MongoStorageProvider implements StorageProvider {
         return CompletableFuture.supplyAsync(() -> {
             Document document = this.snapshotCollection().find(byPlayer(player)).sort(NEWEST_FIRST).limit(1).first();
             return this.decodeDocument(document);
-            // todo 是否真的会出现, 如果一个玩家离开服务器, 未保存完成时锁可以直接被重入吗? 我认为它仍然需要等待锁释放.
-        }, this.serialExecutor.executor(player)); // 读取最后一份也走串行路径, 避免快速重复进服导致顺序错误.
+        }, this.asyncExecutor);
     }
 
     @Override

@@ -5,7 +5,6 @@ import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.SnapshotService.LoadOutcome;
-import net.momirealms.sparrow.sync.session.SnapshotService.PreparedOutcome;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -15,7 +14,6 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.UUID;
 
 public final class SessionListener implements Listener {
     private final SparrowSync plugin;
@@ -28,17 +26,15 @@ public final class SessionListener implements Listener {
         this.sessionManager = sessionManager;
     }
 
-    // 应用配置阶段加载完成的数据
+    // 应用配置阶段加载完成的数据.
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
-        // todo 测试代码, 等 Gate 完成后删除.
-        // Gate 未覆盖本次进服 (Gate 落地前) 时回落到 join 后异步准备.
-        // 会话存在就必然是 Gate 刚开的 PREPARING —— 上一次会话持锁到落库完成才放,
-        // 而 Gate 拿不到锁就不放行, 因此这里不会撞上未结束的旧会话
+        // 会话不存在说明本次进服没有经过配置阶段的挂起加载数据, 直接踢出.
         if (session == null) {
-            this.joinFallback(player);
+            this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), "no session, the login gate did not cover this join"));
+            player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
             return;
         }
         this.applyStored(session, player);
@@ -57,7 +53,7 @@ public final class SessionListener implements Listener {
         // 给玩家应用快照数据
         LoadOutcome outcome;
         try {
-            outcome = this.snapshotService.applyPrepared(player, prepared);
+            outcome = this.snapshotService.applyPrepared(player, prepared.prepared(), prepared.asyncNanos());
         } catch (Throwable throwable) {
             this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), String.valueOf(throwable)), throwable);
             this.kickOnOwningThread(session, player);
@@ -80,16 +76,6 @@ public final class SessionListener implements Listener {
         player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 
-    // 关闭会话并踢出玩家.
-    private void kickFromAsync(PlayerSession session, Player player, String reason) {
-        this.plugin.logger().error(TranslationManager.console(LogConstants.GATE_KICKED, player.getName(), reason));
-        player.getScheduler().run(
-                this.plugin.javaPlugin(),
-                task -> this.kickOnOwningThread(session, player),
-                () -> this.sessionManager.close(session, SaveCause.DISCONNECT)
-        );
-    }
-
     // 玩家退出服务器时关闭会话并保存数据.
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
@@ -101,40 +87,4 @@ public final class SessionListener implements Listener {
             this.plugin.logger().warn(TranslationManager.console(LogConstants.SYNC_SAVE_SKIPPED_UNSYNCED, player.getName()));
         }
     }
-
-
-
-
-
-    // todo 测试代码, 等 Gate 完成后删除.
-    // Gate 未覆盖时的过渡路径: join 后异步读库预解码, 应用段再回玩家线程.
-    // 登录读与上一条命的保存同走该玩家的串行队列, read-after-write 由队列次序保证
-    private void joinFallback(Player player) {
-        UUID uuid = player.getUniqueId();
-        PlayerSession session = this.sessionManager.open(uuid, player.getName());
-        this.plugin.storageProvider().ensureUser(uuid, player.getName()).whenComplete((ignored, throwable) -> {
-            if (throwable != null) {
-                this.plugin.logger().warn(TranslationManager.console(LogConstants.SYNC_USER_FAILED, player.getName()), throwable);
-            }
-        });
-        this.snapshotService.loadAndPrepare(uuid, player.getName()).whenComplete((outcome, throwable) -> {
-            if (throwable != null) {
-                this.kickFromAsync(session, player, String.valueOf(throwable));
-                return;
-            }
-            switch (outcome) {
-                case PreparedOutcome.Empty ignored -> session.tryTransition(SessionState.PREPARING, SessionState.ACTIVE);
-                case PreparedOutcome.Failed failed -> this.kickFromAsync(session, player, failed.detail());
-                // 应用段回玩家线程运行, 调度前玩家已离开则会话作废, 无数据可回写
-                case PreparedOutcome.Ready ready -> {
-                    session.prepared(ready.prepared());
-                    player.getScheduler().run(this.plugin.javaPlugin(),
-                            task -> this.applyStored(session, player),
-                            () -> this.sessionManager.close(session, SaveCause.DISCONNECT));
-                }
-            }
-        });
-    }
-
-
 }

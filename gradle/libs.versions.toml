@@ -54,6 +54,7 @@ cloud-paper = { module = "org.incendo:cloud-paper", version.ref = "cloud-paper" 
 cloud-minecraft-extras = { module = "org.incendo:cloud-minecraft-extras", version.ref = "cloud-minecraft-extras" }
 
 sparrow-nbt = { module = "net.momirealms:sparrow-nbt", version.ref = "sparrow-nbt" }
+sparrow-ui = { module = "net.momirealms:sparrow-ui", version = "beta.23" }
 sparrow-nbt-adventure = { module = "net.momirealms:sparrow-nbt-adventure", version.ref = "sparrow-nbt" }
 sparrow-nbt-codec = { module = "net.momirealms:sparrow-nbt-codec", version.ref = "sparrow-nbt" }
 sparrow-nbt-legacy-codec = { module = "net.momirealms:sparrow-nbt-legacy-codec", version.ref = "sparrow-nbt" }
@@ -100,5 +101,6 @@ sparrow = [
     "sparrow-nbt-adventure",
     "sparrow-nbt-codec",
     "sparrow-nbt-legacy-codec",
+    "sparrow-ui",
     "sparrow-yaml"
 ]

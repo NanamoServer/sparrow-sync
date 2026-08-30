@@ -68,6 +68,7 @@ log.executor.unfinished_tasks: 'Player serial executor shut down with <arg:0> un
 log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on <arg:0>'
 sync.kick.not_ready: <red>Your data is not synchronized yet, please reconnect in a moment. Contact an admin if this keeps happening.</red>
+sync.kick.too_fast: <red>You reconnected too quickly, your previous data is still being saved. Please try again in a moment.</red>
 log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
 log.session.player_gone: 'The session of <arg:0> is still active but its player instance is gone, nothing can be captured and the session was left as is'
 log.sync.saved: 'Saved a snapshot of <arg:0> (<arg:1>, <arg:2>, capture <arg:3>ms, store <arg:4>ms)'
@@ -77,7 +78,7 @@ log.sync.save_retries_exhausted: 'The snapshot of <arg:0> (<arg:1>) still could 
 log.sync.save_needs_attention: 'The snapshot of <arg:0> (<arg:1>) cannot be written and retrying will not help (attempt <arg:2>), see the error above'
 log.sync.save_skipped_unsynced: '<arg:0> left before their data finished applying, skipping the save to protect snapshot history'
 log.sync.rotate_failed: 'Failed to rotate snapshot history of <arg:0>'
-log.sync.applied: 'Applied a snapshot to <arg:0> (<arg:1> data type(s), <arg:2> skipped, took <arg:3>ms)'
+log.sync.applied: 'Applied a snapshot to <arg:0> (<arg:1> data type(s), <arg:2> skipped, async <arg:3>ms, sync <arg:4>ms)'
 log.sync.load_failed: 'Failed to load a snapshot of <arg:0>: <arg:1>'
 log.sync.user_failed: 'Failed to refresh the name mapping of <arg:0>'
 log.sync.shutdown_saved: 'Shutdown save: storing snapshots of <arg:0> online player(s)'

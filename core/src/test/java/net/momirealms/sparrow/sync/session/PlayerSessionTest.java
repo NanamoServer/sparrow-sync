@@ -115,10 +115,11 @@ class PlayerSessionTest {
     @Test
     void consumePreparedReturnsOnceThenNull() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
-        SnapshotApplier.PreparedSnapshot.Ready prepared = new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of());
+        SnapshotService.PreparedOutcome.Ready prepared = new SnapshotService.PreparedOutcome.Ready(
+                new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of()), 0L);
         session.prepared(prepared);
 
-        assertSame(prepared.values(), session.consumePrepared().values());
+        assertSame(prepared, session.consumePrepared());
         assertNull(session.consumePrepared());
     }
 

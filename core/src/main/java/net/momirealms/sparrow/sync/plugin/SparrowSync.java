@@ -14,6 +14,7 @@ import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.data.type.*;
+import net.momirealms.sparrow.sync.session.gate.PacketConfigGate;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -38,6 +39,7 @@ import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
+import net.momirealms.sparrow.ui.SparrowUI;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
@@ -84,6 +86,7 @@ public class SparrowSync implements Plugin {
     private SnapshotStash snapshotStash;     // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
     private SnapshotService snapshotService;
     private SessionManager sessionManager;
+    private PacketConfigGate packetConfigGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -176,9 +179,15 @@ public class SparrowSync implements Plugin {
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
         this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
-        // 会话状态机. todo 登录管线统一走扣包 Gate (M9, Paper 与 Spigot 同一条), 落地前由 join 回落路径兜着
+        // 会话状态机.
         this.sessionManager = new SessionManager(this, this.logger);
         Bukkit.getPluginManager().registerEvents(new SessionListener(this, this.snapshotService, this.sessionManager), this.javaPlugin);
+        // 安装 SparrowUI
+        SparrowUI.getInstance().setUp(this.javaPlugin);
+        SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
+        // 卡配置阶段加载门
+        this.packetConfigGate = new PacketConfigGate(this, this.snapshotService, this.sessionManager);
+        this.packetConfigGate.register();
         // 预热 DFU 的 ITEM_STACK CODEC.
         this.scheduler.async().execute(ItemCodec::warmUp);
         // 标记

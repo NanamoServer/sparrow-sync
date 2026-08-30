@@ -52,4 +52,5 @@ public interface MessageConstants {
     TranslatableComponent.Builder COMMAND_RELOAD_CONFIG_FAILURE = Component.translatable().key("command.reload.config.failure");
 
     TranslatableComponent.Builder KICK_SYNC_NOT_READY = Component.translatable().key("sync.kick.not_ready");
+    TranslatableComponent.Builder KICK_LOGIN_TOO_FAST = Component.translatable().key("sync.kick.too_fast");
 }

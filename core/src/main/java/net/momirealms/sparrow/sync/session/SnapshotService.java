@@ -46,11 +46,12 @@ public final class SnapshotService {
      */
     @NotNull
     public CompletableFuture<PreparedOutcome> loadAndPrepare(@NotNull UUID player, @NotNull String playerName) {
+        long loadStart = System.nanoTime();
         return this.storage.latestSnapshot(player).<PreparedOutcome>thenApply(latest -> {
             // 没有历史的新玩家, 本服状态即权威
             return latest.<PreparedOutcome>map(snapshot ->
                     switch (this.applier.prepare(snapshot)) {
-                        case SnapshotApplier.PreparedSnapshot.Ready ready -> new PreparedOutcome.Ready(ready);
+                        case SnapshotApplier.PreparedSnapshot.Ready ready -> new PreparedOutcome.Ready(ready, System.nanoTime() - loadStart);
                         case SnapshotApplier.PreparedSnapshot.Failed failed -> {
                             String detail = failed.key().asString() + ": " + failed.detail();
                             this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, playerName, detail));
@@ -67,7 +68,7 @@ public final class SnapshotService {
      * 把预解码结果应用到玩家. <strong>必须在玩家线程上调用</strong>.
      */
     @NotNull
-    public LoadOutcome applyPrepared(@NotNull Player player, @NotNull SnapshotApplier.PreparedSnapshot.Ready ready) {
+    public LoadOutcome applyPrepared(@NotNull Player player, @NotNull SnapshotApplier.PreparedSnapshot.Ready ready, long asyncNanos) {
         long applyStart = System.nanoTime();
         return switch (this.applier.apply(player, ready)) {
             case SnapshotApplier.ApplyResult.Success success -> {
@@ -76,6 +77,7 @@ public final class SnapshotService {
                         player.getName(),
                         String.valueOf(success.applied().size()),
                         String.valueOf(success.skipped().size()),
+                        millis(0, asyncNanos),
                         millis(applyStart, System.nanoTime())
                 ));
                 yield new LoadOutcome.Applied(success.applied().size(), success.skipped().size());
@@ -98,7 +100,7 @@ public final class SnapshotService {
                 CompletableFuture<LoadOutcome> applied = new CompletableFuture<>();
                 player.getScheduler().run(this.plugin.javaPlugin(), task -> {
                     try {
-                        applied.complete(this.applyPrepared(player, ready.prepared()));
+                        applied.complete(this.applyPrepared(player, ready.prepared(), ready.asyncNanos()));
                     } catch (Throwable throwable) {
                         applied.completeExceptionally(throwable);
                     }
@@ -276,7 +278,7 @@ public final class SnapshotService {
     public sealed interface PreparedOutcome {
 
         /** 预解码完成, 携带待应用的数据. */
-        record Ready(@NotNull SnapshotApplier.PreparedSnapshot.Ready prepared) implements PreparedOutcome {
+        record Ready(@NotNull SnapshotApplier.PreparedSnapshot.Ready prepared, long asyncNanos) implements PreparedOutcome {
         }
 
         /** 玩家没有历史快照, 本服状态即权威. */

@@ -43,6 +43,7 @@ subprojects {
         maven("https://libraries.minecraft.net/")
         maven("https://repo.catnies.top/releases/")
         maven("https://repo.momirealms.net/releases/")
+        maven("https://repo.momirealms.net/snapshots/")
         maven("https://repo.papermc.io/repository/maven-public/")
     }
 
@@ -73,7 +74,7 @@ subprojects {
             // Relocate
             val libs = "net.momirealms.sparrow.sync.libraries"
             relocate("net.momirealms.sparrow.yaml", "$libs.yaml")
-//            relocate("net.momirealms.sparrow.ui", "$libs.ui")
+//            relocate("net.momirealms.sparrow.ui", "$libs.ui") // 不可 relocate
             relocate("net.momirealms.antigrieflib", "$libs.antigrieflib")
             relocate("net.momirealms.sparrow.nbt", "$libs.nbt")
             relocate("cn.gtemc.levelerbridge", "$libs.levelerbridge")
