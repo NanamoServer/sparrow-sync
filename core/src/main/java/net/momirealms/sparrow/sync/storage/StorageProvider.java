@@ -12,12 +12,11 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @ApiStatus.Internal
-public interface StorageProvider extends AutoCloseable {
+public interface StorageProvider {
 
     void initialize();
 
-    @Override
-    void close();
+    void shutdown();
 
     // ---- 查询 ----
 

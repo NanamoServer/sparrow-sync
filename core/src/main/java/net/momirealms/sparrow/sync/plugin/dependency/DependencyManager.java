@@ -276,7 +276,7 @@ public class DependencyManager  {
     /**
      * 关闭依赖管理器, 释放所有缓存的隔离类加载器资源.
      */
-    public void close() {
+    public void shutdown() {
         IOException firstEx = null;
 
         for (IsolatedClassLoader loader : this.loaders.values()) {

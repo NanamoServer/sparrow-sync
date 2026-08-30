@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.storage.mongo;
 
-import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
@@ -38,7 +37,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -85,7 +83,7 @@ class MongoStorageProviderTest {
             this.serialExecutor.shutdown(5, TimeUnit.SECONDS);
         }
         if (this.provider != null) {
-            this.provider.close();
+            this.provider.shutdown();
         }
         try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
             client.getDatabase(TEST_DATABASE).drop();
@@ -170,7 +168,7 @@ class MongoStorageProviderTest {
                 Document schema = client.getDatabase(TEST_DATABASE).getCollection("it_meta").find(new Document("_id", "schema")).first();
                 assertEquals(1, schema.getInteger("version"));
             } finally {
-                upgraded.close();
+                upgraded.shutdown();
             }
         }
     }
@@ -191,7 +189,7 @@ class MongoStorageProviderTest {
             try {
                 assertThrows(IllegalStateException.class, outdated::initialize);
             } finally {
-                outdated.close();
+                outdated.shutdown();
                 meta.deleteOne(new Document("_id", "schema"));
             }
         }

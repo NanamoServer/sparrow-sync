@@ -14,22 +14,23 @@ import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.data.type.*;
-import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
-import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
-import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
-import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.plugin.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.session.SessionListener;
+import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.session.SnapshotStash;
-import net.momirealms.sparrow.sync.session.TemporarySyncListener;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
@@ -40,10 +41,6 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
@@ -60,12 +57,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-public class SparrowSync implements Plugin, Listener {
+public class SparrowSync implements Plugin {
     private static SparrowSync instance;
 
     private final PluginLogger logger;
     private final Path dataFolderPath;
-    private final Runnable reloadEventDispatcher;
     private final ClassPathAppender sharedClassPathAppender;
     private final ClassPathAppender privateClassPathAppender;
     private final SchedulerAdapter<?> scheduler;
@@ -83,16 +79,16 @@ public class SparrowSync implements Plugin, Listener {
 
     private final DataRegistry dataRegistry = new DataRegistry();
     private PlayerSerialExecutor playerExecutor;
-    private SnapshotApplier snapshotApplier;
-    private StorageProvider storageProvider;
-    private SnapshotStash snapshotStash;
+    private SnapshotApplier snapshotApplier; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
+    private StorageProvider storageProvider; // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
+    private SnapshotStash snapshotStash;     // todo 这个玩意其他地方有用吗? 是否可以考虑合并到 Service
     private SnapshotService snapshotService;
+    private SessionManager sessionManager;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
         this.logger = logger;
         this.dataFolderPath = dataFolderPath;
-        this.reloadEventDispatcher = this::onPluginReload;
         this.sharedClassPathAppender = sharedClassPathAppender;
         this.privateClassPathAppender = privateClassPathAppender;
 
@@ -160,48 +156,49 @@ public class SparrowSync implements Plugin, Listener {
             Bukkit.getServer().shutdown();
             return;
         }
+        // 命令管理器
         this.commandManager = new BukkitCommandManager(this);
         this.commandManager.registerDefaultFeatures();
-
+        // 延迟初始化事件
         this.isInitializing = true;
-        this.initASMProxies(); // Proxy 类测试, 仅 dev 模式下生效
-        this.compatibilityManager.onEnable(); // 集成插件管理器
-        Bukkit.getPluginManager().registerEvents(this, this.javaPlugin);
-        Bukkit.getPluginManager().registerEvents(new TemporarySyncListener(this), this.javaPlugin); // 临时测试挂点, 登录管线就位后移除 todo 未来删除
+        this.initASMProxies();
+        // 集成插件管理器
+        this.compatibilityManager.onEnable();
         // 延迟重载逻辑
-        this.scheduler.sync().runDelayed(() -> {
-            this.compatibilityManager.onDelayedEnable(); // 集成插件管理器
-            this.isInitializing = false;
-            this.reloadEventDispatcher.run();
-        });
+        this.scheduler.sync().runDelayed(this::onServerLoaded);
     }
 
-    @Override
-    public void onPluginReload() {
-
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onServerStartup(ServerLoadEvent event) {
+    public void onServerLoaded() {
+        // 集成插件管理器
+        this.compatibilityManager.onDelayedEnable();
         // 冻结注册表并装配快照.
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
         this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
+        // 会话状态机. todo 登录管线统一走扣包 Gate (M9, Paper 与 Spigot 同一条), 落地前由 join 回落路径兜着
+        this.sessionManager = new SessionManager(this, this.logger);
+        Bukkit.getPluginManager().registerEvents(new SessionListener(this, this.snapshotService, this.sessionManager), this.javaPlugin);
         // 预热 DFU 的 ITEM_STACK CODEC.
         this.scheduler.async().execute(ItemCodec::warmUp);
+        // 标记
+        this.isInitializing = false;
+    }
+
+    @Override
+    public void onPluginReload() {
     }
 
     @Override
     public void onPluginDisable() {
-        if (this.snapshotService != null) this.snapshotService.close();
+        if (this.sessionManager != null) this.sessionManager.shutdown(); // 为 ACTIVE 会话投递 SHUTDOWN 保存
         if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
         if (this.snapshotService != null) this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
 
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
-        if (this.storageProvider != null) this.storageProvider.close();
-        if (this.dependencyManager != null) this.dependencyManager.close();
+        if (this.storageProvider != null) this.storageProvider.shutdown();
+        if (this.dependencyManager != null) this.dependencyManager.shutdown();
         if (!Bukkit.getServer().isStopping()) {
             logger().error(" ");
             logger().error(" ");
@@ -271,7 +268,10 @@ public class SparrowSync implements Plugin, Listener {
                     // 上次没能落库的本地快照插回数据库
                     this.scheduler.async().execute(() -> this.snapshotStash.restorePending(this.storageProvider));
                 }
-                case MYSQL -> this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
+                case MYSQL -> {
+                    this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
+                    Bukkit.getServer().shutdown();
+                }
             }
         } catch (Throwable throwable) {
             this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED), throwable);
@@ -318,7 +318,6 @@ public class SparrowSync implements Plugin, Listener {
 
 
                         long syncTime = System.currentTimeMillis() - syncStartTime;
-                        this.reloadEventDispatcher.run();
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, issues));
                     } catch (Throwable e) {
                         this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
@@ -590,6 +589,10 @@ public class SparrowSync implements Plugin, Listener {
 
     public SnapshotService snapshotService() {
         return this.snapshotService;
+    }
+
+    public SessionManager sessionManager() {
+        return this.sessionManager;
     }
 
     public StorageProvider storageProvider() {

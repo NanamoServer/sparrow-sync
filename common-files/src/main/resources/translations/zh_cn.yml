@@ -67,6 +67,9 @@ log.storage.schema_too_new: 数据库的结构代数<arg:0>高于本插件支持
 log.executor.unfinished_tasks: 玩家串行执行器关停时仍有<arg:0>个任务未完成
 log.executor.draining: 正在排空玩家任务，剩余<arg:0>个
 log.executor.task_failed: <arg:0>上的一个玩家任务执行失败
+sync.kick.not_ready: <red>你的数据尚未同步完成，请稍后重新连接。若多次出现请联系管理员。</red>
+log.gate.kicked: 已断开<arg:0>的连接（<arg:1>）
+log.session.player_gone: <arg:0>的会话仍处于活跃状态，但已取不到玩家实例，无法采集数据，该会话被原样留下
 log.sync.saved: 已保存<arg:0>的快照（<arg:1>，<arg:2>，采集<arg:3>毫秒，落库<arg:4>毫秒）
 log.sync.save_failed: 保存<arg:0>的快照失败
 log.sync.save_pending_retry: <arg:0>的快照暂时存不进数据库（已尝试<arg:1>次），会一直排队重试到数据库恢复

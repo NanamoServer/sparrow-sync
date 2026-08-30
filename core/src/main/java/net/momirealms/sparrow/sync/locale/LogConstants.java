@@ -32,6 +32,10 @@ public interface LogConstants {
     String EXECUTOR_DRAINING = "log.executor.draining";
     String EXECUTOR_TASK_FAILED = "log.executor.task_failed";
 
+    String SESSION_PLAYER_GONE = "log.session.player_gone";
+
+    String GATE_KICKED = "log.gate.kicked";
+
     String SYNC_SAVED = "log.sync.saved";
     String SYNC_SAVE_FAILED = "log.sync.save_failed";
     String SYNC_SAVE_PENDING_RETRY = "log.sync.save_pending_retry";

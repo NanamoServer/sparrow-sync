@@ -67,6 +67,9 @@ log.storage.schema_too_new: 'The database schema generation <arg:0> is newer tha
 log.executor.unfinished_tasks: 'Player serial executor shut down with <arg:0> unfinished task(s)'
 log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on <arg:0>'
+sync.kick.not_ready: <red>Your data is not synchronized yet, please reconnect in a moment. Contact an admin if this keeps happening.</red>
+log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
+log.session.player_gone: 'The session of <arg:0> is still active but its player instance is gone, nothing can be captured and the session was left as is'
 log.sync.saved: 'Saved a snapshot of <arg:0> (<arg:1>, <arg:2>, capture <arg:3>ms, store <arg:4>ms)'
 log.sync.save_failed: 'Failed to save a snapshot of <arg:0>'
 log.sync.save_pending_retry: 'The snapshot of <arg:0> cannot reach the database (attempt <arg:1>), it stays queued until the database recovers'

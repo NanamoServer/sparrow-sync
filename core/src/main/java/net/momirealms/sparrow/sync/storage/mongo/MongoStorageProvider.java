@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.storage.mongo;
 
 import com.mongodb.*;
-import com.mongodb.bulk.BulkWriteError;
 import com.mongodb.client.*;
 import com.mongodb.client.model.*;
 import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
@@ -31,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class MongoStorageProvider implements StorageProvider {
     // 预热心跳事件类.
-    // 首次使用是在关服时, 但是可能会落在关服竞争窗口里: mongoClient.close() 只中断 monitor 线程不等它退出.才会加载.
+    // 首次使用是在关服时, 但是可能会落在关服竞争窗口里: mongoClient.close() 只中断 monitor 线程不等它退出才会加载.
     // Paper 随后关闭插件类加载器, 导致 monitor 的最后一轮心跳必然失败并首次索要这个类, 于是会以 NoClassDefFoundError 结束.
     @SuppressWarnings("unused")
     private static final Class<?>[] HEARTBEAT_EVENT_CLASSES = {
@@ -112,7 +111,7 @@ public final class MongoStorageProvider implements StorageProvider {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         if (this.mongoClient != null) {
             this.mongoClient.close();
         }
@@ -124,7 +123,8 @@ public final class MongoStorageProvider implements StorageProvider {
         return CompletableFuture.supplyAsync(() -> {
             Document document = this.snapshotCollection().find(byPlayer(player)).sort(NEWEST_FIRST).limit(1).first();
             return this.decodeDocument(document);
-        }, this.asyncExecutor);
+            // todo 是否真的会出现, 如果一个玩家离开服务器, 未保存完成时锁可以直接被重入吗? 我认为它仍然需要等待锁释放.
+        }, this.serialExecutor.executor(player)); // 读取最后一份也走串行路径, 避免快速重复进服导致顺序错误.
     }
 
     @Override

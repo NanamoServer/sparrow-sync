@@ -13,19 +13,17 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.util.VersionHelper;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-public final class SnapshotService implements AutoCloseable {
+public final class SnapshotService {
     private final SparrowSync plugin;
     private final PluginLogger logger;
     private final SnapshotApplier applier;
@@ -42,68 +40,35 @@ public final class SnapshotService implements AutoCloseable {
         this.logger = logger;
     }
 
-
-
-    // todo 未来删除
-    // join 流程走完 (应用成功或确认无历史) 的玩家才允许保存, 半加载状态存出去会覆盖好数据.
-    private final Set<UUID> syncedPlayers = ConcurrentHashMap.newKeySet();
-
-    // todo 未来删除
-    /** 标记该玩家的 join 同步流程已完成, 此后允许为其保存快照. */
-    public void markSynced(@NotNull UUID player) {
-        this.syncedPlayers.add(player);
-    }
-
-    // todo 未来删除
     /**
-     * 会话结束时清除同步标记.
-     *
-     * @return 该玩家此前是否处于已同步状态
-     */
-    public boolean forgetSynced(@NotNull UUID player) {
-        return this.syncedPlayers.remove(player);
-    }
-
-
-
-
-    /**
-     * 读取玩家最新的快照并应用. 任意线程可调用, 应用段自动回到玩家的拥有线程;
-     * 应用前玩家已离开时以 {@link LoadOutcome.Gone} 完成.
+     * 读取玩家最新的快照并在调用线程上预解码.
+     * 任意线程可调用, 关键数据解不开则整份不应用.
      */
     @NotNull
-    public CompletableFuture<LoadOutcome> loadAndApply(@NotNull Player player) {
-        long loadStart = System.nanoTime();
-        return this.storage.latestSnapshot(player.getUniqueId()).thenCompose(latest -> {
+    public CompletableFuture<PreparedOutcome> loadAndPrepare(@NotNull UUID player, @NotNull String playerName) {
+        return this.storage.latestSnapshot(player).<PreparedOutcome>thenApply(latest -> {
             // 没有历史的新玩家, 本服状态即权威
-            return latest.<java.util.concurrent.CompletionStage<LoadOutcome>>map(snapshot -> switch (this.applier.prepare(snapshot)) {
-                case SnapshotApplier.PreparedSnapshot.Failed failed -> {
-                    String detail = failed.key().asString() + ": " + failed.detail();
-                    this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), detail));
-                    yield CompletableFuture.completedFuture(new LoadOutcome.Failed(detail));
-                }
-                // 应用段回玩家拥有线程, 调度前玩家离开则以 Gone 收尾
-                case SnapshotApplier.PreparedSnapshot.Ready ready -> {
-                    CompletableFuture<LoadOutcome> outcome = new CompletableFuture<>();
-                    player.getScheduler().run(this.plugin.javaPlugin(), task -> {
-                        try {
-                            outcome.complete(this.applyPrepared(player, ready, loadStart));
-                        } catch (Throwable throwable) {
-                            outcome.completeExceptionally(throwable);
+            return latest.<PreparedOutcome>map(snapshot ->
+                    switch (this.applier.prepare(snapshot)) {
+                        case SnapshotApplier.PreparedSnapshot.Ready ready -> new PreparedOutcome.Ready(ready);
+                        case SnapshotApplier.PreparedSnapshot.Failed failed -> {
+                            String detail = failed.key().asString() + ": " + failed.detail();
+                            this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, playerName, detail));
+                            yield new PreparedOutcome.Failed(detail);
                         }
-                    }, () -> outcome.complete(new LoadOutcome.Gone()));
-                    yield outcome;
-                }
-            }).orElseGet(() -> CompletableFuture.completedFuture(new LoadOutcome.Empty()));
-            // 在读库线程上预解码, 关键数据解不开则整份不应用
+                    }
+            ).orElseGet(PreparedOutcome.Empty::new);
         }).whenComplete((outcome, throwable) -> {
-            if (throwable != null) {
-                this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, player.getName(), String.valueOf(throwable)), throwable);
-            }
+            if (throwable != null) this.logger.error(TranslationManager.console(LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable)), throwable);
         });
     }
 
-    private LoadOutcome applyPrepared(Player player, SnapshotApplier.PreparedSnapshot.Ready ready, long loadStart) {
+    /**
+     * 把预解码结果应用到玩家. <strong>必须在玩家线程上调用</strong>.
+     */
+    @NotNull
+    public LoadOutcome applyPrepared(@NotNull Player player, @NotNull SnapshotApplier.PreparedSnapshot.Ready ready) {
+        long applyStart = System.nanoTime();
         return switch (this.applier.apply(player, ready)) {
             case SnapshotApplier.ApplyResult.Success success -> {
                 this.logger.info(TranslationManager.console(
@@ -111,12 +76,36 @@ public final class SnapshotService implements AutoCloseable {
                         player.getName(),
                         String.valueOf(success.applied().size()),
                         String.valueOf(success.skipped().size()),
-                        millis(loadStart, System.nanoTime())
+                        millis(applyStart, System.nanoTime())
                 ));
                 yield new LoadOutcome.Applied(success.applied().size(), success.skipped().size());
             }
             case SnapshotApplier.ApplyResult.Failure failure -> new LoadOutcome.Failed(failure.failedKey().asString() + ": " + failure.detail());
         };
+    }
+
+    /**
+     * {@link #loadAndPrepare} 与 {@link #applyPrepared} 的组合便捷,
+     * 应用段自动回到玩家的拥有线程, 调度前玩家已离开时以 {@link LoadOutcome.Gone} 完成.
+     * 供命令和快照恢复等即时应用场景使用.
+     */
+    @NotNull
+    public CompletableFuture<LoadOutcome> loadAndApply(@NotNull Player player) {
+        return this.loadAndPrepare(player.getUniqueId(), player.getName()).thenCompose(outcome -> switch (outcome) {
+            case PreparedOutcome.Empty ignored -> CompletableFuture.completedFuture(new LoadOutcome.Empty());
+            case PreparedOutcome.Failed failed -> CompletableFuture.completedFuture(new LoadOutcome.Failed(failed.detail()));
+            case PreparedOutcome.Ready ready -> {
+                CompletableFuture<LoadOutcome> applied = new CompletableFuture<>();
+                player.getScheduler().run(this.plugin.javaPlugin(), task -> {
+                    try {
+                        applied.complete(this.applyPrepared(player, ready.prepared()));
+                    } catch (Throwable throwable) {
+                        applied.completeExceptionally(throwable);
+                    }
+                }, () -> applied.complete(new LoadOutcome.Gone()));
+                yield applied;
+            }
+        });
     }
 
     /**
@@ -138,7 +127,7 @@ public final class SnapshotService implements AutoCloseable {
         return outcome;
     }
 
-    // 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败
+    // 提交落库请求, 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败.
     private void submitSave(SaveAttempt attempt, CompletableFuture<SaveResult> outcome) {
         long submitAt = System.nanoTime();
         CompletableFuture<SaveResult> save;
@@ -150,21 +139,22 @@ public final class SnapshotService implements AutoCloseable {
             return;
         }
         save.whenComplete((result, throwable) -> {
+            // 保存失败
             if (throwable != null) {
                 this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, attempt.playerName()), throwable);
                 outcome.completeExceptionally(throwable);
                 return;
             }
+            // 已保存, 轮转快照
             if (result.stored()) {
                 this.logger.info(TranslationManager.console(LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime())));
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(result);
                 return;
             }
+            // 可重试
             if (result.retriable() && attempt.retryAllowed()) {
-                if (attempt.worthLogging()) {
-                    this.logger.warn(TranslationManager.console(LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number())));
-                }
+                if (attempt.worthLogging()) this.logger.warn(TranslationManager.console(LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number())));
                 this.scheduleRetry(attempt.next(), outcome);
                 return;
             }
@@ -217,24 +207,6 @@ public final class SnapshotService implements AutoCloseable {
     // 分配采集时间戳.
     private long nextTimestamp(UUID player) {
         return this.lastCaptureAt.merge(player, System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
-    }
-
-    @Override
-    public void close() {
-        int submitted = 0;
-        // 为已同步的在线玩家各投递一份 SHUTDOWN 快照.
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!this.syncedPlayers.contains(player.getUniqueId())) continue;
-            try {
-                this.captureAndSave(player, SaveCause.SHUTDOWN);
-                submitted++;
-            } catch (Throwable throwable) {
-                this.logger.error(TranslationManager.console(LogConstants.SYNC_SAVE_FAILED, player.getName()), throwable);
-            }
-        }
-        if (submitted > 0) {
-            this.logger.info(TranslationManager.console(LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(submitted)));
-        }
     }
 
     /**
@@ -297,6 +269,22 @@ public final class SnapshotService implements AutoCloseable {
         @NotNull
         SaveAttempt next() {
             return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureStart);
+        }
+    }
+
+    /** 一次读取预解码的结果, 配置阶段产出, 应用段消费. */
+    public sealed interface PreparedOutcome {
+
+        /** 预解码完成, 携带待应用的数据. */
+        record Ready(@NotNull SnapshotApplier.PreparedSnapshot.Ready prepared) implements PreparedOutcome {
+        }
+
+        /** 玩家没有历史快照, 本服状态即权威. */
+        record Empty() implements PreparedOutcome {
+        }
+
+        /** 读库失败或关键数据解码失败, 不应放行. */
+        record Failed(@NotNull String detail) implements PreparedOutcome {
         }
     }
 

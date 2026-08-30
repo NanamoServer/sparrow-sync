@@ -58,7 +58,7 @@ sparrow-nbt-adventure = { module = "net.momirealms:sparrow-nbt-adventure", versi
 sparrow-nbt-codec = { module = "net.momirealms:sparrow-nbt-codec", version.ref = "sparrow-nbt" }
 sparrow-nbt-legacy-codec = { module = "net.momirealms:sparrow-nbt-legacy-codec", version.ref = "sparrow-nbt" }
 sparrow-reflection = { module = "net.momirealms:sparrow-reflection", version = "0.34" }
-sparrow-yaml = { module = "net.momirealms:sparrow-yaml", version = "1.0.18" }
+sparrow-yaml = { module = "net.momirealms:sparrow-yaml", version = "1.0.19" }
 
 adventure-api = { module = "net.kyori:adventure-api", version.ref = "adventure" }
 adventure-nbt = { module = "net.kyori:adventure-nbt", version.ref = "adventure" }
