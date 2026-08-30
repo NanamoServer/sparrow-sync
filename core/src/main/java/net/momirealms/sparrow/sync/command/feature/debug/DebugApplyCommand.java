@@ -73,14 +73,19 @@ public final class DebugApplyCommand extends BukkitCommandFeature {
         SnapshotApplier.PreparedSnapshot prepared = applier.prepare(snapshot);
         if (!(prepared instanceof SnapshotApplier.PreparedSnapshot.Ready ready)) {
             SnapshotUtils.send(player, "[FAIL] prepare: " + prepared, false);
+            plugin().logger().warn("Debug apply failed to prepare debug/" + relative + " for " + player.getName() + ": " + prepared);
             return;
         }
         player.getScheduler().run(plugin().javaPlugin(), task -> {
             switch (applier.apply(player, ready)) {
-                case SnapshotApplier.ApplyResult.Success success ->
-                        SnapshotUtils.send(player, "[PASS] applied " + success.applied().size() + " type(s), " + success.skipped().size() + " skipped, from debug/" + relative, true);
-                case SnapshotApplier.ApplyResult.Failure failure ->
-                        SnapshotUtils.send(player, "[FAIL] apply " + failure.failedKey().asString() + ": " + failure.detail(), false);
+                case SnapshotApplier.ApplyResult.Success success -> {
+                    SnapshotUtils.send(player, "[PASS] applied " + success.applied().size() + " type(s), " + success.skipped().size() + " skipped, from debug/" + relative, true);
+                    plugin().logger().info("Debug apply: " + success.applied().size() + " type(s) to " + player.getName() + " (" + player.getUniqueId() + ") from debug/" + relative);
+                }
+                case SnapshotApplier.ApplyResult.Failure failure -> {
+                    SnapshotUtils.send(player, "[FAIL] apply " + failure.failedKey().asString() + ": " + failure.detail(), false);
+                    plugin().logger().warn("Debug apply of " + failure.failedKey().asString() + " failed for " + player.getName() + ": " + failure.detail());
+                }
             }
         }, null);
     }

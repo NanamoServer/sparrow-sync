@@ -52,6 +52,7 @@ public final class DebugSaveJsonCommand extends BukkitCommandFeature {
                 Files.createDirectories(file.getParent());
                 Files.writeString(file, json);
                 SnapshotUtils.send(player, "[PASS] " + snapshot.data().size() + " type(s) -> debug/" + file.getFileName() + " (" + json.length() + " chars)", true);
+                plugin().logger().info("Debug json dump: " + snapshot.data().size() + " type(s) of " + player.getName() + " (" + player.getUniqueId() + ") -> debug/" + file.getFileName());
             } catch (Exception exception) {
                 SnapshotUtils.send(player, "[FAIL] dump: " + exception, false);
                 plugin().logger().warn("Debug json dump failed for " + player.getName(), exception);

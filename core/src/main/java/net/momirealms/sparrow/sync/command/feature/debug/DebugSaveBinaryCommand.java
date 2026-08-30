@@ -52,6 +52,7 @@ public final class DebugSaveBinaryCommand extends BukkitCommandFeature {
                 Files.createDirectories(file.getParent());
                 Files.write(file, bytes);
                 SnapshotUtils.send(player, "[PASS] " + snapshot.data().size() + " type(s) -> debug/" + file.getFileName() + " (" + bytes.length + " bytes)", true);
+                plugin().logger().info("Debug binary dump: " + snapshot.data().size() + " type(s) of " + player.getName() + " (" + player.getUniqueId() + ") -> debug/" + file.getFileName() + " (" + bytes.length + " bytes)");
             } catch (Exception exception) {
                 SnapshotUtils.send(player, "[FAIL] dump: " + exception, false);
                 plugin().logger().warn("Debug binary dump failed for " + player.getName(), exception);

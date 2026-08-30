@@ -2,7 +2,6 @@ package net.momirealms.sparrow.sync.locale;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.translation.Translator;
 import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.util.AdventureHelper;
@@ -44,13 +43,14 @@ public interface TranslationManager {
     }
 
     /**
-     * 按控制台语言取一条带颜色的消息, <strong>翻译体系尚未装配时原样返回翻译键</strong>.
+     * 按控制台语言取一条纯文本消息, 供 PluginLogger 输出时保留日志级别与插件前缀.
+     * 日志语言不携带颜色, <strong>翻译体系尚未装配时原样返回翻译键</strong>.
      *
      * @param key {@link LogConstants} 中的翻译键常量
      */
     static String console(String key, String... arguments) {
         TranslationManager manager = TranslationManagerImpl.instance;
-        return manager == null ? key : manager.consoleTranslation(key, arguments);
+        return manager == null ? key : manager.plainTranslation(key, arguments);
     }
 
     /**
@@ -117,35 +117,6 @@ public interface TranslationManager {
         }
         Component deserialize = AdventureHelper.customMiniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(arguments).map(Component::text).toList()));
         return AdventureHelper.plainTextContent(deserialize);
-    }
-
-    /**
-     * 查询指定翻译键并渲染为控制台字符串, MiniMessage 颜色转为 § 序列.
-     *
-     * @param key 翻译键
-     * @param arguments 用于替换翻译模板中索引占位符的参数列表
-     * @return 渲染后的控制台字符串, 若翻译缺失则返回原始键
-     */
-    default String consoleTranslation(String key, String... arguments) {
-        String translation = miniMessageTranslation(key);
-        if (translation == null) {
-            return key;
-        }
-        Component deserialize = AdventureHelper.customMiniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(arguments).map(Component::text).toList()));
-        return ConsoleSerializer.INSTANCE.serialize(deserialize);
-    }
-
-    /**
-     * 控制台消息序列化器的惰性载体, 首次真正渲染控制台消息时才构建.
-     */
-    final class ConsoleSerializer {
-        static final LegacyComponentSerializer INSTANCE = LegacyComponentSerializer.builder()
-                .hexColors()
-                .useUnusualXRepeatedCharacterHexFormat()
-                .build();
-
-        private ConsoleSerializer() {
-        }
     }
 
     /**
