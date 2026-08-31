@@ -53,7 +53,6 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
     @Override
     @NotNull
     public Tag capture(@NotNull Player player) {
-        PlayerDataType.ensureOwningThread(player);
         ItemStack[] contents = player.getEnderChest().getContents();
         CompoundTag root = NBT.createCompound();
         root.putInt(SIZE_KEY, contents.length);
@@ -74,7 +73,6 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
     // todo 这块需要改善一下处理, 不能直接drop. 扩容肯定没事, 缩小才要警告.
     @Override
     public void apply(@NotNull Player player, @NotNull ItemCodec.LoadedItems value) {
-        PlayerDataType.ensureOwningThread(player);
         Inventory enderChest = player.getEnderChest();
         // 快照容器大小与本服不同时 (扩容插件, 魔改核心) 适配并重排, 放不下的连同解码期的丢弃一起告警
         ItemCodec.LoadedItems fitted = ItemCodec.fit(value.items(), enderChest.getSize());

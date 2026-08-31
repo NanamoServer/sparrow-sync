@@ -49,7 +49,6 @@ public final class PDCDataType implements PlayerDataType<CompoundTag> {
     @Override
     @NotNull
     public Tag capture(@NotNull Player player) {
-        PlayerDataType.ensureOwningThread(player);
         CompoundTag snapshot = NBT.createCompound();
         for (Map.Entry<String, net.minecraft.nbt.Tag> entry : rawContainer(player).entrySet()) {
             snapshot.put(entry.getKey(), NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, entry.getValue()));
@@ -68,7 +67,6 @@ public final class PDCDataType implements PlayerDataType<CompoundTag> {
 
     @Override
     public void apply(@NotNull Player player, @NotNull CompoundTag value) {
-        PlayerDataType.ensureOwningThread(player);
         Map<String, net.minecraft.nbt.Tag> raw = rawContainer(player);
         if (this.mergeNamespaces.isEmpty()) {
             raw.clear();

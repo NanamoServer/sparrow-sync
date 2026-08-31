@@ -128,7 +128,8 @@ public final class SnapshotService {
     }
 
     /**
-     * 采集玩家当前状态并投递落库, <strong>必须在玩家线程上调用</strong>.
+     * 采集玩家当前状态并投递落库.
+     * <strong>必须在玩家线程上调用</strong>.
      */
     @NotNull
     public CompletableFuture<SaveResult> captureAndSave(@NotNull Player player, @NotNull SaveCause cause) {

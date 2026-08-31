@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.data;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -64,15 +63,4 @@ public interface PlayerDataType<T> {
      * <strong>必须在玩家线程上调用</strong>.
      */
     void apply(@NotNull Player player, @NotNull T value);
-
-    /**
-     * 校验当前线程可以读写该玩家, Paper 上为主线程, Folia 上为玩家所在区域线程.
-     * Folia 的任意 tick 线程都会让 isPrimaryThread 为真, 判定必须落在 isOwnedByCurrentRegion 上.
-     *
-     * @throws IllegalStateException 当前线程不拥有该玩家时
-     */
-    static void ensureOwningThread(@NotNull Player player) {
-        if (Bukkit.isOwnedByCurrentRegion(player)) return;
-        throw new IllegalStateException("player data of " + player.getName() + " must be accessed on its owning thread");
-    }
 }

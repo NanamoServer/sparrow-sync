@@ -53,7 +53,6 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
     @Override
     @NotNull
     public final Tag capture(@NotNull Player player) {
-        PlayerDataType.ensureOwningThread(player);
         T value = this.captureValue(player);
         return this.codec.encodeStart(this.ops.get(), value)
                 .getOrThrow(message -> new IllegalStateException("failed to encode " + this.key + ": " + message));
@@ -68,7 +67,6 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
 
     @Override
     public final void apply(@NotNull Player player, @NotNull T value) {
-        PlayerDataType.ensureOwningThread(player);
         this.applyValue(player, value);
     }
 

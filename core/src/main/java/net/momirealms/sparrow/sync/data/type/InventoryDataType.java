@@ -57,7 +57,6 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
     @Override
     @NotNull
     public Tag capture(@NotNull Player player) {
-        PlayerDataType.ensureOwningThread(player);
         PlayerInventory inventory = player.getInventory();
         ItemStack[] contents = inventory.getContents();
         CompoundTag root = NBT.createCompound();
@@ -87,7 +86,6 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
 
     @Override
     public void apply(@NotNull Player player, @NotNull Inventory value) {
-        PlayerDataType.ensureOwningThread(player);
         PlayerInventory inventory = player.getInventory();
         // 快照容器大小与本服不同时 (跨版本) 适配并重排, 放不下的连同解码期的丢弃一起告警
         ItemCodec.LoadedItems fitted = ItemCodec.fit(value.contents(), inventory.getSize());
