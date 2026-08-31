@@ -1,0 +1,21 @@
+config-version = "2.8"
+bind = "0.0.0.0:25565"
+motd = "<#09add3>Sparrow Sync Proxy Test"
+show-max-players = 2
+online-mode = true
+force-key-authentication = true
+prevent-client-proxy-connections = false
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "forwarding.secret"
+announce-forge = false
+kick-existing-players = false
+ping-passthrough = "DISABLED"
+enable-player-address-logging = true
+
+[servers]
+paper = "127.0.0.1:25566"
+folia = "127.0.0.1:25567"
+try = ["paper", "folia"]
+
+[forced-hosts]
+

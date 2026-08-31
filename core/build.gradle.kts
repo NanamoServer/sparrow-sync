@@ -1,15 +1,12 @@
 import org.gradle.kotlin.dsl.buildConfigField
-import xyz.jpenilla.runpaper.task.RunServer
-import xyz.jpenilla.runtask.service.DownloadsAPIService
 import java.text.SimpleDateFormat
 import java.util.Date
 
 // Plugin
 plugins {
-    alias(libs.plugins.paper.weight)
     alias(libs.plugins.plugin.yml)
-    alias(libs.plugins.run.paper)
     alias(libs.plugins.buildconfig)
+    id("sparrow-sync.run-servers")
 }
 
 // Dependency
@@ -109,58 +106,4 @@ paper {
     apiVersion = "1.21.8"
     foliaSupported = true
 
-}
-
-// Run Task
-val exampleJar = tasks.shadowJar.flatMap { it.archiveFile }
-val minecraftVersions = listOf("1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2")
-for (minecraftVersion in minecraftVersions) {
-    tasks.register<RunServer>("runPaper_$minecraftVersion") {
-        group = "run paper"
-        displayName.set("Paper $minecraftVersion")
-        minecraftVersion(minecraftVersion)
-        runDirectory.set(rootProject.layout.projectDirectory.dir("run/paper/$minecraftVersion"))
-        pluginJars.from(exampleJar)
-        javaLauncher = javaToolchains.launcherFor {
-            vendor = JvmVendorSpec.JETBRAINS
-            languageVersion = JavaLanguageVersion.of(25)
-        }
-        systemProperties["Paper.IgnoreJavaVersion"] = true
-        systemProperties["net.nyana.plugin.dev"] = true
-        systemProperties["com.mojang.eula.agree"] = true
-        jvmArgs(
-            "-Dorg.bukkit.plugin.java.LibraryLoader.centralURL=https://maven.aliyun.com/repository/central",
-            "-Dfile.encoding=UTF-8",
-            "-Dsun.stdout.encoding=UTF-8",
-            "-Dsun.stderr.encoding=UTF-8",
-            "-Ddisable.watchdog=true",
-            "-Xlog:redefine+class*=info",
-            "-XX:+AllowEnhancedClassRedefinition"
-        )
-    }
-
-    tasks.register<RunServer>("runFolia_$minecraftVersion") {
-        group = "run paper"
-        displayName.set("Folia $minecraftVersion")
-        downloadsApiService.set(DownloadsAPIService.folia(project))
-        minecraftVersion(minecraftVersion)
-        runDirectory.set(rootProject.layout.projectDirectory.dir("run/folia/$minecraftVersion"))
-        pluginJars.from(exampleJar)
-        javaLauncher = javaToolchains.launcherFor {
-            vendor = JvmVendorSpec.JETBRAINS
-            languageVersion = JavaLanguageVersion.of(25)
-        }
-        systemProperties["Paper.IgnoreJavaVersion"] = true
-        systemProperties["net.nyana.plugin.dev"] = true
-        systemProperties["com.mojang.eula.agree"] = true
-        jvmArgs(
-            "-Dorg.bukkit.plugin.java.LibraryLoader.centralURL=https://maven.aliyun.com/repository/central",
-            "-Dfile.encoding=UTF-8",
-            "-Dsun.stdout.encoding=UTF-8",
-            "-Dsun.stderr.encoding=UTF-8",
-            "-Ddisable.watchdog=true",
-            "-Xlog:redefine+class*=info",
-            "-XX:+AllowEnhancedClassRedefinition"
-        )
-    }
 }

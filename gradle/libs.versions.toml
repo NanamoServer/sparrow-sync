@@ -3,6 +3,9 @@ project-version = "beta.1"
 config-version = "3"
 lang-version = "3"
 
+run-task = "3.0.2"
+paperweight = "2.0.0-beta.21"
+
 paper-api = "1.21.8-R0.1-SNAPSHOT"
 asm = "9.9.1"
 asmcommons = "9.9.1"
@@ -32,9 +35,9 @@ zstd = "1.5.7-15"
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
-paper-weight = { id = "io.papermc.paperweight.userdev", version = "2.0.0-beta.21" }
+paper-weight = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight" }
 plugin-yml = { id = "de.eldoria.plugin-yml.paper", version = "0.9.0" }
-run-paper = { id = "xyz.jpenilla.run-paper", version = "3.0.2" }
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
 buildconfig = { id = "com.github.gmazzo.buildconfig", version = "6.0.9" }
 
 [libraries]

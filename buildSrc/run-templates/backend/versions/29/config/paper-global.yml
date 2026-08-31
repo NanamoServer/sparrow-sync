@@ -1,0 +1,9 @@
+_version: 29
+proxies:
+  bungee-cord:
+    online-mode: true
+  proxy-protocol: false
+  velocity:
+    enabled: true
+    online-mode: true
+    secret: 'sparrow-sync-local-proxy-forwarding-secret'

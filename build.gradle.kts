@@ -5,7 +5,6 @@ plugins {
     id("java")
     `java-library`
     alias(libs.plugins.shadow)
-    alias(libs.plugins.paper.weight) apply false
 }
 
 group = "net.momirealms"
@@ -15,6 +14,7 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
     toolchain {
+        vendor = JvmVendorSpec.JETBRAINS
         languageVersion = JavaLanguageVersion.of(21)
     }
     withSourcesJar()
@@ -33,6 +33,7 @@ subprojects {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
         toolchain {
+            vendor = JvmVendorSpec.JETBRAINS
             languageVersion = JavaLanguageVersion.of(21)
         }
         withSourcesJar()
@@ -74,7 +75,7 @@ subprojects {
             // Relocate
             val libs = "net.momirealms.sparrow.sync.libraries"
             relocate("net.momirealms.sparrow.yaml", "$libs.yaml")
-//            relocate("net.momirealms.sparrow.ui", "$libs.ui") // 不可 relocate
+            relocate("net.momirealms.sparrow.ui", "$libs.ui")
             relocate("net.momirealms.antigrieflib", "$libs.antigrieflib")
             relocate("net.momirealms.sparrow.nbt", "$libs.nbt")
             relocate("cn.gtemc.levelerbridge", "$libs.levelerbridge")
