@@ -25,7 +25,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 public final class FileLogWriter implements AutoCloseable {
-    private static final String DEFAULT_TIME_PATTERN = "HH:mm:ss";
+    private static final String DEFAULT_TIME_PATTERN = "HH:mm:ss.SSS";
     private static final String DEFAULT_DAY_PATTERN = "yyyy-MM-dd";
     private static final int MAX_BATCH = 256;
     private static final Entry CLOSE_SIGNAL = new Entry(0L, null, null, null, "", null, null);

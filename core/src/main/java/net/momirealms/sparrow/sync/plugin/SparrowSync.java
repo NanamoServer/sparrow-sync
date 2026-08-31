@@ -154,7 +154,15 @@ public class SparrowSync implements Plugin {
         this.compatibilityManager.onLoad();
         // 服务器身份缺失时不放行
         if (ServerConfig.serverId().isEmpty()) {
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error("============================================================");
             this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_MISSING));
+            this.logger.error("============================================================");
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error(" ");
             Bukkit.getServer().shutdown();
             return;
         }

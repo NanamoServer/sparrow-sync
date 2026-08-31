@@ -32,13 +32,7 @@ public final class ServerConfig {
                 .sparrowYaml(sparrowYaml)
                 .upgradePipeline(upgradePipeline)
                 .build();
-        // 首次生成时把推导出的服务器 id 写进文件, 用户看到的是真实取值而不是留给他填的空位
-        String derivedServerId = deriveServerId(plugin.dataFolderPath());
-        this.configMapper = mapperFactory.create(ConfigDefinition.class, () -> {
-            ConfigDefinition definition = new ConfigDefinition();
-            definition.serverId = derivedServerId;
-            return definition;
-        });
+        this.configMapper = mapperFactory.create(ConfigDefinition.class, ConfigDefinition::new);
     }
 
     void reload() {
@@ -50,18 +44,7 @@ public final class ServerConfig {
     }
 
     /**
-     * 数据目录形如 {@code <服务器目录>/plugins/<插件名>}, 上溯两层即服务器目录, 取其名字作为默认 id.
-     * 目录层级不足时返回空串, 由启动期校验拦下并要求手工配置.
-     */
-    private static String deriveServerId(Path dataFolder) {
-        Path pluginsDirectory = dataFolder.toAbsolutePath().getParent();
-        Path serverDirectory = pluginsDirectory == null ? null : pluginsDirectory.getParent();
-        Path name = serverDirectory == null ? null : serverDirectory.getFileName();
-        return name == null ? "" : name.toString();
-    }
-
-    /**
-     * 本服在同步集群中的唯一标识, 未配置且无法推导时为空串.
+     * 本服在同步集群中的唯一标识, 未配置时为空串.
      */
     @NotNull
     public static String serverId() {
@@ -75,7 +58,7 @@ public final class ServerConfig {
 
         @Comment({
                 "Identifies this server inside the sync cluster, it must be unique across every server sharing the database",
-                "Generated from the name of the server directory on first run, change it if that name is not what you want",
+                "Set it before starting the server, SparrowSync shuts the server down while this value is empty",
                 "Snapshots record it, so renaming it later only affects snapshots written from now on"
         })
         String serverId = "";

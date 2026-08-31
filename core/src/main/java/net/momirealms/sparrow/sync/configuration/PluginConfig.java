@@ -116,7 +116,7 @@ public final class PluginConfig {
         @Comment({
                 "Timestamp format of each log line, a java DateTimeFormatter pattern"
         })
-        String timeFormat = "HH:mm:ss";
+        String timeFormat = "HH:mm:ss.SSS";
 
         @Comment({
                 "Date format of the daily log file names, a java DateTimeFormatter pattern",

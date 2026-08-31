@@ -48,9 +48,9 @@ class FileLogWriterTest {
         // Assert
         List<String> lines = Files.readAllLines(this.todayFile(now));
         assertEquals(2, lines.size());
-        assertTrue(lines.get(0).matches("\\[\\d{2}:\\d{2}:\\d{2}] \\[SAVE] \\[Catnies 00000000-0000-0000-0000-000000000042] raw message"), lines.get(0));
+        assertTrue(lines.get(0).matches("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[SAVE] \\[Catnies 00000000-0000-0000-0000-000000000042] raw message"), lines.get(0));
         // 透传线的 § 颜色序列被剥净, 文件保持纯文本
-        assertTrue(lines.get(1).matches("\\[\\d{2}:\\d{2}:\\d{2}] \\[LIFECYCLE] colored plain"), lines.get(1));
+        assertTrue(lines.get(1).matches("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[LIFECYCLE] colored plain"), lines.get(1));
     }
 
     @Test
