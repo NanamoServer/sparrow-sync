@@ -178,6 +178,9 @@ public final class TestCommand extends BukkitCommandFeature {
                 return summarize(report);
             }
             check(report, "apply", true, "");
+            boolean markerPreserved = player.getPersistentDataContainer().has(SMOKE_MARKER, PersistentDataType.INTEGER);
+            check(report, "pdc merge preserves local-only key", markerPreserved, markerPreserved ? "" : "smoke marker was removed");
+            player.getPersistentDataContainer().remove(SMOKE_MARKER);
 
             // 复采集并逐类型比对
             if (!(applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready recaptured)) {
@@ -194,13 +197,13 @@ public final class TestCommand extends BukkitCommandFeature {
             report.add("[FAIL] unexpected: " + exception);
             plugin().logger().warn("Smoke test failed for " + player.getName(), exception);
         } finally {
-            // 全量替换模式下 apply 已经带走了标记键; 合并模式只替换白名单命名空间, 标记键会留在玩家身上
+            // 失败分支也清理本轮 PDC 标记
             player.getPersistentDataContainer().remove(SMOKE_MARKER);
         }
         return summarize(report);
     }
 
-    // 打乱全部八类数据, 应用还原后这里的每一处扰动都应消失
+    // 打乱八类数据. PDC 标记验证增量合并会保留本服独有键, 其余扰动应由快照还原
     private static void disturb(Player player) {
         player.getInventory().clear();
         player.setItemOnCursor(null);

@@ -11,18 +11,21 @@ import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
+import net.momirealms.sparrow.yaml.serializer.auto.annotation.YamlIgnore;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
 import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class PluginConfig {
     private static final String CONFIG_FILE = "config.yml";
-    private static volatile ConfigDefinition config;    // 重载在异步线程换上新的一份, 读方遍布各线程
+    private static volatile ConfigDefinition config;
 
     private final Plugin plugin;
     private final Path configFilePath;
@@ -44,7 +47,9 @@ public final class PluginConfig {
 
     void reload() {
         try {
-            config = this.configMapper.load(this.configFilePath).value();
+            ConfigDefinition loadedConfig = this.configMapper.load(this.configFilePath).value();
+            loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
+            config = loadedConfig;
         } catch (Exception e) {
             this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
         }
@@ -173,11 +178,118 @@ public final class PluginConfig {
         CompressorRegistry compression = CompressorRegistry.ZSTD;
 
         @Comment({
-                "Namespaces of persistent data (PDC) keys to synchronize, e.g. [craftengine, myplugin]",
-                "Empty list replaces the whole container with the snapshot on apply;",
-                "otherwise only keys under the listed namespaces are replaced and the rest stay untouched"
+                "Persistent data (PDC) merge blacklist; every entry is a path relative to custom_data",
+                "Blacklisted paths are neither captured nor merged",
+                "Use \"sparrow-sync-ignore\" for custom_data -> sparrow-sync-ignore",
+                "Use [\"sparrow-sync\", \"ignore\"] for custom_data -> sparrow-sync -> ignore"
         })
-        List<String> pdcMergeNamespaces = List.of();
+        List<Object> pdcMergeNamespaces = List.of(
+                "sparrow-sync-ignore",
+                List.of("sparrow-sync", "ignore")
+        );
+
+        @YamlIgnore
+        PDCMergeBlacklist pdcMergeBlacklist = PDCMergeBlacklist.empty();
+    }
+
+    /**
+     * 相对于 {@code custom_data} 根节点的不可变黑名单路径树.
+     */
+    public static final class PDCMergeBlacklist {
+        private static final PDCMergeBlacklist TERMINAL = new PDCMergeBlacklist(Map.of());
+        private static final PDCMergeBlacklist EMPTY = new PDCMergeBlacklist(Map.of());
+
+        private final Map<String, PDCMergeBlacklist> children;
+
+        private PDCMergeBlacklist(Map<String, PDCMergeBlacklist> children) {
+            this.children = children;
+        }
+
+        /**
+         * 将字符串和分段列表编译为不可变路径树, 前缀路径覆盖其全部后代.
+         *
+         * @param entries YAML 中的黑名单条目
+         * @return 可供采集与合并直接查询的路径树
+         */
+        @NotNull
+        public static PDCMergeBlacklist of(@NotNull List<?> entries) {
+            Builder root = new Builder();
+            for (Object entry : entries) {
+                if (entry instanceof String segment) {
+                    root.add(segment);
+                    continue;
+                }
+                if (entry instanceof List<?> path && !path.isEmpty()) {
+                    root.add(path);
+                    continue;
+                }
+                throw invalidEntry(entry);
+            }
+            return root.freeze();
+        }
+
+        public boolean terminal() {
+            return this == TERMINAL;
+        }
+
+        public boolean hasChildren() {
+            return !this.children.isEmpty();
+        }
+
+        @Nullable
+        public PDCMergeBlacklist child(@NotNull String segment) {
+            return this.children.get(segment);
+        }
+
+        private static PDCMergeBlacklist empty() {
+            return EMPTY;
+        }
+
+        private static IllegalArgumentException invalidEntry(Object entry) {
+            return new IllegalArgumentException("PDC merge blacklist entries must be a path string or a non-empty list of path strings: " + entry);
+        }
+
+        private static final class Builder {
+            private boolean terminal;
+            private Map<String, Builder> children;
+
+            private void add(String segment) {
+                if (this.children == null) {
+                    this.children = new HashMap<>();
+                }
+                this.children.computeIfAbsent(segment, ignored -> new Builder()).finish();
+            }
+
+            private void add(List<?> path) {
+                Builder current = this;
+                for (Object element : path) {
+                    if (!(element instanceof String segment)) {
+                        throw invalidEntry(path);
+                    }
+                    if (current.terminal) return;
+                    if (current.children == null) {
+                        current.children = new HashMap<>();
+                    }
+                    current = current.children.computeIfAbsent(segment, ignored -> new Builder());
+                }
+                current.finish();
+            }
+
+            private void finish() {
+                this.terminal = true;
+                this.children = null;
+            }
+
+            private PDCMergeBlacklist freeze() {
+                if (this.terminal) return TERMINAL;
+                if (this.children == null) return EMPTY;
+                Map<String, PDCMergeBlacklist> frozenChildren = new HashMap<>(this.children.size());
+                for (Map.Entry<String, Builder> entry : this.children.entrySet()) {
+                    frozenChildren.put(entry.getKey(), entry.getValue().freeze());
+                }
+                return new PDCMergeBlacklist(Map.copyOf(frozenChildren));
+            }
+        }
     }
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
@@ -381,8 +493,9 @@ public final class PluginConfig {
         return config.synchronization.compression;
     }
 
-    public static List<String> synchronization$pdcMergeNamespaces() {
-        return config.synchronization.pdcMergeNamespaces;
+    @NotNull
+    public static PDCMergeBlacklist synchronization$pdcMergeNamespaces() {
+        return config.synchronization.pdcMergeBlacklist;
     }
 
     public static StorageType database$type() {

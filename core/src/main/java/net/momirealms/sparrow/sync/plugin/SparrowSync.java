@@ -60,7 +60,6 @@ import java.net.URLConnection;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -178,7 +177,9 @@ public class SparrowSync implements Plugin {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
+            this.logger.error("============================================================");
             logger().error(TranslationManager.console(LogConstants.PLUGIN_RELOAD_AT_RUNTIME));
+            this.logger.error("============================================================");
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -190,7 +191,9 @@ public class SparrowSync implements Plugin {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
+            this.logger.error("============================================================");
             logger().error(TranslationManager.console(LogConstants.PLUGIN_LOAD_FAILED));
+            this.logger.error("============================================================");
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -297,7 +300,7 @@ public class SparrowSync implements Plugin {
         this.dataRegistry.register(new GameModeDataType());
         this.dataRegistry.register(new InventoryDataType(logger));
         this.dataRegistry.register(new EnderChestDataType(logger));
-        this.dataRegistry.register(new PDCDataType(Set.copyOf(PluginConfig.synchronization$pdcMergeNamespaces())));
+        this.dataRegistry.register(new PDCDataType());
     }
 
     /**
