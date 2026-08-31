@@ -7,7 +7,6 @@ import net.momirealms.sparrow.sync.data.SnapshotApplier.PreparedSnapshot;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistration;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -50,8 +49,8 @@ class SnapshotApplierTest {
     @Test
     void captureSkipsFailingNonCriticalType() {
         // 非关键类型采集失败只跳过自己, 其余数据照常进快照
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType bravo = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED)).failingCapture();
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType bravo = new FakeType(BRAVO, StorageFormat.STRUCTURED).failingCapture();
         SnapshotApplier applier = createApplier(alpha, bravo);
 
         SnapshotApplier.CaptureResult result = applier.capture(this.player);
@@ -65,8 +64,8 @@ class SnapshotApplierTest {
     @Test
     void captureFailsEntirelyWhenCriticalTypeFails() {
         // 关键类型缺失的快照还原不了玩家, 这次不产出快照
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType critical = new FakeType(DataRegistration.of(BRAVO, StorageFormat.BINARY, true, Set.of())).failingCapture();
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType critical = new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingCapture();
         SnapshotApplier applier = createApplier(alpha, critical);
 
         SnapshotApplier.CaptureResult result = applier.capture(this.player);
@@ -77,9 +76,9 @@ class SnapshotApplierTest {
     @Test
     void appliesInTopologicalOrder() {
         // bravo 依赖 alpha, charlie 依赖 bravo, 注册顺序故意打乱
-        FakeType charlie = new FakeType(DataRegistration.of(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO)));
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType bravo = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA)));
+        FakeType charlie = new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO));
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType bravo = new FakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA));
         SnapshotApplier applier = createApplier(charlie, alpha, bravo);
 
         PreparedSnapshot prepared = applier.prepare(snapshotWith(ALPHA, BRAVO, CHARLIE));
@@ -91,8 +90,8 @@ class SnapshotApplierTest {
 
     @Test
     void criticalDecodeFailureFailsWholePrepare() {
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType critical = new FakeType(DataRegistration.of(BRAVO, StorageFormat.BINARY, true, Set.of())) {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType critical = new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()) {
             @Override
             @NotNull
             public String decode(@NotNull Tag data, int mcDataVersion) throws IOException {
@@ -108,8 +107,8 @@ class SnapshotApplierTest {
 
     @Test
     void nonCriticalDecodeFailureIsSkipped() {
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType flaky = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED)) {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType flaky = new FakeType(BRAVO, StorageFormat.STRUCTURED) {
             @Override
             @NotNull
             public String decode(@NotNull Tag data, int mcDataVersion) throws IOException {
@@ -128,14 +127,14 @@ class SnapshotApplierTest {
 
     @Test
     void criticalApplyFailureAbortsRemainingTypes() {
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
-        FakeType exploding = new FakeType(DataRegistration.of(BRAVO, StorageFormat.BINARY, true, Set.of(ALPHA))) {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType exploding = new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of(ALPHA)) {
             @Override
             public void apply(@NotNull Player player, @NotNull String value) {
                 throw new IllegalStateException("apply failed");
             }
         };
-        FakeType charlie = new FakeType(DataRegistration.of(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO)));
+        FakeType charlie = new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO));
         SnapshotApplier applier = createApplier(alpha, exploding, charlie);
 
         PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA, BRAVO, CHARLIE)));
@@ -149,13 +148,13 @@ class SnapshotApplierTest {
 
     @Test
     void nonCriticalApplyFailureIsSkipped() {
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED)) {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED) {
             @Override
             public void apply(@NotNull Player player, @NotNull String value) {
                 throw new IllegalStateException("apply failed");
             }
         };
-        FakeType bravo = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED));
+        FakeType bravo = new FakeType(BRAVO, StorageFormat.STRUCTURED);
         SnapshotApplier applier = createApplier(alpha, bravo);
 
         ApplyResult.Success result = assertInstanceOf(ApplyResult.Success.class,
@@ -169,9 +168,9 @@ class SnapshotApplierTest {
     void typesPreRegisteredInRegistryAreHarvested() {
         // 模拟第三方在 onLoad 期注册的类型: 不在 builtin 集合里, 经注册表汇入装配
         DataRegistry registry = new DataRegistry();
-        FakeType thirdParty = new FakeType(DataRegistration.of(BRAVO, StorageFormat.STRUCTURED));
+        FakeType thirdParty = new FakeType(BRAVO, StorageFormat.STRUCTURED);
         registry.register(thirdParty);
-        FakeType builtin = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
+        FakeType builtin = new FakeType(ALPHA, StorageFormat.STRUCTURED);
         registry.register(builtin);
         SnapshotApplier applier = new SnapshotApplier(registry, this.logger);
 
@@ -184,7 +183,7 @@ class SnapshotApplierTest {
 
     @Test
     void unregisteredSnapshotDataIsIgnored() {
-        FakeType alpha = new FakeType(DataRegistration.of(ALPHA, StorageFormat.STRUCTURED));
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
         SnapshotApplier applier = createApplier(alpha);
 
         PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class,
@@ -215,13 +214,23 @@ class SnapshotApplierTest {
         return new Snapshot(meta, data);
     }
 
-    // 不经线程断言的假类型, 声明委托纯声明 record, apply 记录调用顺序; 编排器测试不依赖 Bukkit 运行时
+    // 不经线程断言的假类型, apply 记录调用顺序; 编排器测试不依赖 Bukkit 运行时
     private class FakeType implements PlayerDataType<String> {
-        private final DataRegistration declaration;
+        private final DataKey key;
+        private final StorageFormat storage;
+        private final boolean critical;
+        private final Set<DataKey> dependencies;
         private boolean captureFails;
 
-        private FakeType(DataRegistration declaration) {
-            this.declaration = declaration;
+        private FakeType(DataKey key, StorageFormat storage) {
+            this(key, storage, false, Set.of());
+        }
+
+        private FakeType(DataKey key, StorageFormat storage, boolean critical, Set<DataKey> dependencies) {
+            this.key = key;
+            this.storage = storage;
+            this.critical = critical;
+            this.dependencies = Set.copyOf(dependencies);
         }
 
         private FakeType failingCapture() {
@@ -232,33 +241,33 @@ class SnapshotApplierTest {
         @Override
         @NotNull
         public DataKey key() {
-            return this.declaration.key();
+            return this.key;
         }
 
         @Override
         @NotNull
         public StorageFormat storage() {
-            return this.declaration.storage();
+            return this.storage;
         }
 
         @Override
         public boolean critical() {
-            return this.declaration.critical();
+            return this.critical;
         }
 
         @Override
         @NotNull
         public Set<DataKey> dependencies() {
-            return this.declaration.dependencies();
+            return this.dependencies;
         }
 
         @Override
         @NotNull
         public Tag capture(@NotNull Player player) {
             if (this.captureFails) {
-                throw new IllegalStateException("capture of " + this.declaration.key() + " failed");
+                throw new IllegalStateException("capture of " + this.key + " failed");
             }
-            return NBT.createString(this.declaration.key().asString());
+            return NBT.createString(this.key.asString());
         }
 
         @Override
@@ -269,7 +278,7 @@ class SnapshotApplierTest {
 
         @Override
         public void apply(@NotNull Player player, @NotNull String value) {
-            applied.add(this.declaration.key());
+            applied.add(this.key);
         }
     }
 

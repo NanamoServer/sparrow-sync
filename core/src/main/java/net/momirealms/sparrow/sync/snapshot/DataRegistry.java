@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.data.PlayerDataType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * ServerLoadEvent 时冻结, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
  */
 public final class DataRegistry {
-    private final Map<DataKey, DataDeclaration> declarations = new ConcurrentHashMap<>();
+    private final Map<DataKey, PlayerDataType<?>> types = new ConcurrentHashMap<>();
     private volatile boolean frozen;
 
     /**
@@ -29,13 +30,13 @@ public final class DataRegistry {
      *
      * @throws IllegalStateException 当注册表已冻结, 或该数据标识已被注册时
      */
-    public void register(@NotNull DataDeclaration declaration) {
+    public void register(@NotNull PlayerDataType<?> type) {
         if (this.frozen) {
             throw new IllegalStateException("data registry is frozen, register during onLoad or onEnable");
         }
-        DataDeclaration existing = this.declarations.putIfAbsent(declaration.key(), declaration);
+        PlayerDataType<?> existing = this.types.putIfAbsent(type.key(), type);
         if (existing != null) {
-            throw new IllegalStateException("data key already registered: " + declaration.key());
+            throw new IllegalStateException("data key already registered: " + type.key());
         }
     }
 
@@ -48,18 +49,18 @@ public final class DataRegistry {
     }
 
     @Nullable
-    public DataDeclaration declaration(@NotNull DataKey key) {
-        return this.declarations.get(key);
+    public PlayerDataType<?> type(@NotNull DataKey key) {
+        return this.types.get(key);
     }
 
     public boolean registered(@NotNull DataKey key) {
-        return this.declarations.containsKey(key);
+        return this.types.containsKey(key);
     }
 
-    /** 全部已注册声明的只读视图, 装配期从这里收割带行为的类型. */
+    /** 全部已注册数据类型的只读视图. */
     @NotNull
-    public Collection<DataDeclaration> declarations() {
-        return Collections.unmodifiableCollection(this.declarations.values());
+    public Collection<PlayerDataType<?>> types() {
+        return Collections.unmodifiableCollection(this.types.values());
     }
 
     /**
@@ -73,14 +74,14 @@ public final class DataRegistry {
         // 建图. 入度为已注册依赖数, 未注册的依赖直接忽略
         Map<DataKey, Integer> inDegree = new HashMap<>();
         Map<DataKey, List<DataKey>> dependents = new HashMap<>();
-        for (DataDeclaration declaration : this.declarations.values()) {
+        for (PlayerDataType<?> type : this.types.values()) {
             int degree = 0;
-            for (DataKey dependency : declaration.dependencies()) {
-                if (!this.declarations.containsKey(dependency)) continue;
+            for (DataKey dependency : type.dependencies()) {
+                if (!this.types.containsKey(dependency)) continue;
                 degree++;
-                dependents.computeIfAbsent(dependency, key -> new ArrayList<>()).add(declaration.key());
+                dependents.computeIfAbsent(dependency, key -> new ArrayList<>()).add(type.key());
             }
-            inDegree.put(declaration.key(), degree);
+            inDegree.put(type.key(), degree);
         }
 
         // Kahn 拓扑排序, 就绪集用字典序优先队列消除注册顺序的影响
@@ -129,9 +130,9 @@ public final class DataRegistry {
 
     private boolean findCycle(DataKey start, DataKey current, Set<DataKey> onPath, List<DataKey> path) {
         onPath.add(current);
-        TreeSet<DataKey> dependencies = new TreeSet<>(this.declarations.get(current).dependencies());
+        TreeSet<DataKey> dependencies = new TreeSet<>(this.types.get(current).dependencies());
         for (DataKey dependency : dependencies) {
-            if (!this.declarations.containsKey(dependency)) continue;
+            if (!this.types.containsKey(dependency)) continue;
             if (dependency.equals(start)) return true;
             if (onPath.contains(dependency)) continue;
 

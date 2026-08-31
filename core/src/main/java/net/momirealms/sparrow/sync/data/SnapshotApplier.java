@@ -4,7 +4,6 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.snapshot.DataDeclaration;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -30,17 +29,12 @@ public final class SnapshotApplier {
         this.logger = logger;
         if (registry.frozen()) throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
         registry.freeze();
-        // 收割注册表中一切带行为的声明, 纯声明 (无采集应用能力) 不参与装配
         Map<DataKey, PlayerDataType<?>> byKey = new LinkedHashMap<>();
-        for (DataDeclaration declaration : registry.declarations()) {
-            if (declaration instanceof PlayerDataType<?> type) { // todo 这段一定成功. 过度检查, DataDeclaration 接口是为了测试强拆的, 不是原本的意图
-                byKey.put(type.key(), type);
-            }
+        for (PlayerDataType<?> type : registry.types()) {
+            byKey.put(type.key(), type);
         }
         this.types = byKey;
-        List<DataKey> order = new ArrayList<>(registry.applyOrder());
-        order.retainAll(byKey.keySet());
-        this.applyOrder = List.copyOf(order);
+        this.applyOrder = List.copyOf(registry.applyOrder());
     }
 
     /**

@@ -5,12 +5,12 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistration;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.test.StubPlayerDataType;
 
 import java.util.Map;
 import java.util.Set;
@@ -31,8 +31,8 @@ final class SnapshotFixtures {
 
     static DataRegistry registry() {
         DataRegistry registry = new DataRegistry();
-        registry.register(DataRegistration.of(INVENTORY, StorageFormat.BINARY, true, Set.of()));
-        registry.register(DataRegistration.of(HEALTH, StorageFormat.STRUCTURED));
+        registry.register(new StubPlayerDataType(INVENTORY, StorageFormat.BINARY, true, Set.of()));
+        registry.register(new StubPlayerDataType(HEALTH, StorageFormat.STRUCTURED));
         return registry;
     }
 

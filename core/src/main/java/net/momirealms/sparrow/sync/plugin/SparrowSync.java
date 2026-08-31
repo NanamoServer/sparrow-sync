@@ -215,7 +215,7 @@ public class SparrowSync implements Plugin {
         // 冻结注册表并装配快照.
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
-        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
+        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.types().size())));
         // 跨服交接服务, 探测调度走插件异步调度器, 会话查询在消息到达时才解引用
         this.handoffManager = new HandoffManager(
                 this.messageBrokerManager.broker(),
