@@ -102,7 +102,7 @@ public final class ConfigurationPacketGate implements LoginGate {
             this.rejectTooFast(listener, uuid, name, "another connection won session registration");
             return;
         }
-        this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD, name);
+        this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD);
         // 如果配置阶段就断线, 则直接清理掉.
         user.channel().closeFuture().addListener(future -> {
             if (session.state() == SessionState.PREPARING) {

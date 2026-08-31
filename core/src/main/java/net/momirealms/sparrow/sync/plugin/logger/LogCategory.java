@@ -9,7 +9,6 @@ public enum LogCategory {
     RETRY,
     STASH,
     STORAGE,
-    REDIS,
     LOCK,
     DATA,
     LIFECYCLE

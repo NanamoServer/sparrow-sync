@@ -10,6 +10,8 @@ public interface LogConstants {
     String PLUGIN_RELOAD_AT_RUNTIME = "log.plugin.reload_at_runtime";
     String PLUGIN_LOAD_FAILED = "log.plugin.load_failed";
     String PLUGIN_DISABLE_AT_RUNTIME = "log.plugin.disable_at_runtime";
+    String PLUGIN_STARTED = "log.plugin.started";
+    String PLUGIN_STOPPED = "log.plugin.stopped";
     String PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen";
     String PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
 

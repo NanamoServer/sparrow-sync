@@ -77,6 +77,7 @@ public final class PDCDataType implements PlayerDataType<CompoundTag> {
             }
             return;
         }
+        // todo 策略错误, 应该是真合并(除列表外), 而不是覆盖. 而且可以详细化这块, 是白名单还是黑名单
         // 白名单合并: 先清掉本服白名单命名空间的键, 再写入快照中同命名空间的键
         raw.keySet().removeIf(this::inMergeNamespaces);
         for (Map.Entry<String, Tag> entry : value.entrySet()) {

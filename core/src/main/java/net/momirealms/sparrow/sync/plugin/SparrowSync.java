@@ -24,6 +24,7 @@ import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
 import net.momirealms.sparrow.sync.plugin.dependency.Dependency;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyManager;
 import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.logger.filter.DisconnectLogFilter;
@@ -119,8 +120,13 @@ public class SparrowSync implements Plugin {
         this.translationManager.reload();
         // resolve 对绝对路径原样返回, 因此配置里的相对目录落在数据目录下, 绝对目录按原样使用
         if (PluginConfig.logging$localFile()) {
-            this.logger.attachFile(new FileLogWriter(this.dataFolderPath.resolve(PluginConfig.logging$directory()),
-                    PluginConfig.logging$timeFormat(), PluginConfig.logging$fileDateFormat(), logger));
+            FileLogWriter fileWriter = new FileLogWriter(
+                    this.dataFolderPath.resolve(PluginConfig.logging$directory()),
+                    PluginConfig.logging$timeFormat(), PluginConfig.logging$fileDateFormat(),
+                    logger
+            );
+            this.logger.attachFile(fileWriter);
+            this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.PLUGIN_STARTED);
         }
         this.compatibilityManager = new CompatibilityManager(this);
         this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization$workerThreads());
@@ -241,7 +247,10 @@ public class SparrowSync implements Plugin {
         if (this.redisConnector != null) this.redisConnector.shutdown();
         if (this.storageProvider != null) this.storageProvider.shutdown();
         if (this.dependencyManager != null) this.dependencyManager.shutdown();
-        if (this.logger != null) this.logger.close();
+        if (this.logger != null) {
+            this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.PLUGIN_STOPPED);
+            this.logger.close();
+        }
         if (!Bukkit.getServer().isStopping()) {
             logger().error(" ");
             logger().error(" ");

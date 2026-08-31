@@ -33,7 +33,7 @@ public final class RedisConnector {
         this.client = RedisClient.create(buildUri(this.options));
         this.connection = this.client.connect(ByteArrayCodec.INSTANCE);
         this.brokerConnection = new PubSubRedisConnection(this.client);
-        this.logger.info(LogCategory.REDIS, LogConstants.REDIS_READY);
+        this.logger.info(LogCategory.LIFECYCLE, LogConstants.REDIS_READY);
     }
 
     private static RedisURI buildUri(PluginConfig.RedisOptions options) {

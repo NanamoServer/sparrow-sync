@@ -53,6 +53,8 @@ sync.kick.too_fast: <red>You reconnected too quickly, your previous data is stil
 log.plugin.reload_at_runtime: Please do not restart plugins at runtime.
 log.plugin.load_failed: Failed to enable the plugin, check the log of the loading stage. Shutting the server down to limit the damage.
 log.plugin.disable_at_runtime: Please do not disable plugins at runtime.
+log.plugin.started: 'SparrowSync started'
+log.plugin.stopped: 'SparrowSync stopped'
 log.plugin.registry_frozen: 'Synchronization enabled for <arg:0> data types'
 log.plugin.reload_failed: Failed to reload the plugin
 log.server.id_missing: server-id is empty in server.yml and could not be derived from the server directory. Set it manually, every server sharing the database needs its own id. Shutting the server down.
@@ -79,10 +81,10 @@ log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on thread <arg:0>'
 log.session.join: Logged in
 log.session.quit: Logged out
-log.gate.held: 'Paused the login flow of <arg:0> and started loading their data'
-log.gate.released: 'Data ready, allowed <arg:0> to enter the server'
+log.gate.held: 'Received a login network connection request, entering data preparation'
+log.gate.released: '<arg:0> finished data preparation'
 log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
-log.sync.load_ready: 'The snapshot <arg:1> of <arg:0> is read and pre-decoded (<arg:2>ms)'
+log.sync.load_ready: 'Finished reading and pre-decoding the snapshot <arg:1> of <arg:0> (<arg:2>ms)'
 log.sync.load_empty: '<arg:0> has no snapshot history, they enter with the local state'
 log.sync.apply_started: 'Applying a snapshot to <arg:0>'
 log.sync.save_started: 'Captured the snapshot <arg:2> of <arg:0> (<arg:1>), writing it to the database'
