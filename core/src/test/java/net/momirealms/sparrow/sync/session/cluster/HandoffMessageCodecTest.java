@@ -1,8 +1,6 @@
-package net.momirealms.sparrow.sync.message;
+package net.momirealms.sparrow.sync.session.cluster;
 
 import io.netty.buffer.Unpooled;
-import net.momirealms.sparrow.sync.session.cluster.HandoffRequestMessage;
-import net.momirealms.sparrow.sync.session.cluster.HandoffResponseMessage;
 import net.nyana.message.util.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 

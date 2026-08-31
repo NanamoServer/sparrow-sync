@@ -42,7 +42,7 @@ public final class Dependencies {
             .groupId("com{}github{}ben-manes{}caffeine")
             .artifactId("caffeine")
             .version(DependencyVersions.CAFFEINE)
-            .withArtifactGroupRelocation()
+            .addRelocation("caffeine", "com{}github{}benmanes{}caffeine")
             .build();
 
     public static final Dependency ZSTD_JNI = Dependency.builder()

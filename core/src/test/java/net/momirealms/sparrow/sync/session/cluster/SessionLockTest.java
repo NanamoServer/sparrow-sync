@@ -1,10 +1,8 @@
-package net.momirealms.sparrow.sync.lock;
+package net.momirealms.sparrow.sync.session.cluster;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.cluster.LockValue;
-import net.momirealms.sparrow.sync.session.cluster.SessionLock;
 import net.momirealms.sparrow.sync.session.cluster.SessionLock.AcquireOutcome;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
