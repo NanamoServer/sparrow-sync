@@ -27,6 +27,7 @@ dependencies {
     compileOnly(libs.bundles.adventure)
     implementation(libs.bundles.sparrow)
 
+    implementation(libs.nyana.message)
     compileOnly(libs.sparrow.reflection)
     compileOnly(libs.datafixerupper)
     compileOnly(libs.lettuce.core)
@@ -37,6 +38,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mongodb.driver.sync)
     testImplementation(libs.lettuce.core)
+    testImplementation(libs.caffeine)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
     testRuntimeOnly(libs.junit.platformLauncher)

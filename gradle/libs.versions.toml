@@ -41,6 +41,7 @@ buildconfig = { id = "com.github.gmazzo.buildconfig", version = "6.0.9" }
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
 datafixerupper = { module = "com.mojang:datafixerupper", version = "8.0.16" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version = "26.0.2" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref = "mongodb-driver" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
@@ -60,6 +61,7 @@ sparrow-nbt-codec = { module = "net.momirealms:sparrow-nbt-codec", version.ref =
 sparrow-nbt-legacy-codec = { module = "net.momirealms:sparrow-nbt-legacy-codec", version.ref = "sparrow-nbt" }
 sparrow-reflection = { module = "net.momirealms:sparrow-reflection", version = "0.34" }
 sparrow-yaml = { module = "net.momirealms:sparrow-yaml", version = "1.0.21" }
+nyana-message = { module = "net.nyana:nyana-message", version = "1.0.1" }
 
 adventure-api = { module = "net.kyori:adventure-api", version.ref = "adventure" }
 adventure-nbt = { module = "net.kyori:adventure-nbt", version.ref = "adventure" }

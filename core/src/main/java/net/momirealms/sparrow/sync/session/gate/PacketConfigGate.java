@@ -9,6 +9,7 @@ import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.lock.SessionLock;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
@@ -115,7 +116,10 @@ public final class PacketConfigGate {
             return null;
         });
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());
-        this.snapshotService.loadAndPrepare(uuid, name)
+        long lockStart = System.nanoTime();
+        this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
+                // 锁释放晚于落库, 拿到锁后读库必为最新
+                .thenCompose(ignored -> this.snapshotService.loadAndPrepare(uuid, name))
                 .thenCombine(userReady, (outcome, ignored) -> outcome)
                 .orTimeout(budget, TimeUnit.SECONDS)
                 .whenComplete((outcome, throwable) -> {
@@ -134,6 +138,45 @@ public final class PacketConfigGate {
                         }
                     }
                 });
+    }
+
+    // 抢会话锁, 直取或等持有服交接, 完成时锁值已交给会话
+    private CompletableFuture<Void> acquireLock(PlayerSession session, UUID uuid, String name, long deadlineNanos, long lockStart) {
+        return this.plugin.sessionLock().tryAcquire(uuid).thenCompose(outcome -> switch (outcome) {
+            // 一次抢到, 无人持有
+            case SessionLock.AcquireOutcome.Acquired(String value) -> {
+                this.lockGranted(session, uuid, value);
+                this.plugin.logger().file(LogCategory.LOCK, uuid, name, LogConstants.LOCK_ACQUIRED, name);
+                yield CompletableFuture.<Void>completedFuture(null);
+            }
+            // 被别的服持有, 走交接探测
+            case SessionLock.AcquireOutcome.Held(String value) -> {
+                this.plugin.logger().file(LogCategory.LOCK, uuid, name, LogConstants.LOCK_WAITING, name, value);
+                yield this.plugin.handoffManager()
+                        .awaitHandoff(uuid, value, deadlineNanos)
+                        .thenApply(handoff -> {
+                            this.lockGranted(session, uuid, handoff.lockValue());
+                            this.plugin.logger().file(
+                                    LogCategory.LOCK,
+                                    uuid,
+                                    name,
+                                    LogConstants.LOCK_HANDOFF,
+                                    name,
+                                    handoff.method(),
+                                    String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lockStart))
+                            );
+                            return null;
+                        });
+            }
+        });
+    }
+
+    // 锁值交给会话保管, 等锁期间会话已被断线清理时立即自释放, 不留残锁
+    private void lockGranted(PlayerSession session, UUID uuid, String value) {
+        session.lockValue(value);
+        if (session.state() == SessionState.CLOSED) {
+            this.plugin.sessionLock().release(uuid, value);
+        }
     }
 
     // 恢复 vanilla finish 应答计时并补发终结包

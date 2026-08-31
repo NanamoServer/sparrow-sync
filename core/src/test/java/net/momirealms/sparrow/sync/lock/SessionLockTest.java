@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SessionLockTest {
     private static final String CLUSTER = "it";
-    private static final long SEVEN_DAYS_MILLIS = TimeUnit.DAYS.toMillis(7);
+    private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);  // 与 SessionLock.LOCK_TTL_MILLIS 同步
 
     private final SyncLogger logger = new SyncLogger(new QuietLogger());
     private RedisConnector connectorA;
@@ -88,7 +88,7 @@ class SessionLockTest {
         assertNotNull(value);
         assertEquals("serverA", value.serverId());
         long ttl = this.inspection.sync().pttl(this.key(player));
-        assertTrue(ttl > 0 && ttl <= SEVEN_DAYS_MILLIS, "unexpected ttl " + ttl);
+        assertTrue(ttl > 0 && ttl <= LOCK_TTL_MILLIS, "unexpected ttl " + ttl);
     }
 
     @Test

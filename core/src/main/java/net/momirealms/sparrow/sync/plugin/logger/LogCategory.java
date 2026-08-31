@@ -10,6 +10,7 @@ public enum LogCategory {
     STASH,
     STORAGE,
     REDIS,
+    LOCK,
     DATA,
     LIFECYCLE
 }

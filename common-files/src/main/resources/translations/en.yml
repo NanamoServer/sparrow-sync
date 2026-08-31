@@ -70,6 +70,10 @@ log.storage.stale_index_dropped: 'Index layout updated, dropped the old index <a
 log.storage.schema_too_new: 'The database schema generation <arg:0> is newer than this plugin supports (<arg:1>). Every server sharing the database must run the same SparrowSync version, update this server first. Shutting the server down.'
 log.redis.ready: 'Connected to Redis'
 log.redis.setup_failed: Failed to connect Redis. Cross server synchronization depends on it, check the redis section. Shutting the server down.
+log.lock.acquired: 'Acquired the session lock of <arg:0>'
+log.lock.waiting: 'The session lock of <arg:0> is held by <arg:1>, probing for handoff'
+log.lock.handoff: 'Session lock handoff of <arg:0> finished (<arg:1>, waited <arg:2> ms)'
+log.lock.released: 'Released the session lock of <arg:0> (<arg:1>)'
 log.executor.unfinished_tasks: 'The player serial executor shut down with <arg:0> unfinished task(s)'
 log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on thread <arg:0>'

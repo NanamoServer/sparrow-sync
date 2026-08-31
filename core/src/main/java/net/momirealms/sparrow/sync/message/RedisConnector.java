@@ -10,6 +10,8 @@ import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.nyana.message.connection.DefaultRedisConnection;
+import net.nyana.message.connection.RedisConnection;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
@@ -19,7 +21,8 @@ public final class RedisConnector {
     private final SyncLogger logger;
 
     private volatile RedisClient client;
-    private volatile StatefulRedisConnection<byte[], byte[]> connection;
+    private volatile StatefulRedisConnection<byte[], byte[]> connection;  // 锁命令
+    private volatile DefaultRedisConnection brokerConnection;             // 消息 broker 的命令与 Pub/Sub
 
     public RedisConnector(@NotNull PluginConfig.RedisOptions options, @NotNull SyncLogger logger) {
         this.options = options;
@@ -27,16 +30,17 @@ public final class RedisConnector {
     }
 
     public void initialize() {
-        this.client = RedisClient.create(this.buildUri());
+        this.client = RedisClient.create(buildUri(this.options));
         this.connection = this.client.connect(ByteArrayCodec.INSTANCE);
+        this.brokerConnection = new DefaultRedisConnection(this.client);
         this.logger.info(LogCategory.REDIS, LogConstants.REDIS_READY);
     }
 
-    private RedisURI buildUri() {
-        RedisURI uri = RedisURI.create(this.options.url());
-        if (!this.options.password().isEmpty()) {
-            String username = this.options.username().isEmpty() ? null : this.options.username();
-            uri.setCredentialsProvider(RedisCredentialsProvider.from(() -> RedisCredentials.just(username, this.options.password())));
+    private static RedisURI buildUri(PluginConfig.RedisOptions options) {
+        RedisURI uri = RedisURI.create(options.url());
+        if (!options.password().isEmpty()) {
+            String username = options.username().isEmpty() ? null : options.username();
+            uri.setCredentialsProvider(RedisCredentialsProvider.from(() -> RedisCredentials.just(username, options.password())));
         }
         return uri;
     }
@@ -46,12 +50,19 @@ public final class RedisConnector {
         return this.connection;
     }
 
+    @NotNull
+    public RedisConnection brokerConnection() {
+        return this.brokerConnection;
+    }
+
     public boolean available() {
         StatefulRedisConnection<byte[], byte[]> connection = this.connection;
         return connection != null && connection.isOpen();
     }
 
     public void shutdown() {
+        DefaultRedisConnection brokerConnection = this.brokerConnection;
+        if (brokerConnection != null) brokerConnection.close();
         StatefulRedisConnection<byte[], byte[]> connection = this.connection;
         if (connection != null) connection.close();
         RedisClient client = this.client;

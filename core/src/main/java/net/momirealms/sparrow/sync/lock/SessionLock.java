@@ -38,7 +38,8 @@ public final class SessionLock {
     @NotNull
     public CompletableFuture<AcquireOutcome> tryAcquire(@NotNull UUID player) {
         String value = this.newValue();
-        return this.connector.connection().async().setGet(this.key(player), bytes(value), SetArgs.Builder.nx().px(LOCK_TTL_MILLIS))
+        return this.connector.connection().async()
+                .setGet(this.key(player), bytes(value), SetArgs.Builder.nx().px(LOCK_TTL_MILLIS))
                 .thenApply(existing -> existing == null ? (AcquireOutcome) new AcquireOutcome.Acquired(value) : new AcquireOutcome.Held(text(existing)))
                 .toCompletableFuture();
     }
@@ -52,7 +53,8 @@ public final class SessionLock {
      */
     @NotNull
     public CompletableFuture<Boolean> release(@NotNull UUID player, @NotNull String value) {
-        RedisFuture<Long> deleted = this.connector.connection().async().eval(RELEASE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key(player)}, bytes(value));
+        RedisFuture<Long> deleted = this.connector.connection().async()
+                .eval(RELEASE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key(player)}, bytes(value));
         return deleted.thenApply(count -> count != 0L).toCompletableFuture();
     }
 
@@ -66,7 +68,8 @@ public final class SessionLock {
     @NotNull
     public CompletableFuture<Optional<String>> seize(@NotNull UUID player, @NotNull String observedValue) {
         String next = this.newValue();
-        RedisFuture<Long> swapped = this.connector.connection().async().eval(SEIZE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key(player)}, bytes(observedValue), bytes(next), bytes(Long.toString(LOCK_TTL_MILLIS)));
+        RedisFuture<Long> swapped = this.connector.connection().async()
+                .eval(SEIZE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key(player)}, bytes(observedValue), bytes(next), bytes(Long.toString(LOCK_TTL_MILLIS)));
         return swapped.thenApply(count -> count != 0L ? Optional.of(next) : Optional.<String>empty()).toCompletableFuture();
     }
 

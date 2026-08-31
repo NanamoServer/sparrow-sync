@@ -49,28 +49,35 @@ public final class SnapshotService {
     @NotNull
     public CompletableFuture<PreparedOutcome> loadAndPrepare(@NotNull UUID player, @NotNull String playerName) {
         long loadStart = System.nanoTime();
-        return this.storage.latestSnapshot(player).<PreparedOutcome>thenApply(latest -> {
-            // 没有历史的新玩家, 本服状态即权威
-            return latest.<PreparedOutcome>map(snapshot ->
-                    switch (this.applier.prepare(snapshot)) {
-                        case SnapshotApplier.PreparedSnapshot.Ready ready -> {
-                            long asyncNanos = System.nanoTime() - loadStart;
-                            this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, asyncNanos));
-                            yield new PreparedOutcome.Ready(ready, asyncNanos);
-                        }
-                        case SnapshotApplier.PreparedSnapshot.Failed failed -> {
-                            String detail = failed.key().asString() + ": " + failed.detail();
-                            this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, detail);
-                            yield new PreparedOutcome.Failed(detail);
-                        }
-                    }
-            ).orElseGet(() -> {
-                this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName);
-                return new PreparedOutcome.Empty();
-            });
-        }).whenComplete((outcome, throwable) -> {
-            if (throwable != null) this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable));
-        });
+        return this.storage.latestSnapshot(player)
+                .thenApply(latest -> {
+                    // 没有历史的新玩家, 本服状态即权威
+                    return latest.map(snapshot -> this.prepare(snapshot, player, playerName, loadStart))
+                            .orElseGet(() -> {
+                                this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName);
+                                return new PreparedOutcome.Empty();
+                            });
+                })
+                .whenComplete((outcome, throwable) -> {
+                    if (throwable != null)
+                        this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable));
+                });
+    }
+
+    // 预解码一份快照并记录结果
+    private PreparedOutcome prepare(Snapshot snapshot, UUID player, String playerName, long loadStart) {
+        return switch (this.applier.prepare(snapshot)) {
+            case SnapshotApplier.PreparedSnapshot.Ready ready -> {
+                long asyncNanos = System.nanoTime() - loadStart;
+                this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, asyncNanos));
+                yield new PreparedOutcome.Ready(ready, asyncNanos);
+            }
+            case SnapshotApplier.PreparedSnapshot.Failed failed -> {
+                String detail = failed.key().asString() + ": " + failed.detail();
+                this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, detail);
+                yield new PreparedOutcome.Failed(detail);
+            }
+        };
     }
 
     /**
@@ -159,9 +166,10 @@ public final class SnapshotService {
                 return;
             }
             SaveResult result = saved.result();
-            // 已保存, 轮转快照
+            // 已保存, 登记交接并轮转快照
             if (result.stored()) {
                 this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
+                this.plugin.handoffManager().recordSettled(attempt.player(), attempt.snapshot().meta().timestamp());
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(result);
                 return;

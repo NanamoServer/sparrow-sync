@@ -31,6 +31,11 @@ public interface LogConstants {
     String REDIS_READY = "log.redis.ready";
     String REDIS_SETUP_FAILED = "log.redis.setup_failed";
 
+    String LOCK_ACQUIRED = "log.lock.acquired";
+    String LOCK_WAITING = "log.lock.waiting";
+    String LOCK_HANDOFF = "log.lock.handoff";
+    String LOCK_RELEASED = "log.lock.released";
+
     String EXECUTOR_UNFINISHED_TASKS = "log.executor.unfinished_tasks";
     String EXECUTOR_DRAINING = "log.executor.draining";
     String EXECUTOR_TASK_FAILED = "log.executor.task_failed";

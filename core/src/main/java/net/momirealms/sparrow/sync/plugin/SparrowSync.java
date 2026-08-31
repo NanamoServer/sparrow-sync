@@ -31,6 +31,8 @@ import net.momirealms.sparrow.sync.plugin.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.lock.SessionLock;
+import net.momirealms.sparrow.sync.message.HandoffManager;
+import net.momirealms.sparrow.sync.message.MessageBrokerManager;
 import net.momirealms.sparrow.sync.message.RedisConnector;
 import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
@@ -87,12 +89,16 @@ public class SparrowSync implements Plugin {
 
     private final DataRegistry dataRegistry = new DataRegistry();
     private final PlayerSerialExecutor playerExecutor;
+    private BinarySnapshotCodec binaryCodec;
+    private DocumentSnapshotCodec documentCodec;
     private SnapshotApplier snapshotApplier;
     private StorageProvider storageProvider;
     private SnapshotStash snapshotStash;
     private SnapshotService snapshotService;
     private RedisConnector redisConnector;
     private SessionLock sessionLock;
+    private MessageBrokerManager messageBrokerManager;
+    private HandoffManager handoffManager;
     private SessionManager sessionManager;
     private PacketConfigGate packetConfigGate;
 
@@ -196,6 +202,13 @@ public class SparrowSync implements Plugin {
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.declarations().size())));
+        // 跨服交接服务, 探测调度走插件异步调度器, 会话查询在消息到达时才解引用
+        this.handoffManager = new HandoffManager(
+                this.messageBrokerManager.broker(),
+                this.sessionLock,
+                uuid -> this.sessionManager != null && this.sessionManager.session(uuid) != null,
+                (task, delayMillis) -> this.scheduler.asyncLater(task, delayMillis, TimeUnit.MILLISECONDS)
+        );
         this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
         // 会话状态机.
         this.sessionManager = new SessionManager(this, this.logger);
@@ -224,6 +237,7 @@ public class SparrowSync implements Plugin {
 
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
+        if (this.messageBrokerManager != null) this.messageBrokerManager.shutdown();
         if (this.redisConnector != null) this.redisConnector.shutdown();
         if (this.storageProvider != null) this.storageProvider.shutdown();
         if (this.dependencyManager != null) this.dependencyManager.shutdown();
@@ -285,13 +299,13 @@ public class SparrowSync implements Plugin {
         }
         // 加载数据库
         try {
-            BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(compressor);
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(this.dataRegistry, binaryCodec);
+            this.binaryCodec = new BinarySnapshotCodec(compressor);
+            this.documentCodec = new DocumentSnapshotCodec(this.dataRegistry, this.binaryCodec);
             this.snapshotStash = new SnapshotStash(this.dataFolderPath, binaryCodec, this.logger);
             switch (PluginConfig.database$type()) {
                 case MONGODB -> {
                     PluginConfig.MongoOptions mongodb = PluginConfig.database$mongodb();
-                    this.storageProvider = new MongoStorageProvider(mongodb, codec, this.playerExecutor, this.scheduler.async(), this.logger);
+                    this.storageProvider = new MongoStorageProvider(mongodb, this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
                     this.storageProvider.initialize();
                     this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, mongodb.database()));
                     // 上次没能落库的本地快照插回数据库
@@ -316,6 +330,9 @@ public class SparrowSync implements Plugin {
             this.redisConnector = new RedisConnector(PluginConfig.redis(), this.logger);
             this.redisConnector.initialize();
             this.sessionLock = new SessionLock(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId());
+            // 跨服消息 broker 排在锁之后装配, 连接取自同一个 RedisConnector
+            this.messageBrokerManager = new MessageBrokerManager(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId(), this.logger);
+            this.messageBrokerManager.initialize();
         } catch (Throwable throwable) {
             this.logger.error(TranslationManager.console(LogConstants.REDIS_SETUP_FAILED), throwable);
             Bukkit.getServer().shutdown();
@@ -638,6 +655,14 @@ public class SparrowSync implements Plugin {
 
     public SessionLock sessionLock() {
         return this.sessionLock;
+    }
+
+    public MessageBrokerManager messageBrokerManager() {
+        return this.messageBrokerManager;
+    }
+
+    public HandoffManager handoffManager() {
+        return this.handoffManager;
     }
 
     public StorageProvider storageProvider() {

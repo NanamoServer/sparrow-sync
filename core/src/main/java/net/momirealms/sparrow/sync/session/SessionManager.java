@@ -65,10 +65,18 @@ public final class SessionManager {
         return true;
     }
 
-    // 释放会话, 摘出注册表并释放锁.
+    // 释放会话, 摘出注册表并释放分布式锁. 落库(或作废)在前释放在后, 等锁方抢到后读库必为最新.
     private void release(PlayerSession session) {
         this.sessions.remove(session.uuid(), session);
-        // todo 释放分布式会话锁
+        String lockValue = session.lockValue();
+        // 取锁前就失败的会话没有锁可放
+        if (lockValue != null) {
+            this.plugin.sessionLock()
+                    .release(session.uuid(), lockValue)
+                    .whenComplete((deleted, throwable) ->
+                            this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted))
+                    );
+        }
         session.released().complete(null);
     }
 

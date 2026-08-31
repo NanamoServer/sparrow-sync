@@ -15,6 +15,7 @@ public final class PlayerSession {
 
     private SessionState state = SessionState.PREPARING;
     private PreparedOutcome.Ready prepared;
+    private String lockValue;  // 本会话持有的分布式锁值, 取锁成功后写入, 释放时原样传回
 
     PlayerSession(@NotNull UUID player, @NotNull String playerName) {
         this.uuid = player;
@@ -78,5 +79,14 @@ public final class PlayerSession {
         PreparedOutcome.Ready taken = this.prepared;
         this.prepared = null;
         return taken;
+    }
+
+    public synchronized void lockValue(@NotNull String lockValue) {
+        this.lockValue = lockValue;
+    }
+
+    @Nullable
+    public synchronized String lockValue() {
+        return this.lockValue;
     }
 }
