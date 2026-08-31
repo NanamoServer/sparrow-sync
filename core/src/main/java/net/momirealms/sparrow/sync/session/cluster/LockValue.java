@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.lock;
+package net.momirealms.sparrow.sync.session.cluster;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

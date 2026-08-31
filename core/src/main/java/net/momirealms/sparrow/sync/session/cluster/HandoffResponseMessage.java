@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.message;
+package net.momirealms.sparrow.sync.session.cluster;
 
 import net.nyana.message.libs.codec.Codec;
 import net.nyana.message.message.MessageIdentifier;

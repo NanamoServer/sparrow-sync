@@ -1,7 +1,5 @@
-package net.momirealms.sparrow.sync.message;
+package net.momirealms.sparrow.sync.session.cluster;
 
-import net.momirealms.sparrow.sync.lock.LockValue;
-import net.momirealms.sparrow.sync.lock.SessionLock;
 import net.nyana.message.MessageBroker;
 import org.jetbrains.annotations.NotNull;
 

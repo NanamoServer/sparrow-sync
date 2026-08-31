@@ -1,6 +1,8 @@
-package net.momirealms.sparrow.sync.message;
+package net.momirealms.sparrow.sync.redis;
 
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.cluster.HandoffRequestMessage;
+import net.momirealms.sparrow.sync.session.cluster.HandoffResponseMessage;
 import net.nyana.message.MessageBroker;
 import org.jetbrains.annotations.NotNull;
 

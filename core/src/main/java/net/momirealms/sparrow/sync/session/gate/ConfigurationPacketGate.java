@@ -9,7 +9,7 @@ import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
-import net.momirealms.sparrow.sync.lock.SessionLock;
+import net.momirealms.sparrow.sync.session.cluster.SessionLock;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;

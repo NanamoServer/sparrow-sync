@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.lock;
 
+import net.momirealms.sparrow.sync.session.cluster.LockValue;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

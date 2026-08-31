@@ -1,9 +1,9 @@
-package net.momirealms.sparrow.sync.lock;
+package net.momirealms.sparrow.sync.session.cluster;
 
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.SetArgs;
-import net.momirealms.sparrow.sync.message.RedisConnector;
+import net.momirealms.sparrow.sync.redis.RedisConnector;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.charset.StandardCharsets;

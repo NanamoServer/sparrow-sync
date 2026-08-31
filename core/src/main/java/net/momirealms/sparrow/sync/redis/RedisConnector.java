@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.message;
+package net.momirealms.sparrow.sync.redis;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisCredentials;
