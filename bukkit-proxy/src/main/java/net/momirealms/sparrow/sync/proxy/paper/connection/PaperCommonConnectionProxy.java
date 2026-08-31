@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface PaperCommonConnectionProxy {
     PaperCommonConnectionProxy INSTANCE = ASMProxyFactory.create(PaperCommonConnectionProxy.class);
 
-    @FieldGetter(name = "handle")
+    @FieldGetter(name = {"handle", "packetListener"})
     Object getHandle(Object target);
 }
