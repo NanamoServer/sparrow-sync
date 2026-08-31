@@ -14,7 +14,7 @@ import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.data.item.ItemCodec;
 import net.momirealms.sparrow.sync.data.type.*;
-import net.momirealms.sparrow.sync.session.gate.PacketConfigGate;
+import net.momirealms.sparrow.sync.session.gate.LoginGate;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -100,7 +100,7 @@ public class SparrowSync implements Plugin {
     private MessageBrokerManager messageBrokerManager;
     private HandoffManager handoffManager;
     private SessionManager sessionManager;
-    private PacketConfigGate packetConfigGate;
+    private LoginGate loginGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -216,9 +216,9 @@ public class SparrowSync implements Plugin {
         // 安装 SparrowUI
         SparrowUI.getInstance().setUp(this.javaPlugin);
         SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
-        // 卡配置阶段加载门
-        this.packetConfigGate = new PacketConfigGate(this, this.snapshotService, this.sessionManager);
-        this.packetConfigGate.register();
+        // 安装进入世界前的数据加载门
+        this.loginGate = LoginGate.create(this, this.snapshotService, this.sessionManager);
+        this.loginGate.register();
         // 预热 DFU 的 ITEM_STACK CODEC.
         this.scheduler.async().execute(ItemCodec::warmUp);
         // 标记

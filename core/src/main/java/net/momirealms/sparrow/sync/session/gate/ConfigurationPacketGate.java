@@ -33,26 +33,27 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @SuppressWarnings("UnstableApiUsage")
-public final class PacketConfigGate {
-    private static final AttributeKey<Boolean> GATE_PASSED = AttributeKey.valueOf(PacketConfigGate.class, "gate-passed");
+public final class ConfigurationPacketGate implements LoginGate {
+    private static final AttributeKey<Boolean> GATE_PASSED = AttributeKey.valueOf(ConfigurationPacketGate.class, "gate-passed");
 
     private final SparrowSync plugin;
     private final SessionManager sessionManager;
     private final SnapshotService snapshotService;
     private final NetworkManager networkManager;
 
-    public PacketConfigGate(@NotNull SparrowSync plugin, @NotNull SnapshotService snapshotService, @NotNull SessionManager sessionManager) {
+    public ConfigurationPacketGate(@NotNull SparrowSync plugin, @NotNull SnapshotService snapshotService, @NotNull SessionManager sessionManager) {
         this.plugin = plugin;
         this.snapshotService = snapshotService;
         this.sessionManager = sessionManager;
         this.networkManager = SparrowUI.getInstance().networkManager();
     }
 
+    @Override
     public void register() {
         this.networkManager.registerNMSPacketListener(new NMSPacketListener() {
             @Override
             public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
-                PacketConfigGate.this.onFinishConfiguration(user, event);
+                ConfigurationPacketGate.this.onFinishConfiguration(user, event);
             }
         }, ClientboundFinishConfigurationPacket.class, PacketFlow.CLIENTBOUND);
     }

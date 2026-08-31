@@ -79,8 +79,8 @@ log.executor.draining: 'Draining player tasks, <arg:0> remaining'
 log.executor.task_failed: 'A player task failed on thread <arg:0>'
 log.session.join: Logged in
 log.session.quit: Logged out
-log.gate.held: 'Held the configuration finish packet of <arg:0>, loading their data'
-log.gate.released: 'Data ready, resent the finish packet to let <arg:0> in'
+log.gate.held: 'Paused the login flow of <arg:0> and started loading their data'
+log.gate.released: 'Data ready, allowed <arg:0> to enter the server'
 log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
 log.sync.load_ready: 'The snapshot <arg:1> of <arg:0> is read and pre-decoded (<arg:2>ms)'
 log.sync.load_empty: '<arg:0> has no snapshot history, they enter with the local state'
