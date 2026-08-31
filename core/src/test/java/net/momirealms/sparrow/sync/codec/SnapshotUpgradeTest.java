@@ -2,7 +2,11 @@ package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import org.bson.Document;

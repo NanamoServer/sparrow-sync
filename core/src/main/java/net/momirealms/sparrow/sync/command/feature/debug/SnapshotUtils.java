@@ -2,8 +2,8 @@ package net.momirealms.sparrow.sync.command.feature.debug;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.codec.JsonSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;

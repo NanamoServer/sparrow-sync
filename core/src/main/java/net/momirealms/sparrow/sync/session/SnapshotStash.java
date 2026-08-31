@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
-import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;

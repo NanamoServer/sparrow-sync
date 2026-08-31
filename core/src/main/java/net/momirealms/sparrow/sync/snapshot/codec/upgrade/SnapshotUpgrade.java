@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec.upgrade;
+package net.momirealms.sparrow.sync.snapshot.codec.upgrade;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import org.bson.Document;

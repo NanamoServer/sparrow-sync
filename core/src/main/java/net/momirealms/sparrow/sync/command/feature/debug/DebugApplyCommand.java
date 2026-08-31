@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.command.feature.debug;
 
-import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.command.CommandManager;
 import net.momirealms.sparrow.sync.data.SnapshotApplier;
@@ -9,11 +9,8 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;
-import org.incendo.cloud.context.CommandContext;
-import org.incendo.cloud.context.CommandInput;
 import org.incendo.cloud.parser.standard.StringParser;
 import org.incendo.cloud.suggestion.Suggestion;
-import org.incendo.cloud.suggestion.SuggestionProvider;
 
 import java.io.IOException;
 import java.nio.file.Files;

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec;
+package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.jetbrains.annotations.NotNull;

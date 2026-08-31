@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.data.item;
+package net.momirealms.sparrow.sync.util;
 
 import com.mojang.serialization.Dynamic;
 import net.minecraft.util.datafix.DataFixers;
@@ -8,8 +8,7 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.codec.ops.GameOps;
-import net.momirealms.sparrow.sync.util.VersionHelper;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -47,7 +46,7 @@ public final class ItemCodec {
         if (nms.getCount() > MAX_CODEC_COUNT) {
             nms.setCount(MAX_CODEC_COUNT);
         }
-        Tag tag = net.minecraft.world.item.ItemStack.CODEC.encodeStart(GameOps.sparrowNbt(), nms)
+        Tag tag = net.minecraft.world.item.ItemStack.CODEC.encodeStart(MinecraftRegistryOps.sparrowNbt(), nms)
                 .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getType() + ": " + message));
         if (!(tag instanceof CompoundTag compound)) {
             throw new IllegalStateException("item " + item.getType() + " encoded to non-compound tag");
@@ -87,7 +86,7 @@ public final class ItemCodec {
         if (dataVersion > 0 && dataVersion < current) {
             itemTag = DataFixers.getDataFixer().update(References.ITEM_STACK, new Dynamic<>(NBTOps.INSTANCE, itemTag), dataVersion, current).getValue();
         }
-        net.minecraft.world.item.ItemStack nms = net.minecraft.world.item.ItemStack.CODEC.parse(GameOps.sparrowNbt(), itemTag)
+        net.minecraft.world.item.ItemStack nms = net.minecraft.world.item.ItemStack.CODEC.parse(MinecraftRegistryOps.sparrowNbt(), itemTag)
                 .getOrThrow(message -> new IOException("failed to parse item: " + message));
         return CraftItemStack.asBukkitCopy(nms);
     }

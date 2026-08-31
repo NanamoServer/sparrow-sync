@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

@@ -2,9 +2,9 @@ package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;

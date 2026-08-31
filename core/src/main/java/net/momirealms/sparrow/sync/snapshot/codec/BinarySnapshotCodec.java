@@ -1,13 +1,13 @@
-package net.momirealms.sparrow.sync.codec;
+package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.codec.compressor.Compressor;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.codec.upgrade.SnapshotUpgradePipeline;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;

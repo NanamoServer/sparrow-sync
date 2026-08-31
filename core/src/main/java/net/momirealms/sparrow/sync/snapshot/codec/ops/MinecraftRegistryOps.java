@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec.ops;
+package net.momirealms.sparrow.sync.snapshot.codec.ops;
 
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.MinecraftServer;
@@ -11,10 +11,10 @@ import org.jetbrains.annotations.Nullable;
  * 带注册表访问的 DynamicOps 装配点. 物品编解码需要注册表解析附魔, 药水等按 id 引用的组件.
  * <strong>仅在服务器启动完成后调用</strong>, 首次访问时惰性绑定当前服务器的注册表.
  */
-public final class GameOps {
+public final class MinecraftRegistryOps {
     private static volatile @Nullable RegistryOps<Tag> sparrowNbt;
 
-    private GameOps() {
+    private MinecraftRegistryOps() {
     }
 
     /**
@@ -26,7 +26,7 @@ public final class GameOps {
     public static RegistryOps<Tag> sparrowNbt() {
         RegistryOps<Tag> ops = sparrowNbt;
         if (ops != null) return ops;
-        synchronized (GameOps.class) {
+        synchronized (MinecraftRegistryOps.class) {
             ops = sparrowNbt;
             if (ops == null) {
                 // 显式检查而不用类初始化持有, 服务器未就绪的失败不会永久毒化本类

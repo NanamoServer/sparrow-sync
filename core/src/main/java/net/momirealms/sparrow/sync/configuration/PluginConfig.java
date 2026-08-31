@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.configuration;
 
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.Plugin;

@@ -1,11 +1,11 @@
-package net.momirealms.sparrow.sync.codec;
+package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.nbt.ByteArrayTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.codec.ops.BsonOps;
-import net.momirealms.sparrow.sync.codec.upgrade.SnapshotUpgradePipeline;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.BsonOps;
+import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.DataKey;

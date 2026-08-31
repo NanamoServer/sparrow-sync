@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec.compressor;
+package net.momirealms.sparrow.sync.snapshot.codec.compressor;
 
 import org.jetbrains.annotations.NotNull;
 

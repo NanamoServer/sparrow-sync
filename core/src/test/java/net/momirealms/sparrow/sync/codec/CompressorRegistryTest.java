@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.codec;
 
-import net.momirealms.sparrow.sync.codec.compressor.Compressor;
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.codec.compressor.ZstdCompressor;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.ZstdCompressor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 

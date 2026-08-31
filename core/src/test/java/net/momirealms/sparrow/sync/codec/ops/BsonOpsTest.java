@@ -10,6 +10,7 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.data.type.ExperienceDataType.Experience;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.BsonOps;
 import org.bson.Document;
 import org.bson.types.Binary;
 import org.junit.jupiter.api.Test;

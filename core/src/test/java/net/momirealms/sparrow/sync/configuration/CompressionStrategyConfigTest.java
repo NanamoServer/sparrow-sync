@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.configuration;
 
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;

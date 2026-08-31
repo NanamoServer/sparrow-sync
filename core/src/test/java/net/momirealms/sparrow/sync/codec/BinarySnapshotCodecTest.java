@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.junit.jupiter.api.Test;

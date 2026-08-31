@@ -3,6 +3,9 @@ package net.momirealms.sparrow.sync.codec.compressor;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.ZstdCompressor;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

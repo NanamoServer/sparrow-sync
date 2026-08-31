@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.data.type;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.momirealms.sparrow.sync.codec.ops.GameOps;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
@@ -23,7 +23,7 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
 
     public PotionEffectsDataType() {
-        super(POTION_EFFECTS, StorageFormat.STRUCTURED, MobEffectInstance.CODEC.listOf(), GameOps::sparrowNbt);
+        super(POTION_EFFECTS, StorageFormat.STRUCTURED, MobEffectInstance.CODEC.listOf(), MinecraftRegistryOps::sparrowNbt);
     }
 
     @Override

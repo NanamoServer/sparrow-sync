@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec.ops;
+package net.momirealms.sparrow.sync.snapshot.codec.ops;
 
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.DataResult;
