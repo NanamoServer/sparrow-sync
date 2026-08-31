@@ -24,7 +24,6 @@ dependencies {
     compileOnly(libs.bundles.adventure)
     implementation(libs.bundles.sparrow)
 
-    implementation(libs.nyana.message)
     compileOnly(libs.sparrow.reflection)
     compileOnly(libs.datafixerupper)
     compileOnly(libs.lettuce.core)

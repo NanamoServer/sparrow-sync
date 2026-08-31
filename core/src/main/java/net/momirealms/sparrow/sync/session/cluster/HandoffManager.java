@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session.cluster;
 
-import net.nyana.message.MessageBroker;
+import io.netty.buffer.ByteBuf;
+import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -17,7 +18,7 @@ public final class HandoffManager {
     private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续静默判死阈值
     private static final long SETTLED_TTL_MILLIS = 30_000;   // settle 记录只服务交接窗口, 过窗即弃
 
-    private final MessageBroker broker;
+    private final MessageBroker<ByteBuf> broker;
     private final SessionLock lock;
     private final Predicate<UUID> hasSession;
     private final ProbeScheduler scheduler;
@@ -27,7 +28,7 @@ public final class HandoffManager {
     private final ConcurrentHashMap<UUID, Settled> settled = new ConcurrentHashMap<>(); // 最近保存的玩家 -> 采集时刻
 
     public HandoffManager(
-            @NotNull MessageBroker broker,
+            @NotNull MessageBroker<ByteBuf> broker,
             @NotNull SessionLock lock,
             @NotNull Predicate<UUID> hasSession,
             @NotNull ProbeScheduler scheduler
@@ -36,7 +37,7 @@ public final class HandoffManager {
     }
 
     HandoffManager(
-            @NotNull MessageBroker broker,
+            @NotNull MessageBroker<ByteBuf> broker,
             @NotNull SessionLock lock,
             @NotNull Predicate<UUID> hasSession,
             @NotNull ProbeScheduler scheduler,

@@ -58,13 +58,13 @@ cloud-paper = { module = "org.incendo:cloud-paper", version.ref = "cloud-paper" 
 cloud-minecraft-extras = { module = "org.incendo:cloud-minecraft-extras", version.ref = "cloud-minecraft-extras" }
 
 sparrow-nbt = { module = "net.momirealms:sparrow-nbt", version.ref = "sparrow-nbt" }
+sparrow-redis-message-broker = { module = "net.momirealms:sparrow-redis-message-broker", version = "0.0.7" }
 sparrow-ui = { module = "net.momirealms:sparrow-ui", version = "beta.23" }
 sparrow-nbt-adventure = { module = "net.momirealms:sparrow-nbt-adventure", version.ref = "sparrow-nbt" }
 sparrow-nbt-codec = { module = "net.momirealms:sparrow-nbt-codec", version.ref = "sparrow-nbt" }
 sparrow-nbt-legacy-codec = { module = "net.momirealms:sparrow-nbt-legacy-codec", version.ref = "sparrow-nbt" }
 sparrow-reflection = { module = "net.momirealms:sparrow-reflection", version = "0.34" }
 sparrow-yaml = { module = "net.momirealms:sparrow-yaml", version = "1.0.21" }
-nyana-message = { module = "net.nyana:nyana-message", version = "1.0.1" }
 
 adventure-api = { module = "net.kyori:adventure-api", version.ref = "adventure" }
 adventure-nbt = { module = "net.kyori:adventure-nbt", version.ref = "adventure" }
@@ -106,6 +106,7 @@ sparrow = [
     "sparrow-nbt-adventure",
     "sparrow-nbt-codec",
     "sparrow-nbt-legacy-codec",
+    "sparrow-redis-message-broker",
     "sparrow-ui",
     "sparrow-yaml"
 ]

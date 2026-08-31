@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.session.cluster;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import net.nyana.message.util.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -18,8 +18,8 @@ class HandoffMessageCodecTest {
         message.setSourceServer("serverB");
         message.setTargetServer("serverA");
 
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        HandoffRequestMessage.CODEC.encode(message, buf);
+        ByteBuf buf = Unpooled.buffer();
+        HandoffRequestMessage.CODEC.encode(buf, message);
         HandoffRequestMessage decoded = HandoffRequestMessage.CODEC.decode(buf);
 
         assertEquals(42L, decoded.messageId());
@@ -34,8 +34,8 @@ class HandoffMessageCodecTest {
         message.setSourceServer("serverA");
         message.setTargetServer("serverB");
 
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        HandoffResponseMessage.CODEC.encode(message, buf);
+        ByteBuf buf = Unpooled.buffer();
+        HandoffResponseMessage.CODEC.encode(buf, message);
         HandoffResponseMessage decoded = HandoffResponseMessage.CODEC.decode(buf);
 
         assertEquals(HandoffResponseMessage.Status.SAVING, decoded.status());
@@ -49,8 +49,8 @@ class HandoffMessageCodecTest {
         message.setSourceServer("serverA");
         message.setTargetServer("serverB");
 
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        HandoffResponseMessage.CODEC.encode(message, buf);
+        ByteBuf buf = Unpooled.buffer();
+        HandoffResponseMessage.CODEC.encode(buf, message);
         HandoffResponseMessage decoded = HandoffResponseMessage.CODEC.decode(buf);
 
         assertEquals(HandoffResponseMessage.Status.DONE, decoded.status());

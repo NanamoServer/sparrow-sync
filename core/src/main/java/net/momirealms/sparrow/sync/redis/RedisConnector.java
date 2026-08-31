@@ -6,12 +6,12 @@ import io.lettuce.core.RedisCredentialsProvider;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
+import net.momirealms.sparrow.redis.messagebroker.connection.PubSubRedisConnection;
+import net.momirealms.sparrow.redis.messagebroker.connection.RedisConnection;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.nyana.message.connection.DefaultRedisConnection;
-import net.nyana.message.connection.RedisConnection;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
@@ -22,7 +22,7 @@ public final class RedisConnector {
 
     private volatile RedisClient client;
     private volatile StatefulRedisConnection<byte[], byte[]> connection;  // 锁命令
-    private volatile DefaultRedisConnection brokerConnection;             // 消息 broker 的命令与 Pub/Sub
+    private volatile PubSubRedisConnection brokerConnection;              // 消息 broker 的命令与 Pub/Sub
 
     public RedisConnector(@NotNull PluginConfig.RedisOptions options, @NotNull SyncLogger logger) {
         this.options = options;
@@ -32,7 +32,7 @@ public final class RedisConnector {
     public void initialize() {
         this.client = RedisClient.create(buildUri(this.options));
         this.connection = this.client.connect(ByteArrayCodec.INSTANCE);
-        this.brokerConnection = new DefaultRedisConnection(this.client);
+        this.brokerConnection = new PubSubRedisConnection(this.client);
         this.logger.info(LogCategory.REDIS, LogConstants.REDIS_READY);
     }
 
@@ -61,7 +61,7 @@ public final class RedisConnector {
     }
 
     public void shutdown() {
-        DefaultRedisConnection brokerConnection = this.brokerConnection;
+        PubSubRedisConnection brokerConnection = this.brokerConnection;
         if (brokerConnection != null) brokerConnection.close();
         StatefulRedisConnection<byte[], byte[]> connection = this.connection;
         if (connection != null) connection.close();

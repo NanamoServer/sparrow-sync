@@ -1,17 +1,18 @@
 package net.momirealms.sparrow.sync.session.cluster;
 
-import net.nyana.message.libs.codec.Codec;
-import net.nyana.message.message.MessageIdentifier;
-import net.nyana.message.message.TwoWayRequestMessage;
-import net.nyana.message.util.FriendlyByteBuf;
+import io.netty.buffer.ByteBuf;
+import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;
+import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
+import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
+import net.momirealms.sparrow.redis.messagebroker.message.TwoWayRequestMessage;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-public final class HandoffRequestMessage extends TwoWayRequestMessage<HandoffResponseMessage> {
+public final class HandoffRequestMessage extends TwoWayRequestMessage<ByteBuf, HandoffResponseMessage> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "handoff_request");
-    public static final Codec<FriendlyByteBuf, HandoffRequestMessage> CODEC = Codec.of(HandoffRequestMessage::write, HandoffRequestMessage::new);
+    public static final MessageCodec<ByteBuf, HandoffRequestMessage> CODEC = RedisMessage.codec(HandoffRequestMessage::write, HandoffRequestMessage::new);
     private static volatile HandoffManager service;
 
     private final UUID player;
@@ -20,13 +21,13 @@ public final class HandoffRequestMessage extends TwoWayRequestMessage<HandoffRes
         this.player = player;
     }
 
-    private HandoffRequestMessage(FriendlyByteBuf buf) {
+    private HandoffRequestMessage(ByteBuf buf) {
         super(buf);
         this.player = new UUID(buf.readLong(), buf.readLong());
     }
 
     @Override
-    protected void write(FriendlyByteBuf buf) {
+    protected void write(ByteBuf buf) {
         super.write(buf);
         buf.writeLong(this.player.getMostSignificantBits());
         buf.writeLong(this.player.getLeastSignificantBits());

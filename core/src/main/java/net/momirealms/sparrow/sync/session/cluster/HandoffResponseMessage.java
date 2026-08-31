@@ -1,14 +1,16 @@
 package net.momirealms.sparrow.sync.session.cluster;
 
-import net.nyana.message.libs.codec.Codec;
-import net.nyana.message.message.MessageIdentifier;
-import net.nyana.message.message.TwoWayResponseMessage;
-import net.nyana.message.util.FriendlyByteBuf;
+import io.netty.buffer.ByteBuf;
+import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;
+import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
+import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
+import net.momirealms.sparrow.redis.messagebroker.message.TwoWayResponseMessage;
+import net.momirealms.sparrow.redis.messagebroker.util.ByteBufHelper;
 import org.jetbrains.annotations.NotNull;
 
-public final class HandoffResponseMessage extends TwoWayResponseMessage {
+public final class HandoffResponseMessage extends TwoWayResponseMessage<ByteBuf> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "handoff_response");
-    public static final Codec<FriendlyByteBuf, HandoffResponseMessage> CODEC = Codec.of(HandoffResponseMessage::write, HandoffResponseMessage::new);
+    public static final MessageCodec<ByteBuf, HandoffResponseMessage> CODEC = RedisMessage.codec(HandoffResponseMessage::write, HandoffResponseMessage::new);
 
     private final Status status;
     private final long timestamp;  // DONE 时为快照采集时刻, 其余状态为 0
@@ -18,17 +20,17 @@ public final class HandoffResponseMessage extends TwoWayResponseMessage {
         this.timestamp = timestamp;
     }
 
-    private HandoffResponseMessage(FriendlyByteBuf buf) {
+    private HandoffResponseMessage(ByteBuf buf) {
         super(buf);
         this.status = Status.VALUES[buf.readByte()];
-        this.timestamp = buf.readCompactLong();
+        this.timestamp = ByteBufHelper.readCompactLong(buf);
     }
 
     @Override
-    protected void write(FriendlyByteBuf buf) {
+    protected void write(ByteBuf buf) {
         super.write(buf);
         buf.writeByte(this.status.ordinal());
-        buf.writeCompactLong(this.timestamp);
+        ByteBufHelper.writeCompactLong(buf, this.timestamp);
     }
 
     @NotNull

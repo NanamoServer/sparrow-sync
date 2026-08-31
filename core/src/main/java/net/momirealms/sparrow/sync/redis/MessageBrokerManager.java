@@ -1,10 +1,14 @@
 package net.momirealms.sparrow.sync.redis;
 
+import io.netty.buffer.ByteBuf;
+import net.momirealms.sparrow.redis.messagebroker.Logger;
+import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.cluster.HandoffRequestMessage;
 import net.momirealms.sparrow.sync.session.cluster.HandoffResponseMessage;
-import net.nyana.message.MessageBroker;
 import org.jetbrains.annotations.NotNull;
+
+import java.nio.charset.StandardCharsets;
 
 public final class MessageBrokerManager {
     private final RedisConnector connector;
@@ -12,7 +16,7 @@ public final class MessageBrokerManager {
     private final String serverId;
     private final SyncLogger logger;
 
-    private volatile MessageBroker broker;
+    private volatile MessageBroker<ByteBuf> broker;
 
     public MessageBrokerManager(@NotNull RedisConnector connector, @NotNull String clusterId, @NotNull String serverId, @NotNull SyncLogger logger) {
         this.connector = connector;
@@ -22,9 +26,9 @@ public final class MessageBrokerManager {
     }
 
     public void initialize() {
-        MessageBroker broker = MessageBroker.builder()
-                .appId(this.clusterId)
-                .brokerId(this.serverId)
+        MessageBroker<ByteBuf> broker = MessageBroker.<ByteBuf>builder(byteBuf -> byteBuf)
+                .channel(this.clusterId.getBytes(StandardCharsets.UTF_8))
+                .serverId(this.serverId)
                 .logger(new BrokerLogger(this.logger))
                 .connection(this.connector.brokerConnection())
                 .build();
@@ -36,18 +40,18 @@ public final class MessageBrokerManager {
     }
 
     @NotNull
-    public MessageBroker broker() {
+    public MessageBroker<ByteBuf> broker() {
         return this.broker;
     }
 
     // 只退订频道, 连接与 client 的关闭归 RedisConnector
     public void shutdown() {
-        MessageBroker broker = this.broker;
+        MessageBroker<ByteBuf> broker = this.broker;
         if (broker != null) broker.unsubscribe();
     }
 
-    // nyana-message 的日志出口接到插件日志上, debug 噪音直接丢弃
-    private record BrokerLogger(SyncLogger logger) implements net.nyana.message.Logger {
+    // 消息 broker 的日志出口接到插件日志上, debug 噪音直接丢弃
+    private record BrokerLogger(SyncLogger logger) implements Logger {
 
         @Override
         public void error(String msg, Throwable t) {
