@@ -649,6 +649,10 @@ public class SparrowSync implements Plugin {
         return this.sessionManager;
     }
 
+    public LoginGate loginGate() {
+        return this.loginGate;
+    }
+
     public RedisConnector redisConnector() {
         return this.redisConnector;
     }
