@@ -21,12 +21,10 @@ import org.jetbrains.annotations.NotNull;
 public final class SnapshotSaveTrigger implements Listener {
     private final SparrowSync plugin;
     private final SessionManager sessionManager;
-//    private final SnapshotIntervalScheduler snapshotIntervalScheduler;
 
     public SnapshotSaveTrigger(@NotNull SparrowSync plugin, @NotNull SessionManager sessionManager) {
         this.plugin = plugin;
         this.sessionManager = sessionManager;
-//        this.snapshotIntervalScheduler = new SnapshotIntervalScheduler(plugin, sessionManager);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -35,13 +33,7 @@ public final class SnapshotSaveTrigger implements Listener {
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
         // 登录应用失败时会在 Join 事件内嵌套触发 Quit, 只有最终 ACTIVE 的会话会挂上定时链.
         if (session == null || session.state() != SessionState.ACTIVE) return;
-//        this.snapshotIntervalScheduler.activate(session, player);
     }
-
-//    @EventHandler(priority = EventPriority.MONITOR)
-//    public void onQuit(PlayerQuitEvent event) {
-//        this.snapshotIntervalScheduler.deactivate(event.getPlayer());
-//    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldChange(PlayerChangedWorldEvent event) {
@@ -82,10 +74,5 @@ public final class SnapshotSaveTrigger implements Listener {
                 if (player.isDead()) this.sessionManager.trySubmitActiveSnapshot(session, player, SaveCause.DEATH);
             }, () -> {});
         }
-    }
-
-    // 停止产生新的定时采集, 已经进入玩家队列的保存继续完成.
-    public void shutdown() {
-//        this.snapshotIntervalScheduler.shutdown();
     }
 }

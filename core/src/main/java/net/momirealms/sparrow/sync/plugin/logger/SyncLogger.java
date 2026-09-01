@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 public final class SyncLogger implements PluginLogger {
-    private final PluginLogger console;
+    public final PluginLogger console;
     private volatile FileLogWriter fileWriter;
 
     public SyncLogger(@NotNull PluginLogger console) {
