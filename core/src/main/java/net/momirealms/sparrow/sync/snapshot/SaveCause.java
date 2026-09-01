@@ -9,7 +9,8 @@ public enum SaveCause {
     DISCONNECT,         // 离线
     WORLD_CHANGE,       // 切换世界
     GAME_MODE_CHANGE,   // 切换游戏模式
-    DEATH,              // 死亡
+    PRE_DEATH,          // 死亡清理前
+    DEATH,              // 死亡清理后
     SHUTDOWN,           // 服务器关闭
     INTERVAL,           // 定时
     COMMAND,            // 命令

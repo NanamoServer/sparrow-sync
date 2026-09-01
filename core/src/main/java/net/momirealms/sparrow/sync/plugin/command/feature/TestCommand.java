@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.session.SnapshotService.SnapshotSaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -310,9 +311,10 @@ public final class TestCommand extends BukkitCommandFeature {
             service.captureAndSave(target, SaveCause.COMMAND).whenComplete((result, throwable) -> {
                 if (throwable != null) {
                     send(sender, "[FAIL] save: " + throwable, false);
-                } else {
-                    send(sender, "[PASS] save " + result + " in " + elapsed(start), true);
+                    return;
                 }
+                boolean completed = result instanceof SnapshotSaveOutcome.Completed;
+                send(sender, (completed ? "[PASS] save " : "[FAIL] save ") + result + " in " + elapsed(start), completed);
             });
         }, null);
     }
@@ -346,7 +348,7 @@ public final class TestCommand extends BukkitCommandFeature {
         if (target == null || service == null) return;
         int count = context.<Integer>optional("count").orElse(20);
         target.getScheduler().run(plugin().javaPlugin(), task -> {
-            List<CompletableFuture<SaveResult>> saves = new ArrayList<>(count);
+            List<CompletableFuture<SnapshotSaveOutcome>> saves = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
                 saves.add(service.captureAndSave(target, SaveCause.COMMAND));
             }
@@ -356,7 +358,12 @@ public final class TestCommand extends BukkitCommandFeature {
                 int failed = 0;
                 for (int i = 0; i < saves.size(); i++) {
                     try {
-                        SaveResult result = saves.get(i).join();
+                        SnapshotSaveOutcome outcome = saves.get(i).join();
+                        if (!(outcome instanceof SnapshotSaveOutcome.Completed completed)) {
+                            failed++;
+                            continue;
+                        }
+                        SaveResult result = completed.result();
                         if (result == SaveResult.SAVED) saved++;
                         else if (result == SaveResult.SAVED_OUT_OF_ORDER) outOfOrder++;
                     } catch (RuntimeException exception) {

@@ -14,6 +14,7 @@ import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.YamlIgnore;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
 import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
+import org.bukkit.GameMode;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class PluginConfig {
     private static final String CONFIG_FILE = "config.yml";
@@ -49,6 +51,7 @@ public final class PluginConfig {
         try {
             ConfigDefinition loadedConfig = this.configMapper.load(this.configFilePath).value();
             loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
+            loadedConfig.synchronization.compiledSaveTriggers = SaveTriggers.of(loadedConfig.synchronization.saveTriggers);
             config = loadedConfig;
         } catch (Exception e) {
             this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
@@ -168,6 +171,14 @@ public final class PluginConfig {
         })
         int loginTimeoutSeconds = 15;
 
+        @BlankLineBefore
+        @Comment({
+                "Automatic snapshot save triggers",
+                "Reloading the plugin applies these options to later trigger invocations"
+        })
+        SaveTriggerOptions saveTriggers = new SaveTriggerOptions();
+
+        @BlankLineBefore
         @Comment({
                 "How newly written snapshots are compressed, existing data stays readable whatever is set here",
                 "Available: ZSTD, DEFLATE, NONE",
@@ -190,6 +201,109 @@ public final class PluginConfig {
 
         @YamlIgnore
         PDCMergeBlacklist pdcMergeBlacklist = PDCMergeBlacklist.empty();
+
+        @YamlIgnore
+        SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class SaveTriggerOptions {
+        @Comment("Save after a player changes worlds")
+        WorldChangeTriggerOptions worldChange = new WorldChangeTriggerOptions();
+
+        @BlankLineBefore
+        @Comment("Save active players at a staggered interval")
+        IntervalTriggerOptions interval = new IntervalTriggerOptions();
+
+        @BlankLineBefore
+        @Comment("Save after a player's game mode changes")
+        GameModeChangeTriggerOptions gameModeChange = new GameModeChangeTriggerOptions();
+
+        @BlankLineBefore
+        @Comment("Save snapshots around player death")
+        DeathTriggerOptions death = new DeathTriggerOptions();
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class WorldChangeTriggerOptions {
+        @Comment("Whether changing worlds creates a snapshot")
+        boolean enabled = false;
+
+        @Comment("Do not save when the player leaves one of these worlds")
+        List<String> ignoredFromWorlds = List.of();
+
+        @Comment("Do not save when the player enters one of these worlds")
+        List<String> ignoredToWorlds = List.of();
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class IntervalTriggerOptions {
+        @Comment("Whether active players are saved periodically")
+        boolean enabled = true;
+
+        @Comment({
+                "Minutes between snapshots for one player, minimum 1",
+                "Players are spread across the whole period instead of being captured together"
+        })
+        int minutes = 5;
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class GameModeChangeTriggerOptions {
+        @Comment("Whether changing game mode creates a snapshot")
+        boolean enabled = true;
+
+        @Comment({
+                "Do not save when the player changes into one of these modes",
+                "Available: SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR"
+        })
+        List<GameMode> ignoredTargetModes = List.of();
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class DeathTriggerOptions {
+        @Comment({
+                "Save the complete state visible inside PlayerDeathEvent before Paper removes dropped items",
+                "This is an additional history snapshot and is disabled by default"
+        })
+        boolean saveBeforeDeath = false;
+
+        @Comment({
+                "Save the real state on the next player tick after Paper applies keepInventory and itemsToKeep",
+                "The snapshot includes the items that actually remain on the dead player"
+        })
+        boolean saveAfterDeath = true;
+
+        @Comment("Do not create either death snapshot in these worlds")
+        List<String> ignoredWorlds = List.of();
+    }
+
+    public record SaveTriggers(@NotNull WorldChangeTrigger worldChange,
+                               @NotNull IntervalTrigger interval,
+                               @NotNull GameModeChangeTrigger gameModeChange,
+                               @NotNull DeathTrigger death) {
+
+        @NotNull
+        private static SaveTriggers of(@NotNull SaveTriggerOptions options) {
+            return new SaveTriggers(
+                    new WorldChangeTrigger(options.worldChange.enabled, Set.copyOf(options.worldChange.ignoredFromWorlds), Set.copyOf(options.worldChange.ignoredToWorlds)),
+                    new IntervalTrigger(options.interval.enabled, Math.max(1, options.interval.minutes)),
+                    new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes)),
+                    new DeathTrigger(options.death.saveBeforeDeath, options.death.saveAfterDeath, Set.copyOf(options.death.ignoredWorlds))
+            );
+        }
+    }
+
+    public record WorldChangeTrigger(boolean enabled, @NotNull Set<String> ignoredFromWorlds, @NotNull Set<String> ignoredToWorlds) {
+    }
+
+    public record IntervalTrigger(boolean enabled, int minutes) {
+    }
+
+    public record GameModeChangeTrigger(boolean enabled, @NotNull Set<GameMode> ignoredTargetModes) {
+    }
+
+    public record DeathTrigger(boolean saveBeforeDeath, boolean saveAfterDeath, @NotNull Set<String> ignoredWorlds) {
     }
 
     /**
@@ -429,7 +543,7 @@ public final class PluginConfig {
 
 
     // 读取一律经这里穿透到当前那份配置, 方法名以 $ 还原配置文件里的层级.
-    // 不暴露任何配置段对象: 重载是换上新的一份而不是就地改写, 谁持有段对象谁就停在旧值上
+    // 同一次触发要读取的相关选项编译成一个不可变值, 调用方每次重新取得当前快照
 
     public static boolean checkUpdate() {
         return config.updateChecker;
@@ -479,6 +593,11 @@ public final class PluginConfig {
 
     public static int synchronization$loginTimeoutSeconds() {
         return config.synchronization.loginTimeoutSeconds;
+    }
+
+    @NotNull
+    public static SaveTriggers synchronization$saveTriggers() {
+        return config.synchronization.compiledSaveTriggers;
     }
 
     public static int synchronization$maxSaveRetries() {

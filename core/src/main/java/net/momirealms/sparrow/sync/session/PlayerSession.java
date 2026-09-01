@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.session.SnapshotService.PreparedOutcome;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,12 +11,15 @@ import java.util.concurrent.CompletableFuture;
 public final class PlayerSession {
     private final UUID uuid;
     private final String playerName;
-    // 一次性的 “会话释放完成” 信号, 可以用 thenRun 注册 Channel 关闭时的回调.
+    // 当会话从注册表移除后, 这个 Future 会在 Channel Close 的回调上完成, 一般用于在 thenRun 注册一些 Session 释放时的回调任务.
     private final CompletableFuture<Void> released = new CompletableFuture<>();
 
     private SessionState state = SessionState.PREPARING;
     private PreparedOutcome.Ready prepared;
-    private String lockValue;  // 本会话持有的分布式锁值, 取锁成功后写入, 释放时原样传回
+    // 分布式锁的持有值, 释放时原样传回
+    private String lockValue;
+    boolean triggeredSnapshotInProgress;
+    @Nullable SaveCause deferredCloseCause;
 
     PlayerSession(@NotNull UUID player, @NotNull String playerName) {
         this.uuid = player;
@@ -43,9 +47,23 @@ public final class PlayerSession {
     }
 
     /**
-     * 转移到目标状态.
+     * 当前状态与预期相同时尝试转移, 并发竞争失败时返回 false.
      *
-     * @throws IllegalStateException 当转移非法时
+     * @param expected 预期的当前状态
+     * @param to 目标状态
+     * @return 状态匹配且转移成功时返回 true
+     */
+    public synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState to) {
+        if (this.state != expected || !this.state.canTransitionTo(to)) return false;
+        this.state = to;
+        return true;
+    }
+
+    /**
+     * 转移到指定的会话状态.
+     *
+     * @param to 目标状态
+     * @throws IllegalStateException 当前状态不能转移到目标状态时
      */
     public synchronized void transition(@NotNull SessionState to) {
         if (!this.state.canTransitionTo(to)) {
@@ -55,16 +73,8 @@ public final class PlayerSession {
     }
 
     /**
-     * 仅当前状态为 expected 时转移, 供与并发转移竞争的路径使用: 输掉竞争的一方拿 false 静默退出.
-     */
-    public synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState to) {
-        if (this.state != expected || !this.state.canTransitionTo(to)) return false;
-        this.state = to;
-        return true;
-    }
-
-    /**
-     * 暂存配置阶段的预解码结果 (含数据准备段耗时), 等待应用段消费.
+     * 暂存登录配置阶段生成的预解码结果, 供玩家进入世界后应用.
+     *
      * @param prepared 预解码结果
      */
     public synchronized void prepared(@NotNull PreparedOutcome.Ready prepared) {
@@ -72,7 +82,9 @@ public final class PlayerSession {
     }
 
     /**
-     * 消费掉预解码结果.
+     * 取走预解码结果, 同一份结果只会返回一次.
+     *
+     * @return 待应用的结果, 没有结果时返回 null
      */
     @Nullable
     public synchronized PreparedOutcome.Ready consumePrepared() {

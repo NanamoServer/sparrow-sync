@@ -54,7 +54,7 @@ public final class SessionListener implements Listener {
         // 给玩家应用快照数据
         LoadOutcome outcome;
         try {
-            outcome = this.snapshotService.applyPrepared(player, prepared.prepared(), prepared.asyncNanos());
+            outcome = this.snapshotService.applyPrepared(player, prepared);
         } catch (Throwable throwable) {
             this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), throwable, LogConstants.GATE_KICKED, player.getName(), String.valueOf(throwable));
             this.kickOnOwningThread(session, player);

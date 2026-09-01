@@ -1,6 +1,9 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -103,8 +106,13 @@ class PlayerSessionTest {
     @Test
     void consumePreparedReturnsOnceThenNull() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        Snapshot snapshot = new Snapshot(SnapshotMeta.builder()
+                .player(session.uuid())
+                .timestamp(1L)
+                .cause(SaveCause.DISCONNECT)
+                .build(), Map.of());
         SnapshotService.PreparedOutcome.Ready prepared = new SnapshotService.PreparedOutcome.Ready(
-                new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of()), 0L);
+                snapshot, new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of()), 0L);
         session.prepared(prepared);
 
         assertSame(prepared, session.consumePrepared());
