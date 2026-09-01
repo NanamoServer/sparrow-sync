@@ -242,7 +242,6 @@ public class SparrowSync implements Plugin {
         // 保存触发监听器
         this.saveTriggerListener = new SaveTriggerListener(this, this.sessionManager);
         Bukkit.getPluginManager().registerEvents(this.saveTriggerListener, this.javaPlugin);
-        this.saveTriggerListener.start();
         // 安装 SparrowUI
         SparrowUI.getInstance().setUp(this.javaPlugin);
         SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
@@ -435,6 +434,9 @@ public class SparrowSync implements Plugin {
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
+                        if (this.saveTriggerListener != null) {
+                            this.saveTriggerListener.reconfigureIntervalTasks();
+                        }
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));
