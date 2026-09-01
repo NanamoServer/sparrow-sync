@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.sync.plugin.scheduler;
 
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.EntityExecutor;
 import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +32,14 @@ public interface SchedulerAdapter<W> {
      * @return 同步区域执行器实例.
      */
     RegionExecutor<W> sync();
+
+    /**
+     * 获取实体执行器.
+     *
+     * @return 当前平台的实体执行器.
+     */
+    @NotNull
+    EntityExecutor entity();
 
     /**
      * 执行一个同步任务.
