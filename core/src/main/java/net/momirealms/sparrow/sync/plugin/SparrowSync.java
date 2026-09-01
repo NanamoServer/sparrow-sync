@@ -36,7 +36,7 @@ import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
-import net.momirealms.sparrow.sync.session.SaveTriggerListener;
+import net.momirealms.sparrow.sync.trigger.SnapshotSaveTrigger;
 import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
@@ -104,7 +104,7 @@ public class SparrowSync implements Plugin {
     private ServerHeartBeats serverHeartBeats;
     private HandoffManager handoffManager;
     private SessionManager sessionManager;
-    private SaveTriggerListener saveTriggerListener;
+    private SnapshotSaveTrigger saveTrigger;
     private LoginGate loginGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
@@ -240,8 +240,8 @@ public class SparrowSync implements Plugin {
         this.sessionManager = new SessionManager(this, this.logger);
         Bukkit.getPluginManager().registerEvents(new SessionListener(this, this.snapshotService, this.sessionManager), this.javaPlugin);
         // 保存触发监听器
-        this.saveTriggerListener = new SaveTriggerListener(this, this.sessionManager);
-        Bukkit.getPluginManager().registerEvents(this.saveTriggerListener, this.javaPlugin);
+        this.saveTrigger = new SnapshotSaveTrigger(this, this.sessionManager);
+        Bukkit.getPluginManager().registerEvents(this.saveTrigger, this.javaPlugin);
         // 安装 SparrowUI
         SparrowUI.getInstance().setUp(this.javaPlugin);
         SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
@@ -260,7 +260,7 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginDisable() {
-        if (this.saveTriggerListener != null) this.saveTriggerListener.shutdown();
+        if (this.saveTrigger != null) this.saveTrigger.shutdown();
         if (this.sessionManager != null) this.sessionManager.shutdown(); // 为 ACTIVE 会话投递 SHUTDOWN 保存
         if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
         if (this.snapshotService != null) this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
@@ -434,8 +434,8 @@ public class SparrowSync implements Plugin {
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
-                        if (this.saveTriggerListener != null) {
-                            this.saveTriggerListener.reconfigureIntervalTasks();
+                        if (this.intervalSaveScheduler != null) {
+                            this.intervalSaveScheduler.reconfigure(PluginConfig.synchronization$saveTriggers().interval());
                         }
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
