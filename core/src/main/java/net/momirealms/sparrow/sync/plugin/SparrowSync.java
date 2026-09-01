@@ -4,7 +4,6 @@ import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
@@ -14,7 +13,9 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.snapshot.data.type.*;
 import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.session.gate.ConfigurationPacketGate;
 import net.momirealms.sparrow.sync.session.gate.LoginGate;
+import net.momirealms.sparrow.sync.session.gate.PaperEventGate;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -37,13 +38,12 @@ import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.trigger.SnapshotSaveTrigger;
-import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.session.SnapshotStash;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
 import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
@@ -62,7 +62,6 @@ import java.net.URLConnection;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -90,22 +89,22 @@ public class SparrowSync implements Plugin {
     private boolean successfullyEnabled = false;
     private final AtomicBoolean reloading = new AtomicBoolean();
 
-    private final DataRegistry dataRegistry = new DataRegistry();
     private final PlayerSerialExecutor playerExecutor;
-    private BinarySnapshotCodec binaryCodec;
-    private DocumentSnapshotCodec documentCodec;
-    private SnapshotApplier snapshotApplier;
-    private StorageProvider storageProvider;
-    private SnapshotStash snapshotStash;
-    private SnapshotService snapshotService;
-    private RedisConnector redisConnector;
-    private SessionLock sessionLock;
-    private MessageBrokerManager messageBrokerManager;
-    private ServerHeartBeats serverHeartBeats;
-    private HandoffManager handoffManager;
-    private SessionManager sessionManager;
-    private SnapshotSaveTrigger saveTrigger;
-    private LoginGate loginGate;
+    private final DataRegistry dataRegistry;
+    private final BinarySnapshotCodec binaryCodec;
+    private final DocumentSnapshotCodec documentCodec;
+    private final MongoStorageProvider storageProvider;
+    private final SnapshotStash snapshotStash;
+    private final SnapshotApplier snapshotApplier;
+    private final SnapshotService snapshotService;
+    private final RedisConnector redisConnector;
+    private final SessionLock sessionLock;
+    private final MessageBrokerManager messageBrokerManager;
+    private final ServerHeartBeats serverHeartBeats;
+    private final HandoffManager handoffManager;
+    private final SessionManager sessionManager;
+    private final SnapshotSaveTrigger saveTrigger;
+    private final LoginGate loginGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
         instance = this;
@@ -134,8 +133,24 @@ public class SparrowSync implements Plugin {
         }
         this.compatibilityManager = new CompatibilityManager(this);
         this.playerExecutor = new PlayerSerialExecutor(this.logger, PluginConfig.synchronization$workerThreads());
-        this.setUpInternalDataTypes();
         ((Logger) LogManager.getRootLogger()).addFilter(new DisconnectLogFilter());
+
+        // 业务模块
+        this.dataRegistry = new DataRegistry();
+        this.binaryCodec = new BinarySnapshotCodec(this);
+        this.documentCodec = new DocumentSnapshotCodec(this);
+        this.storageProvider = new MongoStorageProvider(this);
+        this.snapshotStash = new SnapshotStash(this);
+        this.snapshotApplier = new SnapshotApplier(this);
+        this.snapshotService = new SnapshotService(this);
+        this.redisConnector = new RedisConnector(this);
+        this.sessionLock = new SessionLock(this);
+        this.messageBrokerManager = new MessageBrokerManager(this);
+        this.serverHeartBeats = new ServerHeartBeats(this);
+        this.sessionManager = new SessionManager(this);
+        this.handoffManager = new HandoffManager(this);
+        this.loginGate = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7() ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
+        this.saveTrigger = new SnapshotSaveTrigger(this);
     }
 
     public static SparrowSync instance() {
@@ -168,9 +183,49 @@ public class SparrowSync implements Plugin {
             Bukkit.getServer().shutdown();
             return;
         }
-        // 链接 Redis 与 持久化存储
-        this.setupRedis();
-        this.setupStorage();
+        // 加载基础组件
+        this.setUpInternalDataTypes();
+        this.snapshotApplier.onLoad();
+        this.snapshotService.onLoad();
+        this.sessionManager.onLoad();
+        // 链接 Redis
+        try {
+            this.redisConnector.onLoad();
+            this.sessionLock.onLoad();
+            this.messageBrokerManager.onLoad();
+            this.handoffManager.onLoad();
+            this.serverHeartBeats.onLoad();
+        } catch (Throwable throwable) {
+            this.logger.error(TranslationManager.console(LogConstants.REDIS_SETUP_FAILED), throwable);
+            Bukkit.getServer().shutdown();
+            return;
+        }
+        // 加载并验证快照压缩器
+        try {
+            this.binaryCodec.onLoad();
+        } catch (Throwable throwable) {
+            this.logger.error(TranslationManager.console(LogConstants.STORAGE_COMPRESSOR_FAILED), throwable);
+            Bukkit.getServer().shutdown();
+            return;
+        }
+        // 链接持久化存储
+        try {
+            if (PluginConfig.database$type() != StorageType.MONGODB) {
+                this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
+                Bukkit.getServer().shutdown();
+                return;
+            }
+            this.documentCodec.onLoad();
+            this.snapshotStash.onLoad();
+            this.storageProvider.onLoad();
+            this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, PluginConfig.database$mongodb().database()));
+        } catch (Throwable throwable) {
+            this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED), throwable);
+            Bukkit.getServer().shutdown();
+            return;
+        }
+        // 插回没能落库的本地快照
+        this.snapshotStash.restorePending(this.storageProvider); // 需同步
         this.successfullyLoaded = true;
     }
 
@@ -206,51 +261,30 @@ public class SparrowSync implements Plugin {
         // 命令管理器
         this.commandManager = new BukkitCommandManager(this);
         this.commandManager.registerDefaultFeatures();
+        // 安装 SparrowUI
+        SparrowUI.getInstance().setUp(this.javaPlugin);
+        SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
         // 延迟初始化事件
         this.isInitializing = true;
         this.initASMProxies();
         // 集成插件管理器
         this.compatibilityManager.onEnable();
-        // 延迟重载逻辑
         this.scheduler.sync().runDelayed(this::onServerLoaded);
     }
 
     public void onServerLoaded() {
         // 集成插件管理器
         this.compatibilityManager.onDelayedEnable();
-        // 冻结注册表并装配快照.
-        if (this.snapshotApplier != null) return;
-        this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
-        StringJoiner activeTypes = new StringJoiner(", ");
-        List<DataKey> applyOrder = this.snapshotApplier.applyOrder();
-        int dataTypeCount = applyOrder.size();
-        for (int i = 0; i < dataTypeCount; i++) {
-            activeTypes.add(applyOrder.get(i).asString());
-        }
-        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
-        // 跨服交接服务, 探测调度走插件异步调度器, 会话查询在消息到达时才解引用
-        this.handoffManager = new HandoffManager(
-                this.messageBrokerManager.broker(),
-                this.sessionLock,
-                uuid -> this.sessionManager != null && this.sessionManager.session(uuid) != null,
-                (task, delayMillis) -> this.scheduler.asyncLater(task, delayMillis, TimeUnit.MILLISECONDS)
-        );
-        this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
-        // 会话状态机
-        this.sessionManager = new SessionManager(this, this.logger);
-        Bukkit.getPluginManager().registerEvents(new SessionListener(this, this.snapshotService, this.sessionManager), this.javaPlugin);
+        // 快照管理器
+        this.snapshotService.onDelayedEnable();
+        // 会话管理器
+        this.sessionManager.onDelayedEnable();
         // 保存触发监听器
-        this.saveTrigger = new SnapshotSaveTrigger(this, this.sessionManager);
-        Bukkit.getPluginManager().registerEvents(this.saveTrigger, this.javaPlugin);
-        // 安装 SparrowUI
-        SparrowUI.getInstance().setUp(this.javaPlugin);
-        SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
+        this.saveTrigger.onDelayedEnable();
         // 安装进入世界前的数据加载门
-        this.loginGate = LoginGate.create(this, this.snapshotService, this.sessionManager);
-        this.loginGate.register();
-        // 预热 DFU 的 ITEM_STACK CODEC.
+        this.loginGate.onDelayedEnable();
+        // 预热和标记
         this.scheduler.async().execute(ItemCodec::warmUp);
-        // 标记
         this.isInitializing = false;
     }
 
@@ -260,18 +294,16 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginDisable() {
-        if (this.saveTrigger != null) this.saveTrigger.shutdown();
-        if (this.sessionManager != null) this.sessionManager.shutdown(); // 为 ACTIVE 会话投递 SHUTDOWN 保存
-        if (this.playerExecutor != null) this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
-        if (this.snapshotService != null) this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
-
-        if (this.scheduler != null) this.scheduler.shutdownScheduler();
-        if (this.scheduler != null) this.scheduler.shutdownExecutor();
-        if (this.serverHeartBeats != null) this.serverHeartBeats.shutdown(); // 注销集群身份, 心跳键删除或随 TTL 消失
-        if (this.messageBrokerManager != null) this.messageBrokerManager.shutdown();
-        if (this.redisConnector != null) this.redisConnector.shutdown();
-        if (this.storageProvider != null) this.storageProvider.shutdown();
-        if (this.dependencyManager != null) this.dependencyManager.shutdown();
+        if (this.sessionManager != null)        this.sessionManager.shutdown(); // 为 ACTIVE 会话投递 SHUTDOWN 保存
+        if (this.playerExecutor != null)        this.playerExecutor.shutdown(PluginConfig.synchronization$shutdownTimeoutSeconds(), TimeUnit.SECONDS);
+        if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
+        if (this.scheduler != null)             this.scheduler.shutdownScheduler();
+        if (this.scheduler != null)             this.scheduler.shutdownExecutor();
+        if (this.serverHeartBeats != null)      this.serverHeartBeats.shutdown(); // 注销集群身份, 心跳键删除或随 TTL 消失
+        if (this.messageBrokerManager != null)  this.messageBrokerManager.shutdown();
+        if (this.redisConnector != null)        this.redisConnector.shutdown();
+        if (this.storageProvider != null)       this.storageProvider.shutdown();
+        if (this.dependencyManager != null)     this.dependencyManager.shutdown();
         if (this.logger != null) {
             this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.PLUGIN_STOPPED);
             this.logger.close();
@@ -303,9 +335,7 @@ public class SparrowSync implements Plugin {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), getPatches());
     }
 
-    /**
-     * 注册内置的数据类型并装配存储.
-     */
+    /** 注册内置的数据类型. */
     private void setUpInternalDataTypes() {
         PluginConfig.DataTypes enabled = PluginConfig.synchronization$dataTypes();
         if (enabled.inventory())        this.dataRegistry.register(new InventoryDataType());
@@ -322,84 +352,6 @@ public class SparrowSync implements Plugin {
         if (enabled.location())         this.dataRegistry.register(new LocationDataType());
         if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
         if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
-    }
-
-    /**
-     * 安装并初始化持久化存储.
-     */
-    private void setupStorage() {
-        // 预热加载 ZSTD 压缩
-        CompressorRegistry compressor = PluginConfig.synchronization$compression();
-        try {
-            byte[] probe = compressor.compress(new byte[64]);
-            compressor.decompress(probe, 0, probe.length, 256);
-        } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_COMPRESSOR_FAILED), throwable);
-            Bukkit.getServer().shutdown();
-            return;
-        }
-        // 加载数据库
-        try {
-            this.binaryCodec = new BinarySnapshotCodec(compressor);
-            this.documentCodec = new DocumentSnapshotCodec(this.dataRegistry, this.binaryCodec);
-            this.snapshotStash = new SnapshotStash(this.dataFolderPath, binaryCodec, this.logger);
-            switch (PluginConfig.database$type()) {
-                case MONGODB -> {
-                    PluginConfig.MongoOptions mongodb = PluginConfig.database$mongodb();
-                    this.storageProvider = new MongoStorageProvider(mongodb, this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
-                    this.storageProvider.initialize();
-                    this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, mongodb.database()));
-                    // 上次没能落库的本地快照插回数据库
-                    this.scheduler.async().execute(() -> this.snapshotStash.restorePending(this.storageProvider));
-                }
-                case MYSQL -> {
-                    this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
-                    Bukkit.getServer().shutdown();
-                }
-            }
-        } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED), throwable);
-            Bukkit.getServer().shutdown();
-        }
-    }
-
-    /**
-     * 建立 Redis 连接并装配跨服会话锁, 连不上与数据库同规格关闭服务器.
-     */
-    private void setupRedis() {
-        try {
-            this.redisConnector = new RedisConnector(PluginConfig.redis(), this.logger);
-            this.redisConnector.initialize();
-            this.sessionLock = new SessionLock(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId());
-            // 跨服消息 broker 排在锁之后装配, 连接取自同一个 RedisConnector
-            this.messageBrokerManager = new MessageBrokerManager(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId(), this.logger);
-            this.messageBrokerManager.initialize();
-            // 注册本服身份并开启心跳, 同 id 的服务器仍在线时拒绝启动
-            this.serverHeartBeats = new ServerHeartBeats(
-                    this.redisConnector,
-                    this.messageBrokerManager.broker(),
-                    this.sessionLock,
-                    PluginConfig.clusterId(),
-                    ServerConfig.serverId(),
-                    this.logger,
-                    (task, intervalMillis) -> this.scheduler.asyncRepeating(task, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS)
-            );
-            if (!this.serverHeartBeats.initialize()) {
-                this.logger.error(" ");
-                this.logger.error(" ");
-                this.logger.error(" ");
-                this.logger.error("============================================================");
-                this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_DUPLICATE, ServerConfig.serverId()));
-                this.logger.error("============================================================");
-                this.logger.error(" ");
-                this.logger.error(" ");
-                this.logger.error(" ");
-                Bukkit.getServer().shutdown();
-            }
-        } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.REDIS_SETUP_FAILED), throwable);
-            Bukkit.getServer().shutdown();
-        }
     }
 
     /**
@@ -434,9 +386,6 @@ public class SparrowSync implements Plugin {
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
-                        if (this.intervalSaveScheduler != null) {
-                            this.intervalSaveScheduler.reconfigure(PluginConfig.synchronization$saveTriggers().interval());
-                        }
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));
@@ -709,6 +658,17 @@ public class SparrowSync implements Plugin {
 
     public SnapshotService snapshotService() {
         return this.snapshotService;
+    }
+    public SnapshotStash snapshotStash() {
+        return this.snapshotStash;
+    }
+
+    public BinarySnapshotCodec binaryCodec() {
+        return this.binaryCodec;
+    }
+
+    public DocumentSnapshotCodec documentCodec() {
+        return this.documentCodec;
     }
 
     public SessionManager sessionManager() {

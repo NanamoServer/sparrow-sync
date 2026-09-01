@@ -6,11 +6,16 @@ import io.lettuce.core.api.sync.RedisCommands;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.locale.TranslationManager;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
+import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,18 +36,27 @@ public final class ServerHeartBeats {
     private static final String SEIZE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
     private static final String DELETE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
 
-    private final RedisConnector connector;
-    private final MessageBroker<ByteBuf> broker;
-    private final SessionLock lock;
-    private final SyncLogger logger;
-    private final String serverId;
+    private SparrowSync plugin;
+    private RedisConnector connector;
+    private MessageBroker<ByteBuf> broker;
+    private SessionLock lock;
+    private SyncLogger logger;
+    private String serverId;
     private final String token;  // 本次启动的身份凭据, 心跳键的值
-    private final byte[] key;
-    private final HeartbeatScheduler scheduler;
+    private byte[] key;
+    private HeartbeatScheduler scheduler;
     private final long heartbeatIntervalMillis;
     private final long heartbeatTtlMillis;
     private final long probeWaitMillis;
     private volatile SchedulerTask heartbeatTask;
+
+    public ServerHeartBeats(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+        this.token = UUID.randomUUID().toString();
+        this.heartbeatIntervalMillis = HEARTBEAT_INTERVAL_MILLIS;
+        this.heartbeatTtlMillis = HEARTBEAT_TTL_MILLIS;
+        this.probeWaitMillis = PROBE_WAIT_MILLIS;
+    }
 
     public ServerHeartBeats(
             @NotNull RedisConnector connector,
@@ -80,6 +94,30 @@ public final class ServerHeartBeats {
         this.heartbeatTtlMillis = heartbeatTtlMillis;
         this.probeWaitMillis = probeWaitMillis;
         ServerProbeMessage.registry(this);
+    }
+
+    /** 绑定集群依赖并注册本服心跳身份. */
+    public void onLoad() {
+        this.connector = this.plugin.redisConnector();
+        this.broker = this.plugin.messageBrokerManager().broker();
+        this.lock = this.plugin.sessionLock();
+        this.logger = this.plugin.logger();
+        this.serverId = ServerConfig.serverId();
+        this.key = ("ss:" + PluginConfig.clusterId() + ":server:" + this.serverId).getBytes(StandardCharsets.UTF_8);
+        this.scheduler = (task, intervalMillis) -> this.plugin.scheduler().asyncRepeating(task, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        ServerProbeMessage.registry(this);
+        if (!this.initialize()) {
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error("============================================================");
+            this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_DUPLICATE, ServerConfig.serverId()));
+            this.logger.error("============================================================");
+            this.logger.error(" ");
+            this.logger.error(" ");
+            this.logger.error(" ");
+            Bukkit.getServer().shutdown();
+        }
     }
 
     /**
@@ -139,6 +177,7 @@ public final class ServerHeartBeats {
 
     // 停跳并注销身份, 值仍是自己的才删; 删除不等待结果, 命令丢失由 TTL 兜底清掉.
     public void shutdown() {
+        if (this.connector == null) return;
         SchedulerTask task = this.heartbeatTask;
         if (task != null) task.cancel();
         this.connector.connection().async().eval(DELETE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.token.getBytes(StandardCharsets.UTF_8));

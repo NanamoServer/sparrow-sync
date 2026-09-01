@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.ops.BsonOps;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -40,12 +41,23 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static final String FIELD_MC_DATA = "mcData";
     public static final String FIELD_DATA = "data";
 
-    private final DataRegistry registry;
-    private final BinarySnapshotCodec binary;
+    private SparrowSync plugin;
+    private DataRegistry registry;
+    private BinarySnapshotCodec binary;
+
+    public DocumentSnapshotCodec(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
 
     public DocumentSnapshotCodec(@NotNull DataRegistry registry, @NotNull BinarySnapshotCodec binary) {
         this.registry = registry;
         this.binary = binary;
+    }
+
+    /** 绑定启动期创建完成的注册表与二进制 codec. */
+    public void onLoad() {
+        this.registry = this.plugin.dataRegistry();
+        this.binary = this.plugin.binaryCodec();
     }
 
     @Override

@@ -33,17 +33,17 @@ import java.util.concurrent.TimeoutException;
 @SuppressWarnings("UnstableApiUsage")
 public final class PaperEventGate implements LoginGate, Listener {
     private final SparrowSync plugin;
-    private final SessionManager sessionManager;
-    private final SnapshotService snapshotService;
+    private SessionManager sessionManager;
+    private SnapshotService snapshotService;
 
-    public PaperEventGate(@NotNull SparrowSync plugin, @NotNull SnapshotService snapshotService, @NotNull SessionManager sessionManager) {
+    public PaperEventGate(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.snapshotService = snapshotService;
-        this.sessionManager = sessionManager;
     }
 
     @Override
-    public void register() {
+    public void onDelayedEnable() {
+        this.snapshotService = this.plugin.snapshotService();
+        this.sessionManager = this.plugin.sessionManager();
         Bukkit.getPluginManager().registerEvents(this, this.plugin.javaPlugin());
     }
 

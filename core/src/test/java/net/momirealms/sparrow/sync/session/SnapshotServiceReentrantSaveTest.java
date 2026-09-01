@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.session;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -26,7 +27,7 @@ class SnapshotServiceReentrantSaveTest {
         UUID playerId = UUID.randomUUID();
         Player player = player(playerId);
         RecordingLogger console = new RecordingLogger();
-        SnapshotService service = new SnapshotService(null, null, null, null, new SyncLogger(console));
+        SnapshotService service = new SnapshotService(null, new DataRegistry(), null, null, new SyncLogger(console));
         Snapshot snapshot = new Snapshot(
                 SnapshotMeta.builder().player(playerId).cause(SaveCause.INTERVAL).build(),
                 Map.of()

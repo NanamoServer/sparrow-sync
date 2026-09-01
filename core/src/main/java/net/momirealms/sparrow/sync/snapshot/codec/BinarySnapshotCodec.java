@@ -6,6 +6,8 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -43,8 +45,14 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     static final String FIELD_MC_DATA = "mcData";
     static final String FIELD_DATA = "data";
 
-    private final CompressorRegistry compressor;
+    private SparrowSync plugin;
+    private CompressorRegistry compressor;
     private final int compressThreshold;
+
+    public BinarySnapshotCodec(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+        this.compressThreshold = DEFAULT_COMPRESS_THRESHOLD;
+    }
 
     public BinarySnapshotCodec(@NotNull CompressorRegistry compressor) {
         this(compressor, DEFAULT_COMPRESS_THRESHOLD);
@@ -54,6 +62,14 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     public BinarySnapshotCodec(@NotNull CompressorRegistry compressor, int compressThreshold) {
         this.compressor = compressor;
         this.compressThreshold = compressThreshold;
+    }
+
+    /** 加载并验证启动配置选择的压缩器. */
+    public void onLoad() throws IOException {
+        CompressorRegistry compressor = PluginConfig.synchronization$compression();
+        byte[] probe = compressor.compress(new byte[64]);
+        compressor.decompress(probe, 0, probe.length, 256);
+        this.compressor = compressor;
     }
 
     @Override

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -16,26 +17,41 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 快照的采集与应用编排. 应用分两段: prepare 在任意线程完成全部解码, 关键类型解码失败则整体失败;
- * apply 在玩家拥有线程按拓扑序写入, 关键类型失败中止, 非关键类型跳过并告警.
- * 快照携带的未注册数据不参与应用, 预解码结果会保留原始 Tag 供下次保存带回.
- */
 public final class SnapshotApplier {
-    private final Map<DataKey, PlayerDataType<?>> types;
-    private final List<DataKey> applyOrder;
-    private final SyncLogger logger;
+    private final SparrowSync plugin;
+    private SyncLogger logger;
+    private DataRegistry dataRegistry;
 
-    public SnapshotApplier(@NotNull DataRegistry registry, @NotNull SyncLogger logger) {
+    private Map<DataKey, PlayerDataType<?>> types;
+    private List<DataKey> applyOrder;
+
+    public SnapshotApplier(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
+
+    public SnapshotApplier(@NotNull DataRegistry dataRegistry, @NotNull SyncLogger logger) {
+        this.plugin = null;
         this.logger = logger;
-        if (registry.frozen()) throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
-        registry.freeze();
+        this.dataRegistry = dataRegistry;
+        if (dataRegistry.frozen()) {
+            throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
+        }
+    }
+
+    /** 绑定数据类型注册表与日志出口. */
+    public void onLoad() {
+        this.dataRegistry = this.plugin.dataRegistry();
+        this.logger = this.plugin.logger();
+    }
+
+    /** 按冻结后的注册表装配数据类型与应用顺序. */
+    public void onDelayedEnable() {
         Map<DataKey, PlayerDataType<?>> byKey = new LinkedHashMap<>();
-        for (PlayerDataType<?> type : registry.types()) {
+        for (PlayerDataType<?> type : this.dataRegistry.types()) {
             byKey.put(type.key(), type);
         }
         this.types = byKey;
-        this.applyOrder = List.copyOf(registry.applyOrder());
+        this.applyOrder = List.copyOf(this.dataRegistry.applyOrder());
     }
 
     /** 返回启动期固定的数据应用顺序. */

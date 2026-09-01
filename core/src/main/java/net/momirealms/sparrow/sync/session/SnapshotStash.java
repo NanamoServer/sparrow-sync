@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.session;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -31,16 +32,29 @@ public final class SnapshotStash {
     private static final Pattern UNSAFE_NAME_CHARS = Pattern.compile("[^A-Za-z0-9_-]");
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS").withZone(ZoneId.systemDefault());
 
-    private final Path pendingDirectory;        // 待办队列, 启动时插回数据库并删除.
-    private final Path exceptionDirectory;      // 证物档案, 只等管理员处置.
-    private final BinarySnapshotCodec codec;
-    private final SyncLogger logger;
+    private SparrowSync plugin;
+    private Path pendingDirectory;        // 待办队列, 启动时插回数据库并删除.
+    private Path exceptionDirectory;      // 证物档案, 只等管理员处置.
+    private BinarySnapshotCodec codec;
+    private SyncLogger logger;
+
+    public SnapshotStash(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
 
     public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger) {
         this.pendingDirectory = dataFolder.resolve("pending");
         this.exceptionDirectory = dataFolder.resolve("exception");
         this.codec = codec;
         this.logger = logger;
+    }
+
+    /** 绑定快照目录、codec 与日志出口. */
+    public void onLoad() {
+        this.pendingDirectory = this.plugin.dataFolderPath().resolve("pending");
+        this.exceptionDirectory = this.plugin.dataFolderPath().resolve("exception");
+        this.codec = this.plugin.binaryCodec();
+        this.logger = this.plugin.logger();
     }
 
     /**
@@ -98,7 +112,7 @@ public final class SnapshotStash {
             this.moveToException(file, "corrupted");
             return RestoreOutcome.DISCARDED;
         }
-        if (!(decoded instanceof DecodedSnapshot.Valid valid)) {
+        if (!(decoded instanceof DecodedSnapshot.Valid(Snapshot snapshot))) {
             DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
             this.logger.error(LogCategory.STASH, LogConstants.STASH_CORRUPTED, file.getFileName() + " (" + invalid.reason() + ": " + invalid.detail() + ")");
             this.moveToException(file, "corrupted");
@@ -106,7 +120,7 @@ public final class SnapshotStash {
         }
         SaveOutcome saved;
         try {
-            saved = storage.saveSnapshotOutcome(valid.snapshot()).join();
+            saved = storage.saveSnapshotOutcome(snapshot).join();
         } catch (RuntimeException exception) {
             this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
             return RestoreOutcome.STORAGE_UNAVAILABLE;
@@ -119,7 +133,7 @@ public final class SnapshotStash {
         }
         if (result.retriable()) {
             if (saved.failure() != null) {
-                this.logger.file(LogCategory.STORAGE, valid.snapshot().meta().player(), null, saved.failure(), LogConstants.STORAGE_WRITE_RETRIABLE, valid.snapshot().meta().player().toString());
+                this.logger.file(LogCategory.STORAGE, snapshot.meta().player(), null, saved.failure(), LogConstants.STORAGE_WRITE_RETRIABLE, snapshot.meta().player().toString());
             }
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.cluster;
 
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -18,14 +19,22 @@ public final class HandoffManager {
     private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续静默判死阈值
     private static final long SETTLED_TTL_MILLIS = 30_000;   // settle 记录只服务交接窗口, 过窗即弃
 
-    private final MessageBroker<ByteBuf> broker;
-    private final SessionLock lock;
-    private final Predicate<UUID> hasSession;
-    private final ProbeScheduler scheduler;
+    private SparrowSync plugin;
+    private MessageBroker<ByteBuf> broker;
+    private SessionLock lock;
+    private Predicate<UUID> hasSession;
+    private ProbeScheduler scheduler;
     private final long probeIntervalMillis;
     private final long probeTimeoutMillis;
     private final long deadSilenceMillis;
     private final ConcurrentHashMap<UUID, Settled> settled = new ConcurrentHashMap<>(); // 最近保存的玩家 -> 采集时刻
+
+    public HandoffManager(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+        this.probeIntervalMillis = PROBE_INTERVAL_MILLIS;
+        this.probeTimeoutMillis = PROBE_TIMEOUT_MILLIS;
+        this.deadSilenceMillis = DEAD_SILENCE_MILLIS;
+    }
 
     public HandoffManager(
             @NotNull MessageBroker<ByteBuf> broker,
@@ -52,6 +61,15 @@ public final class HandoffManager {
         this.probeIntervalMillis = probeIntervalMillis;
         this.probeTimeoutMillis = probeTimeoutMillis;
         this.deadSilenceMillis = deadSilenceMillis;
+        HandoffRequestMessage.service(this);
+    }
+
+    /** 绑定集群依赖并安装交接消息处理器. */
+    public void onLoad() {
+        this.broker = this.plugin.messageBrokerManager().broker();
+        this.lock = this.plugin.sessionLock();
+        this.hasSession = uuid -> this.plugin.sessionManager().session(uuid) != null;
+        this.scheduler = (task, delayMillis) -> this.plugin.scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
         HandoffRequestMessage.service(this);
     }
 
@@ -213,7 +231,7 @@ public final class HandoffManager {
     public record HandoffOutcome(@NotNull String lockValue, @NotNull String method) {
     }
 
-    /** 探测调度的最小依赖面, 装配侧接插件调度器, 测试侧接任意定时器. */
+    /** 探测调度的接插件调度器. */
     public interface ProbeScheduler {
         void later(@NotNull Runnable task, long delayMillis);
     }

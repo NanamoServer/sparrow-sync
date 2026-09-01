@@ -3,6 +3,9 @@ package net.momirealms.sparrow.sync.redis;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.Logger;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.cluster.HandoffRequestMessage;
 import net.momirealms.sparrow.sync.cluster.HandoffResponseMessage;
@@ -13,18 +16,33 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.charset.StandardCharsets;
 
 public final class MessageBrokerManager {
-    private final RedisConnector connector;
-    private final String clusterId;
-    private final String serverId;
-    private final SyncLogger logger;
+    private final SparrowSync plugin;
+    private RedisConnector connector;
+    private String clusterId;
+    private String serverId;
+    private SyncLogger logger;
 
     private volatile MessageBroker<ByteBuf> broker;
 
+    public MessageBrokerManager(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
+
     public MessageBrokerManager(@NotNull RedisConnector connector, @NotNull String clusterId, @NotNull String serverId, @NotNull SyncLogger logger) {
+        this.plugin = null;
         this.connector = connector;
         this.clusterId = clusterId;
         this.serverId = serverId;
         this.logger = logger;
+    }
+
+    /** 绑定 Redis 连接并订阅集群消息频道. */
+    public void onLoad() {
+        this.connector = this.plugin.redisConnector();
+        this.clusterId = PluginConfig.clusterId();
+        this.serverId = ServerConfig.serverId();
+        this.logger = this.plugin.logger();
+        this.initialize();
     }
 
     public void initialize() {

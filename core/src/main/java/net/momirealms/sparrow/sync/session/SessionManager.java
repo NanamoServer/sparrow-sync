@@ -15,14 +15,21 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class SessionManager {
     private final SparrowSync plugin;
-    private final SyncLogger logger;
-    private final SnapshotService snapshotService;
+    private SyncLogger logger;
+    private SnapshotService snapshotService;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
 
-    public SessionManager(@NotNull SparrowSync plugin, @NotNull SyncLogger logger) {
+    public SessionManager(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.logger = logger;
+    }
+
+    public void onLoad() {
+        this.logger = this.plugin.logger();
         this.snapshotService = this.plugin.snapshotService();
+    }
+
+    public void onDelayedEnable() {
+        Bukkit.getPluginManager().registerEvents(new SessionListener(this.plugin, this.snapshotService, this), this.plugin.javaPlugin());
     }
 
     @Nullable
@@ -88,7 +95,7 @@ public final class SessionManager {
 
     // 关闭快照完成后结束会话, 再释放分布式锁和会话表条目.
     private void submitClosingSnapshot(PlayerSession session, Player player, SaveCause cause) {
-        this.plugin.snapshotService()
+        this.snapshotService
                 .captureAndSave(player, cause)
                 .whenComplete((result, throwable) -> {
                     session.transition(SessionState.CLOSED);

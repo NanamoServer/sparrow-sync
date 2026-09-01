@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -15,24 +16,19 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.jetbrains.annotations.NotNull;
 
 public final class SnapshotSaveTrigger implements Listener {
     private final SparrowSync plugin;
-    private final SessionManager sessionManager;
+    private SessionManager sessionManager;
 
-    public SnapshotSaveTrigger(@NotNull SparrowSync plugin, @NotNull SessionManager sessionManager) {
+    public SnapshotSaveTrigger(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.sessionManager = sessionManager;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        PlayerSession session = this.sessionManager.session(player.getUniqueId());
-        // 登录应用失败时会在 Join 事件内嵌套触发 Quit, 只有最终 ACTIVE 的会话会挂上定时链.
-        if (session == null || session.state() != SessionState.ACTIVE) return;
+    public void onDelayedEnable() {
+        this.sessionManager = this.plugin.sessionManager();
+        Bukkit.getPluginManager().registerEvents(this, this.plugin.javaPlugin());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

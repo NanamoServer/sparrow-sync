@@ -6,6 +6,9 @@ import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.sync.RedisCommands;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,14 +24,26 @@ public final class SessionLock {
     private static final String RELEASE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
     private static final String SEIZE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
 
-    private final RedisConnector connector;
-    private final String keyPrefix;  // "ss:{cluster}:lock:", cluster 隔离共用一个 Redis 的多套集群
-    private final String serverId;
+    private SparrowSync plugin;
+    private RedisConnector connector;
+    private String keyPrefix;  // "ss:{cluster}:lock:", cluster 隔离共用一个 Redis 的多套集群
+    private String serverId;
+
+    public SessionLock(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
 
     public SessionLock(@NotNull RedisConnector connector, @NotNull String clusterId, @NotNull String serverId) {
         this.connector = connector;
         this.keyPrefix = "ss:" + clusterId + ":lock:";
         this.serverId = serverId;
+    }
+
+    /** 绑定 Redis 连接与本服锁命名空间. */
+    public void onLoad() {
+        this.connector = this.plugin.redisConnector();
+        this.keyPrefix = "ss:" + PluginConfig.clusterId() + ":lock:";
+        this.serverId = ServerConfig.serverId();
     }
 
     /**

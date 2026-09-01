@@ -38,20 +38,20 @@ import java.util.concurrent.TimeoutException;
 public final class ConfigurationPacketGate implements LoginGate {
     private static final AttributeKey<Boolean> GATE_PASSED = AttributeKey.valueOf(ConfigurationPacketGate.class, "gate-passed");
 
-    private final SparrowSync plugin;
-    private final SessionManager sessionManager;
-    private final SnapshotService snapshotService;
-    private final NetworkManager networkManager;
+    private SparrowSync plugin;
+    private SessionManager sessionManager;
+    private SnapshotService snapshotService;
+    private NetworkManager networkManager;
 
-    public ConfigurationPacketGate(@NotNull SparrowSync plugin, @NotNull SnapshotService snapshotService, @NotNull SessionManager sessionManager) {
+    public ConfigurationPacketGate(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.snapshotService = snapshotService;
-        this.sessionManager = sessionManager;
-        this.networkManager = SparrowUI.getInstance().networkManager();
     }
 
     @Override
-    public void register() {
+    public void onDelayedEnable() {
+        this.snapshotService = this.plugin.snapshotService();
+        this.sessionManager = this.plugin.sessionManager();
+        this.networkManager = SparrowUI.getInstance().networkManager();
         this.networkManager.registerNMSPacketListener(new NMSPacketListener() {
             @Override
             public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {

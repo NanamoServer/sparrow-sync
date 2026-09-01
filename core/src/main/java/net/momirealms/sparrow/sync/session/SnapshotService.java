@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
@@ -29,20 +30,51 @@ import java.util.concurrent.TimeUnit;
 
 public final class SnapshotService {
     private final SparrowSync plugin;
-    private final SyncLogger logger;
-    private final SnapshotApplier applier;
-    private final StorageProvider storage;
-    private final SnapshotStash stash;
+    private SyncLogger logger;
+    private DataRegistry dataRegistry;
+    private SnapshotApplier snapshotApplier;
+    private StorageProvider storage;
+    private SnapshotStash snapshotStash;
+
     private final ThreadLocal<SnapshotSaveEvent> dispatchingSaveEvent = new ThreadLocal<>();
     private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
     private final ConcurrentHashMap<CompletableFuture<SnapshotSaveOutcome>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未完成的保存任务, 关服清算用.
 
-    public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull SyncLogger logger) {
+    public SnapshotService(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.applier = applier;
-        this.storage = storage;
-        this.stash = stash;
+    }
+
+    SnapshotService(@NotNull SparrowSync plugin, @NotNull DataRegistry dataRegistry, @NotNull StorageProvider storage, @NotNull SnapshotStash snapshotStash, @NotNull SyncLogger logger) {
+        this.plugin = plugin;
         this.logger = logger;
+        this.dataRegistry = dataRegistry;
+        this.snapshotApplier = new SnapshotApplier(dataRegistry, logger);
+        this.storage = storage;
+        this.snapshotStash = snapshotStash;
+    }
+
+    /** 绑定快照服务依赖. */
+    public void onLoad() {
+        this.logger = this.plugin.logger();
+        this.dataRegistry = this.plugin.dataRegistry();
+        this.snapshotApplier = this.plugin.snapshotApplier();
+        this.storage = this.plugin.storageProvider();
+        this.snapshotStash = this.plugin.snapshotStash();
+    }
+
+    /** 冻结数据类型注册表并完成快照应用器装配. */
+    public void onDelayedEnable() {
+        // 冻结注册表并装配快照
+        this.dataRegistry.freeze();
+        this.snapshotApplier.onDelayedEnable();
+        // 记录实际运行时的数据源
+        StringJoiner activeTypes = new StringJoiner(", ");
+        List<DataKey> applyOrder = this.snapshotApplier.applyOrder();
+        int dataTypeCount = applyOrder.size();
+        for (int i = 0; i < dataTypeCount; i++) {
+            activeTypes.add(applyOrder.get(i).asString());
+        }
+        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
     }
 
     /**
@@ -69,7 +101,7 @@ public final class SnapshotService {
 
     // 预解码一份快照并记录结果
     private PreparedOutcome prepare(Snapshot snapshot, UUID player, String playerName, long loadStart) {
-        return switch (this.applier.prepare(snapshot)) {
+        return switch (this.snapshotApplier.prepare(snapshot)) {
             case SnapshotApplier.PreparedSnapshot.Ready ready -> {
                 long asyncNanos = System.nanoTime() - loadStart;
                 this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, asyncNanos));
@@ -93,7 +125,7 @@ public final class SnapshotService {
         PreApplyEvent preApplyEvent = new PreApplyEvent(player, ready.snapshot(), ready.prepared().values());
         EventUtils.fireAndForget(preApplyEvent);
         SnapshotApplier.PreparedSnapshot.Ready prepared = preparedAfter(preApplyEvent, ready.prepared());
-        return switch (this.applier.apply(player, prepared)) {
+        return switch (this.snapshotApplier.apply(player, prepared)) {
             case SnapshotApplier.ApplyResult.Success success -> {
                 PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
                 if (session != null) {
@@ -167,7 +199,7 @@ public final class SnapshotService {
             return CompletableFuture.completedFuture(new SnapshotSaveOutcome.ReentrantRejected());
         long captureStart = System.nanoTime();
         // 关键数据采集不出来时不产出快照.
-        if (!(this.applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready ready)) {
+        if (!(this.snapshotApplier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready ready)) {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
         }
         // 发布事件
@@ -305,7 +337,7 @@ public final class SnapshotService {
     // 重试到此为止, 快照落盘本地, 可重试的进 pending 下次启动插回, 其余进 exception 等管理员处置
     private void abandon(SaveAttempt attempt, SaveResult result, @Nullable Throwable failure, CompletableFuture<SnapshotSaveOutcome> outcome) {
         logFinalFailure(this.logger, attempt, result, failure);
-        this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
+        this.snapshotStash.stash(attempt.snapshot(), attempt.playerName(), result);
         outcome.complete(new SnapshotSaveOutcome.Completed(result));
     }
 
@@ -345,7 +377,7 @@ public final class SnapshotService {
             SaveAttempt attempt = entry.getValue();
             // complete 的原子性保证与 worker 尾段收工的那份不落两次盘.
             if (entry.getKey().complete(new SnapshotSaveOutcome.Completed(SaveResult.RETRY_LATER))) {
-                this.stash.stash(attempt.snapshot(), attempt.playerName(), SaveResult.RETRY_LATER);
+                this.snapshotStash.stash(attempt.snapshot(), attempt.playerName(), SaveResult.RETRY_LATER);
             }
         }
     }

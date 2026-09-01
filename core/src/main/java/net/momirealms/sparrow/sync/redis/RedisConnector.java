@@ -8,6 +8,7 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
 import net.momirealms.sparrow.redis.messagebroker.connection.PubSubRedisConnection;
 import net.momirealms.sparrow.redis.messagebroker.connection.RedisConnection;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
@@ -17,16 +18,28 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.TimeUnit;
 
 public final class RedisConnector {
-    private final PluginConfig.RedisOptions options;
-    private final SyncLogger logger;
+    private SparrowSync plugin;
+    private PluginConfig.RedisOptions options;
+    private SyncLogger logger;
 
     private volatile RedisClient client;
     private volatile StatefulRedisConnection<byte[], byte[]> connection;  // 锁命令
     private volatile PubSubRedisConnection brokerConnection;              // 消息 broker 的命令与 Pub/Sub
 
+    public RedisConnector(@NotNull SparrowSync plugin) {
+        this.plugin = plugin;
+    }
+
     public RedisConnector(@NotNull PluginConfig.RedisOptions options, @NotNull SyncLogger logger) {
         this.options = options;
         this.logger = logger;
+    }
+
+    /** 读取启动配置并建立 Redis 连接. */
+    public void onLoad() {
+        this.options = PluginConfig.redis();
+        this.logger = this.plugin.logger();
+        this.initialize();
     }
 
     public void initialize() {
