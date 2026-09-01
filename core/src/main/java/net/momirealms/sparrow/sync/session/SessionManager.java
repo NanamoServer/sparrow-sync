@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -98,6 +99,9 @@ public final class SessionManager {
         this.snapshotService
                 .captureAndSave(player, cause)
                 .whenComplete((result, throwable) -> {
+                    if (result instanceof SnapshotService.SnapshotSaveOutcome.Completed(StorageProvider.SaveResult result1) && result1.stored()) {
+                        this.plugin.handoffManager().recordSettled(session.uuid());
+                    }
                     session.transition(SessionState.CLOSED);
                     this.release(session);
                 });

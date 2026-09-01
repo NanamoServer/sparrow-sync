@@ -25,6 +25,7 @@ dependencies {
     implementation(libs.bundles.sparrow)
 
     compileOnly(libs.sparrow.reflection)
+    compileOnly(libs.caffeine)
     compileOnly(libs.datafixerupper)
     compileOnly(libs.lettuce.core)
     compileOnly(libs.mongodb.driver.sync)

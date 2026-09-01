@@ -108,14 +108,15 @@ class HandoffManagerTest {
     }
 
     @Test
-    void probeAnsweredDoneWithSettledTimestamp() throws Exception {
+    void probeAnsweredDoneWhileRecentlySettled() throws Exception {
         UUID player = UUID.randomUUID();
-        this.serviceA.recordSettled(player, 1_756_300_000_777L);
+        this.serviceA.recordSettled(player);
 
         HandoffResponseMessage response = this.request(player);
 
         assertEquals(HandoffResponseMessage.Status.DONE, response.status());
-        assertEquals(1_756_300_000_777L, response.timestamp());
+        this.serviceA.clearSettled(player);
+        assertEquals(HandoffResponseMessage.Status.UNKNOWN, this.request(player).status());
     }
 
     @Test
@@ -135,7 +136,7 @@ class HandoffManagerTest {
         CompletableFuture<HandoffOutcome> handoff = this.serviceB.awaitHandoff(player, heldByA, System.nanoTime() + TimeUnit.SECONDS.toNanos(8));
         // 让 B 至少吃到一轮 SAVING, 再按生产顺序 settle: 登记 -> 移除会话 -> 释放锁
         Thread.sleep(350);
-        this.serviceA.recordSettled(player, 1_756_300_111_222L);
+        this.serviceA.recordSettled(player);
         this.sessionsA.remove(player);
         assertTrue(this.lockA.release(player, heldByA).get(5, TimeUnit.SECONDS));
 

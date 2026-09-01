@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.cluster;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -7,17 +9,14 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
 public final class HandoffManager {
-    // todo 写进config可配置
     private static final long PROBE_INTERVAL_MILLIS = 500;   // 探测周期, 兼作存活采样率
     private static final long PROBE_TIMEOUT_MILLIS = 500;    // 单次探测的应答等待
     private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续静默判死阈值
-    private static final long SETTLED_TTL_MILLIS = 30_000;   // settle 记录只服务交接窗口, 过窗即弃
 
     private SparrowSync plugin;
     private MessageBroker<ByteBuf> broker;
@@ -27,7 +26,7 @@ public final class HandoffManager {
     private final long probeIntervalMillis;
     private final long probeTimeoutMillis;
     private final long deadSilenceMillis;
-    private final ConcurrentHashMap<UUID, Settled> settled = new ConcurrentHashMap<>(); // 最近保存的玩家 -> 采集时刻
+    private final Cache<UUID, Boolean> settled = Caffeine.newBuilder().expireAfterWrite(30_000, TimeUnit.MILLISECONDS).build(); // 最近完成退出保存的玩家
 
     public HandoffManager(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -81,21 +80,20 @@ public final class HandoffManager {
      */
     @NotNull
     public HandoffResponseMessage answer(@NotNull UUID player) {
-        // 会话还在注册表里就是没走完, 含 CLOSED 后 remove 前的微窗口, 让对方下一轮再问
+        // 会话还在注册表里就是没走完, 含 CLOSED 后 remove 前的微窗口, 让对方下一轮再问.
         if (this.hasSession.test(player)) return HandoffResponseMessage.saving();
-        Settled record = this.settled.get(player);
-        if (record != null && !record.expired()) return HandoffResponseMessage.done(record.timestamp());
+        if (this.settled.getIfPresent(player) != null) return HandoffResponseMessage.done();
         return HandoffResponseMessage.unknown();
     }
 
-    /**
-     * 退出保存落库后登记, 供 DONE 应答携带采集时刻.
-     * <strong>必须先于释放会话锁调用</strong>.
-     */
-    public void recordSettled(@NotNull UUID player, long timestamp) {
-        this.settled.put(player, new Settled(timestamp, System.nanoTime()));
-        // 顺手清掉过了交接窗口的旧记录, 量级是窗口期内的退出人数
-        this.settled.values().removeIf(Settled::expired);
+    /** 登记已成功落库的退出保存, <strong>必须先于释放会话锁调用</strong>. */
+    public void recordSettled(@NotNull UUID player) {
+        this.settled.put(player, Boolean.TRUE);
+    }
+
+    /** 清除该玩家上一次退出保存留下的诊断标记. */
+    public void clearSettled(@NotNull UUID player) {
+        this.settled.invalidate(player);
     }
 
     // ===== 等锁方的探测循环 =====
@@ -234,12 +232,5 @@ public final class HandoffManager {
     /** 探测调度的接插件调度器. */
     public interface ProbeScheduler {
         void later(@NotNull Runnable task, long delayMillis);
-    }
-
-    // settle 登记, 过了交接窗口即视为不存在
-    private record Settled(long timestamp, long recordedAt) {
-        boolean expired() {
-            return System.nanoTime() - this.recordedAt > TimeUnit.MILLISECONDS.toNanos(SETTLED_TTL_MILLIS);
-        }
     }
 }

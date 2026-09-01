@@ -41,12 +41,11 @@ class HandoffMessageCodecTest {
         HandoffResponseMessage decoded = HandoffResponseMessage.CODEC.decode(buf);
 
         assertEquals(HandoffResponseMessage.Status.SAVING, decoded.status());
-        assertEquals(0L, decoded.timestamp());
     }
 
     @Test
-    void doneResponseCarriesTimestamp() {
-        HandoffResponseMessage message = HandoffResponseMessage.done(1_756_300_000_123L);
+    void doneResponseRoundTrip() {
+        HandoffResponseMessage message = HandoffResponseMessage.done();
         message.setMessageId(8L);
         message.setSourceServer("serverA");
         message.setTargetServer("serverB");
@@ -56,6 +55,5 @@ class HandoffMessageCodecTest {
         HandoffResponseMessage decoded = HandoffResponseMessage.CODEC.decode(buf);
 
         assertEquals(HandoffResponseMessage.Status.DONE, decoded.status());
-        assertEquals(1_756_300_000_123L, decoded.timestamp());
     }
 }

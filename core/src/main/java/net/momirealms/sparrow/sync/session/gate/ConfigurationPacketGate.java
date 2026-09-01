@@ -182,6 +182,7 @@ public final class ConfigurationPacketGate implements LoginGate {
 
     // 锁值交给会话保管, 等锁期间会话已被断线清理时立即自释放, 不留残锁
     private void lockGranted(PlayerSession session, UUID uuid, String value) {
+        this.plugin.handoffManager().clearSettled(uuid);
         session.lockValue(value);
         if (session.state() == SessionState.CLOSED) {
             this.plugin.sessionLock().release(uuid, value);

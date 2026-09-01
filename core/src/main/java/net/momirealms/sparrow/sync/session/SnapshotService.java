@@ -285,10 +285,9 @@ public final class SnapshotService {
                 return;
             }
             SaveResult result = saved.result();
-            // 已保存, 登记交接并轮转快照
+            // 已保存, 记录日志并轮转快照
             if (result.stored()) {
                 this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
-                this.plugin.handoffManager().recordSettled(attempt.player(), attempt.snapshot().meta().timestamp());
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(new SnapshotSaveOutcome.Completed(result));
                 return;

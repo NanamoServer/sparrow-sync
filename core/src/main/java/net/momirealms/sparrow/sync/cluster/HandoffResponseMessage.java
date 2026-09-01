@@ -5,7 +5,6 @@ import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;
 import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayResponseMessage;
-import net.momirealms.sparrow.redis.messagebroker.util.ByteBufHelper;
 import org.jetbrains.annotations.NotNull;
 
 public final class HandoffResponseMessage extends TwoWayResponseMessage<ByteBuf> {
@@ -13,48 +12,40 @@ public final class HandoffResponseMessage extends TwoWayResponseMessage<ByteBuf>
     public static final MessageCodec<ByteBuf, HandoffResponseMessage> CODEC = RedisMessage.codec(HandoffResponseMessage::write, HandoffResponseMessage::new);
 
     private final Status status;
-    private final long timestamp;  // DONE 时为快照采集时刻, 其余状态为 0
 
-    private HandoffResponseMessage(Status status, long timestamp) {
+    private HandoffResponseMessage(Status status) {
         this.status = status;
-        this.timestamp = timestamp;
     }
 
     private HandoffResponseMessage(ByteBuf buf) {
         super(buf);
         this.status = Status.VALUES[buf.readByte()];
-        this.timestamp = ByteBufHelper.readCompactLong(buf);
     }
 
     @Override
     protected void write(ByteBuf buf) {
         super.write(buf);
         buf.writeByte(this.status.ordinal());
-        ByteBufHelper.writeCompactLong(buf, this.timestamp);
     }
 
     @NotNull
     public static HandoffResponseMessage saving() {
-        return new HandoffResponseMessage(Status.SAVING, 0L);
+        return new HandoffResponseMessage(Status.SAVING);
     }
 
     @NotNull
-    public static HandoffResponseMessage done(long timestamp) {
-        return new HandoffResponseMessage(Status.DONE, timestamp);
+    public static HandoffResponseMessage done() {
+        return new HandoffResponseMessage(Status.DONE);
     }
 
     @NotNull
     public static HandoffResponseMessage unknown() {
-        return new HandoffResponseMessage(Status.UNKNOWN, 0L);
+        return new HandoffResponseMessage(Status.UNKNOWN);
     }
 
     @NotNull
     public Status status() {
         return this.status;
-    }
-
-    public long timestamp() {
-        return this.timestamp;
     }
 
     @Override
