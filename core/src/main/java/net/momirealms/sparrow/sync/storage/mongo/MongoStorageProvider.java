@@ -8,7 +8,7 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.Sorts;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;

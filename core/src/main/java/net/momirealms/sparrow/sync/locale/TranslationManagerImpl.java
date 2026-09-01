@@ -4,7 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;

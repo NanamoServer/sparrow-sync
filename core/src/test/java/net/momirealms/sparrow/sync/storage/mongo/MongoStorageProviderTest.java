@@ -11,7 +11,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;

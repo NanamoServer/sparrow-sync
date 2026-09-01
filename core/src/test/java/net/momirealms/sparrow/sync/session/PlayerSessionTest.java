@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
-import net.momirealms.sparrow.sync.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

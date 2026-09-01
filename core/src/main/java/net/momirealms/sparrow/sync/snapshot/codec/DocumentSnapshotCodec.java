@@ -4,7 +4,7 @@ import net.momirealms.sparrow.nbt.ByteArrayTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.BsonOps;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;

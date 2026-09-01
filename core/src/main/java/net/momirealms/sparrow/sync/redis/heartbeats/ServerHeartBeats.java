@@ -10,7 +10,7 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
-import net.momirealms.sparrow.sync.session.cluster.SessionLock;
+import net.momirealms.sparrow.sync.cluster.SessionLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

@@ -8,7 +8,7 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
 import net.momirealms.sparrow.redis.messagebroker.connection.PubSubRedisConnection;
 import net.momirealms.sparrow.redis.messagebroker.connection.RedisConnection;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;

@@ -2,13 +2,13 @@ package net.momirealms.sparrow.sync.redis.heartbeats;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
-import net.momirealms.sparrow.sync.session.cluster.SessionLock;
+import net.momirealms.sparrow.sync.cluster.SessionLock;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;

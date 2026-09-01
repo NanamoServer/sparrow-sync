@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.session;
 
-import net.momirealms.sparrow.sync.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.configuration.ServerConfig;
-import net.momirealms.sparrow.sync.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;

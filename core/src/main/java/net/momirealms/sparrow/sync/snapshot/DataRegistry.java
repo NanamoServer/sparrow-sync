@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
