@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.ServerAdvancementManager;
 import net.minecraft.server.level.ServerPlayer;
@@ -54,7 +55,7 @@ public final class AdvancementsDataType extends CodecDataType<Map<Object, Advanc
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Map<Object, AdvancementProgress> value) {
         ServerPlayer handle = handle(player);
-        ServerAdvancementManager manager = handle.getServer().getAdvancements();
+        ServerAdvancementManager manager = MinecraftServer.getServer().getAdvancements();
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
         // 清理旧监听与进度, 再装入完整快照
