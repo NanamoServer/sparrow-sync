@@ -16,11 +16,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SessionManager {
     private final SparrowSync plugin;
     private final SyncLogger logger;
+    private final SnapshotService snapshotService;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
 
     public SessionManager(@NotNull SparrowSync plugin, @NotNull SyncLogger logger) {
         this.plugin = plugin;
         this.logger = logger;
+        this.snapshotService = this.plugin.snapshotService();
     }
 
     @Nullable
@@ -35,18 +37,18 @@ public final class SessionManager {
      * @return 成功发起保存时为 true
      */
     public boolean trySubmitActiveSnapshot(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
-        if (this.sessions.get(session.uuid()) != session) return false;
+        if (this.snapshotService.rejectIfDispatchingSaveEvent(player, cause)) return false;
         // 监视器一直持有到快照入队, 其他线程发起的会话关闭会在这里等待.
         synchronized (session) {
             if (this.sessions.get(session.uuid()) != session || session.state() != SessionState.ACTIVE || session.triggeredSnapshotInProgress) return false;
             // SnapshotSaveEvent 可以在当前线程重入 close, 标记让关闭快照排在本次快照之后.
             session.triggeredSnapshotInProgress = true;
             try {
-                this.plugin.snapshotService().captureAndSave(player, cause);
+                this.snapshotService.captureAndSave(player, cause);
             } finally {
                 session.triggeredSnapshotInProgress = false;
-                SaveCause closeCause = session.deferredCloseCause;
-                session.deferredCloseCause = null;
+                SaveCause closeCause = session.pendingCloseCause;
+                session.pendingCloseCause = null;
                 if (closeCause != null) {
                     session.transition(SessionState.SAVING);
                     this.submitClosingSnapshot(session, player, closeCause);
@@ -59,27 +61,28 @@ public final class SessionManager {
     /**
      * 结束玩家会话, ACTIVE 会话会先提交一份 DISCONNECT 或 SHUTDOWN 快照.
      *
-     * @return 是否发起了保存, 非 ACTIVE 的会话没有保存这一步.
+     * @return 本次关闭对会话产生的结果
      */
-    public boolean close(@NotNull PlayerSession session, @NotNull SaveCause cause) {
+    @NotNull
+    public CloseResult close(@NotNull PlayerSession session, @NotNull SaveCause cause) {
         synchronized (session) {
-            if (this.sessions.get(session.uuid()) != session) return false;
+            if (this.sessions.get(session.uuid()) != session) return CloseResult.STALE;
             SessionState state = session.state();
-            if (state == SessionState.CLOSED || state == SessionState.SAVING) return false;
+            if (state == SessionState.CLOSED || state == SessionState.SAVING) return CloseResult.ALREADY_CLOSING;
             if (state == SessionState.ACTIVE) {
                 // SnapshotSaveEvent 重入 close 时, 等当前触发器快照入队后再提交关闭快照.
                 if (session.triggeredSnapshotInProgress) {
-                    if (session.deferredCloseCause == null) session.deferredCloseCause = cause;
-                    return true;
+                    if (session.pendingCloseCause == null) session.pendingCloseCause = cause;
+                    return CloseResult.SNAPSHOT_DEFERRED;
                 }
                 session.transition(SessionState.SAVING);
                 this.submitClosingSnapshot(session, Bukkit.getPlayer(session.uuid()), cause);
-                return true;
+                return CloseResult.SNAPSHOT_SUBMITTED;
             }
             // 玩家还没有完成同步, 这时退出不回写数据.
             session.transition(SessionState.CLOSED);
             this.release(session);
-            return false;
+            return CloseResult.RELEASED_UNSYNCED;
         }
     }
 
@@ -121,10 +124,20 @@ public final class SessionManager {
     public void shutdown() {
         int submitted = 0;
         for (PlayerSession session : this.sessions.values()) {
-            if (this.close(session, SaveCause.SHUTDOWN)) submitted++;
+            CloseResult result = this.close(session, SaveCause.SHUTDOWN);
+            if (result == CloseResult.SNAPSHOT_SUBMITTED || result == CloseResult.SNAPSHOT_DEFERRED) submitted++;
         }
         if (submitted > 0) {
             this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(submitted));
         }
+    }
+
+    /** 一次会话关闭请求的处理结果. */
+    public enum CloseResult {
+        SNAPSHOT_SUBMITTED, // 关闭快照已经入队, 完成后释放会话
+        SNAPSHOT_DEFERRED, // 当前触发器快照入队后再提交关闭快照
+        RELEASED_UNSYNCED, // 会话尚未完成同步, 不保存数据并直接释放
+        ALREADY_CLOSING, // 会话正在保存或已经关闭, 本次请求不再处理
+        STALE // 注册表已经不再持有这份会话
     }
 }

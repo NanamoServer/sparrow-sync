@@ -147,8 +147,6 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginBootstrap(BootstrapContext context) {
-        // todo 解决初始化问题, 未来删除
-        ListSignal.wrap(new ArrayList<>()).iterator();
     }
 
     @Override
@@ -231,9 +229,10 @@ public class SparrowSync implements Plugin {
                 (task, delayMillis) -> this.scheduler.asyncLater(task, delayMillis, TimeUnit.MILLISECONDS)
         );
         this.snapshotService = new SnapshotService(this, this.snapshotApplier, this.storageProvider, this.snapshotStash, this.logger);
-        // 会话状态机.
+        // 会话状态机
         this.sessionManager = new SessionManager(this, this.logger);
         Bukkit.getPluginManager().registerEvents(new SessionListener(this, this.snapshotService, this.sessionManager), this.javaPlugin);
+        // 保存触发监听器
         this.saveTriggerListener = new SaveTriggerListener(this, this.sessionManager);
         Bukkit.getPluginManager().registerEvents(this.saveTriggerListener, this.javaPlugin);
         this.saveTriggerListener.start();

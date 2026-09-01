@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.session.SessionManager.CloseResult;
 import net.momirealms.sparrow.sync.session.SnapshotService.LoadOutcome;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.bukkit.entity.Player;
@@ -84,7 +85,7 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
         if (session == null) return; // 说明会话已经被关闭, 无需处理.
         this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
-        if (!this.sessionManager.close(session, SaveCause.DISCONNECT)) {
+        if (this.sessionManager.close(session, SaveCause.DISCONNECT) == CloseResult.RELEASED_UNSYNCED) {
             // 会话从未就绪, 没有保存这一步; 半加载状态存出去会覆盖好数据
             this.plugin.logger().file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_SKIPPED_UNSYNCED, player.getName());
         }

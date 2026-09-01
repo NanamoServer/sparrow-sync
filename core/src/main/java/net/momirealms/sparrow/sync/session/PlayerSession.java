@@ -18,8 +18,8 @@ public final class PlayerSession {
     private PreparedOutcome.Ready prepared;
     // 分布式锁的持有值, 释放时原样传回
     private String lockValue;
-    boolean triggeredSnapshotInProgress;
-    @Nullable SaveCause deferredCloseCause;
+    boolean triggeredSnapshotInProgress;   // 当前触发器快照仍在采集、派发事件或入队
+    @Nullable SaveCause pendingCloseCause; // 当前快照入队后紧接着提交的关闭原因
 
     PlayerSession(@NotNull UUID player, @NotNull String playerName) {
         this.uuid = player;

@@ -33,6 +33,7 @@ public final class SnapshotService {
     private final SnapshotApplier applier;
     private final StorageProvider storage;
     private final SnapshotStash stash;
+    private final ThreadLocal<SnapshotSaveEvent> dispatchingSaveEvent = new ThreadLocal<>();
     private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
     private final ConcurrentHashMap<UUID, StoredContent> lastStoredContent = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<CompletableFuture<SnapshotSaveOutcome>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未完成的保存任务, 关服清算用.
@@ -163,6 +164,8 @@ public final class SnapshotService {
      */
     @NotNull
     public CompletableFuture<SnapshotSaveOutcome> captureAndSave(@NotNull Player player, @NotNull SaveCause cause) {
+        if (this.rejectIfDispatchingSaveEvent(player, cause))
+            return CompletableFuture.completedFuture(new SnapshotSaveOutcome.ReentrantRejected());
         long captureStart = System.nanoTime();
         boolean closesSession = cause == SaveCause.DISCONNECT || cause == SaveCause.SHUTDOWN;
         // 关键数据采集不出来时不产出快照.
@@ -178,20 +181,56 @@ public final class SnapshotService {
         }
         // 发布事件
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
-        if (EventUtils.fireAndCheckCancel(new SnapshotSaveEvent(player, snapshot))) {
-            // todo 需文件日志
-            if (closesSession) this.lastStoredContent.remove(player.getUniqueId());
-            return CompletableFuture.completedFuture(new SnapshotSaveOutcome.Cancelled());
-        }
-        // 采集成功
-        this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_STARTED, player.getName(), cause.name(), snapshot.meta().id().toString());
         CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
-        SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart, contentHash);
-        this.inflight.put(outcome, attempt);
-        outcome.whenComplete((result, throwable) -> this.inflight.remove(outcome));
-        if (closesSession) outcome.whenComplete((result, throwable) -> this.lastStoredContent.remove(player.getUniqueId())); // 离开的玩家则清理缓存
-        this.submitSave(attempt, outcome);
+        SnapshotSaveEvent event = new SnapshotSaveEvent(player, snapshot, outcome.minimalCompletionStage());
+        this.dispatchingSaveEvent.set(event);
+        try {
+            if (EventUtils.fireAndCheckCancel(event)) {
+                // todo 需文件日志
+                if (closesSession) this.lastStoredContent.remove(player.getUniqueId());
+                outcome.complete(new SnapshotSaveOutcome.Cancelled());
+                return outcome;
+            }
+        } catch (RuntimeException | Error throwable) {
+            outcome.completeExceptionally(throwable);
+            throw throwable;
+        } finally {
+            this.dispatchingSaveEvent.remove();
+        }
+
+        // 采集完成, 发起落库请求
+        try {
+            this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_STARTED, player.getName(), cause.name(), snapshot.meta().id().toString());
+            SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart, contentHash);
+            this.inflight.put(outcome, attempt);
+            outcome.whenComplete((result, throwable) -> this.inflight.remove(outcome));
+            if (closesSession) outcome.whenComplete((result, throwable) -> this.lastStoredContent.remove(player.getUniqueId())); // 离开的玩家则清理缓存
+            this.submitSave(attempt, outcome);
+        } catch (RuntimeException | Error throwable) {
+            outcome.completeExceptionally(throwable);
+            throw throwable;
+        }
         return outcome;
+    }
+
+    // SnapshotSaveEvent 处理期间再次保存会形成同步递归, 这里统一拒绝并尽量定位责任监听器.
+    boolean rejectIfDispatchingSaveEvent(@NotNull Player player, @NotNull SaveCause cause) {
+        SnapshotSaveEvent event = this.dispatchingSaveEvent.get();
+        if (event == null) return false;
+        EventUtils.ListenerCallSite callSite = EventUtils.findListenerCallSite(event);
+        this.logger.warn(
+                LogCategory.SAVE,
+                player.getUniqueId(),
+                player.getName(),
+                LogConstants.SYNC_SAVE_REENTRANT_REJECTED,
+                player.getName(),
+                cause.name(),
+                event.getPlayer().getName(),
+                event.snapshot().meta().cause().name(),
+                callSite.plugin(),
+                callSite.listener()
+        );
+        return true;
     }
 
     // 提交落库请求, 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败.
@@ -438,6 +477,10 @@ public final class SnapshotService {
 
         /** 快照保存被事件监听器取消. */
         record Cancelled() implements SnapshotSaveOutcome {
+        }
+
+        /** 事件监听器在处理保存事件期间再次发起保存, 本次请求已被拒绝. */
+        record ReentrantRejected() implements SnapshotSaveOutcome {
         }
 
         /** 定时采集内容与最近一次成功存储的快照相同. */

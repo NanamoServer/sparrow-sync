@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.session.SnapshotService.SnapshotSaveOutcome;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,14 +36,21 @@ class SnapshotEventTest {
 
     @Test
     void snapshotSaveEventCarriesSnapshotAndCancellation() {
-        SnapshotSaveEvent event = new SnapshotSaveEvent(this.player, this.snapshot);
+        CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
+        CompletionStage<SnapshotSaveOutcome> completion = outcome.minimalCompletionStage();
+        SnapshotSaveEvent event = new SnapshotSaveEvent(this.player, this.snapshot, completion);
 
         assertSame(this.player, event.getPlayer());
         assertSame(this.snapshot, event.snapshot());
+        assertSame(completion, event.completion());
         assertFalse(event.isCancelled());
         event.setCancelled(true);
         assertTrue(event.isCancelled());
         assertSame(SnapshotSaveEvent.getHandlerList(), event.getHandlers());
+        event.completion().toCompletableFuture().complete(new SnapshotSaveOutcome.ReentrantRejected());
+        assertFalse(outcome.isDone());
+        outcome.complete(new SnapshotSaveOutcome.Cancelled());
+        assertTrue(event.completion().toCompletableFuture().join() instanceof SnapshotSaveOutcome.Cancelled);
     }
 
     @Test
