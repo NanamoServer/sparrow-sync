@@ -16,6 +16,8 @@ public interface LogConstants {
     String PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
 
     String SERVER_ID_MISSING = "log.server.id_missing";
+    String SERVER_ID_DUPLICATE = "log.server.id_duplicate";
+    String SERVER_ID_SEIZED = "log.server.id_seized";
 
     String STORAGE_COMPRESSOR_FAILED = "log.storage.compressor_failed";
     String STORAGE_READY = "log.storage.ready";
@@ -37,6 +39,8 @@ public interface LogConstants {
     String LOCK_WAITING = "log.lock.waiting";
     String LOCK_HANDOFF = "log.lock.handoff";
     String LOCK_RELEASED = "log.lock.released";
+    String LOCK_SWEPT = "log.lock.swept";
+    String LOCK_SELF_CONFLICT = "log.lock.self_conflict";
 
     String EXECUTOR_UNFINISHED_TASKS = "log.executor.unfinished_tasks";
     String EXECUTOR_DRAINING = "log.executor.draining";

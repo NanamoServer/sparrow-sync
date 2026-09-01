@@ -6,6 +6,8 @@ import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.cluster.HandoffRequestMessage;
 import net.momirealms.sparrow.sync.session.cluster.HandoffResponseMessage;
+import net.momirealms.sparrow.sync.redis.heartbeats.ServerProbeMessage;
+import net.momirealms.sparrow.sync.redis.heartbeats.ServerProbeResponseMessage;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.charset.StandardCharsets;
@@ -35,6 +37,8 @@ public final class MessageBrokerManager {
         // 所有服务器的注册顺序必须一致, 新消息只能在末尾追加
         broker.registry().register(HandoffRequestMessage.ID, HandoffRequestMessage.CODEC);
         broker.registry().register(HandoffResponseMessage.ID, HandoffResponseMessage.CODEC);
+        broker.registry().register(ServerProbeMessage.ID, ServerProbeMessage.CODEC);
+        broker.registry().register(ServerProbeResponseMessage.ID, ServerProbeResponseMessage.CODEC);
         broker.subscribe();
         this.broker = broker;
     }

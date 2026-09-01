@@ -33,6 +33,7 @@ import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.session.cluster.SessionLock;
 import net.momirealms.sparrow.sync.session.cluster.HandoffManager;
+import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.session.SessionListener;
@@ -98,6 +99,7 @@ public class SparrowSync implements Plugin {
     private RedisConnector redisConnector;
     private SessionLock sessionLock;
     private MessageBrokerManager messageBrokerManager;
+    private ServerHeartBeats serverHeartBeats;
     private HandoffManager handoffManager;
     private SessionManager sessionManager;
     private LoginGate loginGate;
@@ -254,6 +256,7 @@ public class SparrowSync implements Plugin {
 
         if (this.scheduler != null) this.scheduler.shutdownScheduler();
         if (this.scheduler != null) this.scheduler.shutdownExecutor();
+        if (this.serverHeartBeats != null) this.serverHeartBeats.shutdown(); // 注销集群身份, 心跳键删除或随 TTL 消失
         if (this.messageBrokerManager != null) this.messageBrokerManager.shutdown();
         if (this.redisConnector != null) this.redisConnector.shutdown();
         if (this.storageProvider != null) this.storageProvider.shutdown();
@@ -353,6 +356,28 @@ public class SparrowSync implements Plugin {
             // 跨服消息 broker 排在锁之后装配, 连接取自同一个 RedisConnector
             this.messageBrokerManager = new MessageBrokerManager(this.redisConnector, PluginConfig.clusterId(), ServerConfig.serverId(), this.logger);
             this.messageBrokerManager.initialize();
+            // 注册本服身份并开启心跳, 同 id 的服务器仍在线时拒绝启动
+            this.serverHeartBeats = new ServerHeartBeats(
+                    this.redisConnector,
+                    this.messageBrokerManager.broker(),
+                    this.sessionLock,
+                    PluginConfig.clusterId(),
+                    ServerConfig.serverId(),
+                    this.logger,
+                    (task, intervalMillis) -> this.scheduler.asyncRepeating(task, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS)
+            );
+            if (!this.serverHeartBeats.initialize()) {
+                this.logger.error(" ");
+                this.logger.error(" ");
+                this.logger.error(" ");
+                this.logger.error("============================================================");
+                this.logger.error(TranslationManager.console(LogConstants.SERVER_ID_DUPLICATE, ServerConfig.serverId()));
+                this.logger.error("============================================================");
+                this.logger.error(" ");
+                this.logger.error(" ");
+                this.logger.error(" ");
+                Bukkit.getServer().shutdown();
+            }
         } catch (Throwable throwable) {
             this.logger.error(TranslationManager.console(LogConstants.REDIS_SETUP_FAILED), throwable);
             Bukkit.getServer().shutdown();
@@ -683,6 +708,10 @@ public class SparrowSync implements Plugin {
 
     public MessageBrokerManager messageBrokerManager() {
         return this.messageBrokerManager;
+    }
+
+    public ServerHeartBeats serverRegistry() {
+        return this.serverHeartBeats;
     }
 
     public HandoffManager handoffManager() {

@@ -1,8 +1,11 @@
 package net.momirealms.sparrow.sync.session.cluster;
 
+import io.lettuce.core.KeyScanCursor;
 import io.lettuce.core.RedisFuture;
+import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.SetArgs;
+import io.lettuce.core.api.sync.RedisCommands;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import org.jetbrains.annotations.NotNull;
 
@@ -71,6 +74,32 @@ public final class SessionLock {
         RedisFuture<Long> swapped = this.connector.connection().async()
                 .eval(SEIZE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key(player)}, bytes(observedValue), bytes(next), bytes(Long.toString(LOCK_TTL_MILLIS)));
         return swapped.thenApply(count -> count != 0L ? Optional.of(next) : Optional.<String>empty()).toCompletableFuture();
+    }
+
+    /**
+     * 服务器崩溃时, 所有在线玩家的会话锁都未释放, 以 [服务器ID]:token 的形式留在 Redis 里.
+     * 为了避免未释放锁的玩家在连接时把残留锁视为 "同serverId的服务器在持有锁" 的情况, 就需要在服务器启动&身份注册成功后进行必要的清理. e
+     * @return 清除的数量
+     */
+    public int sweepStaleLocks() {
+        RedisCommands<byte[], byte[]> commands = this.connector.connection().sync();
+        ScanArgs pattern = ScanArgs.Builder.matches(this.keyPrefix + "*").limit(200);
+        int swept = 0;
+        KeyScanCursor<byte[]> cursor = commands.scan(pattern);
+        while (true) {
+            for (byte[] key : cursor.getKeys()) {
+                byte[] observed = commands.get(key);
+                if (observed == null) continue;
+                LockValue holder = LockValue.parse(text(observed));
+                if (holder == null || !holder.serverId().equals(this.serverId)) continue;
+                // 值仍是观察值才删, 扫描期间被别的服夺走的锁不误删
+                Long deleted = commands.eval(RELEASE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{key}, observed);
+                if (deleted != 0L) swept++;
+            }
+            if (cursor.isFinished()) break;
+            cursor = commands.scan(cursor, pattern);
+        }
+        return swept;
     }
 
     /**

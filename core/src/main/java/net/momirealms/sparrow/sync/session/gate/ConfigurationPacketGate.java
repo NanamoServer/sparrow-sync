@@ -7,8 +7,10 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacket;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
+import net.momirealms.sparrow.sync.session.cluster.LockValue;
 import net.momirealms.sparrow.sync.session.cluster.SessionLock;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
@@ -152,6 +154,12 @@ public final class ConfigurationPacketGate implements LoginGate {
             }
             // 被别的服持有, 走交接探测
             case SessionLock.AcquireOutcome.Held(String value) -> {
+                // 发现锁值挂着本服 id, 说明是另一台同 id 的服务器在线, 拒绝玩家进服并向发起警告
+                LockValue holder = LockValue.parse(value);
+                if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
+                    this.plugin.logger().error(LogCategory.LOCK, uuid, name, LogConstants.LOCK_SELF_CONFLICT, name, value);
+                    yield CompletableFuture.failedFuture(new IllegalStateException("session lock is held by a server with the same server-id"));
+                }
                 this.plugin.logger().file(LogCategory.LOCK, uuid, name, LogConstants.LOCK_WAITING, name, value);
                 yield this.plugin.handoffManager()
                         .awaitHandoff(uuid, value, deadlineNanos)

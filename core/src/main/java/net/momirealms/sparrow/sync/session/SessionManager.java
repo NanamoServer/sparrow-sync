@@ -65,11 +65,10 @@ public final class SessionManager {
         return true;
     }
 
-    // 释放会话, 摘出注册表并释放分布式锁. 落库(或作废)在前释放在后, 等锁方抢到后读库必为最新.
+    // 释放会话, 释放分布式锁并摘出注册表. 落库(或作废)在前释放在后, 等锁方抢到后读库必为最新.
     private void release(PlayerSession session) {
-        this.sessions.remove(session.uuid(), session);
         String lockValue = session.lockValue();
-        // 取锁前就失败的会话没有锁可放
+        // 拆锁命令需要先于摘注册表, 同时取锁前就失败的会话没有锁可放
         if (lockValue != null) {
             this.plugin.sessionLock()
                     .release(session.uuid(), lockValue)
@@ -77,6 +76,7 @@ public final class SessionManager {
                             this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted))
                     );
         }
+        this.sessions.remove(session.uuid(), session);
         session.released().complete(null);
     }
 
