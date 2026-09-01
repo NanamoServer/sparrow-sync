@@ -51,6 +51,7 @@ public final class PluginConfig {
         try {
             ConfigDefinition loadedConfig = this.configMapper.load(this.configFilePath).value();
             loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
+            loadedConfig.synchronization.attributes.freeze();
             loadedConfig.synchronization.compiledSaveTriggers = SaveTriggers.of(loadedConfig.synchronization.saveTriggers);
             config = loadedConfig;
         } catch (Exception e) {
@@ -173,6 +174,17 @@ public final class PluginConfig {
 
         @BlankLineBefore
         @Comment({
+                "Built-in player data enabled for synchronization",
+                "Read once during startup; changes require a server restart"
+        })
+        DataTypes dataTypes = new DataTypes();
+
+        @BlankLineBefore
+        @Comment("Attribute synchronization settings")
+        AttributeOptions attributes = new AttributeOptions();
+
+        @BlankLineBefore
+        @Comment({
                 "Automatic snapshot save triggers",
                 "Reloading the plugin applies these options to later trigger invocations"
         })
@@ -192,7 +204,8 @@ public final class PluginConfig {
                 "Persistent data (PDC) merge blacklist; every entry is a path relative to custom_data",
                 "Blacklisted paths are neither captured nor merged",
                 "Use \"sparrow-sync-ignore\" for custom_data -> sparrow-sync-ignore",
-                "Use [\"sparrow-sync\", \"ignore\"] for custom_data -> sparrow-sync -> ignore"
+                "Use [\"sparrow-sync\", \"ignore\"] for custom_data -> sparrow-sync -> ignore",
+                "Reloading the plugin applies these paths to later captures and applications"
         })
         List<Object> pdcMergeNamespaces = List.of(
                 "sparrow-sync-ignore",
@@ -204,6 +217,175 @@ public final class PluginConfig {
 
         @YamlIgnore
         SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class DataTypes {
+        boolean inventory = true;
+        boolean enderChest = true;
+        boolean persistentData = true;
+        boolean experience = true;
+        boolean health = true;
+        boolean hunger = true;
+        boolean gameMode = true;
+        boolean potionEffects = true;
+        boolean advancements = true;
+        boolean statistics = true;
+        boolean attributes = true;
+        boolean location = false;
+        boolean flightStatus = true;
+        boolean enchantmentSeed = true;
+
+        public boolean inventory() {
+            return this.inventory;
+        }
+
+        public boolean enderChest() {
+            return this.enderChest;
+        }
+
+        public boolean persistentData() {
+            return this.persistentData;
+        }
+
+        public boolean experience() {
+            return this.experience;
+        }
+
+        public boolean health() {
+            return this.health;
+        }
+
+        public boolean hunger() {
+            return this.hunger;
+        }
+
+        public boolean gameMode() {
+            return this.gameMode;
+        }
+
+        public boolean potionEffects() {
+            return this.potionEffects;
+        }
+
+        public boolean advancements() {
+            return this.advancements;
+        }
+
+        public boolean statistics() {
+            return this.statistics;
+        }
+
+        public boolean attributes() {
+            return this.attributes;
+        }
+
+        public boolean location() {
+            return this.location;
+        }
+
+        public boolean flightStatus() {
+            return this.flightStatus;
+        }
+
+        public boolean enchantmentSeed() {
+            return this.enchantmentSeed;
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class AttributeOptions {
+        @Comment({
+                "Attribute keys saved by attribute synchronization; supports * wildcard matching",
+                "Both modern and legacy vanilla keys are listed across supported Minecraft versions",
+                "Reloading the plugin applies attribute filters to later captures and applications"
+        })
+        List<String> whitelist = List.of(
+                "minecraft:generic.max_health",
+                "minecraft:max_health",
+                "minecraft:generic.max_absorption",
+                "minecraft:max_absorption",
+                "minecraft:generic.luck",
+                "minecraft:luck",
+                "minecraft:generic.scale",
+                "minecraft:scale",
+                "minecraft:generic.step_height",
+                "minecraft:step_height",
+                "minecraft:generic.gravity",
+                "minecraft:gravity"
+        );
+
+        @Comment("Attribute modifier keys kept local to each server; supports * wildcard matching")
+        List<String> modifierBlacklist = List.of(
+                "minecraft:effect.*",
+                "minecraft:creative_mode_*"
+        );
+
+        @NotNull
+        public List<String> whitelist() {
+            return this.whitelist;
+        }
+
+        @NotNull
+        public List<String> modifierBlacklist() {
+            return this.modifierBlacklist;
+        }
+
+        /** 判断属性 key 是否在同步白名单内. */
+        public boolean attributeAllowed(@NotNull String attribute) {
+            int size = this.whitelist.size();
+            for (int i = 0; i < size; i++) {
+                if (matchesPattern(this.whitelist.get(i), attribute)) return true;
+            }
+            return false;
+        }
+
+        /** 判断 modifier key 是否留在当前服务器. */
+        public boolean modifierBlacklisted(@NotNull String modifier) {
+            int size = this.modifierBlacklist.size();
+            for (int i = 0; i < size; i++) {
+                if (matchesPattern(this.modifierBlacklist.get(i), modifier)) return true;
+            }
+            return false;
+        }
+
+        private void freeze() {
+            this.whitelist = List.copyOf(this.whitelist);
+            this.modifierBlacklist = List.copyOf(this.modifierBlacklist);
+        }
+
+        private static boolean matchesPattern(@NotNull String pattern, @NotNull String value) {
+            pattern = namespaced(pattern);
+            value = namespaced(value);
+            int patternIndex = 0;
+            int valueIndex = 0;
+            int wildcardIndex = -1;
+            int retryIndex = -1;
+            while (valueIndex < value.length()) {
+                if (patternIndex < pattern.length() && pattern.charAt(patternIndex) == value.charAt(valueIndex)) {
+                    patternIndex++;
+                    valueIndex++;
+                    continue;
+                }
+                if (patternIndex < pattern.length() && pattern.charAt(patternIndex) == '*') {
+                    wildcardIndex = patternIndex++;
+                    retryIndex = valueIndex;
+                    continue;
+                }
+                if (wildcardIndex < 0) return false;
+                patternIndex = wildcardIndex + 1;
+                valueIndex = ++retryIndex;
+            }
+            while (patternIndex < pattern.length() && pattern.charAt(patternIndex) == '*') {
+                patternIndex++;
+            }
+            return patternIndex == pattern.length();
+        }
+
+        @NotNull
+        private static String namespaced(@NotNull String key) {
+            return key.indexOf(':') < 0 ? "minecraft:" + key : key;
+        }
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -610,6 +792,16 @@ public final class PluginConfig {
 
     public static CompressorRegistry synchronization$compression() {
         return config.synchronization.compression;
+    }
+
+    @NotNull
+    public static DataTypes synchronization$dataTypes() {
+        return config.synchronization.dataTypes;
+    }
+
+    @NotNull
+    public static AttributeOptions synchronization$attributes() {
+        return config.synchronization.attributes;
     }
 
     @NotNull

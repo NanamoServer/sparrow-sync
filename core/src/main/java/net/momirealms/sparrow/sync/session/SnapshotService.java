@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
@@ -94,6 +95,10 @@ public final class SnapshotService {
         SnapshotApplier.PreparedSnapshot.Ready prepared = preparedAfter(preApplyEvent, ready.prepared());
         return switch (this.applier.apply(player, prepared)) {
             case SnapshotApplier.ApplyResult.Success success -> {
+                PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
+                if (session != null) {
+                    session.passthroughData(prepared.passthrough()); // 缓存无法解析的数据类型到 session
+                }
                 this.logger.info(LogCategory.APPLY, player.getUniqueId(), player.getName(),
                         LogConstants.SYNC_APPLIED,
                         player.getName(),
@@ -125,7 +130,7 @@ public final class SnapshotService {
             DataKey key = before.skipped().get(i);
             if (!decoded.containsKey(key)) skipped.add(key);
         }
-        return new SnapshotApplier.PreparedSnapshot.Ready(decoded, skipped);
+        return new SnapshotApplier.PreparedSnapshot.Ready(decoded, skipped, before.passthrough());
     }
 
     /**
@@ -166,7 +171,9 @@ public final class SnapshotService {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
         }
         // 发布事件
-        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
+        PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
+        Map<DataKey, Tag> passthrough = session == null ? Map.of() : session.passthroughData();
+        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), mergeCapturedData(passthrough, ready.data()));
         CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
         SnapshotSaveEvent event = new SnapshotSaveEvent(player, snapshot, outcome.minimalCompletionStage());
         this.dispatchingSaveEvent.set(event);
@@ -195,6 +202,16 @@ public final class SnapshotService {
             throw throwable;
         }
         return outcome;
+    }
+
+    // 将未加载的和采集的 Data 进行合并, 当前已启用类型的采集值优先, 同名旧值不盖回玩家刚产生的新状态.
+    @NotNull
+    static Map<DataKey, Tag> mergeCapturedData(@NotNull Map<DataKey, Tag> passthrough, @NotNull Map<DataKey, Tag> captured) {
+        if (passthrough.isEmpty()) return captured;
+        Map<DataKey, Tag> merged = new LinkedHashMap<>(passthrough.size() + captured.size());
+        merged.putAll(passthrough);
+        merged.putAll(captured);
+        return merged;
     }
 
     // SnapshotSaveEvent 处理期间再次保存会形成同步递归, 这里统一拒绝并尽量定位责任监听器.

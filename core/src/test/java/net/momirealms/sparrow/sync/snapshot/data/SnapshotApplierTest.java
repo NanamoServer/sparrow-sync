@@ -184,15 +184,17 @@ class SnapshotApplierTest {
     }
 
     @Test
-    void unregisteredSnapshotDataIsIgnored() {
+    void unregisteredSnapshotDataIsRetainedForNextSave() {
         FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
         SnapshotApplier applier = createApplier(alpha);
+        DataKey unknown = DataKey.of("other", "unknown");
 
         PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class,
-                applier.prepare(snapshotWith(ALPHA, DataKey.of("other", "unknown"))));
+                applier.prepare(snapshotWith(ALPHA, unknown)));
 
         assertEquals(1, prepared.values().size());
         assertTrue(prepared.values().containsKey(ALPHA));
+        assertEquals(Set.of(unknown), prepared.passthrough().keySet());
     }
 
     private SnapshotApplier createApplier(FakeType... types) {

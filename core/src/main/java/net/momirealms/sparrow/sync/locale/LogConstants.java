@@ -12,7 +12,7 @@ public interface LogConstants {
     String PLUGIN_DISABLE_AT_RUNTIME = "log.plugin.disable_at_runtime";
     String PLUGIN_STARTED = "log.plugin.started";
     String PLUGIN_STOPPED = "log.plugin.stopped";
-    String PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen";
+    String PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen_types";
     String PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
 
     String SERVER_ID_MISSING = "log.server.id_missing";

@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -10,6 +11,7 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.ui.SparrowUI;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -33,8 +35,8 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
 
     private final SyncLogger logger;
 
-    public InventoryDataType(@NotNull SyncLogger logger) {
-        this.logger = logger;
+    public InventoryDataType() {
+        this.logger = SparrowSync.instance().logger();
     }
 
     @Override

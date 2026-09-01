@@ -1,10 +1,13 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.session.SnapshotService.PreparedOutcome;
+import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -16,6 +19,8 @@ public final class PlayerSession {
 
     private SessionState state = SessionState.PREPARING;
     private PreparedOutcome.Ready prepared;
+    // 本服不认识或已关闭的数据类型, 玩家快照保存时原样写回快照
+    private Map<DataKey, Tag> passthroughData = Map.of();
     // 分布式锁的持有值, 释放时原样传回
     private String lockValue;
     boolean triggeredSnapshotInProgress;   // 当前触发器快照仍在采集、派发事件或入队
@@ -79,6 +84,7 @@ public final class PlayerSession {
      */
     public synchronized void prepared(@NotNull PreparedOutcome.Ready prepared) {
         this.prepared = prepared;
+        this.passthroughData = prepared.prepared().passthrough();
     }
 
     /**
@@ -91,6 +97,15 @@ public final class PlayerSession {
         PreparedOutcome.Ready taken = this.prepared;
         this.prepared = null;
         return taken;
+    }
+
+    @NotNull
+    public synchronized Map<DataKey, Tag> passthroughData() {
+        return this.passthroughData;
+    }
+
+    public synchronized void passthroughData(@NotNull Map<DataKey, Tag> passthroughData) {
+        this.passthroughData = passthroughData;
     }
 
     public synchronized void lockValue(@NotNull String lockValue) {

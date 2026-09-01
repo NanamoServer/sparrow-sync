@@ -9,9 +9,6 @@ import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 游戏模式同步. 解码即校验模式名, 未知名称在 decode 阶段失败而不是应用时.
- */
 public final class GameModeDataType extends CodecDataType<GameMode> {
     public static final DataKey GAME_MODE = DataKey.sparrow("game_mode");
     private static final Codec<GameMode> CODEC = Codec.STRING.comapFlatMap(GameModeDataType::parseGameMode, GameMode::name);

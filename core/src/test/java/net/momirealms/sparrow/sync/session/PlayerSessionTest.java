@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -106,17 +109,24 @@ class PlayerSessionTest {
     @Test
     void consumePreparedReturnsOnceThenNull() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        DataKey unknown = DataKey.of("other", "unknown");
+        Map<DataKey, Tag> passthrough = Map.of(unknown, NBT.createString("retained"));
         Snapshot snapshot = new Snapshot(SnapshotMeta.builder()
                 .player(session.uuid())
                 .timestamp(1L)
                 .cause(SaveCause.DISCONNECT)
                 .build(), Map.of());
         SnapshotService.PreparedOutcome.Ready prepared = new SnapshotService.PreparedOutcome.Ready(
-                snapshot, new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of()), 0L);
+                snapshot, new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of(), passthrough), 0L);
         session.prepared(prepared);
 
         assertSame(prepared, session.consumePrepared());
         assertNull(session.consumePrepared());
+        assertEquals(passthrough, session.passthroughData());
+
+        Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
+        session.passthroughData(replacement);
+        assertEquals(replacement, session.passthroughData());
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

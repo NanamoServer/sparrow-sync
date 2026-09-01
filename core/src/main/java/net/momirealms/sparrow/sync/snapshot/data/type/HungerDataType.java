@@ -8,15 +8,20 @@ import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 饥饿同步: 饥饿值, 饱和度与消耗度.
- */
+import java.util.Set;
+
 public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> {
     public static final DataKey HUNGER = DataKey.sparrow("hunger");
 
 
     public HungerDataType() {
         super(HUNGER, StorageFormat.STRUCTURED, Hunger.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public Set<DataKey> dependencies() {
+        return Set.of(AttributesDataType.ATTRIBUTES);
     }
 
     @Override

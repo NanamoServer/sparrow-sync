@@ -37,6 +37,7 @@ dependencies {
     testImplementation(libs.caffeine)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
+    testImplementation(project(":bukkit-proxy"))
     testRuntimeOnly(libs.junit.platformLauncher)
     testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)

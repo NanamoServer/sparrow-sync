@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -30,7 +31,8 @@ class SnapshotServicePreparedDataTest {
         Map<DataKey, Object> values = new LinkedHashMap<>();
         values.put(FIRST, "first");
         values.put(SECOND, "second");
-        SnapshotApplier.PreparedSnapshot.Ready before = new SnapshotApplier.PreparedSnapshot.Ready(values, List.of(RECOVERED));
+        Map<DataKey, Tag> passthrough = Map.of(UNKNOWN, NBT.createString("unknown"));
+        SnapshotApplier.PreparedSnapshot.Ready before = new SnapshotApplier.PreparedSnapshot.Ready(values, List.of(RECOVERED), passthrough);
         PreApplyEvent event = new PreApplyEvent(player(), snapshot(), before.values());
         event.decoded().remove(FIRST);
         event.decoded().put(SECOND, null);
@@ -41,6 +43,20 @@ class SnapshotServicePreparedDataTest {
 
         assertEquals(Map.of(RECOVERED, "recovered"), after.values());
         assertEquals(List.of(FIRST, SECOND), after.skipped());
+        assertEquals(passthrough, after.passthrough());
+    }
+
+    @Test
+    void capturedValuesOverrideRetainedValuesWithTheSameKey() {
+        Map<DataKey, Tag> passthrough = new LinkedHashMap<>();
+        passthrough.put(UNKNOWN, NBT.createString("unknown"));
+        passthrough.put(FIRST, NBT.createString("old"));
+        Map<DataKey, Tag> captured = Map.of(FIRST, NBT.createString("new"));
+
+        Map<DataKey, Tag> merged = SnapshotService.mergeCapturedData(passthrough, captured);
+
+        assertEquals("unknown", merged.get(UNKNOWN).getAsString());
+        assertEquals("new", merged.get(FIRST).getAsString());
     }
 
     private static Player player() {

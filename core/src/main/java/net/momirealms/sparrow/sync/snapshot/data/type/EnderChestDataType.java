@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -29,8 +30,8 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
 
     private final SyncLogger logger;
 
-    public EnderChestDataType(@NotNull SyncLogger logger) {
-        this.logger = logger;
+    public EnderChestDataType() {
+        this.logger = SparrowSync.instance().logger();
     }
 
     @Override

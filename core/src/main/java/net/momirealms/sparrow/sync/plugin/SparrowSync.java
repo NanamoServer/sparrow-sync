@@ -41,6 +41,7 @@ import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.session.SnapshotStash;
+import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
@@ -49,7 +50,6 @@ import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.state.ListSignal;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
@@ -62,6 +62,7 @@ import java.net.URLConnection;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -220,7 +221,13 @@ public class SparrowSync implements Plugin {
         // 冻结注册表并装配快照.
         if (this.snapshotApplier != null) return;
         this.snapshotApplier = new SnapshotApplier(this.dataRegistry, this.logger);
-        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(this.dataRegistry.types().size())));
+        StringJoiner activeTypes = new StringJoiner(", ");
+        List<DataKey> applyOrder = this.snapshotApplier.applyOrder();
+        int dataTypeCount = applyOrder.size();
+        for (int i = 0; i < dataTypeCount; i++) {
+            activeTypes.add(applyOrder.get(i).asString());
+        }
+        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
         // 跨服交接服务, 探测调度走插件异步调度器, 会话查询在消息到达时才解引用
         this.handoffManager = new HandoffManager(
                 this.messageBrokerManager.broker(),
@@ -301,14 +308,21 @@ public class SparrowSync implements Plugin {
      * 注册内置的数据类型并装配存储.
      */
     private void setUpInternalDataTypes() {
-        this.dataRegistry.register(new ExperienceDataType());
-        this.dataRegistry.register(new HealthDataType());
-        this.dataRegistry.register(new HungerDataType());
-        this.dataRegistry.register(new PotionEffectsDataType());
-        this.dataRegistry.register(new GameModeDataType());
-        this.dataRegistry.register(new InventoryDataType(logger));
-        this.dataRegistry.register(new EnderChestDataType(logger));
-        this.dataRegistry.register(new PDCDataType());
+        PluginConfig.DataTypes enabled = PluginConfig.synchronization$dataTypes();
+        if (enabled.inventory())        this.dataRegistry.register(new InventoryDataType());
+        if (enabled.enderChest())       this.dataRegistry.register(new EnderChestDataType());
+        if (enabled.persistentData())   this.dataRegistry.register(new PDCDataType());
+        if (enabled.experience())       this.dataRegistry.register(new ExperienceDataType());
+        if (enabled.health())           this.dataRegistry.register(new HealthDataType());
+        if (enabled.hunger())           this.dataRegistry.register(new HungerDataType());
+        if (enabled.gameMode())         this.dataRegistry.register(new GameModeDataType());
+        if (enabled.potionEffects())    this.dataRegistry.register(new PotionEffectsDataType());
+        if (enabled.advancements())     this.dataRegistry.register(new AdvancementsDataType());
+        if (enabled.statistics())       this.dataRegistry.register(new StatisticsDataType());
+        if (enabled.attributes())       this.dataRegistry.register(new AttributesDataType());
+        if (enabled.location())         this.dataRegistry.register(new LocationDataType());
+        if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
+        if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
     }
 
     /**

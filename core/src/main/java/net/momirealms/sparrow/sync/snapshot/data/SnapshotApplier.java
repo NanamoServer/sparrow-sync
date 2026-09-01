@@ -18,7 +18,8 @@ import java.util.Map;
 
 /**
  * 快照的采集与应用编排. 应用分两段: prepare 在任意线程完成全部解码, 关键类型解码失败则整体失败;
- * apply 在玩家拥有线程按拓扑序写入, 关键类型失败中止, 非关键类型跳过并告警. 快照携带的未注册数据不参与应用.
+ * apply 在玩家拥有线程按拓扑序写入, 关键类型失败中止, 非关键类型跳过并告警.
+ * 快照携带的未注册数据不参与应用, 预解码结果会保留原始 Tag 供下次保存带回.
  */
 public final class SnapshotApplier {
     private final Map<DataKey, PlayerDataType<?>> types;
@@ -35,6 +36,12 @@ public final class SnapshotApplier {
         }
         this.types = byKey;
         this.applyOrder = List.copyOf(registry.applyOrder());
+    }
+
+    /** 返回启动期固定的数据应用顺序. */
+    @NotNull
+    public List<DataKey> applyOrder() {
+        return this.applyOrder;
     }
 
     /**
@@ -70,7 +77,13 @@ public final class SnapshotApplier {
     @NotNull
     public PreparedSnapshot prepare(@NotNull Snapshot snapshot) {
         Map<DataKey, Object> values = new LinkedHashMap<>();
+        Map<DataKey, Tag> passthrough = new LinkedHashMap<>();
         List<DataKey> skipped = new ArrayList<>();
+        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+            if (!this.types.containsKey(entry.getKey())) {
+                passthrough.put(entry.getKey(), entry.getValue());
+            }
+        }
         int mcDataVersion = snapshot.meta().mcDataVersion();
         int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
@@ -88,7 +101,7 @@ public final class SnapshotApplier {
                 this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
             }
         }
-        return new PreparedSnapshot.Ready(values, skipped);
+        return new PreparedSnapshot.Ready(values, skipped, passthrough);
     }
 
     /**
@@ -143,10 +156,15 @@ public final class SnapshotApplier {
     /** 预解码结果, Failed 表示关键类型解码失败, 整份快照不应被应用. */
     public sealed interface PreparedSnapshot {
 
-        record Ready(@NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped) implements PreparedSnapshot {
+        record Ready(@NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped, @NotNull Map<DataKey, Tag> passthrough) implements PreparedSnapshot {
+            public Ready(@NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped) {
+                this(values, skipped, Map.of());
+            }
+
             public Ready {
                 values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
                 skipped = List.copyOf(skipped);
+                passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
             }
         }
 

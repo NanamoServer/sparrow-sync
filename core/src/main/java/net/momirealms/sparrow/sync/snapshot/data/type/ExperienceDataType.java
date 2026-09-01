@@ -8,15 +8,20 @@ import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 经验同步
- */
+import java.util.Set;
+
 public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> {
     public static final DataKey EXPERIENCE = DataKey.sparrow("experience");
 
 
     public ExperienceDataType() {
         super(EXPERIENCE, StorageFormat.STRUCTURED, Experience.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public Set<DataKey> dependencies() {
+        return Set.of(AdvancementsDataType.ADVANCEMENTS);
     }
 
     @Override
