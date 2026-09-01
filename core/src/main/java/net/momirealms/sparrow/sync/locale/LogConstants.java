@@ -62,6 +62,7 @@ public interface LogConstants {
     String SYNC_SAVE_PENDING_RETRY = "log.sync.save_pending_retry";
     String SYNC_SAVE_RETRIES_EXHAUSTED = "log.sync.save_retries_exhausted";
     String SYNC_SAVE_NEEDS_ATTENTION = "log.sync.save_needs_attention";
+    String SYNC_SAVE_CANCELLED_BY_EVENT = "log.sync.save_cancelled_by_event";
     String SYNC_SAVE_REENTRANT_REJECTED = "log.sync.save_reentrant_rejected";
     String SYNC_SAVE_SKIPPED_UNSYNCED = "log.sync.save_skipped_unsynced";
     String SYNC_ROTATE_FAILED = "log.sync.rotate_failed";

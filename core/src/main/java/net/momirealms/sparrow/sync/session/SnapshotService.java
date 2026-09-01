@@ -10,7 +10,6 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.*;
-import net.momirealms.sparrow.sync.snapshot.SnapshotContentHasher.ContentHash;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
@@ -35,7 +34,6 @@ public final class SnapshotService {
     private final SnapshotStash stash;
     private final ThreadLocal<SnapshotSaveEvent> dispatchingSaveEvent = new ThreadLocal<>();
     private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
-    private final ConcurrentHashMap<UUID, StoredContent> lastStoredContent = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<CompletableFuture<SnapshotSaveOutcome>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未完成的保存任务, 关服清算用.
 
     public SnapshotService(@NotNull SparrowSync plugin, @NotNull SnapshotApplier applier, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull SyncLogger logger) {
@@ -56,12 +54,8 @@ public final class SnapshotService {
         return this.storage.latestSnapshot(player)
                 .thenApply(latest -> {
                     // 没有历史的新玩家, 本服状态即权威
-                    return latest.map(snapshot -> {
-                                this.recordStoredContent(snapshot, SnapshotContentHasher.hash(snapshot.data()));
-                                return this.prepare(snapshot, player, playerName, loadStart);
-                            })
+                    return latest.map(snapshot -> this.prepare(snapshot, player, playerName, loadStart))
                             .orElseGet(() -> {
-                                this.lastStoredContent.remove(player);
                                 this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName);
                                 return new PreparedOutcome.Empty();
                             });
@@ -167,17 +161,9 @@ public final class SnapshotService {
         if (this.rejectIfDispatchingSaveEvent(player, cause))
             return CompletableFuture.completedFuture(new SnapshotSaveOutcome.ReentrantRejected());
         long captureStart = System.nanoTime();
-        boolean closesSession = cause == SaveCause.DISCONNECT || cause == SaveCause.SHUTDOWN;
         // 关键数据采集不出来时不产出快照.
         if (!(this.applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready ready)) {
-            if (closesSession) this.lastStoredContent.remove(player.getUniqueId());
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
-        }
-        // 如果采集的快照数据和上一次保存时的快照一致, 则不落库.
-        ContentHash contentHash = cause == SaveCause.INTERVAL ? SnapshotContentHasher.hash(ready.data()) : null;
-        if (contentHash != null && this.matchesStoredContent(player.getUniqueId(), contentHash)) {
-            // todo 需文件日志
-            return CompletableFuture.completedFuture(new SnapshotSaveOutcome.Unchanged());
         }
         // 发布事件
         Snapshot snapshot = new Snapshot(this.metaOf(player, cause), ready.data());
@@ -186,8 +172,7 @@ public final class SnapshotService {
         this.dispatchingSaveEvent.set(event);
         try {
             if (EventUtils.fireAndCheckCancel(event)) {
-                // todo 需文件日志
-                if (closesSession) this.lastStoredContent.remove(player.getUniqueId());
+                this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, player.getName(), cause.name(), snapshot.meta().id().toString());
                 outcome.complete(new SnapshotSaveOutcome.Cancelled());
                 return outcome;
             }
@@ -201,10 +186,9 @@ public final class SnapshotService {
         // 采集完成, 发起落库请求
         try {
             this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_STARTED, player.getName(), cause.name(), snapshot.meta().id().toString());
-            SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart, contentHash);
+            SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart);
             this.inflight.put(outcome, attempt);
             outcome.whenComplete((result, throwable) -> this.inflight.remove(outcome));
-            if (closesSession) outcome.whenComplete((result, throwable) -> this.lastStoredContent.remove(player.getUniqueId())); // 离开的玩家则清理缓存
             this.submitSave(attempt, outcome);
         } catch (RuntimeException | Error throwable) {
             outcome.completeExceptionally(throwable);
@@ -255,8 +239,6 @@ public final class SnapshotService {
             // 已保存, 登记交接并轮转快照
             if (result.stored()) {
                 this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
-                ContentHash storedHash = attempt.contentHash() != null ? attempt.contentHash() : SnapshotContentHasher.hash(attempt.snapshot().data());
-                this.recordStoredContent(attempt.snapshot(), storedHash);
                 this.plugin.handoffManager().recordSettled(attempt.player(), attempt.snapshot().meta().timestamp());
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(new SnapshotSaveOutcome.Completed(result));
@@ -338,23 +320,6 @@ public final class SnapshotService {
         return this.lastCaptureAt.merge(player, System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
     }
 
-    // 检查当前缓存的上一次快照哈希是否和目标哈希一致
-    private boolean matchesStoredContent(UUID player, ContentHash contentHash) {
-        StoredContent stored = this.lastStoredContent.get(player);
-        return stored != null && stored.contentHash().equals(contentHash);
-    }
-
-    // 记录缓存一份快照的哈希值
-    private void recordStoredContent(Snapshot snapshot, ContentHash contentHash) {
-        SessionManager sessionManager = this.plugin.sessionManager();
-        if (sessionManager != null && sessionManager.session(snapshot.meta().player()) == null) return;
-        long timestamp = snapshot.meta().timestamp();
-        this.lastStoredContent.compute(
-                snapshot.meta().player(),
-                (player, stored) -> stored == null || timestamp >= stored.timestamp() ? new StoredContent(timestamp, contentHash) : stored
-        );
-    }
-
     /**
      * 执行器排空超时后调用, 把没等到 settle 的保存落盘到 pending.
      */
@@ -373,29 +338,20 @@ public final class SnapshotService {
     }
 
     /**
-     * 一次快照的哈希值, 用于比对新快照和旧快照是否一致决定是否入库.
-     *
-     * @param timestamp   快照采集的时间戳
-     * @param contentHash 快照的哈希值
-     */
-    private record StoredContent(long timestamp, @NotNull ContentHash contentHash) {
-    }
-
-    /**
      * 一次落库尝试.
      *
      * @param number     第几次尝试, 从 1 开始
      * @param maxRetries 首次失败后还能重排队尾几次, -1 表示一直重试到数据库回来
      */
-    record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureStart, @Nullable ContentHash contentHash) {
+    record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureStart) {
         private static final int FREE_ATTEMPTS = 5;     // 前几次不等, 抖动和主从切换通常几十毫秒就过去了
         private static final long COOLDOWN_STEP_MILLIS = 100;
         private static final long MAX_COOLDOWN_MILLIS = 1000;
         private static final int LOG_INTERVAL = 10;
 
         @NotNull
-        static SaveAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureStart, @Nullable ContentHash contentHash) {
-            return new SaveAttempt(snapshot, playerName, 1, maxRetries, captureStart, contentHash);
+        static SaveAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureStart) {
+            return new SaveAttempt(snapshot, playerName, 1, maxRetries, captureStart);
         }
 
         @NotNull
@@ -428,7 +384,7 @@ public final class SnapshotService {
 
         @NotNull
         SaveAttempt next() {
-            return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureStart, this.contentHash);
+            return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureStart);
         }
     }
 
@@ -481,10 +437,6 @@ public final class SnapshotService {
 
         /** 事件监听器在处理保存事件期间再次发起保存, 本次请求已被拒绝. */
         record ReentrantRejected() implements SnapshotSaveOutcome {
-        }
-
-        /** 定时采集内容与最近一次成功存储的快照相同. */
-        record Unchanged() implements SnapshotSaveOutcome {
         }
     }
 }

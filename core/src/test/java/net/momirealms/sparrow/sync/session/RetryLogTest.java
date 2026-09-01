@@ -89,7 +89,7 @@ class RetryLogTest {
                 .cause(SaveCause.DISCONNECT)
                 .server("test")
                 .build();
-        return SaveAttempt.first(new Snapshot(meta, Map.of()), "TestPlayer", maxRetries, 0L, null);
+        return SaveAttempt.first(new Snapshot(meta, Map.of()), "TestPlayer", maxRetries, 0L);
     }
 
     private static final class RecordingLogger implements PluginLogger {
