@@ -473,7 +473,7 @@ public class SparrowSync implements Plugin {
                 while ((entry = zis.getNextEntry()) != null) {
                     String entryName = entry.getName();
                     if (!entryName.endsWith(".class")) continue;
-                    if (entryName.startsWith("net/momirealms/sparrow/sync/proxy/PlayerDataStorageReplacement")) continue;
+                    if (entryName.startsWith("net/momirealms/sparrow/sync/proxy/minecraft/world/level/storage/PlayerDataStoragePatch")) continue;
                     String className = entryName.replace('/', '.').substring(0, entryName.length() - 6);
                     try {
                         Class.forName(className);

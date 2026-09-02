@@ -1,5 +1,10 @@
+plugins {
+    id("io.papermc.paperweight.userdev")
+}
+
 dependencies {
-    compileOnly(libs.paper.api)
+    paperweight.paperDevBundle("1.21.10-R0.1-SNAPSHOT")
+
     compileOnly(libs.datafixerupper)
     implementation(libs.sparrow.reflection)
 }

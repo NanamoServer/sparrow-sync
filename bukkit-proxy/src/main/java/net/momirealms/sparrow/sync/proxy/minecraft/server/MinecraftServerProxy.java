@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.sync.proxy.minecraft.server;
 
+import com.mojang.datafixers.DataFixer;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
@@ -13,4 +15,10 @@ public interface MinecraftServerProxy {
 
     @MethodInvoker(name = "getPlayerList")
     Object getPlayerList(Object target);
+
+    @FieldGetter(name = "storageSource")
+    Object getStorageSource(Object target);
+
+    @MethodInvoker(name = "getFixerUpper")
+    DataFixer getFixerUpper(Object target);
 }
