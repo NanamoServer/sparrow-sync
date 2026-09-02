@@ -98,7 +98,6 @@ log.sync.save_pending_retry: '<arg:0> 的快照暂时存不进数据库（已尝
 log.sync.save_retries_exhausted: '<arg:0> 的快照（<arg:1>）重试 <arg:2> 次仍没存进数据库，改为保存到本地'
 log.sync.save_needs_attention: '<arg:0> 的快照（<arg:1>）无法写入数据库且重试无用（第 <arg:2> 次尝试），请查看上方的错误详情'
 log.sync.save_cancelled_by_event: '<arg:0> 的快照 <arg:2>（<arg:1>）被 SnapshotSaveEvent 监听器取消'
-log.sync.save_reentrant_rejected: '拒绝了 <arg:0> 的重入快照保存（<arg:1>）：<arg:4> / <arg:5> 在处理 <arg:2> 的 SnapshotSaveEvent（<arg:3>）时再次发起了保存。如确实需要再次保存，请在 event.completion() 完成后重新调度'
 log.sync.save_skipped_unsynced: '<arg:0> 在数据应用完成前就退出了，跳过保存以免覆盖历史快照'
 log.sync.rotate_failed: '清理 <arg:0> 的历史快照时发生错误'
 log.sync.applied: '已向 <arg:0> 应用快照（一共 <arg:1> 种数据，失败跳过 <arg:2> 种非关键数据，异步读取花费 <arg:3> 毫秒，同步应用花费 <arg:4> 毫秒）'

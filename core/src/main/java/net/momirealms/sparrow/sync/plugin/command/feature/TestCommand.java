@@ -316,7 +316,7 @@ public final class TestCommand extends BukkitCommandFeature {
         if (target == null || service == null) return;
         target.getScheduler().run(plugin().javaPlugin(), task -> {
             long start = System.nanoTime();
-            service.captureAndSave(target, SaveCause.COMMAND).whenComplete((result, throwable) -> {
+            service.captureAndSubmit(target, SaveCause.COMMAND).whenComplete((result, throwable) -> {
                 if (throwable != null) {
                     send(sender, "[FAIL] save: " + throwable, false);
                     return;
@@ -358,7 +358,7 @@ public final class TestCommand extends BukkitCommandFeature {
         target.getScheduler().run(plugin().javaPlugin(), task -> {
             List<CompletableFuture<SnapshotSaveOutcome>> saves = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
-                saves.add(service.captureAndSave(target, SaveCause.COMMAND));
+                saves.add(service.captureAndSubmit(target, SaveCause.COMMAND));
             }
             CompletableFuture.allOf(saves.toArray(CompletableFuture[]::new)).whenComplete((ignored, allThrowable) -> {
                 int saved = 0;

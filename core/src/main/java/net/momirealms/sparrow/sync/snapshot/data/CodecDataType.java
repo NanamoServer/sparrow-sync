@@ -76,7 +76,7 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
     }
 
     /**
-     * 从玩家身上读出值对象.
+     * 从玩家身上读出脱离值, 线程契约与 {@link PlayerDataType#capture(Player)} 相同.
      */
     @NotNull
     protected abstract T captureValue(@NotNull Player player);

@@ -37,7 +37,6 @@ import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
-import net.momirealms.sparrow.sync.trigger.SnapshotSaveTrigger;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.session.SnapshotStash;
@@ -103,7 +102,6 @@ public class SparrowSync implements Plugin {
     private final ServerHeartBeats serverHeartBeats;
     private final HandoffManager handoffManager;
     private final SessionManager sessionManager;
-    private final SnapshotSaveTrigger saveTrigger;
     private final LoginGate loginGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
@@ -150,7 +148,6 @@ public class SparrowSync implements Plugin {
         this.sessionManager = new SessionManager(this);
         this.handoffManager = new HandoffManager(this);
         this.loginGate = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7() ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
-        this.saveTrigger = new SnapshotSaveTrigger(this);
     }
 
     public static SparrowSync instance() {
@@ -279,8 +276,6 @@ public class SparrowSync implements Plugin {
         this.snapshotService.onDelayedEnable();
         // 会话管理器
         this.sessionManager.onDelayedEnable();
-        // 保存触发监听器
-        this.saveTrigger.onDelayedEnable();
         // 安装进入世界前的数据加载门
         this.loginGate.onDelayedEnable();
         // 预热和标记

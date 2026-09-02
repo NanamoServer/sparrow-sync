@@ -32,7 +32,7 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
         List<MobEffectInstance> effects = new ArrayList<>();
         for (MobEffectInstance instance : handle(player).getActiveEffects()) {
             if (instance.isAmbient()) continue;
-            effects.add(instance);
+            effects.add(copyOf(instance)); // todo 我觉得得分同步采集和异步采集2个方法, 不然同步采集也复制不好.
         }
         return effects;
     }
@@ -50,5 +50,19 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
     private static ServerPlayer handle(Player player) {
         return ((CraftPlayer) player).getHandle();
+    }
+
+    // 递归复制隐藏效果链, capture 返回后玩家身上的剩余时长仍会继续变化
+    private static MobEffectInstance copyOf(MobEffectInstance instance) {
+        MobEffectInstance hidden = instance.hiddenEffect;
+        return new MobEffectInstance(
+                instance.getEffect(),
+                instance.getDuration(),
+                instance.getAmplifier(),
+                instance.isAmbient(),
+                instance.isVisible(),
+                instance.showIcon(),
+                hidden == null ? null : copyOf(hidden)
+        );
     }
 }

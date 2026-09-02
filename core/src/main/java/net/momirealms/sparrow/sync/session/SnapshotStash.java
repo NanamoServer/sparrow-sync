@@ -143,7 +143,7 @@ public final class SnapshotStash {
     }
 
     // 列出待插回的文件并顺带清掉写到一半的临时文件.
-    // 文件名以玩家开头且时间定长, 排序即同玩家按采集时刻升序
+    // 文件名以玩家开头且时间定长, 排序即同玩家按逻辑时间戳升序
     private List<Path> listPendingFiles() {
         if (!Files.isDirectory(this.pendingDirectory)) return List.of();
         List<Path> files = new ArrayList<>();

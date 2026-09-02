@@ -22,7 +22,7 @@ public interface StorageProvider {
     // ---- 查询 ----
 
     /**
-     * 玩家采集时刻最晚的一份快照, 带数据体.
+     * 玩家逻辑时间戳最晚的一份快照, 带数据体.
      */
     @NotNull
     CompletableFuture<Optional<Snapshot>> latestSnapshot(@NotNull UUID player);
@@ -34,7 +34,7 @@ public interface StorageProvider {
     CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId);
 
     /**
-     * 按条件查询快照元数据, 采集时刻降序.
+     * 按条件查询快照元数据, 逻辑时间戳降序.
      */
     @NotNull
     CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query);
@@ -48,7 +48,7 @@ public interface StorageProvider {
     }
 
     /**
-     * 玩家采集时刻最晚的 limit 份快照元数据.
+     * 玩家逻辑时间戳最晚的 limit 份快照元数据.
      */
     @NotNull
     default CompletableFuture<List<SnapshotMeta>> listRecentSnapshots(@NotNull UUID player, int limit) {
@@ -65,7 +65,7 @@ public interface StorageProvider {
     }
 
     /**
-     * 玩家在某个采集时刻区间内的快照元数据, 两端都含.
+     * 玩家在某个逻辑时间戳区间内的快照元数据, 两端都含.
      */
     @NotNull
     default CompletableFuture<List<SnapshotMeta>> listSnapshotsBetween(@NotNull UUID player, long from, long to) {
@@ -91,7 +91,7 @@ public interface StorageProvider {
     }
 
     /**
-     * 轮转玩家的历史快照: 未固定的快照多于 maxUnpinned 时删除采集时刻最早的超量部分, 固定快照永不轮转.
+     * 轮转玩家的历史快照, 未固定的快照多于 maxUnpinned 时删除逻辑时间戳最早的超量部分, 固定快照永不轮转.
      *
      * @return 删除的快照数
      */
@@ -133,14 +133,14 @@ public interface StorageProvider {
 
     /** 快照写入结果. */
     enum SaveResult {
-        /** 落库, 且是该玩家目前采集时刻最晚的一份. 在线保存的正常结果. */
+        /** 落库, 且是该玩家目前逻辑时间戳最晚的一份. 在线保存的正常结果. */
         SAVED,
         /** 落库, 同 id 的快照已在库中, 本次写入是幂等重放, 未产生副本. */
         DUPLICATE,
         /**
-         * 落库, 但库里已存在采集时刻更晚的快照, 因此它落在历史中段.
+         * 落库, 但库里已存在逻辑时间戳更晚的快照, 因此它落在历史中段.
          * <p> 预期只有在启动时插回本地留存的快照期间出现本结果.
-         * <p> 如果在运行时出现了这个结果, 则代表: <strong>有人在本次采集之后为同一名玩家采集并写入了快照</strong>.
+         * <p> 如果在运行时出现了这个结果, 则代表: <strong>有人在本次请求之后为同一名玩家接纳并写入了快照</strong>.
          * <ul>
          *   <li>同一玩家出现第二个写方, 即会话锁失效 —— 误判死亡后的夺锁 (卡住的进程不是死掉的进程,
          *       探测区分不了), Redis 故障转移丢键, 或某条保存路径根本没走锁;</li>

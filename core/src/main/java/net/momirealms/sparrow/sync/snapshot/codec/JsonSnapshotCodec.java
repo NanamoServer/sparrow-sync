@@ -76,7 +76,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         }
     }
 
-    // JSON 字段还原成与二进制形态同构的树. id 与采集时刻是身份与定序依据必须在场,
+    // JSON 字段还原成与二进制形态同构的树. id 与逻辑时间戳是身份与定序依据必须在场,
     // cause 等其余元数据沿用树读取的宽容缺省; 手改坏的文件报错直接点名问题字段
     private static CompoundTag toTagTree(Document document) throws IOException {
         CompoundTag root = NBT.createCompound();

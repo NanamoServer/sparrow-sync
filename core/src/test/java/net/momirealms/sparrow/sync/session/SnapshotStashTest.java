@@ -160,7 +160,7 @@ class SnapshotStashTest {
     void samePlayerSnapshotsRestoreInCaptureOrder() throws IOException {
         Snapshot earlier = snapshotAt(1_756_300_000_000L);
         Snapshot later = snapshotAt(1_756_300_999_000L);
-        // 故意倒序落盘, 插回顺序应由文件名里的采集时刻决定
+        // 故意倒序落盘, 插回顺序应由文件名里的逻辑时间戳决定
         stash.stash(later, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         stash.stash(earlier, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.SAVED_OUT_OF_ORDER);

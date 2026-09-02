@@ -4,6 +4,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
+import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -35,9 +36,9 @@ public final class SnapshotService {
     private SnapshotApplier snapshotApplier;
     private StorageProvider storage;
     private SnapshotStash snapshotStash;
+    private PlayerSerialExecutor playerExecutor;
 
-    private final ThreadLocal<SnapshotSaveEvent> dispatchingSaveEvent = new ThreadLocal<>();
-    private final ConcurrentHashMap<UUID, Long> lastCaptureAt = new ConcurrentHashMap<>();  // 每玩家上次分配的采集时间戳.
+    private final ConcurrentHashMap<UUID, Long> lastSnapshotAt = new ConcurrentHashMap<>();  // 每玩家上次分配的快照时间戳.
     private final ConcurrentHashMap<CompletableFuture<SnapshotSaveOutcome>, SaveAttempt> inflight = new ConcurrentHashMap<>();  // 尚未完成的保存任务, 关服清算用.
 
     public SnapshotService(@NotNull SparrowSync plugin) {
@@ -60,6 +61,7 @@ public final class SnapshotService {
         this.snapshotApplier = this.plugin.snapshotApplier();
         this.storage = this.plugin.storageProvider();
         this.snapshotStash = this.plugin.snapshotStash();
+        this.playerExecutor = this.plugin.playerExecutor();
     }
 
     /** 冻结数据类型注册表并编译固定槽位. */
@@ -170,45 +172,71 @@ public final class SnapshotService {
     }
 
     /**
-     * 采集玩家当前状态并投递落库.
-     * <strong>必须在玩家线程上调用</strong>.
+     * 在调用线程立即采集玩家状态, 再把编码和保存阶段提交到玩家串行线程.
+     * <strong>调用线程必须允许读取玩家状态</strong>.
      */
     @NotNull
-    public CompletableFuture<SnapshotSaveOutcome> captureAndSave(@NotNull Player player, @NotNull SaveCause cause) {
-        if (this.rejectIfDispatchingSaveEvent(player, cause))
-            return CompletableFuture.completedFuture(new SnapshotSaveOutcome.ReentrantRejected());
-        long captureStart = System.nanoTime();
-        // 关键数据采集不出来时不产出快照.
+    public CompletableFuture<SnapshotSaveOutcome> captureAndSubmit(@NotNull Player player, @NotNull SaveCause cause) {
+        return this.captureAndSubmitAccepted(player, cause);
+    }
+
+    /**
+     * 把玩家采集、编码和保存阶段一起提交到玩家串行线程.
+     */
+    @NotNull
+    public CompletableFuture<SnapshotSaveOutcome> submitDeferredCapture(@NotNull Player player, @NotNull SaveCause cause) {
+        return this.submitDeferredCaptureAccepted(player, cause);
+    }
+
+    // SessionManager 已完成接纳检查, 这里立即取得目标状态并提交后续阶段
+    @NotNull
+    CompletableFuture<SnapshotSaveOutcome> captureAndSubmitAccepted(@NotNull Player player, @NotNull SaveCause cause) {
+        SaveRequest request = this.requestOf(player, cause);
         if (!(this.snapshotApplier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
         }
-        if (!(this.snapshotApplier.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
-            return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be encoded"));
-        }
-        // 发布事件
-        PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
-        Map<DataKey, Tag> passthrough = session == null ? Map.of() : session.passthroughData();
-        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), mergeCapturedData(passthrough, encoded.data()));
         CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
-        SnapshotSaveEvent event = new SnapshotSaveEvent(player, snapshot, outcome.minimalCompletionStage());
-        this.dispatchingSaveEvent.set(event);
+        this.enqueue(request.meta().player(), () -> this.encodeAndSave(request, captured, outcome), outcome);
+        return outcome;
+    }
+
+    // SessionManager 已完成接纳检查, capture 与后续阶段在同一个玩家任务内执行
+    @NotNull
+    CompletableFuture<SnapshotSaveOutcome> submitDeferredCaptureAccepted(@NotNull Player player, @NotNull SaveCause cause) {
+        SaveRequest request = this.requestOf(player, cause);
+        CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
+        this.enqueue(request.meta().player(), () -> {
+            if (!(this.snapshotApplier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
+                outcome.completeExceptionally(new IllegalStateException("critical data of " + request.playerName() + " could not be captured"));
+                return;
+            }
+            this.encodeAndSave(request, captured, outcome);
+        }, outcome);
+        return outcome;
+    }
+
+    // 保存任务到这里已经持有脱离 Player 的采集值
+    private void encodeAndSave(SaveRequest request, SnapshotApplier.CaptureResult.Ready captured, CompletableFuture<SnapshotSaveOutcome> outcome) {
+        if (!(this.snapshotApplier.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+            outcome.completeExceptionally(new IllegalStateException("critical data of " + request.playerName() + " could not be encoded"));
+            return;
+        }
+        Snapshot snapshot = new Snapshot(request.meta(), mergeCapturedData(request.passthrough(), encoded.data()));
+        SnapshotSaveEvent event = new SnapshotSaveEvent(request.playerName(), snapshot, outcome.minimalCompletionStage());
         try {
             if (EventUtils.fireAndCheckCancel(event)) {
-                this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, player.getName(), cause.name(), snapshot.meta().id().toString());
+                this.logger.file(LogCategory.SAVE, request.meta().player(), request.playerName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, request.playerName(), request.meta().cause().name(), request.meta().id().toString());
                 outcome.complete(new SnapshotSaveOutcome.Cancelled());
-                return outcome;
+                return;
             }
         } catch (RuntimeException | Error throwable) {
             outcome.completeExceptionally(throwable);
             throw throwable;
-        } finally {
-            this.dispatchingSaveEvent.remove();
         }
 
-        // 采集完成, 发起落库请求
         try {
-            this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_STARTED, player.getName(), cause.name(), snapshot.meta().id().toString());
-            SaveAttempt attempt = SaveAttempt.first(snapshot, player.getName(), PluginConfig.synchronization$maxSaveRetries(), captureStart);
+            this.logger.file(LogCategory.SAVE, request.meta().player(), request.playerName(), LogConstants.SYNC_SAVE_STARTED, request.playerName(), request.meta().cause().name(), request.meta().id().toString());
+            SaveAttempt attempt = SaveAttempt.first(snapshot, request.playerName(), PluginConfig.synchronization$maxSaveRetries(), request.requestStart());
             this.inflight.put(outcome, attempt);
             outcome.whenComplete((result, throwable) -> this.inflight.remove(outcome));
             this.submitSave(attempt, outcome);
@@ -216,7 +244,30 @@ public final class SnapshotService {
             outcome.completeExceptionally(throwable);
             throw throwable;
         }
-        return outcome;
+    }
+
+    // 同一玩家的保存阶段只由 PlayerSerialExecutor 执行, 异常同时交给 Future 与执行器边界
+    private void enqueue(UUID player, Runnable task, CompletableFuture<SnapshotSaveOutcome> outcome) {
+        try {
+            this.playerExecutor.submit(player, () -> {
+                try {
+                    task.run();
+                } catch (RuntimeException | Error throwable) {
+                    outcome.completeExceptionally(throwable);
+                    throw throwable;
+                }
+            });
+        } catch (RejectedExecutionException exception) {
+            outcome.completeExceptionally(exception);
+        }
+    }
+
+    @NotNull
+    private SaveRequest requestOf(@NotNull Player player, @NotNull SaveCause cause) {
+        long requestStart = System.nanoTime();
+        PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
+        Map<DataKey, Tag> passthrough = session == null ? Map.of() : session.passthroughData();
+        return new SaveRequest(this.metaOf(player, cause), player.getName(), passthrough, requestStart);
     }
 
     // 将未加载的和采集的 Data 进行合并, 当前已启用类型的采集值优先, 同名旧值不盖回玩家刚产生的新状态.
@@ -227,26 +278,6 @@ public final class SnapshotService {
         merged.putAll(passthrough);
         merged.putAll(captured);
         return merged;
-    }
-
-    // SnapshotSaveEvent 处理期间再次保存会形成同步递归, 这里统一拒绝并尽量定位责任监听器.
-    boolean rejectIfDispatchingSaveEvent(@NotNull Player player, @NotNull SaveCause cause) {
-        SnapshotSaveEvent event = this.dispatchingSaveEvent.get();
-        if (event == null) return false;
-        EventUtils.ListenerCallSite callSite = EventUtils.findListenerCallSite(event);
-        this.logger.warn(
-                LogCategory.SAVE,
-                player.getUniqueId(),
-                player.getName(),
-                LogConstants.SYNC_SAVE_REENTRANT_REJECTED,
-                player.getName(),
-                cause.name(),
-                event.getPlayer().getName(),
-                event.snapshot().meta().cause().name(),
-                callSite.plugin(),
-                callSite.listener()
-        );
-        return true;
     }
 
     // 提交落库请求, 落库失败且可重试时把同一份快照排到该玩家队列的队尾, 直到写进去, 用完重试次数, 或者遇上重试解决不了的失败.
@@ -270,7 +301,7 @@ public final class SnapshotService {
             SaveResult result = saved.result();
             // 已保存, 记录日志并轮转快照
             if (result.stored()) {
-                this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.captureStart(), submitAt), millis(submitAt, System.nanoTime()));
+                this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.requestStart(), submitAt), millis(submitAt, System.nanoTime()));
                 this.rotate(attempt.snapshot().meta().player(), attempt.playerName());
                 outcome.complete(new SnapshotSaveOutcome.Completed(result));
                 return;
@@ -346,9 +377,9 @@ public final class SnapshotService {
                 .build();
     }
 
-    // 分配采集时间戳.
+    // 保存请求被接纳时分配逻辑时间戳, 并发调用通过 merge 保持同玩家严格递增
     private long nextTimestamp(UUID player) {
-        return this.lastCaptureAt.merge(player, System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
+        return this.lastSnapshotAt.merge(player, System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
     }
 
     /**
@@ -374,15 +405,15 @@ public final class SnapshotService {
      * @param number     第几次尝试, 从 1 开始
      * @param maxRetries 首次失败后还能重排队尾几次, -1 表示一直重试到数据库回来
      */
-    record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureStart) {
+    record SaveAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long requestStart) {
         private static final int FREE_ATTEMPTS = 5;     // 前几次不等, 抖动和主从切换通常几十毫秒就过去了
         private static final long COOLDOWN_STEP_MILLIS = 100;
         private static final long MAX_COOLDOWN_MILLIS = 1000;
         private static final int LOG_INTERVAL = 10;
 
         @NotNull
-        static SaveAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureStart) {
-            return new SaveAttempt(snapshot, playerName, 1, maxRetries, captureStart);
+        static SaveAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long requestStart) {
+            return new SaveAttempt(snapshot, playerName, 1, maxRetries, requestStart);
         }
 
         @NotNull
@@ -415,8 +446,11 @@ public final class SnapshotService {
 
         @NotNull
         SaveAttempt next() {
-            return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureStart);
+            return new SaveAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.requestStart);
         }
+    }
+
+    private record SaveRequest(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> passthrough, long requestStart) {
     }
 
     /** 一次读取预解码的结果, 配置阶段产出, 应用段消费. */
@@ -466,8 +500,5 @@ public final class SnapshotService {
         record Cancelled() implements SnapshotSaveOutcome {
         }
 
-        /** 事件监听器在处理保存事件期间再次发起保存, 本次请求已被拒绝. */
-        record ReentrantRejected() implements SnapshotSaveOutcome {
-        }
     }
 }

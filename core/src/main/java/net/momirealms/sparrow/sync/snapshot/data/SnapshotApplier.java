@@ -45,9 +45,7 @@ public final class SnapshotApplier {
         return this.dataRegistry.applyOrder();
     }
 
-    /**
-     * 采集玩家全部已装配类型的数据, <strong>必须在玩家线程上调用</strong>.
-     */
+    /** 采集玩家全部已装配类型的脱离值. */
     @NotNull
     public CaptureResult capture(@NotNull Player player) {
         int size = this.dataRegistry.size();

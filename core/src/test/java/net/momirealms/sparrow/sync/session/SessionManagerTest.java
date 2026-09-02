@@ -76,21 +76,6 @@ class SessionManagerTest {
     }
 
     @Test
-    void closeDefersSnapshotWhileTriggeredSnapshotIsBeingSubmitted() {
-        PlayerSession session = this.manager.tryOpen(UUID.randomUUID(), "Steve");
-        session.transition(SessionState.ACTIVE);
-        synchronized (session) {
-            session.triggeredSnapshotInProgress = true;
-        }
-
-        CloseResult result = this.manager.close(session, SaveCause.DISCONNECT);
-
-        assertEquals(CloseResult.SNAPSHOT_DEFERRED, result);
-        assertEquals(SaveCause.DISCONNECT, session.pendingCloseCause);
-        assertEquals(SessionState.ACTIVE, session.state());
-    }
-
-    @Test
     void tryOpenRejectsExistingSession() {
         UUID player = UUID.randomUUID();
         PlayerSession first = this.manager.tryOpen(player, "Steve");

@@ -66,11 +66,7 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
         // 清理旧监听与进度, 再装入完整快照
-        if (VersionHelper.isOrAbove26_2()) {
-            proxy.clearTriggers(playerAdvancements);
-        } else {
-            proxy.stopListening(playerAdvancements);
-        }
+        proxy.clearTriggers(playerAdvancements); // todo 这方式真不行, 太慢了, 而且10个玩家你在全局去清理注册10次? 这不行, 需要改进方案.
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
         Set<Object> changed = proxy.getProgressChanged(playerAdvancements);
         progressByAdvancement.clear();

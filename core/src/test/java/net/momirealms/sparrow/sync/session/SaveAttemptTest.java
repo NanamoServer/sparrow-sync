@@ -70,7 +70,7 @@ class SaveAttemptTest {
 
         assertEquals(first.snapshot(), second.snapshot());
         assertEquals(first.maxRetries(), second.maxRetries());
-        assertEquals(first.captureStart(), second.captureStart());
+        assertEquals(first.requestStart(), second.requestStart());
         assertEquals(first.number() + 1, second.number());
     }
 

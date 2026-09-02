@@ -38,16 +38,17 @@ class SnapshotEventTest {
     void snapshotSaveEventCarriesSnapshotAndCancellation() {
         CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
         CompletionStage<SnapshotSaveOutcome> completion = outcome.minimalCompletionStage();
-        SnapshotSaveEvent event = new SnapshotSaveEvent(this.player, this.snapshot, completion);
+        SnapshotSaveEvent event = new SnapshotSaveEvent("EventPlayer", this.snapshot, completion);
 
-        assertSame(this.player, event.getPlayer());
+        assertEquals("EventPlayer", event.playerName());
         assertSame(this.snapshot, event.snapshot());
         assertSame(completion, event.completion());
+        assertTrue(event.isAsynchronous());
         assertFalse(event.isCancelled());
         event.setCancelled(true);
         assertTrue(event.isCancelled());
         assertSame(SnapshotSaveEvent.getHandlerList(), event.getHandlers());
-        event.completion().toCompletableFuture().complete(new SnapshotSaveOutcome.ReentrantRejected());
+        event.completion().toCompletableFuture().complete(new SnapshotSaveOutcome.Cancelled());
         assertFalse(outcome.isDone());
         outcome.complete(new SnapshotSaveOutcome.Cancelled());
         assertTrue(event.completion().toCompletableFuture().join() instanceof SnapshotSaveOutcome.Cancelled);

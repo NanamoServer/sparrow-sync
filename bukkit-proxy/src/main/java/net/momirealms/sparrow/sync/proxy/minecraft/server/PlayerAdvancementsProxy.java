@@ -19,10 +19,7 @@ public interface PlayerAdvancementsProxy {
     @FieldGetter(name = "progressChanged")
     Set<Object> getProgressChanged(Object target);
 
-    @MethodInvoker(name = "stopListening", activeIf = "max_version=26.1.2")
-    void stopListening(Object target);
-
-    @MethodInvoker(name = "clearTriggers", activeIf = "min_version=26.2")
+    @MethodInvoker(name = {"clearTriggers", "stopListening"})
     void clearTriggers(Object target);
 
     @MethodInvoker(name = "markForVisibilityUpdate")

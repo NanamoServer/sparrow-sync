@@ -8,8 +8,8 @@ import java.util.UUID;
  * 快照的查询条件.
  *
  * @param player  目标玩家, 唯一必填项
- * @param from    采集时刻下界, 含; {@link #UNBOUNDED_FROM} 表示不限
- * @param to      采集时刻上界, 含; {@link #UNBOUNDED_TO} 表示不限
+ * @param from    逻辑时间戳下界, 含; {@link #UNBOUNDED_FROM} 表示不限
+ * @param to      逻辑时间戳上界, 含; {@link #UNBOUNDED_TO} 表示不限
  * @param pinned  固定状态筛选
  * @param limit   最多返回几条; {@link #NO_LIMIT} 表示不限
  */
