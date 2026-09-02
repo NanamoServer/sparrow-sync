@@ -23,6 +23,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class DataRegistry {
     private final Map<DataKey, PlayerDataType<?>> types = new ConcurrentHashMap<>();
+    private DataKey[] orderedKeys = new DataKey[0];
+    private PlayerDataType<?>[] orderedTypes = new PlayerDataType<?>[0];
+    private Map<DataKey, Integer> slots = Map.of();
+    private List<DataKey> applyOrder = List.of();
     private volatile boolean frozen;
 
     /**
@@ -41,6 +45,23 @@ public final class DataRegistry {
     }
 
     public void freeze() {
+        if (this.frozen) return;
+
+        List<DataKey> order = this.buildApplyOrder();
+        int size = order.size();
+        DataKey[] keys = new DataKey[size];
+        PlayerDataType<?>[] types = new PlayerDataType<?>[size];
+        Map<DataKey, Integer> slots = new HashMap<>(size);
+        for (int i = 0; i < size; i++) {
+            DataKey key = order.get(i);
+            keys[i] = key;
+            types[i] = this.types.get(key);
+            slots.put(key, i);
+        }
+        this.orderedKeys = keys;
+        this.orderedTypes = types;
+        this.slots = Map.copyOf(slots);
+        this.applyOrder = List.copyOf(order);
         this.frozen = true;
     }
 
@@ -60,7 +81,43 @@ public final class DataRegistry {
     /** 全部已注册数据类型的只读视图. */
     @NotNull
     public Collection<PlayerDataType<?>> types() {
+        if (this.frozen) {
+            return List.of(this.orderedTypes);
+        }
         return Collections.unmodifiableCollection(this.types.values());
+    }
+
+    /** 冻结布局中的数据类型数量. */
+    public int size() {
+        return this.frozen ? this.orderedTypes.length : this.types.size();
+    }
+
+    /**
+     * 返回冻结布局中指定槽位的数据标识.
+     *
+     * @param slot 拓扑顺序槽位
+     */
+    @NotNull
+    public DataKey keyAt(int slot) {
+        return this.orderedKeys[slot];
+    }
+
+    /**
+     * 返回冻结布局中指定槽位的数据类型.
+     *
+     * @param slot 拓扑顺序槽位
+     */
+    @NotNull
+    public PlayerDataType<?> typeAt(int slot) {
+        return this.orderedTypes[slot];
+    }
+
+    /**
+     * 查询数据标识在冻结布局中的槽位, 未注册时返回 {@code -1}.
+     */
+    public int slot(@NotNull DataKey key) {
+        Integer slot = this.slots.get(key);
+        return slot == null ? -1 : slot;
     }
 
     /**
@@ -71,6 +128,12 @@ public final class DataRegistry {
      */
     @NotNull
     public List<DataKey> applyOrder() {
+        if (this.frozen) return this.applyOrder;
+        return this.buildApplyOrder();
+    }
+
+    @NotNull
+    private List<DataKey> buildApplyOrder() {
         // 建图. 入度为已注册依赖数, 未注册的依赖直接忽略
         Map<DataKey, Integer> inDegree = new HashMap<>();
         Map<DataKey, List<DataKey>> dependents = new HashMap<>();

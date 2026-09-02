@@ -194,8 +194,8 @@ class SnapshotApplierTest {
     }
 
     @Test
-    void typesPreRegisteredInRegistryAreHarvested() {
-        // 模拟第三方在 onLoad 期注册的类型: 不在 builtin 集合里, 经注册表汇入装配
+    void freezeIncludesTypesRegisteredByThirdParties() {
+        // 模拟第三方在 onLoad 期注册的类型: 不在 builtin 集合里, 仍进入冻结槽位
         DataRegistry registry = new DataRegistry();
         FakeType thirdParty = new FakeType(BRAVO, StorageFormat.STRUCTURED);
         registry.register(thirdParty);
@@ -203,7 +203,6 @@ class SnapshotApplierTest {
         registry.register(builtin);
         SnapshotApplier applier = new SnapshotApplier(registry, this.logger);
         registry.freeze();
-        applier.onDelayedEnable();
 
         PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA, BRAVO)));
         applier.apply(this.player, prepared);
@@ -232,7 +231,6 @@ class SnapshotApplierTest {
         }
         SnapshotApplier applier = new SnapshotApplier(registry, this.logger);
         registry.freeze();
-        applier.onDelayedEnable();
         return applier;
     }
 

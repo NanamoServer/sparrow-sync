@@ -21,8 +21,8 @@ class PDCDataTypeTest {
             "sparrow-sync-ignore",
             List.of("sparrow-sync", "ignore")
     ));
-    private static final Method CAPTURE_COMPOUND = declaredMethod("captureCompound", Iterable.class, PDCMergeBlacklist.class);
-    private static final Method MERGE_COMPOUND = declaredMethod("mergeCompound", net.minecraft.nbt.CompoundTag.class, CompoundTag.class, PDCMergeBlacklist.class);
+    private static final Method ENCODE_COMPOUND = declaredMethod("encodeCompound", Iterable.class, PDCMergeBlacklist.class);
+    private static final Method MERGE_COMPOUND = declaredMethod("mergeCompound", net.minecraft.nbt.CompoundTag.class, net.minecraft.nbt.CompoundTag.class, PDCMergeBlacklist.class);
 
     @Test
     void captureRemovesBlacklistedPathsWithoutMutatingRawData() {
@@ -36,7 +36,7 @@ class PDCDataTypeTest {
         sync.put("notIgnore", StringTag.valueOf("value"));
         raw.put("sparrow-sync", sync);
 
-        CompoundTag snapshot = captureCompound(raw, BLACKLIST);
+        CompoundTag snapshot = encodeCompound(raw, BLACKLIST);
         CompoundTag expected = NBT.createCompound();
         expected.putString("notignore", "value");
         CompoundTag expectedSync = NBT.createCompound();
@@ -57,7 +57,7 @@ class PDCDataTypeTest {
         raw.put("sparrow-sync", sync);
         PDCMergeBlacklist blacklist = PDCMergeBlacklist.of(List.of(List.of("sparrow-sync", "ignore")));
 
-        CompoundTag snapshot = captureCompound(raw, blacklist);
+        CompoundTag snapshot = encodeCompound(raw, blacklist);
 
         assertEquals("flat", snapshot.getString("sparrow-sync:ignore"));
         assertTrue(snapshot.getCompound("sparrow-sync").isEmpty());
@@ -75,11 +75,11 @@ class PDCDataTypeTest {
         localSync.put("localOnly", StringTag.valueOf("local-only"));
         raw.put("sparrow-sync", localSync);
 
-        CompoundTag snapshot = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag snapshot = new net.minecraft.nbt.CompoundTag();
         snapshot.putString("sparrow-sync-ignore", "remote-root");
-        CompoundTag remoteIgnored = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag remoteIgnored = new net.minecraft.nbt.CompoundTag();
         remoteIgnored.putString("key", "remote-key");
-        CompoundTag remoteSync = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag remoteSync = new net.minecraft.nbt.CompoundTag();
         remoteSync.put("ignore", remoteIgnored);
         remoteSync.putString("notIgnore", "new");
         remoteSync.putString("remoteOnly", "remote-only");
@@ -99,9 +99,9 @@ class PDCDataTypeTest {
     @Test
     void applyDoesNotRestoreMissingBlacklistedPathsFromOldSnapshot() {
         net.minecraft.nbt.CompoundTag raw = new net.minecraft.nbt.CompoundTag();
-        CompoundTag snapshot = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag snapshot = new net.minecraft.nbt.CompoundTag();
         snapshot.putString("sparrow-sync-ignore", "remote-root");
-        CompoundTag remoteSync = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag remoteSync = new net.minecraft.nbt.CompoundTag();
         remoteSync.putString("ignore", "remote-ignore");
         remoteSync.putString("notIgnore", "remote-value");
         snapshot.put("sparrow-sync", remoteSync);
@@ -121,7 +121,7 @@ class PDCDataTypeTest {
         localSync.put("ignore", StringTag.valueOf("local-ignore"));
         localSync.put("notIgnore", StringTag.valueOf("local-value"));
         raw.put("sparrow-sync", localSync);
-        CompoundTag snapshot = NBT.createCompound();
+        net.minecraft.nbt.CompoundTag snapshot = new net.minecraft.nbt.CompoundTag();
         snapshot.putString("sparrow-sync", "remote-scalar");
 
         mergeCompound(raw, snapshot, BLACKLIST);
@@ -135,15 +135,15 @@ class PDCDataTypeTest {
         return assertInstanceOf(StringTag.class, tag).value();
     }
 
-    private static CompoundTag captureCompound(Map<String, net.minecraft.nbt.Tag> raw, PDCMergeBlacklist blacklist) {
+    private static CompoundTag encodeCompound(Map<String, net.minecraft.nbt.Tag> raw, PDCMergeBlacklist blacklist) {
         try {
-            return (CompoundTag) CAPTURE_COMPOUND.invoke(null, raw.entrySet(), blacklist);
+            return (CompoundTag) ENCODE_COMPOUND.invoke(null, raw.entrySet(), blacklist);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }
     }
 
-    private static void mergeCompound(net.minecraft.nbt.CompoundTag raw, CompoundTag snapshot, PDCMergeBlacklist blacklist) {
+    private static void mergeCompound(net.minecraft.nbt.CompoundTag raw, net.minecraft.nbt.CompoundTag snapshot, PDCMergeBlacklist blacklist) {
         try {
             MERGE_COMPOUND.invoke(null, raw, snapshot, blacklist);
         } catch (ReflectiveOperationException exception) {

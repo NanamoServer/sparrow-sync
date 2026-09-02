@@ -23,9 +23,6 @@ public final class SnapshotApplier {
     private SyncLogger logger;
     private DataRegistry dataRegistry;
 
-    private Map<DataKey, PlayerDataType<?>> types;
-    private List<DataKey> applyOrder;
-
     public SnapshotApplier(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
     }
@@ -34,9 +31,6 @@ public final class SnapshotApplier {
         this.plugin = null;
         this.logger = logger;
         this.dataRegistry = dataRegistry;
-        if (dataRegistry.frozen()) {
-            throw new IllegalStateException("data registry is already frozen, snapshot applier is assembled once per registry");
-        }
     }
 
     /** 绑定数据类型注册表与日志出口. */
@@ -45,20 +39,10 @@ public final class SnapshotApplier {
         this.logger = this.plugin.logger();
     }
 
-    /** 按冻结后的注册表装配数据类型与应用顺序. */
-    public void onDelayedEnable() {
-        Map<DataKey, PlayerDataType<?>> byKey = new LinkedHashMap<>();
-        for (PlayerDataType<?> type : this.dataRegistry.types()) {
-            byKey.put(type.key(), type);
-        }
-        this.types = byKey;
-        this.applyOrder = List.copyOf(this.dataRegistry.applyOrder());
-    }
-
     /** 返回启动期固定的数据应用顺序. */
     @NotNull
     public List<DataKey> applyOrder() {
-        return this.applyOrder;
+        return this.dataRegistry.applyOrder();
     }
 
     /**
@@ -66,14 +50,14 @@ public final class SnapshotApplier {
      */
     @NotNull
     public CaptureResult capture(@NotNull Player player) {
-        Map<DataKey, Object> values = new LinkedHashMap<>();
+        int size = this.dataRegistry.size();
+        Object[] values = new Object[size];
         List<DataKey> skipped = new ArrayList<>();
-        int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
-            DataKey key = this.applyOrder.get(i);
-            PlayerDataType<?> type = this.types.get(key);
+            DataKey key = this.dataRegistry.keyAt(i);
+            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
             try {
-                values.put(key, type.capture(player));
+                values[i] = type.capture(player);
             } catch (Throwable throwable) {
                 // 关键类型采集失败则丢弃整份快照.
                 if (type.critical()) {
@@ -85,7 +69,7 @@ public final class SnapshotApplier {
                 this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName());
             }
         }
-        return new CaptureResult.Ready(player.getUniqueId(), player.getName(), values, skipped);
+        return new CaptureResult.Ready(player.getUniqueId(), player.getName(), this.dataRegistry, values, skipped);
     }
 
     /**
@@ -93,16 +77,16 @@ public final class SnapshotApplier {
      */
     @NotNull
     public EncodeResult encode(@NotNull CaptureResult.Ready captured) {
-        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        int size = this.dataRegistry.size();
+        Tag[] tags = new Tag[size];
         List<DataKey> skipped = new ArrayList<>(captured.skipped());
-        int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
-            DataKey key = this.applyOrder.get(i);
-            Object value = captured.values().get(key);
+            Object value = captured.values[i];
             if (value == null) continue;
-            PlayerDataType<?> type = this.types.get(key);
+            DataKey key = this.dataRegistry.keyAt(i);
+            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
             try {
-                data.put(key, encodeValue(type, value));
+                tags[i] = encodeValue(type, value);
             } catch (Throwable throwable) {
                 if (type.critical()) {
                     this.logger.error(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_FAILED, key.asString(), captured.playerName());
@@ -112,7 +96,8 @@ public final class SnapshotApplier {
                 this.logger.warn(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_SKIPPED, key.asString(), captured.playerName());
             }
         }
-        return new EncodeResult.Ready(data, skipped);
+
+        return new EncodeResult.Ready(this.dataRegistry, tags, skipped);
     }
 
     /**
@@ -120,23 +105,29 @@ public final class SnapshotApplier {
      */
     @NotNull
     public PreparedSnapshot prepare(@NotNull Snapshot snapshot) {
-        Map<DataKey, Object> values = new LinkedHashMap<>();
-        Map<DataKey, Tag> passthrough = new LinkedHashMap<>();
-        List<DataKey> skipped = new ArrayList<>();
+        int size = this.dataRegistry.size();
+        Tag[] tags = new Tag[size];
+        Map<DataKey, Tag> passthrough = null;
         for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
-            if (!this.types.containsKey(entry.getKey())) {
+            int slot = this.dataRegistry.slot(entry.getKey());
+            if (slot < 0) {
+                if (passthrough == null) passthrough = new LinkedHashMap<>();
                 passthrough.put(entry.getKey(), entry.getValue());
+            } else {
+                tags[slot] = entry.getValue();
             }
         }
+
+        Object[] values = new Object[size];
+        List<DataKey> skipped = new ArrayList<>();
         int mcDataVersion = snapshot.meta().mcDataVersion();
-        int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
-            DataKey key = this.applyOrder.get(i);
-            Tag data = snapshot.data(key);
+            Tag data = tags[i];
             if (data == null) continue;
-            PlayerDataType<?> type = this.types.get(key);
+            DataKey key = this.dataRegistry.keyAt(i);
+            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
             try {
-                values.put(key, type.decode(data, mcDataVersion));
+                values[i] = type.decode(data, mcDataVersion);
             } catch (Throwable exception) {
                 if (type.critical()) {
                     return new PreparedSnapshot.Failed(key, String.valueOf(exception.getMessage()));
@@ -145,7 +136,42 @@ public final class SnapshotApplier {
                 this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
             }
         }
-        return new PreparedSnapshot.Ready(values, skipped, passthrough);
+        return new PreparedSnapshot.Ready(this.dataRegistry, values, skipped, passthrough == null ? Map.of() : passthrough);
+    }
+
+    /**
+     * 将公开预应用事件修改后的 Map 收回冻结布局, 未注册键与 null 值会被丢弃.
+     */
+    @NotNull
+    public PreparedSnapshot.Ready afterEvent(@NotNull Map<DataKey, Object> decoded, @NotNull PreparedSnapshot.Ready before) {
+        int size = this.dataRegistry.size();
+        boolean[] allowed = new boolean[size];
+        for (int i = 0; i < size; i++) {
+            allowed[i] = before.values[i] != null;
+        }
+        int skippedSize = before.skipped().size();
+        for (int i = 0; i < skippedSize; i++) {
+            int slot = this.dataRegistry.slot(before.skipped().get(i));
+            if (slot >= 0) allowed[slot] = true;
+        }
+
+        Object[] values = new Object[size];
+        for (Map.Entry<DataKey, Object> entry : decoded.entrySet()) {
+            int slot = this.dataRegistry.slot(entry.getKey());
+            if (slot >= 0 && allowed[slot] && entry.getValue() != null) {
+                values[slot] = entry.getValue();
+            }
+        }
+
+        List<DataKey> skipped = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            if (before.values[i] != null && values[i] == null) skipped.add(this.dataRegistry.keyAt(i));
+        }
+        for (int i = 0; i < skippedSize; i++) {
+            DataKey key = before.skipped().get(i);
+            if (values[this.dataRegistry.slot(key)] == null) skipped.add(key);
+        }
+        return new PreparedSnapshot.Ready(this.dataRegistry, values, skipped, before.passthrough());
     }
 
     /**
@@ -155,12 +181,12 @@ public final class SnapshotApplier {
     public ApplyResult apply(@NotNull Player player, @NotNull PreparedSnapshot.Ready prepared) {
         List<DataKey> applied = new ArrayList<>();
         List<DataKey> skipped = new ArrayList<>(prepared.skipped());
-        int size = this.applyOrder.size();
+        int size = this.dataRegistry.size();
         for (int i = 0; i < size; i++) {
-            DataKey key = this.applyOrder.get(i);
-            Object value = prepared.values().get(key);
+            Object value = prepared.values[i];
             if (value == null) continue;
-            PlayerDataType<?> type = this.types.get(key);
+            DataKey key = this.dataRegistry.keyAt(i);
+            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
             try {
                 applyValue(type, player, value);
                 applied.add(key);
@@ -192,10 +218,45 @@ public final class SnapshotApplier {
     /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */
     public sealed interface CaptureResult {
 
-        record Ready(@NotNull UUID player, @NotNull String playerName, @NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped) implements CaptureResult {
-            public Ready {
-                values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
-                skipped = List.copyOf(skipped);
+        final class Ready implements CaptureResult {
+            private final UUID player;
+            private final String playerName;
+            private final DataRegistry dataRegistry;
+            private final Object[] values;
+            private final List<DataKey> skipped;
+
+            private Ready(UUID player, String playerName, DataRegistry dataRegistry, Object[] values, List<DataKey> skipped) {
+                this.player = player;
+                this.playerName = playerName;
+                this.dataRegistry = dataRegistry;
+                this.values = values;
+                this.skipped = List.copyOf(skipped);
+            }
+
+            @NotNull
+            public UUID player() {
+                return this.player;
+            }
+
+            @NotNull
+            public String playerName() {
+                return this.playerName;
+            }
+
+            /** 仅供诊断与扩展边界读取, 编码流程直接使用冻结槽位数组. */
+            @NotNull
+            public Map<DataKey, Object> values() {
+                Map<DataKey, Object> values = new LinkedHashMap<>(this.values.length);
+                for (int i = 0; i < this.values.length; i++) {
+                    Object value = this.values[i];
+                    if (value != null) values.put(this.dataRegistry.keyAt(i), value);
+                }
+                return Collections.unmodifiableMap(values);
+            }
+
+            @NotNull
+            public List<DataKey> skipped() {
+                return this.skipped;
             }
         }
 
@@ -206,10 +267,31 @@ public final class SnapshotApplier {
     /** 编码结果, Failed 表示关键类型无法编码, 这次不应产出快照. */
     public sealed interface EncodeResult {
 
-        record Ready(@NotNull Map<DataKey, Tag> data, @NotNull List<DataKey> skipped) implements EncodeResult {
-            public Ready {
-                data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
-                skipped = List.copyOf(skipped);
+        final class Ready implements EncodeResult {
+            private final DataRegistry dataRegistry;
+            private final Tag[] tags;
+            private final List<DataKey> skipped;
+
+            private Ready(DataRegistry dataRegistry, Tag[] tags, List<DataKey> skipped) {
+                this.dataRegistry = dataRegistry;
+                this.tags = tags;
+                this.skipped = List.copyOf(skipped);
+            }
+
+            /** 在 Snapshot 构造边界将编码槽位物化为 Map. */
+            @NotNull
+            public Map<DataKey, Tag> data() {
+                Map<DataKey, Tag> data = new LinkedHashMap<>(this.tags.length);
+                for (int i = 0; i < this.tags.length; i++) {
+                    Tag tag = this.tags[i];
+                    if (tag != null) data.put(this.dataRegistry.keyAt(i), tag);
+                }
+                return Collections.unmodifiableMap(data);
+            }
+
+            @NotNull
+            public List<DataKey> skipped() {
+                return this.skipped;
             }
         }
 
@@ -220,15 +302,38 @@ public final class SnapshotApplier {
     /** 预解码结果, Failed 表示关键类型解码失败, 整份快照不应被应用. */
     public sealed interface PreparedSnapshot {
 
-        record Ready(@NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped, @NotNull Map<DataKey, Tag> passthrough) implements PreparedSnapshot {
-            public Ready(@NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped) {
-                this(values, skipped, Map.of());
+        final class Ready implements PreparedSnapshot {
+            private final DataRegistry dataRegistry;
+            private final Object[] values;
+            private final List<DataKey> skipped;
+            private final Map<DataKey, Tag> passthrough;
+
+            private Ready(DataRegistry dataRegistry, Object[] values, List<DataKey> skipped, Map<DataKey, Tag> passthrough) {
+                this.dataRegistry = dataRegistry;
+                this.values = values;
+                this.skipped = List.copyOf(skipped);
+                this.passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
             }
 
-            public Ready {
-                values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
-                skipped = List.copyOf(skipped);
-                passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
+            /** 仅在 PreApplyEvent 等公开边界将冻结槽位重新物化为 Map. */
+            @NotNull
+            public Map<DataKey, Object> values() {
+                Map<DataKey, Object> values = new LinkedHashMap<>(this.values.length);
+                for (int i = 0; i < this.values.length; i++) {
+                    Object value = this.values[i];
+                    if (value != null) values.put(this.dataRegistry.keyAt(i), value);
+                }
+                return Collections.unmodifiableMap(values);
+            }
+
+            @NotNull
+            public List<DataKey> skipped() {
+                return this.skipped;
+            }
+
+            @NotNull
+            public Map<DataKey, Tag> passthrough() {
+                return this.passthrough;
             }
         }
 

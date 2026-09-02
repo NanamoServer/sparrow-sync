@@ -8,6 +8,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -99,5 +100,38 @@ class DataRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.register(new StubPlayerDataType(B, StorageFormat.STRUCTURED)));
         assertTrue(registry.frozen());
         assertTrue(registry.registered(A));
+    }
+
+    @Test
+    void freezeCompilesTopologicalSlotsOnce() {
+        DataRegistry registry = new DataRegistry();
+        StubPlayerDataType bravo = new StubPlayerDataType(B, StorageFormat.STRUCTURED, false, Set.of(A));
+        StubPlayerDataType alpha = new StubPlayerDataType(A, StorageFormat.STRUCTURED);
+        registry.register(bravo);
+        registry.register(alpha);
+
+        registry.freeze();
+
+        assertEquals(2, registry.size());
+        assertEquals(A, registry.keyAt(0));
+        assertEquals(B, registry.keyAt(1));
+        assertSame(alpha, registry.typeAt(0));
+        assertSame(bravo, registry.typeAt(1));
+        assertEquals(0, registry.slot(A));
+        assertEquals(1, registry.slot(B));
+        assertEquals(-1, registry.slot(C));
+        assertSame(registry.applyOrder(), registry.applyOrder());
+    }
+
+    @Test
+    void failedFreezeDoesNotPublishPartialLayout() {
+        DataRegistry registry = new DataRegistry();
+        registry.register(new StubPlayerDataType(A, StorageFormat.STRUCTURED, false, Set.of(B)));
+        registry.register(new StubPlayerDataType(B, StorageFormat.STRUCTURED, false, Set.of(A)));
+
+        assertThrows(IllegalStateException.class, registry::freeze);
+
+        assertFalse(registry.frozen());
+        assertEquals(-1, registry.slot(A));
     }
 }

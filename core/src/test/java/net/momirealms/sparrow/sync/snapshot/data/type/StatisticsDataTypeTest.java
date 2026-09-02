@@ -1,74 +1,93 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.stats.Stat;
+import net.minecraft.stats.Stats;
+import net.minecraft.stats.StatsCounter;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
+import net.momirealms.sparrow.sync.snapshot.data.type.StatisticsDataType.Statistics;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class StatisticsDataTypeTest {
 
-    @Test
-    void codecRoundTripsNamespacedStatistics() {
-        StatisticsDataType.Statistics value = new StatisticsDataType.Statistics(
-                Map.of(id("minecraft:play_time"), 1200),
-                Map.of(id("minecraft:mined"), Map.of(id("minecraft:stone"), 64)),
-                Map.of(id("minecraft:used"), Map.of(id("minecraft:diamond_pickaxe"), 12)),
-                Map.of(id("minecraft:killed"), Map.of(id("minecraft:zombie"), 5))
-        );
-
-        assertEquals(value, roundTrip(value));
+    @BeforeAll
+    static void bootstrapRegistries() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
     }
 
     @Test
-    void captureOmitsZeroValues() {
-        Map<Object, Integer> captured = StatisticsDataType.captureValues(
-                List.of("walk", "jump", "sleep"),
-                name -> id("test:" + name),
-                name -> switch (name) {
-                    case "walk" -> 14;
-                    case "jump" -> 0;
-                    case "sleep" -> 3;
-                    default -> throw new IllegalStateException();
-                }
+    void parallelArrayFormatRoundTripsSparseStatistics() throws IOException {
+        Stat<?> playTime = Stats.CUSTOM.get(Stats.PLAY_TIME);
+        Stat<?> stone = Stats.BLOCK_MINED.get(Blocks.STONE);
+        Stat<?> pickaxe = Stats.ITEM_USED.get(Items.DIAMOND_PICKAXE);
+        Stat<?> zombie = Stats.ENTITY_KILLED.get(EntityType.ZOMBIE);
+        Statistics expected = new Statistics(
+                new Stat<?>[]{playTime, stone, pickaxe, zombie},
+                new int[]{1200, 64, 12, 5}
         );
+        StatisticsDataType type = new StatisticsDataType();
 
-        assertEquals(Map.of(
-                id("test:walk"), 14,
-                id("test:sleep"), 3
-        ), captured);
+        Tag encoded = type.encode(expected);
+        Statistics decoded = type.decode(encoded, 0);
+
+        assertEquals(values(expected), values(decoded));
+        CompoundTag root = (CompoundTag) encoded;
+        ListTag types = root.getList("types");
+        ListTag statisticValues = root.getList("values");
+        assertEquals("minecraft:custom", types.getString(0));
+        assertEquals("minecraft:mined", types.getString(1));
+        assertEquals("minecraft:used", types.getString(2));
+        assertEquals("minecraft:killed", types.getString(3));
+        assertEquals("minecraft:play_time", statisticValues.getString(0));
+        assertEquals("minecraft:stone", statisticValues.getString(1));
+        assertEquals("minecraft:diamond_pickaxe", statisticValues.getString(2));
+        assertEquals("minecraft:zombie", statisticValues.getString(3));
+        assertArrayEquals(new int[]{1200, 64, 12, 5}, root.getIntArray("amounts"));
     }
 
     @Test
-    void applyWritesSnapshotAbsencesAsZero() {
-        Map<String, Integer> current = new LinkedHashMap<>(Map.of("walk", 2, "jump", 7, "sleep", 3));
+    void decodeRequiresParallelArrayFields() {
+        CompoundTag incompatible = NBT.createCompound();
+        incompatible.put("untyped", NBT.createCompound());
+        incompatible.put("blocks", NBT.createCompound());
+        incompatible.put("items", NBT.createCompound());
+        incompatible.put("entities", NBT.createCompound());
 
-        StatisticsDataType.applyComplete(
-                List.of("walk", "jump", "sleep"),
-                name -> id("test:" + name),
-                Map.of(
-                        id("test:walk"), 14,
-                        id("test:sleep"), 3
-                ),
-                current::get,
-                current::put
-        );
-
-        assertEquals(Map.of("walk", 14, "jump", 0, "sleep", 3), current);
+        assertThrows(IOException.class, () -> new StatisticsDataType().decode(incompatible, 0));
     }
 
-    private static Object id(String value) {
-        return IdentifierProxy.INSTANCE.tryParse(value);
+    @Test
+    void statsCounterProxyBindsSparseMap() {
+        assertNotNull(StatsCounterProxy.INSTANCE);
+        assertInstanceOf(Object2IntMap.class, StatsCounterProxy.INSTANCE.getStats(new StatsCounter()));
     }
 
-    private static StatisticsDataType.Statistics roundTrip(StatisticsDataType.Statistics value) {
-        return StatisticsDataType.Statistics.CODEC.parse(
-                NBTOps.INSTANCE,
-                StatisticsDataType.Statistics.CODEC.encodeStart(NBTOps.INSTANCE, value).getOrThrow()
-        ).getOrThrow();
+    private static Map<Stat<?>, Integer> values(Statistics statistics) {
+        Map<Stat<?>, Integer> values = new HashMap<>();
+        for (int i = 0; i < statistics.statistics().length; i++) {
+            values.put(statistics.statistics()[i], statistics.amounts()[i]);
+        }
+        return values;
     }
 }

@@ -1,196 +1,191 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
-import net.minecraft.stats.Stats;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.IntArrayTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.LinkedHashMap;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.function.ObjIntConsumer;
-import java.util.function.ToIntFunction;
 
-public final class StatisticsDataType extends CodecDataType<StatisticsDataType.Statistics> {
+/**
+ * 统计数据使用平行的类型、值与数量数组存储, 采集时直接复制原版同步稀疏表.
+ */
+public final class StatisticsDataType implements PlayerDataType<StatisticsDataType.Statistics> {
     public static final DataKey STATISTICS = DataKey.sparrow("statistics");
 
-    public StatisticsDataType() {
-        super(STATISTICS, StorageFormat.STRUCTURED, Statistics.CODEC);
+    private static final String TYPES_KEY = "types";
+    private static final String VALUES_KEY = "values";
+    private static final String AMOUNTS_KEY = "amounts";
+
+    @Override
+    @NotNull
+    public DataKey key() {
+        return STATISTICS;
     }
 
     @Override
     @NotNull
-    protected Statistics captureValue(@NotNull Player player) {
-        ServerStatsCounter counter = handle(player).getStats();
-        Map<Object, Integer> untyped = captureUntyped(counter);
-        Map<Object, Map<Object, Integer>> blocks = new LinkedHashMap<>();
-        Map<Object, Map<Object, Integer>> items = new LinkedHashMap<>();
-        Map<Object, Map<Object, Integer>> entities = new LinkedHashMap<>();
-        for (StatType<?> type : BuiltInRegistries.STAT_TYPE) {
-            if (type == Stats.CUSTOM) {
-                continue;
-            }
-            captureType(counter, type, typedTarget(type, blocks, items, entities));
-        }
-        return new Statistics(untyped, blocks, items, entities);
+    public StorageFormat storage() {
+        return StorageFormat.STRUCTURED;
     }
 
     @Override
-    protected void applyValue(@NotNull Player player, @NotNull Statistics value) {
-        ServerPlayer handle = handle(player);
-        ServerStatsCounter counter = handle.getStats();
-        applyUntyped(handle, counter, value.untyped());
-        for (StatType<?> type : BuiltInRegistries.STAT_TYPE) {
-            if (type == Stats.CUSTOM) {
+    @NotNull
+    public Statistics capture(@NotNull Player player) {
+        Object2IntMap<Stat<?>> values = stats(handle(player).getStats());
+        synchronized (values) {
+            int count = 0;
+            for (Object2IntMap.Entry<Stat<?>> entry : values.object2IntEntrySet()) {
+                if (entry.getIntValue() != 0) {
+                    count++;
+                }
+            }
+            Stat<?>[] statistics = new Stat<?>[count];
+            int[] amounts = new int[count];
+            int index = 0;
+            for (Object2IntMap.Entry<Stat<?>> entry : values.object2IntEntrySet()) {
+                int amount = entry.getIntValue();
+                if (amount == 0) {
+                    continue;
+                }
+                statistics[index] = entry.getKey();
+                amounts[index] = amount;
+                index++;
+            }
+            return new Statistics(statistics, amounts);
+        }
+    }
+
+    @Override
+    @NotNull
+    public Tag encode(@NotNull Statistics value) {
+        Stat<?>[] statistics = value.statistics();
+        int[] amounts = value.amounts();
+        ListTag types = NBT.createList();
+        ListTag values = NBT.createList();
+        for (int i = 0; i < statistics.length; i++) {
+            Stat<?> statistic = statistics[i];
+            StatType<?> type = statistic.getType();
+            types.add(NBT.createString(registryKey(BuiltInRegistries.STAT_TYPE, type).toString()));
+            values.add(NBT.createString(registryKey(type.getRegistry(), statistic.getValue()).toString()));
+        }
+        CompoundTag root = NBT.createCompound();
+        root.put(TYPES_KEY, types);
+        root.put(VALUES_KEY, values);
+        root.putIntArray(AMOUNTS_KEY, amounts);
+        return root;
+    }
+
+    @Override
+    @NotNull
+    public Statistics decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+        if (!(data instanceof CompoundTag root)
+                || !(root.get(TYPES_KEY) instanceof ListTag types)
+                || !(root.get(VALUES_KEY) instanceof ListTag values)
+                || !(root.get(AMOUNTS_KEY) instanceof IntArrayTag amountTag)) {
+            throw new IOException("statistics data is not a parallel array compound");
+        }
+        int[] storedAmounts = amountTag.value();
+        if (types.size() != values.size() || types.size() != storedAmounts.length) {
+            throw new IOException("statistics arrays have different lengths");
+        }
+
+        Stat<?>[] statistics = new Stat<?>[storedAmounts.length];
+        int[] amounts = new int[storedAmounts.length];
+        int count = 0;
+        for (int i = 0; i < storedAmounts.length; i++) {
+            String typeName = types.getString(i, null);
+            String valueName = values.getString(i, null);
+            Object typeKey = typeName == null ? null : IdentifierProxy.INSTANCE.tryParse(typeName);
+            Object valueKey = valueName == null ? null : IdentifierProxy.INSTANCE.tryParse(valueName);
+            if (typeKey == null || valueKey == null) {
+                throw new IOException("invalid statistic identifier at index " + i);
+            }
+            StatType<?> type = (StatType<?>) RegistryProxy.INSTANCE.getValue(BuiltInRegistries.STAT_TYPE, typeKey);
+            if (type == null) {
                 continue;
             }
-            applyType(handle, counter, type, typedTarget(type, value.blocks(), value.items(), value.entities()));
+            Object statValue = RegistryProxy.INSTANCE.getValue(type.getRegistry(), valueKey);
+            int amount = storedAmounts[i];
+            if (statValue == null || amount == 0) {
+                continue;
+            }
+            statistics[count] = statistic(type, statValue);
+            amounts[count] = amount;
+            count++;
+        }
+        if (count < statistics.length) {
+            statistics = Arrays.copyOf(statistics, count);
+            amounts = Arrays.copyOf(amounts, count);
+        }
+        return new Statistics(statistics, amounts);
+    }
+
+    @Override
+    public void apply(@NotNull Player player, @NotNull Statistics value) {
+        ServerPlayer handle = handle(player);
+        ServerStatsCounter counter = handle.getStats();
+        Stat<?>[] statistics = value.statistics();
+        int[] amounts = value.amounts();
+        Map<Stat<?>, Integer> remaining = new HashMap<>(statistics.length);
+        for (int i = 0; i < statistics.length; i++) {
+            remaining.put(statistics[i], amounts[i]);
+        }
+
+        Object2IntMap<Stat<?>> current = stats(counter);
+        synchronized (current) {
+            for (Object2IntMap.Entry<Stat<?>> entry : current.object2IntEntrySet()) {
+                Integer expected = remaining.remove(entry.getKey());
+                int amount = expected == null ? 0 : expected;
+                if (entry.getIntValue() != amount) {
+                    counter.setValue(handle, entry.getKey(), amount);
+                }
+            }
+            for (Map.Entry<Stat<?>, Integer> entry : remaining.entrySet()) {
+                counter.setValue(handle, entry.getKey(), entry.getValue());
+            }
         }
         counter.sendStats(handle);
     }
 
-    private static <T> void captureType(
-            ServerStatsCounter counter,
-            StatType<T> type,
-            Map<Object, Map<Object, Integer>> target
-    ) {
-        Registry<T> registry = type.getRegistry();
-        Map<Object, Integer> values = captureValues(registry, value -> registryKey(registry, value), value -> counter.getValue(type, value));
-        if (!values.isEmpty()) {
-            target.put(registryKey(BuiltInRegistries.STAT_TYPE, type), values);
-        }
-    }
-
-    private static <T> void applyType(
-            ServerPlayer player,
-            ServerStatsCounter counter,
-            StatType<T> type,
-            Map<Object, Map<Object, Integer>> source
-    ) {
-        Registry<T> registry = type.getRegistry();
-        Map<Object, Integer> values = source.getOrDefault(registryKey(BuiltInRegistries.STAT_TYPE, type), Map.of());
-        applyComplete(
-                registry,
-                value -> registryKey(registry, value),
-                values,
-                value -> counter.getValue(type, value),
-                (value, amount) -> counter.setValue(player, type.get(value), amount)
-        );
-    }
-
-    private static Map<Object, Map<Object, Integer>> typedTarget(
-            StatType<?> type,
-            Map<Object, Map<Object, Integer>> blocks,
-            Map<Object, Map<Object, Integer>> items,
-            Map<Object, Map<Object, Integer>> entities
-    ) {
-        Registry<?> registry = type.getRegistry();
-        if (registry == BuiltInRegistries.BLOCK) {
-            return blocks;
-        }
-        if (registry == BuiltInRegistries.ITEM) {
-            return items;
-        }
-        if (registry == BuiltInRegistries.ENTITY_TYPE) {
-            return entities;
-        }
-        throw new IllegalStateException("unsupported statistic type " + registryKey(BuiltInRegistries.STAT_TYPE, type));
-    }
-
-    private static Map<Object, Integer> captureUntyped(ServerStatsCounter counter) {
-        Map<Object, Integer> captured = new LinkedHashMap<>();
-        StatType<Object> custom = customStatType();
-        for (Object statistic : BuiltInRegistries.CUSTOM_STAT) {
-            int current = counter.getValue(custom.get(statistic));
-            if (current != 0) {
-                captured.put(statistic, current);
-            }
-        }
-        return captured;
-    }
-
-    private static void applyUntyped(ServerPlayer player, ServerStatsCounter counter, Map<Object, Integer> snapshot) {
-        StatType<Object> custom = customStatType();
-        for (Object statistic : BuiltInRegistries.CUSTOM_STAT) {
-            Stat<?> stat = custom.get(statistic);
-            int expected = snapshot.getOrDefault(statistic, 0);
-            if (counter.getValue(stat) != expected) {
-                counter.setValue(player, stat, expected);
-            }
-        }
-    }
-
-    // 零值由缺失项表达, 减少大注册表产生的快照体积
-    static <T> Map<Object, Integer> captureValues(
-            Iterable<T> values,
-            Function<T, Object> key,
-            ToIntFunction<T> amount
-    ) {
-        Map<Object, Integer> captured = new LinkedHashMap<>();
-        for (T value : values) {
-            int current = amount.applyAsInt(value);
-            if (current != 0) {
-                captured.put(key.apply(value), current);
-            }
-        }
-        return captured;
-    }
-
-    // 当前注册表是完整状态域, 快照中没有的统计项统一写为零
-    static <T> void applyComplete(
-            Iterable<T> values,
-            Function<T, Object> key,
-            Map<Object, Integer> snapshot,
-            ToIntFunction<T> current,
-            ObjIntConsumer<T> apply
-    ) {
-        for (T value : values) {
-            int expected = snapshot.getOrDefault(key.apply(value), 0);
-            if (current.applyAsInt(value) != expected) {
-                apply.accept(value, expected);
-            }
-        }
-    }
-
     @SuppressWarnings("unchecked")
-    private static StatType<Object> customStatType() {
-        return (StatType<Object>) (StatType<?>) Stats.CUSTOM;
+    private static <T> Stat<T> statistic(StatType<?> type, Object value) {
+        return ((StatType<T>) type).get((T) value);
     }
 
     private static Object registryKey(Registry<?> registry, Object value) {
         return RegistryProxy.INSTANCE.getKey(registry, value);
     }
 
+    @SuppressWarnings("unchecked")
+    private static Object2IntMap<Stat<?>> stats(ServerStatsCounter counter) {
+        return (Object2IntMap<Stat<?>>) StatsCounterProxy.INSTANCE.getStats(counter);
+    }
+
     private static ServerPlayer handle(Player player) {
         return ((CraftPlayer) player).getHandle();
     }
 
-    public record Statistics(
-            Map<Object, Integer> untyped,
-            Map<Object, Map<Object, Integer>> blocks,
-            Map<Object, Map<Object, Integer>> items,
-            Map<Object, Map<Object, Integer>> entities
-    ) {
-        private static final Codec<Map<Object, Integer>> VALUE_MAP = Codec.unboundedMap(IdentifierProxy.INSTANCE.getCodec(), Codec.INT);
-        private static final Codec<Map<Object, Map<Object, Integer>>> TYPED_MAP = Codec.unboundedMap(IdentifierProxy.INSTANCE.getCodec(), VALUE_MAP);
-        public static final Codec<Statistics> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                VALUE_MAP.fieldOf("untyped").forGetter(Statistics::untyped),
-                TYPED_MAP.fieldOf("blocks").forGetter(Statistics::blocks),
-                TYPED_MAP.fieldOf("items").forGetter(Statistics::items),
-                TYPED_MAP.fieldOf("entities").forGetter(Statistics::entities)
-        ).apply(instance, Statistics::new));
+    public record Statistics(@NotNull Stat<?> @NotNull [] statistics, @NotNull int[] amounts) {
     }
 }

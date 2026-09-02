@@ -62,11 +62,10 @@ public final class SnapshotService {
         this.snapshotStash = this.plugin.snapshotStash();
     }
 
-    /** 冻结数据类型注册表并完成快照应用器装配. */
+    /** 冻结数据类型注册表并编译固定槽位. */
     public void onDelayedEnable() {
-        // 冻结注册表并装配快照
+        // 冻结注册表并编译拓扑槽位
         this.dataRegistry.freeze();
-        this.snapshotApplier.onDelayedEnable();
         // 记录实际运行时的数据源
         StringJoiner activeTypes = new StringJoiner(", ");
         List<DataKey> applyOrder = this.snapshotApplier.applyOrder();
@@ -124,7 +123,7 @@ public final class SnapshotService {
         this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(), LogConstants.SYNC_APPLY_STARTED, player.getName());
         PreApplyEvent preApplyEvent = new PreApplyEvent(player, ready.snapshot(), ready.prepared().values());
         EventUtils.fireAndForget(preApplyEvent);
-        SnapshotApplier.PreparedSnapshot.Ready prepared = preparedAfter(preApplyEvent, ready.prepared());
+        SnapshotApplier.PreparedSnapshot.Ready prepared = this.snapshotApplier.afterEvent(preApplyEvent.decoded(), ready.prepared());
         return switch (this.snapshotApplier.apply(player, prepared)) {
             case SnapshotApplier.ApplyResult.Success success -> {
                 PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
@@ -144,25 +143,6 @@ public final class SnapshotService {
             }
             case SnapshotApplier.ApplyResult.Failure failure -> new LoadOutcome.Failed(failure.failedKey().asString() + ": " + failure.detail());
         };
-    }
-
-    static SnapshotApplier.PreparedSnapshot.Ready preparedAfter(PreApplyEvent event, SnapshotApplier.PreparedSnapshot.Ready before) {
-        Set<DataKey> allowed = new HashSet<>(before.values().keySet());
-        allowed.addAll(before.skipped());
-        Map<DataKey, Object> decoded = new LinkedHashMap<>(before.values().size());
-        for (Map.Entry<DataKey, Object> entry : event.decoded().entrySet()) {
-            if (allowed.contains(entry.getKey()) && entry.getValue() != null) decoded.put(entry.getKey(), entry.getValue());
-        }
-        List<DataKey> skipped = new ArrayList<>(allowed.size() - decoded.size());
-        for (DataKey key : before.values().keySet()) {
-            if (!decoded.containsKey(key)) skipped.add(key);
-        }
-        int size = before.skipped().size();
-        for (int i = 0; i < size; i++) {
-            DataKey key = before.skipped().get(i);
-            if (!decoded.containsKey(key)) skipped.add(key);
-        }
-        return new SnapshotApplier.PreparedSnapshot.Ready(decoded, skipped, before.passthrough());
     }
 
     /**

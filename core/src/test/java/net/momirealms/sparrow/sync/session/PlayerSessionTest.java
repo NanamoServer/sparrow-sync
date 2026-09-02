@@ -2,7 +2,10 @@ package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -115,9 +118,12 @@ class PlayerSessionTest {
                 .player(session.uuid())
                 .timestamp(1L)
                 .cause(SaveCause.DISCONNECT)
-                .build(), Map.of());
+                .build(), passthrough);
+        DataRegistry registry = new DataRegistry();
+        SnapshotApplier applier = new SnapshotApplier(registry, new SyncLogger(new QuietLogger()));
+        registry.freeze();
         SnapshotService.PreparedOutcome.Ready prepared = new SnapshotService.PreparedOutcome.Ready(
-                snapshot, new SnapshotApplier.PreparedSnapshot.Ready(Map.of(), List.of(), passthrough), 0L);
+                snapshot, (SnapshotApplier.PreparedSnapshot.Ready) applier.prepare(snapshot), 0L);
         session.prepared(prepared);
 
         assertSame(prepared, session.consumePrepared());
@@ -134,6 +140,29 @@ class PlayerSessionTest {
             latch.await();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static final class QuietLogger implements PluginLogger {
+
+        @Override
+        public void info(String message) {
+        }
+
+        @Override
+        public void warn(String message) {
+        }
+
+        @Override
+        public void warn(String message, Throwable throwable) {
+        }
+
+        @Override
+        public void error(String message) {
+        }
+
+        @Override
+        public void error(String message, Throwable throwable) {
         }
     }
 }

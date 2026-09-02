@@ -3,14 +3,21 @@ package net.momirealms.sparrow.sync.session;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,22 +35,19 @@ class SnapshotServicePreparedDataTest {
 
     @Test
     void eventChangesKeepRegisteredValuesAndReportRemovedValuesAsSkipped() {
-        Map<DataKey, Object> values = new LinkedHashMap<>();
-        values.put(FIRST, "first");
-        values.put(SECOND, "second");
-        Map<DataKey, Tag> passthrough = Map.of(UNKNOWN, NBT.createString("unknown"));
-        SnapshotApplier.PreparedSnapshot.Ready before = new SnapshotApplier.PreparedSnapshot.Ready(values, List.of(RECOVERED), passthrough);
+        SnapshotApplier applier = createApplier();
+        SnapshotApplier.PreparedSnapshot.Ready before = (SnapshotApplier.PreparedSnapshot.Ready) applier.prepare(snapshot());
         PreApplyEvent event = new PreApplyEvent(player(), snapshot(), before.values());
         event.decoded().remove(FIRST);
         event.decoded().put(SECOND, null);
         event.decoded().put(RECOVERED, "recovered");
         event.decoded().put(UNKNOWN, "unknown");
 
-        SnapshotApplier.PreparedSnapshot.Ready after = SnapshotService.preparedAfter(event, before);
+        SnapshotApplier.PreparedSnapshot.Ready after = applier.afterEvent(event.decoded(), before);
 
         assertEquals(Map.of(RECOVERED, "recovered"), after.values());
         assertEquals(List.of(FIRST, SECOND), after.skipped());
-        assertEquals(passthrough, after.passthrough());
+        assertEquals(Map.of(UNKNOWN, NBT.createString("unknown")), after.passthrough());
     }
 
     @Test
@@ -70,11 +74,81 @@ class SnapshotServicePreparedDataTest {
     }
 
     private static Snapshot snapshot() {
+        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        data.put(FIRST, NBT.createString("first"));
+        data.put(SECOND, NBT.createString("second"));
+        data.put(RECOVERED, NBT.createString("corrupted"));
+        data.put(UNKNOWN, NBT.createString("unknown"));
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(PLAYER_ID)
                 .timestamp(18L)
                 .cause(SaveCause.DISCONNECT)
                 .build();
-        return new Snapshot(meta, Map.of(FIRST, NBT.createString("first")));
+        return new Snapshot(meta, data);
+    }
+
+    private static SnapshotApplier createApplier() {
+        DataRegistry registry = new DataRegistry();
+        registry.register(new FakeType(FIRST, false));
+        registry.register(new FakeType(SECOND, false));
+        registry.register(new FakeType(RECOVERED, true));
+        SnapshotApplier applier = new SnapshotApplier(registry, new SyncLogger(new QuietLogger()));
+        registry.freeze();
+        return applier;
+    }
+
+    private record FakeType(DataKey key, boolean decodeFails) implements PlayerDataType<String> {
+
+        @Override
+        @NotNull
+        public StorageFormat storage() {
+            return StorageFormat.STRUCTURED;
+        }
+
+        @Override
+        @NotNull
+        public String capture(@NotNull Player player) {
+            return this.key.asString();
+        }
+
+        @Override
+        @NotNull
+        public Tag encode(@NotNull String value) {
+            return NBT.createString(value);
+        }
+
+        @Override
+        @NotNull
+        public String decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+            if (this.decodeFails) throw new IOException("corrupted");
+            return data.getAsString();
+        }
+
+        @Override
+        public void apply(@NotNull Player player, @NotNull String value) {
+        }
+    }
+
+    private static final class QuietLogger implements PluginLogger {
+
+        @Override
+        public void info(String message) {
+        }
+
+        @Override
+        public void warn(String message) {
+        }
+
+        @Override
+        public void warn(String message, Throwable throwable) {
+        }
+
+        @Override
+        public void error(String message) {
+        }
+
+        @Override
+        public void error(String message, Throwable throwable) {
+        }
     }
 }

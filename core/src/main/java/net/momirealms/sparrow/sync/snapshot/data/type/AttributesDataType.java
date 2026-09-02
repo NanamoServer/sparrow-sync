@@ -20,15 +20,16 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
 /**
  * 同步白名单内属性的基础值与可跨服 modifier, 服务器本地 modifier 由配置黑名单保留.
- * // todo 可能有问题
  */
-public final class AttributesDataType extends CodecDataType<List<AttributesDataType.AttributeValue>> {
+public final class AttributesDataType extends CodecDataType<AttributesDataType.Attributes> {
     public static final DataKey ATTRIBUTES = DataKey.sparrow("attributes");
 
     private static final Codec<NamespacedKey> KEY_CODEC = IdentifierProxy.INSTANCE.getCodec().xmap(
@@ -46,12 +47,12 @@ public final class AttributesDataType extends CodecDataType<List<AttributesDataT
             OPERATION_CODEC.fieldOf("operation").forGetter(ModifierValue::operation),
             SLOT_GROUP_CODEC.fieldOf("slot").forGetter(ModifierValue::slotGroup)
     ).apply(instance, ModifierValue::new));
-    private static final Codec<AttributeValue> ATTRIBUTE_CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            KEY_CODEC.fieldOf("key").forGetter(AttributeValue::key),
-            Codec.DOUBLE.fieldOf("base").forGetter(AttributeValue::base),
-            MODIFIER_CODEC.listOf().fieldOf("modifiers").forGetter(AttributeValue::modifiers)
-    ).apply(instance, AttributeValue::new));
-    static final Codec<List<AttributeValue>> CODEC = ATTRIBUTE_CODEC.listOf();
+    private static final Codec<StoredAttribute> STORED_ATTRIBUTE_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            KEY_CODEC.fieldOf("key").forGetter(StoredAttribute::key),
+            Codec.DOUBLE.fieldOf("base").forGetter(StoredAttribute::base),
+            MODIFIER_CODEC.listOf().fieldOf("modifiers").forGetter(StoredAttribute::modifiers)
+    ).apply(instance, StoredAttribute::new));
+    static final Codec<Attributes> CODEC = STORED_ATTRIBUTE_CODEC.listOf().xmap(AttributesDataType::fromStored, AttributesDataType::toStored);
 
     public AttributesDataType() {
         super(ATTRIBUTES, StorageFormat.STRUCTURED, CODEC);
@@ -65,50 +66,41 @@ public final class AttributesDataType extends CodecDataType<List<AttributesDataT
 
     @Override
     @NotNull
-    protected List<AttributeValue> captureValue(@NotNull Player player) {
+    protected Attributes captureValue(@NotNull Player player) {
         AttributeOptions options = PluginConfig.synchronization$attributes();
-        List<AttributeValue> values = new ArrayList<>();
+        AttributeValue[] values = new AttributeValue[16];
+        int count = 0;
         for (Attribute attribute : Registry.ATTRIBUTE) {
             NamespacedKey key = attribute.getKey();
-            if (!options.attributeAllowed(key.toString())) {
-                continue;
-            }
+            if (!options.attributeAllowed(key.toString())) continue;
             AttributeInstance instance = player.getAttribute(attribute);
-            if (instance == null) {
-                continue;
-            }
+            if (instance == null) continue;
 
-            List<ModifierValue> modifiers = new ArrayList<>();
-            for (AttributeModifier modifier : instance.getModifiers()) {
-                if (options.modifierBlacklisted(modifier.getKey().toString())) {
-                    continue;
-                }
-                modifiers.add(new ModifierValue(modifier.getKey(), modifier.getAmount(), modifier.getOperation(), modifier.getSlotGroup()));
+            Collection<AttributeModifier> currentModifiers = instance.getModifiers();
+            ModifierValue[] modifiers = new ModifierValue[currentModifiers.size()];
+            int modifierCount = 0;
+            for (AttributeModifier modifier : currentModifiers) {
+                if (options.modifierBlacklisted(modifier.getKey().toString())) continue;
+                modifiers[modifierCount++] = new ModifierValue(modifier.getKey(), modifier.getAmount(), modifier.getOperation(), modifier.getSlotGroup());
             }
-            modifiers.sort(Comparator.comparing(value -> value.key().toString()));
-            values.add(new AttributeValue(key, instance.getBaseValue(), modifiers));
+            if (modifierCount < modifiers.length) modifiers = Arrays.copyOf(modifiers, modifierCount);
+            if (count == values.length) values = Arrays.copyOf(values, values.length << 1);
+            values[count++] = new AttributeValue(key, instance.getBaseValue(), modifiers);
         }
-        values.sort(Comparator.comparing(value -> value.key().toString()));
-        return values;
+        return new Attributes(Arrays.copyOf(values, count));
     }
 
     @Override
-    protected void applyValue(@NotNull Player player, @NotNull List<AttributeValue> values) {
+    protected void applyValue(@NotNull Player player, @NotNull Attributes attributes) {
         AttributeOptions options = PluginConfig.synchronization$attributes();
-        int size = values.size();
-        for (int i = 0; i < size; i++) {
-            AttributeValue value = values.get(i);
-            if (!options.attributeAllowed(value.key().toString())) {
-                continue;
-            }
+        AttributeValue[] values = attributes.values();
+        for (int i = 0; i < values.length; i++) {
+            AttributeValue value = values[i];
+            if (!options.attributeAllowed(value.key().toString())) continue;
             Attribute attribute = Registry.ATTRIBUTE.get(value.key());
-            if (attribute == null) {
-                continue;
-            }
+            if (attribute == null) continue;
             AttributeInstance instance = player.getAttribute(attribute);
-            if (instance == null) {
-                continue;
-            }
+            if (instance == null) continue;
 
             for (AttributeModifier modifier : instance.getModifiers()) {
                 if (!options.modifierBlacklisted(modifier.getKey().toString())) {
@@ -116,15 +108,39 @@ public final class AttributesDataType extends CodecDataType<List<AttributesDataT
                 }
             }
             instance.setBaseValue(value.base());
-            int modifierCount = value.modifiers().size();
-            for (int modifierIndex = 0; modifierIndex < modifierCount; modifierIndex++) {
-                ModifierValue modifier = value.modifiers().get(modifierIndex);
-                if (options.modifierBlacklisted(modifier.key().toString())) {
-                    continue;
-                }
+            ModifierValue[] modifiers = value.modifiers();
+            for (int modifierIndex = 0; modifierIndex < modifiers.length; modifierIndex++) {
+                ModifierValue modifier = modifiers[modifierIndex];
+                if (options.modifierBlacklisted(modifier.key().toString())) continue;
                 instance.addModifier(new AttributeModifier(modifier.key(), modifier.amount(), modifier.operation(), modifier.slotGroup()));
             }
         }
+    }
+
+    private static Attributes fromStored(List<StoredAttribute> stored) {
+        AttributeValue[] values = new AttributeValue[stored.size()];
+        for (int i = 0; i < values.length; i++) {
+            StoredAttribute value = stored.get(i);
+            values[i] = new AttributeValue(value.key(), value.base(), value.modifiers().toArray(ModifierValue[]::new));
+        }
+        return new Attributes(values);
+    }
+
+    private static List<StoredAttribute> toStored(Attributes attributes) {
+        AttributeValue[] values = attributes.values();
+        List<StoredAttribute> stored = new ArrayList<>(values.length);
+        for (int i = 0; i < values.length; i++) {
+            AttributeValue value = values[i];
+            ModifierValue[] modifiers = value.modifiers();
+            List<ModifierValue> storedModifiers = new ArrayList<>(modifiers.length);
+            for (int modifierIndex = 0; modifierIndex < modifiers.length; modifierIndex++) {
+                storedModifiers.add(modifiers[modifierIndex]);
+            }
+            storedModifiers.sort(Comparator.comparing(modifier -> modifier.key().toString()));
+            stored.add(new StoredAttribute(value.key(), value.base(), storedModifiers));
+        }
+        stored.sort(Comparator.comparing(value -> value.key().toString()));
+        return stored;
     }
 
     private static DataResult<EquipmentSlotGroup> parseSlotGroup(String value) {
@@ -132,9 +148,15 @@ public final class AttributesDataType extends CodecDataType<List<AttributesDataT
         return group == null ? DataResult.error(() -> "unknown equipment slot group: " + value) : DataResult.success(group);
     }
 
-    public record AttributeValue(@NotNull NamespacedKey key, double base, @NotNull List<ModifierValue> modifiers) {
+    public record Attributes(@NotNull AttributeValue @NotNull [] values) {
+    }
+
+    public record AttributeValue(@NotNull NamespacedKey key, double base, @NotNull ModifierValue @NotNull [] modifiers) {
     }
 
     public record ModifierValue(@NotNull NamespacedKey key, double amount, @NotNull Operation operation, @NotNull EquipmentSlotGroup slotGroup) {
+    }
+
+    private record StoredAttribute(@NotNull NamespacedKey key, double base, @NotNull List<ModifierValue> modifiers) {
     }
 }
