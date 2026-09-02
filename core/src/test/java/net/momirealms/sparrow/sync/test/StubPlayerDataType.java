@@ -28,6 +28,12 @@ public record StubPlayerDataType(@NotNull DataKey key, @NotNull StorageFormat st
 
     @Override
     @NotNull
+    public Tag encode(@NotNull Tag value) {
+        throw new AssertionError("stub encode must not be called");
+    }
+
+    @Override
+    @NotNull
     public Tag decode(@NotNull Tag data, int mcDataVersion) {
         throw new AssertionError("stub decode must not be called");
     }

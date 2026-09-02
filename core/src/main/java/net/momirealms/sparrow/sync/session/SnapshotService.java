@@ -199,13 +199,16 @@ public final class SnapshotService {
             return CompletableFuture.completedFuture(new SnapshotSaveOutcome.ReentrantRejected());
         long captureStart = System.nanoTime();
         // 关键数据采集不出来时不产出快照.
-        if (!(this.snapshotApplier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready ready)) {
+        if (!(this.snapshotApplier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
             return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
+        }
+        if (!(this.snapshotApplier.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be encoded"));
         }
         // 发布事件
         PlayerSession session = this.plugin.sessionManager().session(player.getUniqueId());
         Map<DataKey, Tag> passthrough = session == null ? Map.of() : session.passthroughData();
-        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), mergeCapturedData(passthrough, ready.data()));
+        Snapshot snapshot = new Snapshot(this.metaOf(player, cause), mergeCapturedData(passthrough, encoded.data()));
         CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
         SnapshotSaveEvent event = new SnapshotSaveEvent(player, snapshot, outcome.minimalCompletionStage());
         this.dispatchingSaveEvent.set(event);

@@ -139,9 +139,13 @@ public final class TestCommand extends BukkitCommandFeature {
                 check(report, "capture", false, "critical data could not be captured");
                 return summarize(report);
             }
-            Map<DataKey, Tag> originalData = captured.data();
+            if (!(applier.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+                check(report, "encode", false, "critical data could not be encoded");
+                return summarize(report);
+            }
+            Map<DataKey, Tag> originalData = encoded.data();
             Snapshot original = new Snapshot(smokeMeta(player), originalData);
-            check(report, "capture (" + originalData.size() + " types, " + captured.skipped().size() + " skipped)", true, "");
+            check(report, "capture (" + originalData.size() + " types, " + encoded.skipped().size() + " skipped)", true, "");
 
             // 二进制形态逐位往返
             Snapshot roundTripped = original;
@@ -188,7 +192,11 @@ public final class TestCommand extends BukkitCommandFeature {
                 check(report, "re-capture", false, "critical data could not be captured");
                 return summarize(report);
             }
-            Map<DataKey, Tag> after = recaptured.data();
+            if (!(applier.encode(recaptured) instanceof SnapshotApplier.EncodeResult.Ready reencoded)) {
+                check(report, "re-encode", false, "critical data could not be encoded");
+                return summarize(report);
+            }
+            Map<DataKey, Tag> after = reencoded.data();
             for (Map.Entry<DataKey, Tag> entry : originalData.entrySet()) {
                 Tag restored = after.get(entry.getKey());
                 boolean equal = Objects.equals(entry.getValue(), restored);

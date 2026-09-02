@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public final class SnapshotApplier {
     private final SparrowSync plugin;
@@ -61,18 +62,18 @@ public final class SnapshotApplier {
     }
 
     /**
-     * 采集玩家全部已装配类型的数据, <strong>必须在玩家的拥有线程上调用</strong>.
+     * 采集玩家全部已装配类型的数据, <strong>必须在玩家线程上调用</strong>.
      */
     @NotNull
     public CaptureResult capture(@NotNull Player player) {
-        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        Map<DataKey, Object> values = new LinkedHashMap<>();
         List<DataKey> skipped = new ArrayList<>();
         int size = this.applyOrder.size();
         for (int i = 0; i < size; i++) {
             DataKey key = this.applyOrder.get(i);
             PlayerDataType<?> type = this.types.get(key);
             try {
-                data.put(key, type.capture(player));
+                values.put(key, type.capture(player));
             } catch (Throwable throwable) {
                 // 关键类型采集失败则丢弃整份快照.
                 if (type.critical()) {
@@ -84,7 +85,34 @@ public final class SnapshotApplier {
                 this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName());
             }
         }
-        return new CaptureResult.Ready(data, skipped);
+        return new CaptureResult.Ready(player.getUniqueId(), player.getName(), values, skipped);
+    }
+
+    /**
+     * 把一次采集的全部值编码为快照 NBT, 可在任意线程调用.
+     */
+    @NotNull
+    public EncodeResult encode(@NotNull CaptureResult.Ready captured) {
+        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        List<DataKey> skipped = new ArrayList<>(captured.skipped());
+        int size = this.applyOrder.size();
+        for (int i = 0; i < size; i++) {
+            DataKey key = this.applyOrder.get(i);
+            Object value = captured.values().get(key);
+            if (value == null) continue;
+            PlayerDataType<?> type = this.types.get(key);
+            try {
+                data.put(key, encodeValue(type, value));
+            } catch (Throwable throwable) {
+                if (type.critical()) {
+                    this.logger.error(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_FAILED, key.asString(), captured.playerName());
+                    return new EncodeResult.Failed(key, String.valueOf(throwable.getMessage()));
+                }
+                skipped.add(key);
+                this.logger.warn(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_SKIPPED, key.asString(), captured.playerName());
+            }
+        }
+        return new EncodeResult.Ready(data, skipped);
     }
 
     /**
@@ -149,6 +177,12 @@ public final class SnapshotApplier {
         return new ApplyResult.Success(applied, skipped);
     }
 
+    // capture 与 encode 使用同一个类型实例, 值的实际类型由 capture 保证
+    @SuppressWarnings("unchecked")
+    private static <T> Tag encodeValue(PlayerDataType<T> type, Object value) {
+        return type.encode((T) value);
+    }
+
     // prepare 与 apply 使用同一个类型实例, 值的实际类型由 decode 保证
     @SuppressWarnings("unchecked")
     private static <T> void applyValue(PlayerDataType<T> type, Player player, Object value) {
@@ -158,14 +192,28 @@ public final class SnapshotApplier {
     /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */
     public sealed interface CaptureResult {
 
-        record Ready(@NotNull Map<DataKey, Tag> data, @NotNull List<DataKey> skipped) implements CaptureResult {
+        record Ready(@NotNull UUID player, @NotNull String playerName, @NotNull Map<DataKey, Object> values, @NotNull List<DataKey> skipped) implements CaptureResult {
+            public Ready {
+                values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
+                skipped = List.copyOf(skipped);
+            }
+        }
+
+        record Failed(@NotNull DataKey key, @NotNull String detail) implements CaptureResult {
+        }
+    }
+
+    /** 编码结果, Failed 表示关键类型无法编码, 这次不应产出快照. */
+    public sealed interface EncodeResult {
+
+        record Ready(@NotNull Map<DataKey, Tag> data, @NotNull List<DataKey> skipped) implements EncodeResult {
             public Ready {
                 data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
                 skipped = List.copyOf(skipped);
             }
         }
 
-        record Failed(@NotNull DataKey key, @NotNull String detail) implements CaptureResult {
+        record Failed(@NotNull DataKey key, @NotNull String detail) implements EncodeResult {
         }
     }
 

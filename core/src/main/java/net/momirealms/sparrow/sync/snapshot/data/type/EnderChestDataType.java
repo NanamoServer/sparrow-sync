@@ -53,11 +53,17 @@ public final class EnderChestDataType implements PlayerDataType<ItemCodec.Loaded
 
     @Override
     @NotNull
-    public Tag capture(@NotNull Player player) {
+    public ItemCodec.LoadedItems capture(@NotNull Player player) {
         ItemStack[] contents = player.getEnderChest().getContents();
+        return new ItemCodec.LoadedItems(contents, 0);
+    }
+
+    @Override
+    @NotNull
+    public Tag encode(@NotNull ItemCodec.LoadedItems value) {
         CompoundTag root = NBT.createCompound();
-        root.putInt(SIZE_KEY, contents.length);
-        root.put(ITEMS_KEY, ItemCodec.saveItems(contents));
+        root.putInt(SIZE_KEY, value.items().length);
+        root.put(ITEMS_KEY, ItemCodec.saveItems(value.items()));
         return root;
     }
 

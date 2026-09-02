@@ -58,7 +58,7 @@ class SnapshotApplierTest {
         SnapshotApplier.CaptureResult result = applier.capture(this.player);
 
         SnapshotApplier.CaptureResult.Ready ready = assertInstanceOf(SnapshotApplier.CaptureResult.Ready.class, result);
-        assertEquals(Set.of(ALPHA), ready.data().keySet());
+        assertEquals(Set.of(ALPHA), ready.values().keySet());
         assertEquals(List.of(BRAVO), ready.skipped());
         assertTrue(this.console.warnings > 0);
     }
@@ -73,6 +73,33 @@ class SnapshotApplierTest {
         SnapshotApplier.CaptureResult result = applier.capture(this.player);
 
         assertEquals(BRAVO, assertInstanceOf(SnapshotApplier.CaptureResult.Failed.class, result).key());
+    }
+
+    @Test
+    void encodeSkipsFailingNonCriticalType() {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType bravo = new FakeType(BRAVO, StorageFormat.STRUCTURED).failingEncode();
+        SnapshotApplier applier = createApplier(alpha, bravo);
+        SnapshotApplier.CaptureResult.Ready captured = assertInstanceOf(SnapshotApplier.CaptureResult.Ready.class, applier.capture(this.player));
+
+        SnapshotApplier.EncodeResult result = applier.encode(captured);
+
+        SnapshotApplier.EncodeResult.Ready ready = assertInstanceOf(SnapshotApplier.EncodeResult.Ready.class, result);
+        assertEquals(Set.of(ALPHA), ready.data().keySet());
+        assertEquals(List.of(BRAVO), ready.skipped());
+        assertTrue(this.console.warnings > 0);
+    }
+
+    @Test
+    void encodeFailsEntirelyWhenCriticalTypeFails() {
+        FakeType alpha = new FakeType(ALPHA, StorageFormat.STRUCTURED);
+        FakeType critical = new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingEncode();
+        SnapshotApplier applier = createApplier(alpha, critical);
+        SnapshotApplier.CaptureResult.Ready captured = assertInstanceOf(SnapshotApplier.CaptureResult.Ready.class, applier.capture(this.player));
+
+        SnapshotApplier.EncodeResult result = applier.encode(captured);
+
+        assertEquals(BRAVO, assertInstanceOf(SnapshotApplier.EncodeResult.Failed.class, result).key());
     }
 
     @Test
@@ -229,6 +256,7 @@ class SnapshotApplierTest {
         private final boolean critical;
         private final Set<DataKey> dependencies;
         private boolean captureFails;
+        private boolean encodeFails;
 
         private FakeType(DataKey key, StorageFormat storage) {
             this(key, storage, false, Set.of());
@@ -243,6 +271,11 @@ class SnapshotApplierTest {
 
         private FakeType failingCapture() {
             this.captureFails = true;
+            return this;
+        }
+
+        private FakeType failingEncode() {
+            this.encodeFails = true;
             return this;
         }
 
@@ -271,11 +304,20 @@ class SnapshotApplierTest {
 
         @Override
         @NotNull
-        public Tag capture(@NotNull Player player) {
+        public String capture(@NotNull Player player) {
             if (this.captureFails) {
                 throw new IllegalStateException("capture of " + this.key + " failed");
             }
-            return NBT.createString(this.key.asString());
+            return this.key.asString();
+        }
+
+        @Override
+        @NotNull
+        public Tag encode(@NotNull String value) {
+            if (this.encodeFails) {
+                throw new IllegalStateException("encode of " + this.key + " failed");
+            }
+            return NBT.createString(value);
         }
 
         @Override

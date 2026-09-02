@@ -29,7 +29,7 @@ class SnapshotServiceReentrantSaveTest {
         RecordingLogger console = new RecordingLogger();
         SnapshotService service = new SnapshotService(null, new DataRegistry(), null, null, new SyncLogger(console));
         Snapshot snapshot = new Snapshot(
-                SnapshotMeta.builder().player(playerId).cause(SaveCause.INTERVAL).build(),
+                SnapshotMeta.builder().player(playerId).cause(SaveCause.WORLD_SAVE).build(),
                 Map.of()
         );
         SnapshotSaveEvent event = new SnapshotSaveEvent(player, snapshot, new CompletableFuture<SnapshotSaveOutcome>().minimalCompletionStage());

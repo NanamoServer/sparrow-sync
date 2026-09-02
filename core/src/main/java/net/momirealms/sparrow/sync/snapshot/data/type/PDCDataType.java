@@ -44,8 +44,14 @@ public final class PDCDataType implements PlayerDataType<CompoundTag> {
 
     @Override
     @NotNull
-    public Tag capture(@NotNull Player player) {
+    public CompoundTag capture(@NotNull Player player) {
         return captureCompound(((CraftPlayer) player).getPersistentDataContainer().getRaw().entrySet(), PluginConfig.synchronization$pdcMergeNamespaces());
+    }
+
+    @Override
+    @NotNull
+    public Tag encode(@NotNull CompoundTag value) {
+        return value;
     }
 
     @NotNull

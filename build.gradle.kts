@@ -75,6 +75,7 @@ subprojects {
             // Relocate
             val libs = "net.momirealms.sparrow.sync.libraries"
             relocate("net.momirealms.sparrow.yaml", "$libs.yaml")
+            relocate("net.momirealms.sparrow.redis", "$libs.redis")
             relocate("net.momirealms.sparrow.ui", "$libs.ui")
             relocate("net.momirealms.antigrieflib", "$libs.antigrieflib")
             relocate("net.momirealms.sparrow.nbt", "$libs.nbt")

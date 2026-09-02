@@ -10,11 +10,10 @@ import java.io.IOException;
 import java.util.Set;
 
 /**
- * 一类玩家数据的声明、采集与应用, 也是 {@link net.momirealms.sparrow.sync.snapshot.DataRegistry} 唯一接受的注册类型.
- * 生命周期分三段: capture 与 apply 只能在玩家的拥有线程上执行,
- * decode 可在任意线程完成解码与校验, 让应用前的预检不占用主线程.
+ * 一类玩家数据的声明、采集、编解码与应用, 也是 {@link net.momirealms.sparrow.sync.snapshot.DataRegistry} 唯一接受的注册类型.
+ * capture 与 apply 在玩家拥有线程执行, encode 与 decode 可交给玩家串行线程.
  *
- * @param <T> 解码后的值类型
+ * @param <T> 采集与解码共享的值类型
  */
 public interface PlayerDataType<T> {
 
@@ -43,11 +42,17 @@ public interface PlayerDataType<T> {
     }
 
     /**
-     * 从玩家身上采集当前数据并编码为 NBT.
+     * 从玩家身上采集当前值.
      * <strong>必须在玩家线程上调用</strong>.
      */
     @NotNull
-    Tag capture(@NotNull Player player);
+    T capture(@NotNull Player player);
+
+    /**
+     * 把采集值编码为快照 NBT, 可在任意线程调用.
+     */
+    @NotNull
+    Tag encode(@NotNull T value);
 
     /**
      * 解码并校验快照中的数据, 可在任意线程调用.

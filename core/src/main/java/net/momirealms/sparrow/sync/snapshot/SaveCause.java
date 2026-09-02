@@ -12,7 +12,7 @@ public enum SaveCause {
     PRE_DEATH,          // 死亡清理前
     DEATH,              // 死亡清理后
     SHUTDOWN,           // 服务器关闭
-    INTERVAL,           // 定时
+    WORLD_SAVE,         // 世界保存
     COMMAND,            // 命令
     RESTORE,            // 回滚
     EDIT,               // 编辑

@@ -15,8 +15,10 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerGameModeChangeEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.world.WorldSaveEvent;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
 
 public final class SnapshotSaveTrigger implements Listener {
     private final SparrowSync plugin;
@@ -39,6 +41,19 @@ public final class SnapshotSaveTrigger implements Listener {
         if (settings.ignoredFromWorlds().contains(event.getFrom().getName()) || settings.ignoredToWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessionManager.session(player.getUniqueId());
         if (session != null) this.sessionManager.trySubmitActiveSnapshot(session, player, SaveCause.WORLD_CHANGE);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onWorldSave(WorldSaveEvent event) {
+        if (!PluginConfig.synchronization$saveTriggers().worldSave().enabled()) return;
+        List<Player> players = event.getWorld().getPlayers();
+        int size = players.size();
+        for (int i = 0; i < size; i++) {
+            Player player = players.get(i);
+            PlayerSession session = this.sessionManager.session(player.getUniqueId());
+            if (session == null) continue;
+            this.plugin.scheduler().entity().run(player, () -> this.sessionManager.trySubmitActiveSnapshot(session, player, SaveCause.WORLD_SAVE), () -> {});
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

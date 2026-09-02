@@ -65,7 +65,6 @@ public interface LogConstants {
     String SYNC_SAVE_CANCELLED_BY_EVENT = "log.sync.save_cancelled_by_event";
     String SYNC_SAVE_REENTRANT_REJECTED = "log.sync.save_reentrant_rejected";
     String SYNC_SAVE_SKIPPED_UNSYNCED = "log.sync.save_skipped_unsynced";
-    String SYNC_INTERVAL_SCHEDULE_FAILED = "log.sync.interval_schedule_failed";
     String SYNC_ROTATE_FAILED = "log.sync.rotate_failed";
     String SYNC_APPLIED = "log.sync.applied";
     String SYNC_LOAD_FAILED = "log.sync.load_failed";
@@ -84,6 +83,8 @@ public interface LogConstants {
 
     String DATA_CAPTURE_SKIPPED = "log.data.capture_skipped";
     String DATA_CAPTURE_FAILED = "log.data.capture_failed";
+    String DATA_ENCODE_SKIPPED = "log.data.encode_skipped";
+    String DATA_ENCODE_FAILED = "log.data.encode_failed";
     String DATA_DECODE_SKIPPED = "log.data.decode_skipped";
     String DATA_APPLY_FAILED = "log.data.apply_failed";
     String DATA_APPLY_SKIPPED = "log.data.apply_skipped";

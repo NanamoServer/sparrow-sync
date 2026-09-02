@@ -13,8 +13,8 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
- * 以 DFU Codec 建模的数据类型基类, 值对象与快照的 NBT 中间表示互转,
- * 子类只实现玩家状态与值对象之间的采集与应用.
+ * 以 DFU Codec 建模的数据类型基类, 值对象与快照 NBT 互转.
+ * 子类实现玩家状态与值对象之间的采集与应用.
  */
 public abstract class CodecDataType<T> implements PlayerDataType<T> {
     private final DataKey key;
@@ -52,8 +52,13 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
 
     @Override
     @NotNull
-    public final Tag capture(@NotNull Player player) {
-        T value = this.captureValue(player);
+    public final T capture(@NotNull Player player) {
+        return this.captureValue(player);
+    }
+
+    @Override
+    @NotNull
+    public final Tag encode(@NotNull T value) {
         return this.codec.encodeStart(this.ops.get(), value)
                 .getOrThrow(message -> new IllegalStateException("failed to encode " + this.key + ": " + message));
     }

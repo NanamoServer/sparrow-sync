@@ -44,7 +44,11 @@ public final class DebugSaveJsonCommand extends BukkitCommandFeature {
             SnapshotUtils.send(player, "[FAIL] critical data could not be captured", false);
             return;
         }
-        Snapshot snapshot = new Snapshot(SnapshotUtils.metaOf(player), ready.data());
+        if (!(applier.encode(ready) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+            SnapshotUtils.send(player, "[FAIL] critical data could not be encoded", false);
+            return;
+        }
+        Snapshot snapshot = new Snapshot(SnapshotUtils.metaOf(player), encoded.data());
         plugin().scheduler().async().execute(() -> {
             try {
                 String json = SnapshotUtils.jsonCodec().encode(snapshot);

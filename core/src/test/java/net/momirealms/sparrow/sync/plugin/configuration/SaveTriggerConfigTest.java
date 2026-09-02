@@ -36,13 +36,14 @@ class SaveTriggerConfigTest {
         String yaml = Files.readString(file, StandardCharsets.UTF_8);
 
         assertFalse(options.saveTriggers.worldChange.enabled);
-        assertTrue(options.saveTriggers.interval.enabled);
-        assertEquals(5, options.saveTriggers.interval.minutes);
+        assertTrue(options.saveTriggers.worldSave.enabled);
         assertTrue(options.saveTriggers.gameModeChange.enabled);
         assertFalse(options.saveTriggers.death.saveBeforeDeath);
         assertTrue(options.saveTriggers.death.saveAfterDeath);
         assertTrue(yaml.contains("ignored-from-worlds"), yaml);
         assertTrue(yaml.contains("ignored-to-worlds"), yaml);
+        assertTrue(yaml.contains("world-save"), yaml);
+        assertFalse(yaml.contains("interval:"), yaml);
         assertTrue(yaml.contains("ignored-target-modes"), yaml);
         assertTrue(yaml.contains("save-before-death"), yaml);
         assertTrue(yaml.contains("save-after-death"), yaml);
@@ -60,9 +61,8 @@ class SaveTriggerConfigTest {
                       enabled: true
                       ignored-from-worlds: [spawn, spawn]
                       ignored-to-worlds: [dungeon]
-                    interval:
-                      enabled: true
-                      minutes: 0
+                    world-save:
+                      enabled: false
                     game-mode-change:
                       enabled: true
                       ignored-target-modes: [CREATIVE, CREATIVE, SPECTATOR]
@@ -79,7 +79,7 @@ class SaveTriggerConfigTest {
         assertTrue(first.worldChange().enabled());
         assertEquals(Set.of("spawn"), first.worldChange().ignoredFromWorlds());
         assertEquals(Set.of("dungeon"), first.worldChange().ignoredToWorlds());
-        assertEquals(1, first.interval().minutes());
+        assertFalse(first.worldSave().enabled());
         assertEquals(Set.of(GameMode.CREATIVE, GameMode.SPECTATOR), first.gameModeChange().ignoredTargetModes());
         assertTrue(first.death().saveBeforeDeath());
         assertFalse(first.death().saveAfterDeath());
@@ -89,18 +89,37 @@ class SaveTriggerConfigTest {
                 config-version: "%s"
                 synchronization:
                   save-triggers:
-                    interval:
-                      enabled: false
-                      minutes: 12
+                    world-save:
+                      enabled: true
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
 
         pluginConfig.reload();
 
         SaveTriggers second = PluginConfig.synchronization$saveTriggers();
         assertNotSame(first, second);
-        assertFalse(second.interval().enabled());
-        assertEquals(12, second.interval().minutes());
+        assertTrue(second.worldSave().enabled());
         assertEquals(Set.of("spawn"), first.worldChange().ignoredFromWorlds());
+    }
+
+    @Test
+    void upgradesVersionFiveIntervalToWorldSaveDefaults() throws IOException {
+        Path file = this.directory.resolve("config.yml");
+        Files.writeString(file, """
+                config-version: "5"
+                synchronization:
+                  save-triggers:
+                    interval:
+                      enabled: false
+                      minutes: 12
+                """, StandardCharsets.UTF_8);
+        PluginConfig pluginConfig = new PluginConfig(this.plugin(), newYaml());
+
+        pluginConfig.reload();
+
+        assertTrue(PluginConfig.synchronization$saveTriggers().worldSave().enabled());
+        String upgraded = Files.readString(file, StandardCharsets.UTF_8);
+        assertTrue(upgraded.contains("world-save:"), upgraded);
+        assertFalse(upgraded.contains("interval:"), upgraded);
     }
 
     private static YamlMapper<PluginConfig.SynchronizationOptions> mapper() {

@@ -18,7 +18,7 @@ class EnchantmentSeedDataTypeTest {
         EnchantmentSeedDataType type = new EnchantmentSeedDataType();
         player.setEnchantmentSeed(135792468);
 
-        int captured = type.decode(type.capture(player), 0);
+        int captured = type.decode(type.encode(type.capture(player)), 0);
 
         assertEquals(135792468, captured);
 

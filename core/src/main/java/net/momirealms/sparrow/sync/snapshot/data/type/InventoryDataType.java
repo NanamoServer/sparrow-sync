@@ -58,17 +58,23 @@ public final class InventoryDataType implements PlayerDataType<InventoryDataType
 
     @Override
     @NotNull
-    public Tag capture(@NotNull Player player) {
+    public Inventory capture(@NotNull Player player) {
         PlayerInventory inventory = player.getInventory();
         ItemStack[] contents = inventory.getContents();
-        CompoundTag root = NBT.createCompound();
-        root.putInt(SIZE_KEY, contents.length);
-        root.putInt(HELD_SLOT_KEY, inventory.getHeldItemSlot());
         ItemStack cursor = player.getItemOnCursor();
-        if (!cursor.isEmpty()) {
-            root.put(CURSOR_KEY, ItemCodec.saveItem(cursor));
+        return new Inventory(contents, cursor.isEmpty() ? null : cursor, inventory.getHeldItemSlot(), 0);
+    }
+
+    @Override
+    @NotNull
+    public Tag encode(@NotNull Inventory value) {
+        CompoundTag root = NBT.createCompound();
+        root.putInt(SIZE_KEY, value.contents().length);
+        root.putInt(HELD_SLOT_KEY, value.heldSlot());
+        if (value.cursor() != null) {
+            root.put(CURSOR_KEY, ItemCodec.saveItem(value.cursor()));
         }
-        root.put(ITEMS_KEY, ItemCodec.saveItems(contents));
+        root.put(ITEMS_KEY, ItemCodec.saveItems(value.contents()));
         return root;
     }
 

@@ -20,7 +20,7 @@ class FlightStatusDataTypeTest {
         player.setAllowFlight(true);
         player.setFlying(true);
 
-        FlightStatusDataType.FlightStatus captured = type.decode(type.capture(player), 0);
+        FlightStatusDataType.FlightStatus captured = type.decode(type.encode(type.capture(player)), 0);
 
         assertEquals(new FlightStatusDataType.FlightStatus(true, true), captured);
 

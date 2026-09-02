@@ -394,8 +394,8 @@ public final class PluginConfig {
         WorldChangeTriggerOptions worldChange = new WorldChangeTriggerOptions();
 
         @BlankLineBefore
-        @Comment("Save active players at a staggered interval")
-        IntervalTriggerOptions interval = new IntervalTriggerOptions();
+        @Comment("Save players when their world is saved")
+        WorldSaveTriggerOptions worldSave = new WorldSaveTriggerOptions();
 
         @BlankLineBefore
         @Comment("Save after a player's game mode changes")
@@ -419,15 +419,9 @@ public final class PluginConfig {
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
-    public static class IntervalTriggerOptions {
-        @Comment("Whether active players are saved periodically")
+    public static class WorldSaveTriggerOptions {
+        @Comment("Whether saving a world creates snapshots for its active players")
         boolean enabled = true;
-
-        @Comment({
-                "Minutes between snapshots for one player, minimum 1",
-                "Players are spread across the whole period instead of being captured together"
-        })
-        int minutes = 5;
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -461,7 +455,7 @@ public final class PluginConfig {
     }
 
     public record SaveTriggers(@NotNull WorldChangeTrigger worldChange,
-                               @NotNull IntervalTrigger interval,
+                               @NotNull WorldSaveTrigger worldSave,
                                @NotNull GameModeChangeTrigger gameModeChange,
                                @NotNull DeathTrigger death) {
 
@@ -469,7 +463,7 @@ public final class PluginConfig {
         private static SaveTriggers of(@NotNull SaveTriggerOptions options) {
             return new SaveTriggers(
                     new WorldChangeTrigger(options.worldChange.enabled, Set.copyOf(options.worldChange.ignoredFromWorlds), Set.copyOf(options.worldChange.ignoredToWorlds)),
-                    new IntervalTrigger(options.interval.enabled, Math.max(1, options.interval.minutes)),
+                    new WorldSaveTrigger(options.worldSave.enabled),
                     new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes)),
                     new DeathTrigger(options.death.saveBeforeDeath, options.death.saveAfterDeath, Set.copyOf(options.death.ignoredWorlds))
             );
@@ -479,7 +473,7 @@ public final class PluginConfig {
     public record WorldChangeTrigger(boolean enabled, @NotNull Set<String> ignoredFromWorlds, @NotNull Set<String> ignoredToWorlds) {
     }
 
-    public record IntervalTrigger(boolean enabled, int minutes) {
+    public record WorldSaveTrigger(boolean enabled) {
     }
 
     public record GameModeChangeTrigger(boolean enabled, @NotNull Set<GameMode> ignoredTargetModes) {
