@@ -7,7 +7,6 @@ import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.sync.RedisCommands;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import org.jetbrains.annotations.NotNull;
@@ -42,7 +41,7 @@ public final class SessionLock {
     /** 绑定 Redis 连接与本服锁命名空间. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
-        this.keyPrefix = "ss:" + PluginConfig.clusterId() + ":lock:";
+        this.keyPrefix = "ss:" + ServerConfig.clusterId() + ":lock:";
         this.serverId = ServerConfig.serverId();
     }
 

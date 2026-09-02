@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
+import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
@@ -51,6 +52,14 @@ public final class ServerConfig {
         return config.serverId;
     }
 
+    /**
+     * 本服所属集群的标识, 决定 Redis 键前缀, 共享同一数据库和 Redis 的服务器必须一致.
+     */
+    @NotNull
+    public static String clusterId() {
+        return config.clusterId;
+    }
+
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
         @Comment("Do not modify this value")
@@ -62,5 +71,13 @@ public final class ServerConfig {
                 "Snapshots record it, so renaming it later only affects snapshots written from now on"
         })
         String serverId = "";
+
+        @BlankLineBefore
+        @Comment({
+                "Identifies the cluster this server belongs to",
+                "Every server sharing the same database and Redis must use the same value,",
+                "it prefixes every Redis key so two clusters can share one Redis without interfering"
+        })
+        String clusterId = "main";
     }
 }

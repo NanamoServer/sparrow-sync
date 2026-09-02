@@ -1,6 +1,6 @@
 [versions]
 project-version = "beta.1"
-config-version = "6"
+config-version = "7"
 lang-version = "7"
 
 run-task = "3.0.2"

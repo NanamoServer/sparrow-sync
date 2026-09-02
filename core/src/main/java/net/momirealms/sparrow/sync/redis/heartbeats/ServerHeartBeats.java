@@ -8,7 +8,6 @@ import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -103,7 +102,7 @@ public final class ServerHeartBeats {
         this.lock = this.plugin.sessionLock();
         this.logger = this.plugin.logger();
         this.serverId = ServerConfig.serverId();
-        this.key = ("ss:" + PluginConfig.clusterId() + ":server:" + this.serverId).getBytes(StandardCharsets.UTF_8);
+        this.key = ("ss:" + ServerConfig.clusterId() + ":server:" + this.serverId).getBytes(StandardCharsets.UTF_8);
         this.scheduler = (task, intervalMillis) -> this.plugin.scheduler().asyncRepeating(task, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
         ServerProbeMessage.registry(this);
         if (!this.initialize()) {

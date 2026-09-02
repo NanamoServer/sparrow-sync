@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.Logger;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.cluster.HandoffRequestMessage;
@@ -39,7 +38,7 @@ public final class MessageBrokerManager {
     /** 绑定 Redis 连接并订阅集群消息频道. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
-        this.clusterId = PluginConfig.clusterId();
+        this.clusterId = ServerConfig.clusterId();
         this.serverId = ServerConfig.serverId();
         this.logger = this.plugin.logger();
         this.initialize();
