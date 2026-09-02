@@ -69,6 +69,10 @@ val projectJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
 val extraPluginJars = rootProject.fileTree("buildSrc/plugin") {
     include("*.jar")
 }
+// 启动前复制到各自的运行目录, 避免服务端直接持有共享的 shadowJar.
+tasks.withType<RunServer>().configureEach {
+    legacyPluginLoading()
+}
 fun RunServer.configureServer(
     display: String,
     minecraftVersion: String,
