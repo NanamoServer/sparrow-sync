@@ -16,8 +16,10 @@ import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.session.SnapshotService;
-import net.momirealms.sparrow.sync.session.SnapshotService.SnapshotSaveOutcome;
+import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionManager;
+import net.momirealms.sparrow.sync.session.SnapshotRestoreResult;
+import net.momirealms.sparrow.sync.session.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -312,17 +314,24 @@ public final class TestCommand extends BukkitCommandFeature {
     private void saveTest(CommandContext<CommandSender> context) {
         CommandSender sender = context.sender();
         Player target = target(context);
-        SnapshotService service = this.readyService(sender);
-        if (target == null || service == null) return;
+        if (target == null) return;
+        SessionManager sessions = plugin().sessionManager();
+        PlayerSession session = this.readySession(sender, target);
+        if (session == null) return;
         target.getScheduler().run(plugin().javaPlugin(), task -> {
             long start = System.nanoTime();
-            service.captureAndSubmit(target, SaveCause.COMMAND).whenComplete((result, throwable) -> {
+            CompletableFuture<SnapshotSaveResult> save = sessions.captureNowAndSave(session, target, SaveCause.COMMAND);
+            if (save == null) {
+                send(sender, "[FAIL] synchronization session is not active", false);
+                return;
+            }
+            save.whenComplete((result, throwable) -> {
                 if (throwable != null) {
                     send(sender, "[FAIL] save: " + throwable, false);
                     return;
                 }
-                boolean completed = result instanceof SnapshotSaveOutcome.Completed;
-                send(sender, (completed ? "[PASS] save " : "[FAIL] save ") + result + " in " + elapsed(start), completed);
+                boolean settled = result instanceof SnapshotSaveResult.Settled;
+                send(sender, (settled ? "[PASS] save " : "[FAIL] save ") + result + " in " + elapsed(start), settled);
             });
         }, null);
     }
@@ -330,20 +339,19 @@ public final class TestCommand extends BukkitCommandFeature {
     private void loadTest(CommandContext<CommandSender> context) {
         CommandSender sender = context.sender();
         Player target = target(context);
-        SnapshotService service = this.readyService(sender);
-        if (target == null || service == null) return;
+        if (target == null) return;
         long start = System.nanoTime();
-        service.loadAndApply(target).whenComplete((outcome, throwable) -> {
+        plugin().sessionManager().restoreLatest(target).whenComplete((outcome, throwable) -> {
             if (throwable != null) {
                 send(sender, "[FAIL] load: " + throwable, false);
                 return;
             }
             switch (outcome) {
-                case SnapshotService.LoadOutcome.Applied applied ->
+                case SnapshotRestoreResult.Applied applied ->
                         send(sender, "[PASS] applied " + applied.applied() + " type(s), " + applied.skipped() + " skipped, in " + elapsed(start), true);
-                case SnapshotService.LoadOutcome.Empty ignored -> send(sender, "[PASS] no snapshot in storage, nothing applied", true);
-                case SnapshotService.LoadOutcome.Gone ignored -> send(sender, "[FAIL] player left before the apply stage", false);
-                case SnapshotService.LoadOutcome.Failed failed -> send(sender, "[FAIL] " + failed.detail(), false);
+                case SnapshotRestoreResult.Empty ignored -> send(sender, "[PASS] no snapshot in storage, nothing applied", true);
+                case SnapshotRestoreResult.Gone ignored -> send(sender, "[FAIL] player left before the apply stage", false);
+                case SnapshotRestoreResult.Failed failed -> send(sender, "[FAIL] " + failed.detail(), false);
             }
         });
     }
@@ -352,13 +360,16 @@ public final class TestCommand extends BukkitCommandFeature {
     private void burstTest(CommandContext<CommandSender> context) {
         CommandSender sender = context.sender();
         Player target = target(context);
-        SnapshotService service = this.readyService(sender);
-        if (target == null || service == null) return;
+        if (target == null) return;
+        SessionManager sessions = plugin().sessionManager();
+        PlayerSession session = this.readySession(sender, target);
+        if (session == null) return;
         int count = context.<Integer>optional("count").orElse(20);
         target.getScheduler().run(plugin().javaPlugin(), task -> {
-            List<CompletableFuture<SnapshotSaveOutcome>> saves = new ArrayList<>(count);
+            List<CompletableFuture<SnapshotSaveResult>> saves = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
-                saves.add(service.captureAndSubmit(target, SaveCause.COMMAND));
+                CompletableFuture<SnapshotSaveResult> save = sessions.captureNowAndSave(session, target, SaveCause.COMMAND);
+                saves.add(save != null ? save : CompletableFuture.completedFuture(null));
             }
             CompletableFuture.allOf(saves.toArray(CompletableFuture[]::new)).whenComplete((ignored, allThrowable) -> {
                 int saved = 0;
@@ -366,12 +377,12 @@ public final class TestCommand extends BukkitCommandFeature {
                 int failed = 0;
                 for (int i = 0; i < saves.size(); i++) {
                     try {
-                        SnapshotSaveOutcome outcome = saves.get(i).join();
-                        if (!(outcome instanceof SnapshotSaveOutcome.Completed completed)) {
+                        SnapshotSaveResult outcome = saves.get(i).join();
+                        if (!(outcome instanceof SnapshotSaveResult.Settled settled)) {
                             failed++;
                             continue;
                         }
-                        SaveResult result = completed.result();
+                        SaveResult result = settled.result();
                         if (result == SaveResult.SAVED) saved++;
                         else if (result == SaveResult.SAVED_OUT_OF_ORDER) outOfOrder++;
                     } catch (RuntimeException exception) {
@@ -504,12 +515,10 @@ public final class TestCommand extends BukkitCommandFeature {
         }, null);
     }
 
-    private SnapshotService readyService(CommandSender sender) {
-        SnapshotService service = plugin().snapshotService();
-        if (service == null) {
-            send(sender, "[FAIL] snapshot service is not assembled yet", false);
-        }
-        return service;
+    private PlayerSession readySession(CommandSender sender, Player player) {
+        PlayerSession session = plugin().sessionManager().find(player.getUniqueId());
+        if (session == null) send(sender, "[FAIL] player has no active synchronization session", false);
+        return session;
     }
 
     private StorageProvider readyStorage(CommandSender sender) {

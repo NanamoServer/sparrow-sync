@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.session;
 import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.session.SnapshotService.SaveAttempt;
+import net.momirealms.sparrow.sync.session.SnapshotWriter.WriteAttempt;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -31,10 +31,10 @@ class RetryLogTest {
         RecordingLogger console = new RecordingLogger();
         SyncLogger logger = new SyncLogger(console);
         logger.attachFile(new FileLogWriter(this.directory, console));
-        SaveAttempt attempt = attempt(-1);
+        WriteAttempt attempt = attempt(-1);
 
         for (int number = 1; number <= 20; number++) {
-            SnapshotService.logRetry(logger, attempt, new IllegalStateException("database attempt " + number));
+            SnapshotWriter.logRetry(logger, attempt, new IllegalStateException("database attempt " + number));
             attempt = attempt.next();
         }
         logger.close();
@@ -51,11 +51,11 @@ class RetryLogTest {
         RecordingLogger console = new RecordingLogger();
         SyncLogger logger = new SyncLogger(console);
         logger.attachFile(new FileLogWriter(this.directory, console));
-        SaveAttempt attempt = attempt(0);
+        WriteAttempt attempt = attempt(0);
         IllegalStateException failure = new IllegalStateException("database unavailable");
 
-        SnapshotService.logRetry(logger, attempt, failure);
-        SnapshotService.logFinalFailure(logger, attempt, SaveResult.RETRY_LATER, failure);
+        SnapshotWriter.logRetry(logger, attempt, failure);
+        SnapshotWriter.logFinalFailure(logger, attempt, SaveResult.RETRY_LATER, failure);
         logger.close();
 
         assertEquals(0, console.warnings.size());
@@ -82,14 +82,14 @@ class RetryLogTest {
         return count;
     }
 
-    private static SaveAttempt attempt(int maxRetries) {
+    private static WriteAttempt attempt(int maxRetries) {
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(UUID.randomUUID())
                 .timestamp(1_756_300_000_000L)
                 .cause(SaveCause.DISCONNECT)
                 .server("test")
                 .build();
-        return SaveAttempt.first(new Snapshot(meta, Map.of()), "TestPlayer", maxRetries, 0L);
+        return WriteAttempt.first(new Snapshot(meta, Map.of()), "TestPlayer", maxRetries, 0L);
     }
 
     private static final class RecordingLogger implements PluginLogger {

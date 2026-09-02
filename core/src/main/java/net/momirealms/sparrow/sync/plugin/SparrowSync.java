@@ -272,9 +272,8 @@ public class SparrowSync implements Plugin {
     public void onServerLoaded() {
         // 集成插件管理器
         this.compatibilityManager.onDelayedEnable();
-        // 快照管理器
+        // 快照与会话管理器
         this.snapshotService.onDelayedEnable();
-        // 会话管理器
         this.sessionManager.onDelayedEnable();
         // 安装进入世界前的数据加载门
         this.loginGate.onDelayedEnable();
@@ -654,6 +653,7 @@ public class SparrowSync implements Plugin {
     public SnapshotService snapshotService() {
         return this.snapshotService;
     }
+
     public SnapshotStash snapshotStash() {
         return this.snapshotStash;
     }

@@ -45,7 +45,7 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
     }
 
     @Override
-    @NotNull
+    @NotNull //todo 只存储已获得的 不要全量采集? 是否存在快路径?
     protected Advancements captureValue(@NotNull Player player) {
         ServerPlayer handle = handle(player);
         Map<Object, Object> progress = PlayerAdvancementsProxy.INSTANCE.getProgress(handle.getAdvancements());

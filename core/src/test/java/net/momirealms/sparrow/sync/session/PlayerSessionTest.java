@@ -110,7 +110,7 @@ class PlayerSessionTest {
     }
 
     @Test
-    void consumePreparedReturnsOnceThenNull() {
+    void loadedSnapshotCanOnlyBeTakenOnce() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         DataKey unknown = DataKey.of("other", "unknown");
         Map<DataKey, Tag> passthrough = Map.of(unknown, NBT.createString("retained"));
@@ -122,17 +122,16 @@ class PlayerSessionTest {
         DataRegistry registry = new DataRegistry();
         SnapshotApplier applier = new SnapshotApplier(registry, new SyncLogger(new QuietLogger()));
         registry.freeze();
-        SnapshotService.PreparedOutcome.Ready prepared = new SnapshotService.PreparedOutcome.Ready(
+        SnapshotLoadResult.Ready loaded = new SnapshotLoadResult.Ready(
                 snapshot, (SnapshotApplier.PreparedSnapshot.Ready) applier.prepare(snapshot), 0L);
-        session.prepared(prepared);
+        session.loadedSnapshot(loaded);
 
-        assertSame(prepared, session.consumePrepared());
-        assertNull(session.consumePrepared());
-        assertEquals(passthrough, session.passthroughData());
+        assertSame(loaded, session.takeLoadedSnapshot());
+        assertNull(session.takeLoadedSnapshot());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
-        session.passthroughData(replacement);
-        assertEquals(replacement, session.passthroughData());
+        session.retainedData(replacement);
+        assertEquals(replacement, session.retainedData());
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

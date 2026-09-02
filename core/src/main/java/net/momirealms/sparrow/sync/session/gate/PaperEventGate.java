@@ -15,11 +15,9 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.paper.connection.PaperCommonConnectionProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
-import net.momirealms.sparrow.sync.session.SnapshotService;
-import net.momirealms.sparrow.sync.session.SnapshotService.PreparedOutcome;
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -34,7 +32,6 @@ import java.util.concurrent.TimeoutException;
 public final class PaperEventGate implements LoginGate, Listener {
     private final SparrowSync plugin;
     private SessionManager sessionManager;
-    private SnapshotService snapshotService;
 
     public PaperEventGate(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -42,7 +39,6 @@ public final class PaperEventGate implements LoginGate, Listener {
 
     @Override
     public void onDelayedEnable() {
-        this.snapshotService = this.plugin.snapshotService();
         this.sessionManager = this.plugin.sessionManager();
         Bukkit.getPluginManager().registerEvents(this, this.plugin.javaPlugin());
     }
@@ -58,7 +54,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         assert uuid != null;
         assert name != null;
 
-        PlayerSession existing = this.sessionManager.session(uuid);
+        PlayerSession existing = this.sessionManager.find(uuid);
         if (existing != null) {
             SessionState state = existing.state();
             if (state == SessionState.SAVING || state == SessionState.CLOSED) {
@@ -84,7 +80,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         // 配置阶段断线没有 PlayerQuitEvent, 直接作废半加载会话
         channel.closeFuture().addListener(future -> {
             if (session.state() == SessionState.PREPARING) {
-                this.sessionManager.close(session, SaveCause.DISCONNECT);
+                this.sessionManager.abort(session);
             }
         });
         // 写用户名映射与读快照作为一组完成才放人, 名字映射失败不阻断进服, 只发日志警告.
@@ -96,26 +92,22 @@ public final class PaperEventGate implements LoginGate, Listener {
         });
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());
         long lockStart = System.nanoTime();
-        PreparedOutcome outcome = this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
+        SessionPrepareResult outcome = this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
                 // 锁释放晚于落库, 拿到锁后读库必为最新
-                .thenCompose(ignored -> this.snapshotService.loadAndPrepare(uuid, name))
+                .thenCompose(ignored -> this.sessionManager.prepare(session))
                 .thenCombine(userReady, (prepared, ignored) -> prepared)
                 .orTimeout(budget, TimeUnit.SECONDS)
                 .handle((prepared, throwable) -> {
                     if (throwable == null) return prepared;
                     String reason = throwable instanceof TimeoutException ? "data not ready after " + budget + "s" : String.valueOf(throwable);
-                    return new PreparedOutcome.Failed(reason);
+                    return new SessionPrepareResult.Failed(reason);
                 })
                 .join();
         if (!channel.isActive() || session.state() != SessionState.PREPARING) return;
-        switch (outcome) {
-            case PreparedOutcome.Failed failed -> this.refuse(connection, session, name, failed.detail());
-            // 无历史的新玩家只放行不暂存, join 段把会话转 ACTIVE
-            case PreparedOutcome.Empty ignored -> this.release(uuid, name);
-            case PreparedOutcome.Ready ready -> {
-                session.prepared(ready);
-                this.release(uuid, name);
-            }
+        if (outcome instanceof SessionPrepareResult.Failed failed) {
+            this.refuse(connection, session, name, failed.detail());
+        } else if (outcome instanceof SessionPrepareResult.Ready) {
+            this.release(uuid, name);
         }
     }
 
@@ -124,7 +116,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         return this.plugin.sessionLock().tryAcquire(uuid).thenCompose(outcome -> switch (outcome) {
             // 一次抢到, 无人持有
             case SessionLock.AcquireOutcome.Acquired(String value) -> {
-                this.lockGranted(session, uuid, value);
+                this.sessionManager.lockAcquired(session, value);
                 this.plugin.logger().file(LogCategory.LOCK, uuid, name, LogConstants.LOCK_ACQUIRED, name);
                 yield CompletableFuture.<Void>completedFuture(null);
             }
@@ -140,7 +132,7 @@ public final class PaperEventGate implements LoginGate, Listener {
                 yield this.plugin.handoffManager()
                         .awaitHandoff(uuid, value, deadlineNanos)
                         .thenApply(handoff -> {
-                            this.lockGranted(session, uuid, handoff.lockValue());
+                            this.sessionManager.lockAcquired(session, handoff.lockValue());
                             this.plugin.logger().file(
                                     LogCategory.LOCK,
                                     uuid,
@@ -156,15 +148,6 @@ public final class PaperEventGate implements LoginGate, Listener {
         });
     }
 
-    // 锁值交给会话保管, 等锁期间会话已被断线清理时立即自释放, 不留残锁
-    private void lockGranted(PlayerSession session, UUID uuid, String value) {
-        this.plugin.handoffManager().clearSettled(uuid);
-        session.lockValue(value);
-        if (session.state() == SessionState.CLOSED) {
-            this.plugin.sessionLock().release(uuid, value);
-        }
-    }
-
     // 事件监听器返回后由 Paper 继续配置任务
     private void release(UUID uuid, String name) {
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
@@ -176,7 +159,7 @@ public final class PaperEventGate implements LoginGate, Listener {
     }
 
     private void refuse(PlayerConfigurationConnection connection, PlayerSession session, String name, String reason) {
-        this.sessionManager.close(session, SaveCause.DISCONNECT);
+        this.sessionManager.abort(session);
         this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
         connection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());
     }

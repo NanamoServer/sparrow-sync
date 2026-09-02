@@ -67,7 +67,7 @@ public final class HandoffManager {
     public void onLoad() {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();
-        this.hasSession = uuid -> this.plugin.sessionManager().session(uuid) != null;
+        this.hasSession = uuid -> this.plugin.sessionManager().find(uuid) != null;
         this.scheduler = (task, delayMillis) -> this.plugin.scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
         HandoffRequestMessage.service(this);
     }

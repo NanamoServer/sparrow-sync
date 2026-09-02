@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.session.SnapshotService.PreparedOutcome;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,18 +12,14 @@ import java.util.concurrent.CompletableFuture;
 public final class PlayerSession {
     private final UUID uuid;
     private final String playerName;
-    // 当会话从注册表移除后, 这个 Future 会在 Channel Close 的回调上完成, 一般用于在 thenRun 注册一些 Session 释放时的回调任务.
-    private final CompletableFuture<Void> released = new CompletableFuture<>();
-
+    private final CompletableFuture<Void> released = new CompletableFuture<>(); // 当会话从注册表移除后用于注册回调的
     private SessionState state = SessionState.PREPARING;
-    private PreparedOutcome.Ready prepared;
-    // 本服不认识或已关闭的数据类型, 玩家快照保存时原样写回快照
-    private Map<DataKey, Tag> passthroughData = Map.of();
-    // 分布式锁的持有值, 释放时原样传回
-    private String lockValue;
+    private SnapshotLoadResult.Ready loadedSnapshot;
+    private Map<DataKey, Tag> retainedData = Map.of();  // 本服不认识或已关闭的数据类型, 玩家快照保存时原样写回快照
+    private String lockToken;   // 分布式锁的持有值, 释放时原样传回
 
-    PlayerSession(@NotNull UUID player, @NotNull String playerName) {
-        this.uuid = player;
+    PlayerSession(@NotNull UUID uuid, @NotNull String playerName) {
+        this.uuid = uuid;
         this.playerName = playerName;
     }
 
@@ -48,69 +43,45 @@ public final class PlayerSession {
         return this.state;
     }
 
-    /**
-     * 当前状态与预期相同时尝试转移, 并发竞争失败时返回 false.
-     *
-     * @param expected 预期的当前状态
-     * @param to 目标状态
-     * @return 状态匹配且转移成功时返回 true
-     */
-    public synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState to) {
-        if (this.state != expected || !this.state.canTransitionTo(to)) return false;
-        this.state = to;
+    synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState target) {
+        if (this.state != expected || !this.state.canTransitionTo(target)) return false;
+        this.state = target;
         return true;
     }
 
-    /**
-     * 转移到指定的会话状态.
-     *
-     * @param to 目标状态
-     * @throws IllegalStateException 当前状态不能转移到目标状态时
-     */
-    public synchronized void transition(@NotNull SessionState to) {
-        if (!this.state.canTransitionTo(to)) {
-            throw new IllegalStateException("illegal session transition " + this.state + " -> " + to + " for " + this.playerName);
+    synchronized void transition(@NotNull SessionState target) {
+        if (!this.state.canTransitionTo(target)) {
+            throw new IllegalStateException("illegal session transition " + this.state + " -> " + target + " for " + this.playerName);
         }
-        this.state = to;
+        this.state = target;
     }
 
-    /**
-     * 暂存登录配置阶段生成的预解码结果, 供玩家进入世界后应用.
-     *
-     * @param prepared 预解码结果
-     */
-    public synchronized void prepared(@NotNull PreparedOutcome.Ready prepared) {
-        this.prepared = prepared;
-        this.passthroughData = prepared.prepared().passthrough();
+    synchronized void loadedSnapshot(@NotNull SnapshotLoadResult.Ready loadedSnapshot) {
+        this.loadedSnapshot = loadedSnapshot;
     }
 
-    /**
-     * 取走预解码结果, 同一份结果只会返回一次.
-     *
-     * @return 待应用的结果, 没有结果时返回 null
-     */
     @Nullable
-    public synchronized PreparedOutcome.Ready consumePrepared() {
-        PreparedOutcome.Ready taken = this.prepared;
-        this.prepared = null;
-        return taken;
+    synchronized SnapshotLoadResult.Ready takeLoadedSnapshot() {
+        SnapshotLoadResult.Ready loaded = this.loadedSnapshot;
+        this.loadedSnapshot = null;
+        return loaded;
     }
 
     @NotNull
-    public synchronized Map<DataKey, Tag> passthroughData() {
-        return this.passthroughData;
+    synchronized Map<DataKey, Tag> retainedData() {
+        return this.retainedData;
     }
 
-    public synchronized void passthroughData(@NotNull Map<DataKey, Tag> passthroughData) {
-        this.passthroughData = passthroughData;
+    synchronized void retainedData(@NotNull Map<DataKey, Tag> retainedData) {
+        this.retainedData = retainedData;
     }
 
-    public synchronized void lockValue(@NotNull String lockValue) {
-        this.lockValue = lockValue;
+    synchronized void lockToken(@NotNull String lockToken) {
+        this.lockToken = lockToken;
     }
 
     @Nullable
-    public synchronized String lockValue() {
-        return this.lockValue;
+    synchronized String lockToken() {
+        return this.lockToken;
     }
 }

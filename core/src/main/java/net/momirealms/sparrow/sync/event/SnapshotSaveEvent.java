@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.event;
 
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
-import net.momirealms.sparrow.sync.session.SnapshotService.SnapshotSaveOutcome;
+import net.momirealms.sparrow.sync.session.SnapshotSaveResult;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
@@ -19,11 +19,11 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
 
     private final String playerName;
     private final Snapshot snapshot;
-    private final CompletionStage<SnapshotSaveOutcome> completion;
+    private final CompletionStage<SnapshotSaveResult> completion;
     private boolean cancelled;
 
     @ApiStatus.Internal
-    public SnapshotSaveEvent(@NotNull String playerName, @NotNull Snapshot snapshot, @NotNull CompletionStage<SnapshotSaveOutcome> completion) {
+    public SnapshotSaveEvent(@NotNull String playerName, @NotNull Snapshot snapshot, @NotNull CompletionStage<SnapshotSaveResult> completion) {
         super(true);
         this.playerName = playerName;
         this.snapshot = snapshot;
@@ -57,7 +57,7 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
      * @return 只读的保存完成阶段
      */
     @NotNull
-    public CompletionStage<SnapshotSaveOutcome> completion() {
+    public CompletionStage<SnapshotSaveResult> completion() {
         return this.completion;
     }
 

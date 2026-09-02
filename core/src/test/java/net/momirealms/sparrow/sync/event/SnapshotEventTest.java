@@ -5,7 +5,7 @@ import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.session.SnapshotService.SnapshotSaveOutcome;
+import net.momirealms.sparrow.sync.session.SnapshotSaveResult;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.junit.jupiter.api.Test;
@@ -36,8 +36,8 @@ class SnapshotEventTest {
 
     @Test
     void snapshotSaveEventCarriesSnapshotAndCancellation() {
-        CompletableFuture<SnapshotSaveOutcome> outcome = new CompletableFuture<>();
-        CompletionStage<SnapshotSaveOutcome> completion = outcome.minimalCompletionStage();
+        CompletableFuture<SnapshotSaveResult> outcome = new CompletableFuture<>();
+        CompletionStage<SnapshotSaveResult> completion = outcome.minimalCompletionStage();
         SnapshotSaveEvent event = new SnapshotSaveEvent("EventPlayer", this.snapshot, completion);
 
         assertEquals("EventPlayer", event.playerName());
@@ -48,10 +48,10 @@ class SnapshotEventTest {
         event.setCancelled(true);
         assertTrue(event.isCancelled());
         assertSame(SnapshotSaveEvent.getHandlerList(), event.getHandlers());
-        event.completion().toCompletableFuture().complete(new SnapshotSaveOutcome.Cancelled());
+        event.completion().toCompletableFuture().complete(new SnapshotSaveResult.Cancelled());
         assertFalse(outcome.isDone());
-        outcome.complete(new SnapshotSaveOutcome.Cancelled());
-        assertTrue(event.completion().toCompletableFuture().join() instanceof SnapshotSaveOutcome.Cancelled);
+        outcome.complete(new SnapshotSaveResult.Cancelled());
+        assertTrue(event.completion().toCompletableFuture().join() instanceof SnapshotSaveResult.Cancelled);
     }
 
     @Test

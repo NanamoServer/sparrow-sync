@@ -57,7 +57,7 @@ class SnapshotServicePreparedDataTest {
         passthrough.put(FIRST, NBT.createString("old"));
         Map<DataKey, Tag> captured = Map.of(FIRST, NBT.createString("new"));
 
-        Map<DataKey, Tag> merged = SnapshotService.mergeCapturedData(passthrough, captured);
+        Map<DataKey, Tag> merged = SnapshotService.mergeData(passthrough, captured);
 
         assertEquals("unknown", merged.get(UNKNOWN).getAsString());
         assertEquals("new", merged.get(FIRST).getAsString());
