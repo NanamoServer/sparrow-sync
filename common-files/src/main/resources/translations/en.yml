@@ -37,8 +37,7 @@ argument.parse.failure.either: <red>Could not resolve <arg:1> or <arg:2> from '<
 argument.parse.failure.namedtextcolor: <red>'<arg:0>' is not a named text color</red>
 command.reload.too_fast: <red>You are reloading the plugin too quickly; the previous reload has not yet completed
 command.reload.config.failure: <red>Failed to reload configs. Please check console logs
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>Configs reloaded <gray>(<hover:show_text:'<gray>Async/Sync'><color:#2E86C1><arg:1></color>/<color:#7FB3D5><arg:2></color></hover> ms)</gray>
-command.reload.config.issues: <yellow><arg:0> issue(s) were reported while reloading, see the console
+command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>Configs reloaded <gray>(<color:#2E86C1><arg:0></color> ms)</gray>
 plugin.compatibility: '[Compatibility] Hooked <arg:0>'
 plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
 config.errors_detected: 'Error found in config.yml - <arg:0>'

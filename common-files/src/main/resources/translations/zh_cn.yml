@@ -37,8 +37,7 @@ argument.parse.failure.either: <red>无法从“<arg:0>”解析出<arg:1>或<ar
 argument.parse.failure.namedtextcolor: <red>“<arg:0>”不是命名的文本颜色</red>
 command.reload.too_fast: <red>你重新加载插件的速度太快了，上一次的重新加载还没有完成</red>
 command.reload.config.failure: <red>无法重新加载配置。请检查控制台日志</red>
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<hover:show_text:'<gray>异步/同步'><color:#2E86C1><arg:1></color>/<color:#7FB3D5><arg:2></color></hover>毫秒）</gray>
-command.reload.config.issues: <yellow>重新加载时报告了<arg:0>个问题，详见控制台</yellow>
+command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<color:#2E86C1><arg:0></color>毫秒）</gray>
 plugin.compatibility: '[兼容性] 已挂钩 <arg:0>'
 plugin.compatibility_failed: '[兼容性] 挂钩 <arg:0> 失败'
 config.errors_detected: '在 config.yml 中发现错误 - <arg:0>'

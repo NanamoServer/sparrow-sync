@@ -7,7 +7,6 @@ import net.momirealms.sparrow.sync.plugin.command.FlagKeys;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;
 
 public final class ReloadCommand extends BukkitCommandFeature {
@@ -48,9 +47,6 @@ public final class ReloadCommand extends BukkitCommandFeature {
                                 Component.text(reloadResult.asyncTime()),
                                 Component.text(reloadResult.syncTime())
                         );
-                        if (reloadResult.issues() != 0 && context.sender() instanceof Player) {
-                            handleFeedback(context, MessageConstants.COMMAND_RELOAD_CONFIG_ISSUES, Component.text(reloadResult.issues()));
-                        }
                     }, plugin().scheduler().async());
                 });
     }
