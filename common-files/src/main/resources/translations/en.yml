@@ -56,6 +56,7 @@ log.plugin.started: 'SparrowSync started'
 log.plugin.stopped: 'SparrowSync stopped'
 log.plugin.registry_frozen_types: 'Synchronization enabled for <arg:0> data types: <arg:1>'
 log.plugin.reload_failed: Failed to reload the plugin
+log.plugin.player_data_storage_install_failed: Failed to inject the PlayerDataStorage. Shutting the server down.
 log.server.id_missing: server-id is empty in server.yml. Set a unique id for every server sharing the database. Shutting the server down.
 log.server.id_duplicate: 'The server-id "<arg:0>" is taken by another live server in the cluster. Every server sharing the database needs its own id, change server-id in server.yml of this server. Shutting the server down.'
 log.server.id_seized: 'The previous run of this server never unregistered its identity (token <arg:0>), taking it over'

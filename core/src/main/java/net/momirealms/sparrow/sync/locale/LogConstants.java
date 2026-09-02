@@ -14,6 +14,7 @@ public interface LogConstants {
     String PLUGIN_STOPPED = "log.plugin.stopped";
     String PLUGIN_REGISTRY_FROZEN = "log.plugin.registry_frozen_types";
     String PLUGIN_RELOAD_FAILED = "log.plugin.reload_failed";
+    String PLAYER_DATA_STORAGE_INJECT_FAILED = "log.plugin.player_data_storage_install_failed";
 
     String SERVER_ID_MISSING = "log.server.id_missing";
     String SERVER_ID_DUPLICATE = "log.server.id_duplicate";

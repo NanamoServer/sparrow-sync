@@ -17,7 +17,6 @@ import net.momirealms.sparrow.sync.cluster.SessionLock;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;

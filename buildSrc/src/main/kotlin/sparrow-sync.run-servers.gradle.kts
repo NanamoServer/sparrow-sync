@@ -26,6 +26,7 @@ val java25 = javaToolchains.launcherFor {
 val paperConfigurationVersions = mapOf(
     "1.21.4" to "29",
     "1.21.8" to "30",
+    "1.21.10" to "31",
     "1.21.11" to "31",
     "26.1.2" to "31",
     "26.2" to "31"
@@ -64,7 +65,7 @@ tasks.register<RunVelocity>("runProxyVelocity") {
 /**
  * 配置和注册后端服务器测试.
  */
-val minecraftVersions = listOf("1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2")
+val minecraftVersions = listOf("1.21.4", "1.21.8", "1.21.10", "1.21.11", "26.1.2", "26.2")
 val projectJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
 val extraPluginJars = rootProject.fileTree("buildSrc/plugin") {
     include("*.jar")

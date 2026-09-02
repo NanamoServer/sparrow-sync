@@ -275,6 +275,8 @@ public class SparrowSync implements Plugin {
         // 快照与会话管理器
         this.snapshotService.onDelayedEnable();
         this.sessionManager.onDelayedEnable();
+        // 注入读取器
+        this.injectPlayerDataStorage();
         // 安装进入世界前的数据加载门
         this.loginGate.onDelayedEnable();
         // 预热和标记
@@ -329,6 +331,16 @@ public class SparrowSync implements Plugin {
     @Override
     public void setupProxy() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), getPatches());
+    }
+
+    // 注入玩家存储代理, 接管原版登录读取路径.
+    public void injectPlayerDataStorage() {
+        try {
+            BukkitProxy.injectPlayerDataStorage(VersionHelper.MINECRAFT_VERSION.version());
+        } catch (Throwable throwable) {
+            this.logger.error(LogCategory.LIFECYCLE, null, null, throwable, LogConstants.PLAYER_DATA_STORAGE_INJECT_FAILED);
+            Bukkit.getServer().shutdown();
+        }
     }
 
     /** 注册内置的数据类型. */
@@ -461,6 +473,7 @@ public class SparrowSync implements Plugin {
                 while ((entry = zis.getNextEntry()) != null) {
                     String entryName = entry.getName();
                     if (!entryName.endsWith(".class")) continue;
+                    if (entryName.startsWith("net/momirealms/sparrow/sync/proxy/PlayerDataStorageReplacement")) continue;
                     String className = entryName.replace('/', '.').substring(0, entryName.length() - 6);
                     try {
                         Class.forName(className);
