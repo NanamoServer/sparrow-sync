@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /** 快照的读取、应用、采集和编码流水线. */
 public final class SnapshotService {
@@ -42,6 +43,7 @@ public final class SnapshotService {
     private StorageProvider storage;
     private SnapshotWriter writer;
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
+    private final SnapshotHandoffTracker handoffs = new SnapshotHandoffTracker();
 
     public SnapshotService(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -134,13 +136,14 @@ public final class SnapshotService {
      */
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+        SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
         if (!(this.playerData.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
-            return CompletableFuture.failedFuture(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
+            request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
+            return request.completion;
         }
-        CompletableFuture<SnapshotSaveResult> completion = new CompletableFuture<>();
-        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, completion), completion);
-        return completion;
+        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request), request);
+        return request.completion;
     }
 
     /**
@@ -148,47 +151,49 @@ public final class SnapshotService {
      */
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+        SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
-        CompletableFuture<SnapshotSaveResult> completion = new CompletableFuture<>();
         this.submitSerial(context.meta().player(), () -> {
             if (!(this.playerData.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
-                completion.completeExceptionally(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
+                request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, completion);
-        }, completion);
-        return completion;
+            this.encodeAndSubmit(context, captured, request);
+        }, request);
+        return request.completion;
     }
 
     // 进入这里时已经只持有脱离 Player 的采集值.
-    private void encodeAndSubmit(SaveContext context, SnapshotApplier.CaptureResult.Ready captured, CompletableFuture<SnapshotSaveResult> completion) {
+    private void encodeAndSubmit(SaveContext context, SnapshotApplier.CaptureResult.Ready captured, SaveRequest request) {
         if (!(this.playerData.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
-            completion.completeExceptionally(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
+            request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
         }
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
-        SnapshotSaveEvent event = new SnapshotSaveEvent(context.playerName(), snapshot, completion.minimalCompletionStage());
+        SnapshotSaveEvent event = new SnapshotSaveEvent(context.playerName(), snapshot, request.completion.minimalCompletionStage());
         if (EventUtils.fireAndCheckCancel(event)) {
             this.logger.file(LogCategory.SAVE, context.meta().player(), context.playerName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, context.playerName(), context.meta().cause().name(), context.meta().id().toString());
-            completion.complete(new SnapshotSaveResult.Cancelled());
+            request.cancel();
             return;
         }
-        this.writer.write(snapshot, context.playerName(), context.acceptedAtNanos(), completion);
+        // write 返回时首次存储任务已入队或快照已转交 stash, 最终 settle 继续走 completion
+        this.writer.write(snapshot, context.playerName(), context.acceptedAtNanos(), request.completion);
+        request.handedOff();
     }
 
     // 异常同时交给调用方 Future 与执行器的统一异常出口.
-    private void submitSerial(UUID player, Runnable task, CompletableFuture<SnapshotSaveResult> completion) {
+    private void submitSerial(UUID player, Runnable task, SaveRequest request) {
         try {
             this.serialExecutor.submit(player, () -> {
                 try {
                     task.run();
                 } catch (RuntimeException | Error throwable) {
-                    completion.completeExceptionally(throwable);
+                    request.fail(throwable);
                     throw throwable;
                 }
             });
         } catch (RejectedExecutionException exception) {
-            completion.completeExceptionally(exception);
+            request.fail(exception);
         }
     }
 
@@ -228,10 +233,41 @@ public final class SnapshotService {
         this.writer.stashUnsettled();
     }
 
+    /**
+     * 停止接纳新快照并等待已接纳请求完成首次存储提交.
+     *
+     * @return 是否在限时内完成全部交接
+     */
+    public boolean sealAndAwaitHandoffs(long timeout, @NotNull TimeUnit unit) {
+        return this.handoffs.sealAndAwait(timeout, unit);
+    }
+
     private static String millis(long fromNanos, long toNanos) {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
     private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData, long acceptedAtNanos) {
+    }
+
+    private final class SaveRequest {
+        private final CompletableFuture<SnapshotSaveResult> completion = new CompletableFuture<>();
+
+        private SaveRequest() {
+            SnapshotService.this.handoffs.accept();
+        }
+
+        private void handedOff() {
+            SnapshotService.this.handoffs.handedOff();
+        }
+
+        private void cancel() {
+            this.handedOff();
+            this.completion.complete(new SnapshotSaveResult.Cancelled());
+        }
+
+        private void fail(Throwable throwable) {
+            this.handedOff();
+            this.completion.completeExceptionally(throwable);
+        }
     }
 }

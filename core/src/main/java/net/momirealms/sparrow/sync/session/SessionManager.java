@@ -28,6 +28,7 @@ public final class SessionManager {
     private HandoffManager handoffs;
     private SyncLogger logger;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
+    private volatile boolean accepting = true;
 
     public SessionManager(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -45,7 +46,8 @@ public final class SessionManager {
     }
 
     @Nullable
-    public PlayerSession tryOpen(@NotNull UUID player, @NotNull String playerName) {
+    public synchronized PlayerSession tryOpen(@NotNull UUID player, @NotNull String playerName) {
+        if (!this.accepting) return null;
         PlayerSession session = new PlayerSession(player, playerName);
         return this.sessions.putIfAbsent(player, session) == null ? session : null;
     }
@@ -129,7 +131,7 @@ public final class SessionManager {
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
-            if (!this.owns(session) || session.state() != SessionState.ACTIVE) return null;
+            if (!this.accepting || !this.owns(session) || session.state() != SessionState.ACTIVE) return null;
             return this.snapshots.captureNowAndSave(player, cause, session.retainedData());
         }
     }
@@ -141,7 +143,7 @@ public final class SessionManager {
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
-            if (!this.owns(session) || session.state() != SessionState.ACTIVE) return null;
+            if (!this.accepting || !this.owns(session) || session.state() != SessionState.ACTIVE) return null;
             return this.snapshots.captureLaterAndSave(player, cause, session.retainedData());
         }
     }
@@ -266,10 +268,17 @@ public final class SessionManager {
 
     /** 关服时为 ACTIVE 会话立即采集最终状态, 其余半加载会话直接作废. */
     public void shutdown() {
+        // tryOpen 与这里共享 manager 监视器, 先完成接纳封口再遍历已有会话
+        synchronized (this) {
+            this.accepting = false;
+        }
         int accepted = 0;
         for (PlayerSession session : this.sessions.values()) {
             Player player = Bukkit.getPlayer(session.uuid());
-            if (player == null) return;
+            if (player == null) {
+                this.abort(session);
+                continue;
+            }
             CloseAction action = this.closeWithFinalSave(session, () -> this.snapshots.captureNowAndSave(player, SaveCause.SHUTDOWN, session.retainedData()));
             if (action == CloseAction.SAVE_ACCEPTED) accepted++;
         }

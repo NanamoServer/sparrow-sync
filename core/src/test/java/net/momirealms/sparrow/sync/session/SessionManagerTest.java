@@ -92,4 +92,11 @@ class SessionManagerTest {
 
         assertNull(observed.get());
     }
+
+    @Test
+    void shutdownRejectsNewSessions() {
+        this.manager.shutdown();
+
+        assertNull(this.manager.tryOpen(UUID.randomUUID(), "LatePlayer"));
+    }
 }
