@@ -1,11 +1,13 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.minecraft.advancements.AdvancementProgress;
+import net.minecraft.advancements.CriterionProgress;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.AdvancementValue;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advancements;
@@ -18,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdvancementsDataTypeTest {
@@ -45,5 +48,18 @@ class AdvancementsDataTypeTest {
         assertNotNull(AdvancementHolderProxy.INSTANCE);
         assertNotNull(AdvancementProgressProxy.INSTANCE);
         assertTrue(AdvancementProgressProxy.INSTANCE.getCriteria(new AdvancementProgress()).isEmpty());
+    }
+
+    @Test
+    void criterionObtainedCanBePatchedDirectly() {
+        Instant original = Instant.now().minusSeconds(60);
+        Instant replacement = Instant.now();
+        CriterionProgress progress = new CriterionProgress(original);
+
+        CriterionProgressProxy.INSTANCE.setObtained(progress, replacement);
+        assertEquals(replacement, progress.getObtained());
+        CriterionProgressProxy.INSTANCE.setObtained(progress, null);
+        assertNull(progress.getObtained());
+        assertFalse(progress.isDone());
     }
 }

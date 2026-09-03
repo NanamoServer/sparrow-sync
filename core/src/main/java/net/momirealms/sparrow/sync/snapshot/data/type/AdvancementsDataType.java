@@ -5,12 +5,14 @@ import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.AdvancementRequirements;
 import net.minecraft.advancements.CriterionProgress;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.PlayerAdvancements;
-import net.minecraft.server.ServerAdvancementManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionListenerProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.TriggerInstanceKeyProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -24,15 +26,18 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
  * 同步玩家 advancement 进度, 使用原版 Codec 保留 criterion 完成时间.
  * 采集值只保留脱离玩家状态的标识、criterion 与时间数组, 不携带活的 AdvancementProgress.
- * 应用时直接替换完整进度并刷新监听, 奖励与广播流程不会被触发.
- * todo 性能存在问题, 也需要Native化
+ * 应用时修补现有 CriterionProgress, 奖励、广播和 Bukkit advancement 事件不会被触发.
+ * todo 再审
  */
 public final class AdvancementsDataType extends CodecDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
@@ -63,30 +68,121 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Advancements value) {
         ServerPlayer handle = handle(player);
-        ServerAdvancementManager manager = MinecraftServer.getServer().getAdvancements();
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
-        // 清理旧监听与进度, 再装入完整快照
-        proxy.clearTriggers(playerAdvancements); // todo 这方式真不行, 太慢了, 而且10个玩家你在全局去清理注册10次? 这不行, 需要改进方案.
+        Map<Object, AdvancementValue> captured = index(value.values());
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
-        Set<Object> changed = proxy.getProgressChanged(playerAdvancements);
-        progressByAdvancement.clear();
-        changed.clear();
-        for (AdvancementHolder advancement : manager.getAllAdvancements()) {
-            AdvancementProgress progress = new AdvancementProgress();
-            progress.update(advancement.value().requirements());
-            AdvancementValue captured = value.find(AdvancementHolderProxy.INSTANCE.id(advancement));
-            if (captured != null) restoreCriteria(progress, captured);
-            progressByAdvancement.put(advancement, progress);
-            changed.add(advancement);
-            proxy.markForVisibilityUpdate(playerAdvancements, advancement);
+        boolean changed = false;
+        for (Map.Entry<Object, Object> entry : progressByAdvancement.entrySet()) {
+            AdvancementHolder advancement = (AdvancementHolder) entry.getKey();
+            AdvancementValue target = captured.get(AdvancementHolderProxy.INSTANCE.id(advancement));
+            if (applyProgress(playerAdvancements, advancement, (AdvancementProgress) entry.getValue(), target)) {
+                changed = true;
+            }
         }
-        // 重建触发监听与可见性, 最后一次推送客户端
-        proxy.registerListeners(playerAdvancements, manager);
+        if (!changed) return;
+
+        // dirty 状态一次发给客户端, false 会关闭同步产生的 advancement toast
         if (VersionHelper.isOrAbove1_21_5()) {
-            proxy.flushDirty$0(playerAdvancements, handle, true);
+            proxy.flushDirty$0(playerAdvancements, handle, false);
         } else {
             proxy.flushDirty(playerAdvancements, handle);
+        }
+    }
+
+    private static Map<Object, AdvancementValue> index(AdvancementValue[] values) {
+        Map<Object, AdvancementValue> indexed = new HashMap<>(values.length * 2);
+        for (int i = 0; i < values.length; i++) {
+            AdvancementValue value = values[i];
+            indexed.put(value.id(), value);
+        }
+        return indexed;
+    }
+
+    private static boolean applyProgress(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, AdvancementProgress progress, @Nullable AdvancementValue target) {
+        Map<String, Object> criteria = AdvancementProgressProxy.INSTANCE.getCriteria(progress);
+        Map<String, ?> definitions = advancement.value().criteria();
+        boolean wasDone = progress.isDone();
+        boolean changed = false;
+        for (Map.Entry<String, ?> entry : definitions.entrySet()) {
+            String name = entry.getKey();
+            CriterionProgress criterion = (CriterionProgress) criteria.get(name);
+            Instant current = criterion.getObtained();
+            Instant expected = findObtained(target, name);
+            if (Objects.equals(current, expected)) continue;
+
+            // 直接改原对象, 绕过 award/revoke 产生的事件、奖励与广播.
+            CriterionProgressProxy.INSTANCE.setObtained(criterion, expected);
+            changed = true;
+            if (!wasDone && (current == null) != (expected == null)) {
+                setTriggerActive(playerAdvancements, advancement, name, entry.getValue(), expected == null);
+            }
+        }
+        if (!changed) return false;
+
+        boolean done = progress.isDone();
+        if (wasDone != done) {
+            reconcileTriggers(playerAdvancements, advancement, progress, definitions, !done);
+            PlayerAdvancementsProxy.INSTANCE.markForVisibilityUpdate(playerAdvancements, advancement);
+        }
+        PlayerAdvancementsProxy.INSTANCE.getProgressChanged(playerAdvancements).add(advancement);
+        return true;
+    }
+
+    @Nullable
+    private static Instant findObtained(@Nullable AdvancementValue target, String criterion) {
+        if (target == null) return null;
+        String[] criteria = target.criteria();
+        for (int i = 0; i < criteria.length; i++) {
+            if (criteria[i].equals(criterion)) return target.obtained()[i];
+        }
+        return null;
+    }
+
+    private static void reconcileTriggers(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, AdvancementProgress progress, Map<String, ?> definitions, boolean active) {
+        Map<String, Object> criteria = AdvancementProgressProxy.INSTANCE.getCriteria(progress);
+        for (Map.Entry<String, ?> entry : definitions.entrySet()) {
+            CriterionProgress criterion = (CriterionProgress) criteria.get(entry.getKey());
+            setTriggerActive(playerAdvancements, advancement, entry.getKey(), entry.getValue(), active && !criterion.isDone());
+        }
+    }
+
+    private static void setTriggerActive(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, String criterionName, Object criterion, boolean active) {
+        Object trigger = CriterionProxy.INSTANCE.trigger(criterion);
+        if (VersionHelper.isOrAbove26_2()) {
+            setCurrentTriggerActive(playerAdvancements, advancement, criterionName, criterion, trigger, active);
+        } else if (CriterionProxy.SIMPLE_TRIGGER.isInstance(trigger)) {
+            setLegacyTriggerActive(playerAdvancements, advancement, criterionName, criterion, trigger, active);
+        }
+    }
+
+    private static void setLegacyTriggerActive(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, String criterionName, Object criterion, Object trigger, boolean active) {
+        Map<Object, Set<Object>> table = PlayerAdvancementsProxy.INSTANCE.getCriterionData(playerAdvancements);
+        Set<Object> listeners = table.get(trigger);
+        if (active) {
+            if (listeners == null) {
+                listeners = new HashSet<>();
+                table.put(trigger, listeners);
+            }
+            listeners.add(CriterionListenerProxy.INSTANCE.newInstance(CriterionProxy.INSTANCE.triggerInstance(criterion), advancement, criterionName));
+        } else if (listeners != null) {
+            listeners.remove(CriterionListenerProxy.INSTANCE.newInstance(CriterionProxy.INSTANCE.triggerInstance(criterion), advancement, criterionName));
+            if (listeners.isEmpty()) table.remove(trigger);
+        }
+    }
+
+    private static void setCurrentTriggerActive(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, String criterionName, Object criterion, Object trigger, boolean active) {
+        Map<Object, Map<Object, Object>> table = PlayerAdvancementsProxy.INSTANCE.getActiveTriggers(playerAdvancements);
+        Map<Object, Object> listeners = table.get(trigger);
+        if (active) {
+            if (listeners == null) {
+                listeners = new HashMap<>();
+                table.put(trigger, listeners);
+            }
+            listeners.put(TriggerInstanceKeyProxy.INSTANCE.newInstance(advancement, criterionName), CriterionProxy.INSTANCE.triggerInstance(criterion));
+        } else if (listeners != null) {
+            listeners.remove(TriggerInstanceKeyProxy.INSTANCE.newInstance(advancement, criterionName));
+            if (listeners.isEmpty()) table.remove(trigger);
         }
     }
 
@@ -158,15 +254,6 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
     }
 
     public record Advancements(@NotNull AdvancementValue @NotNull [] values) {
-
-        @Nullable
-        private AdvancementValue find(Object id) {
-            for (int i = 0; i < this.values.length; i++) {
-                AdvancementValue value = this.values[i];
-                if (value.id().equals(id)) return value;
-            }
-            return null;
-        }
     }
 
     public record AdvancementValue(

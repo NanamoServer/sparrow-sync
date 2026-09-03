@@ -19,14 +19,14 @@ public interface PlayerAdvancementsProxy {
     @FieldGetter(name = "progressChanged")
     Set<Object> getProgressChanged(Object target);
 
-    @MethodInvoker(name = {"clearTriggers", "stopListening"})
-    void clearTriggers(Object target);
+    @FieldGetter(name = "criterionData", activeIf = "max_version=26.1.2")
+    Map<Object, Set<Object>> getCriterionData(Object target);
+
+    @FieldGetter(name = "activeTriggers", activeIf = "min_version=26.2")
+    Map<Object, Map<Object, Object>> getActiveTriggers(Object target);
 
     @MethodInvoker(name = "markForVisibilityUpdate")
     void markForVisibilityUpdate(Object target, @Type(name = "net.minecraft.advancements.AdvancementHolder") Object advancement);
-
-    @MethodInvoker(name = "registerListeners")
-    void registerListeners(Object target, @Type(name = "net.minecraft.server.ServerAdvancementManager") Object manager);
 
     @MethodInvoker(name = "flushDirty", activeIf = "version=1.21.4")
     void flushDirty(Object target, @Type(name = "net.minecraft.server.level.ServerPlayer") Object player);
