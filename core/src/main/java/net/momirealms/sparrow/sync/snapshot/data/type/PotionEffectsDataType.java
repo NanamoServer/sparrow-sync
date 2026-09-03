@@ -15,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 药水效果同步, 经 NMS MobEffectInstance CODEC 序列化以保留递归的隐藏效果链
@@ -52,13 +53,14 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
     }
 
     @Override
-    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
         net.minecraft.nbt.Tag effects = value.isEmpty()
                 ? new net.minecraft.nbt.ListTag()
                 : NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, this.encode(value));
         // 空列表也必须显式写入, 否则本服 .dat 中的旧效果会在 vanilla load 时复活.
         playerData.put("active_effects", effects);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     private static ServerPlayer handle(Player player) {

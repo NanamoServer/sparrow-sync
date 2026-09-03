@@ -21,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 背包同步: 全部槽位 (含盔甲、副手及 1.21.5 起的 body/saddle) 与手持槽位.
@@ -105,10 +106,11 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     }
 
     @Override
-    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Inventory value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Inventory value) {
         boolean equipmentFormat = VersionHelper.isOrAbove1_21_5();
         int expectedSize = equipmentFormat ? EQUIPMENT_SIZE : LEGACY_SIZE;
-        if (value.contents().length != expectedSize || value.dropped() != 0) return false;
+        if (value.contents().length != expectedSize || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;
 
         net.minecraft.nbt.ListTag inventory = new net.minecraft.nbt.ListTag();
         for (int i = 0; i < STORAGE_SIZE; i++) {
@@ -135,7 +137,7 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
             playerData.put("Inventory", inventory);
         }
         playerData.putInt("SelectedItemSlot", value.heldSlot());
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     private static void addNativeItem(net.minecraft.nbt.ListTag target, @Nullable ItemStack item, int slot) {

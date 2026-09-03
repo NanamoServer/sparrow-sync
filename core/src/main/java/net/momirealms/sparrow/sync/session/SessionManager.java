@@ -188,8 +188,7 @@ public final class SessionManager {
                 session.transition(SessionState.ACTIVE);
             }
             if (loaded != null) EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
-            this.logger.info(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SYNC_LOGIN_COMPLETE,
-                    player.getName(), millis(0, asyncReadNanos), millis(0, nativeApplyNanos), millis(0, syncApplyNanos));
+            this.logger.info(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SYNC_LOGIN_COMPLETE, player.getName(), millis(0, asyncReadNanos), millis(0, nativeApplyNanos), millis(0, syncApplyNanos));
         }
         return result;
     }

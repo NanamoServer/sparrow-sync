@@ -14,6 +14,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.UUID;
 
 public final class HealthDataType extends CodecDataType<HealthDataType.Health> implements NativePlayerDataType<HealthDataType.Health> {
     public static final DataKey HEALTH = DataKey.sparrow("health");
@@ -58,12 +59,13 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Health value) {
-        if (Double.isNaN(value.health())) return false;
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Health value) {
+        if (Double.isNaN(value.health())) return NativeApplyResult.NOT_APPLIED;
         playerData.putFloat("Health", (float) value.health());
         // 本地死亡残留不能跟着活快照进入新 Player, 否则实体会带正血量继续死亡计时.
         if (value.health() > 0.0) playerData.putShort("DeathTime", (short) 0);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     public record Health(double health) {

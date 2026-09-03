@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.UUID;
 
 public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> implements NativePlayerDataType<ExperienceDataType.Experience> {
     public static final DataKey EXPERIENCE = DataKey.sparrow("experience");
@@ -40,12 +41,13 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Experience value) {
-        if (value.total() < 0 || value.level() < 0 || Float.isNaN(value.progress())) return false;
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Experience value) {
+        if (value.total() < 0 || value.level() < 0 || Float.isNaN(value.progress())) return NativeApplyResult.NOT_APPLIED;
         playerData.putInt("XpTotal", value.total());
         playerData.putInt("XpLevel", value.level());
         playerData.putFloat("XpP", Math.clamp(value.progress(), 0.0f, 1.0f));
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     public record Experience(int total, int level, float progress) {

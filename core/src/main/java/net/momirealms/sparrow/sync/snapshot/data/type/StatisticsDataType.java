@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import com.google.gson.JsonObject;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -7,6 +8,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
+import net.minecraft.stats.Stats;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.IntArrayTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -15,19 +17,27 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
+import net.momirealms.sparrow.sync.util.GsonUtils;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.spigotmc.SpigotConfig;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
-public final class StatisticsDataType implements PlayerDataType<StatisticsDataType.Statistics> {
+public final class StatisticsDataType implements NativePlayerDataType<StatisticsDataType.Statistics> {
     public static final DataKey STATISTICS = DataKey.sparrow("statistics");
 
     private static final String TYPES_KEY = "types";
@@ -139,30 +149,68 @@ public final class StatisticsDataType implements PlayerDataType<StatisticsDataTy
     }
 
     @Override
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Statistics value) throws IOException {
+        if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.STATISTICS, encodeNativeJson(value))) {
+            throw new IOException("atomic statistics JSON replacement failed or is not supported");
+        }
+        return NativeApplyResult.APPLIED_EXTERNAL;
+    }
+
+    @NotNull
+    private static byte[] encodeNativeJson(@NotNull Statistics value) {
+        JsonObject groups = new JsonObject();
+        Stat<?>[] statistics = value.statistics();
+        int[] amounts = value.amounts();
+        for (int i = 0; i < statistics.length; i++) {
+            int amount = amounts[i];
+            if (amount == 0) continue;
+            Stat<?> statistic = statistics[i];
+            String typeName = registryKey(BuiltInRegistries.STAT_TYPE, statistic.getType()).toString();
+            JsonObject entries;
+            if (groups.get(typeName) instanceof JsonObject group) {
+                entries = group;
+            } else {
+                entries = new JsonObject();
+                groups.add(typeName, entries);
+            }
+            entries.addProperty(registryKey(statistic.getType().getRegistry(), statistic.getValue()).toString(), amount);
+        }
+        JsonObject root = new JsonObject();
+        root.add("stats", groups);
+        root.addProperty("DataVersion", VersionHelper.WORLD_VERSION);
+        return GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Override
     public void apply(@NotNull Player player, @NotNull Statistics value) {
         ServerPlayer handle = handle(player);
         ServerStatsCounter counter = handle.getStats();
-        Stat<?>[] statistics = value.statistics();
-        int[] amounts = value.amounts();
-        Map<Stat<?>, Integer> remaining = new HashMap<>(statistics.length);
-        for (int i = 0; i < statistics.length; i++) {
-            remaining.put(statistics[i], amounts[i]);
-        }
-
         Object2IntMap<Stat<?>> current = stats(counter);
         synchronized (current) {
-            for (Object2IntMap.Entry<Stat<?>> entry : current.object2IntEntrySet()) {
-                Integer expected = remaining.remove(entry.getKey());
-                int amount = expected == null ? 0 : expected;
-                if (entry.getIntValue() != amount) {
-                    counter.setValue(handle, entry.getKey(), amount);
-                }
-            }
-            for (Map.Entry<Stat<?>, Integer> entry : remaining.entrySet()) {
-                counter.setValue(handle, entry.getKey(), entry.getValue());
-            }
+            // 先把旧键标脏, 在线恢复时被清除的统计也必须向客户端发送零值
+            counter.markAllDirty();
+            replace(current, value);
+            counter.markAllDirty();
         }
         counter.sendStats(handle);
+    }
+
+    private static void replace(Object2IntMap<Stat<?>> current, Statistics value) {
+        current.clear();
+        Stat<?>[] statistics = value.statistics();
+        int[] amounts = value.amounts();
+        for (int i = 0; i < statistics.length; i++) {
+            Stat<?> statistic = statistics[i];
+            int amount = amounts[i];
+            if (amount != 0 && forcedAmount(statistic) == null) current.put(statistic, amount);
+        }
+        // forced stats 在原版读取后覆盖文件值, Player 回退沿用同一结果
+        for (Map.Entry<Object, Integer> entry : forcedStats().entrySet()) {
+            Stat<?> statistic = forcedStatistic(entry.getKey());
+            if (statistic != null) current.put(statistic, entry.getValue().intValue());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -172,6 +220,24 @@ public final class StatisticsDataType implements PlayerDataType<StatisticsDataTy
 
     private static Object registryKey(Registry<?> registry, Object value) {
         return RegistryProxy.INSTANCE.getKey(registry, value);
+    }
+
+    @Nullable
+    private static Integer forcedAmount(Stat<?> statistic) {
+        if (statistic.getType() != Stats.CUSTOM) return null;
+        Object key = registryKey(BuiltInRegistries.CUSTOM_STAT, statistic.getValue());
+        return forcedStats().get(key);
+    }
+
+    @Nullable
+    private static Stat<?> forcedStatistic(Object key) {
+        Object value = RegistryProxy.INSTANCE.getValue(BuiltInRegistries.CUSTOM_STAT, key);
+        return value == null ? null : statistic(Stats.CUSTOM, value);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Map<Object, Integer> forcedStats() {
+        return (Map) SpigotConfig.forcedStats;
     }
 
     @SuppressWarnings("unchecked")

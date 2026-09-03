@@ -11,6 +11,8 @@ import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.UUID;
+
 public final class GameModeDataType extends CodecDataType<GameMode> implements NativePlayerDataType<GameMode> {
     public static final DataKey GAME_MODE = DataKey.sparrow("game_mode");
     private static final Codec<GameMode> CODEC = Codec.STRING.comapFlatMap(GameModeDataType::parseGameMode, GameMode::name);
@@ -33,7 +35,8 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull GameMode value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull GameMode value) {
         int id = switch (value) {
             case SURVIVAL -> 0;
             case CREATIVE -> 1;
@@ -41,7 +44,7 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
             case SPECTATOR -> 3;
         };
         playerData.putInt("playerGameType", id);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     private static DataResult<GameMode> parseGameMode(String name) {

@@ -12,7 +12,7 @@ import java.util.Set;
 /**
  * 一类玩家数据的声明、采集、编解码与应用, 也是 {@link net.momirealms.sparrow.sync.snapshot.DataRegistry} 唯一接受的注册类型.
  * capture 可在玩家线程或玩家串行线程执行, encode 与 decode 可在任意线程执行, apply 在玩家拥有线程执行.
- * 登录前可异步写入原版玩家文件的类型另行实现 {@link NativePlayerDataType}.
+ * 登录前可异步写入原版数据的类型另行实现 {@link NativePlayerDataType}.
  * todo 也许采集, 编码, 解码可以带当前目标玩家的会话状态, 例如玩家离开服务器之后的采集可以直接安全返回目标容器而不走 copy
  *
  * @param <T> 采集与解码共享的值类型

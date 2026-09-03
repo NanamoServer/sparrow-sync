@@ -9,6 +9,8 @@ import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.UUID;
+
 public final class EnchantmentSeedDataType extends CodecDataType<Integer> implements NativePlayerDataType<Integer> {
     public static final DataKey ENCHANTMENT_SEED = DataKey.sparrow("enchantment_seed");
 
@@ -28,10 +30,11 @@ public final class EnchantmentSeedDataType extends CodecDataType<Integer> implem
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Integer value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Integer value) {
         // 原版把零值当作“缺失”并在 load 时重新随机, 该边界只能留给 join setter 保真.
-        if (value == 0) return false;
+        if (value == 0) return NativeApplyResult.NOT_APPLIED;
         playerData.putInt("XpSeed", value);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 }

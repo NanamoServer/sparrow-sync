@@ -148,7 +148,7 @@ public final class SnapshotApplyContext {
         ABSENT,          // 快照没有对应数据
         PENDING,         // 已解码, 等待 Native 或 Player 应用
         DECODE_SKIPPED,  // 解码失败, 允许事件补入合法值
-        APPLIED_NATIVE,  // 已写入登录使用的原生玩家数据
+        APPLIED_NATIVE,  // 已写入登录使用的原版数据源
         APPLIED_PLAYER,  // 已通过 Bukkit Player 路径应用
         SKIPPED,         // 事件移除或非关键 Player 应用失败
         FAILED           // 关键 Player 应用失败

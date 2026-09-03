@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 同步白名单内属性的基础值与可跨服 modifier, 服务器本地 modifier 由配置黑名单保留.
@@ -126,10 +127,11 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     }
 
     @Override
-    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Attributes attributes) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Attributes attributes) {
         net.minecraft.nbt.Tag merged = mergeNative(playerData.get("attributes"), attributes, PluginConfig.synchronization$attributes());
         playerData.put("attributes", merged);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     @NotNull

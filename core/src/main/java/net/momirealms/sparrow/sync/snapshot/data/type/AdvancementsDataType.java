@@ -1,37 +1,35 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.AdvancementRequirements;
 import net.minecraft.advancements.CriterionProgress;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionListenerProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.TriggerInstanceKeyProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.*;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.util.GsonUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 同步玩家 advancement 进度, 使用原版 Codec 保留 criterion 完成时间.
@@ -39,7 +37,7 @@ import java.util.Set;
  * 应用时修补现有 CriterionProgress, 奖励、广播和 Bukkit advancement 事件不会被触发.
  * todo 再审
  */
-public final class AdvancementsDataType extends CodecDataType<AdvancementsDataType.Advancements> {
+public final class AdvancementsDataType extends CodecDataType<AdvancementsDataType.Advancements> implements NativePlayerDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
 
     private static final String INCOMPLETE_CRITERION = "sparrow-sync:incomplete";
@@ -64,6 +62,22 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
             if (value != null) captured[count++] = value;
         }
         return new Advancements(Arrays.copyOf(captured, count));
+    }
+
+    @NotNull
+    @Override
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Advancements value) throws IOException {
+        if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encodeNativeJson(value))) {
+            throw new IOException("atomic advancements JSON replacement failed or is not supported");
+        }
+        return NativeApplyResult.APPLIED_EXTERNAL;
+    }
+
+    private static byte[] encodeNativeJson(@NotNull Advancements value) {
+        JsonObject root = CODEC.encodeStart(JsonOps.INSTANCE, value).getOrThrow().getAsJsonObject();
+        root.addProperty("DataVersion", VersionHelper.WORLD_VERSION);
+        return GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
     }
 
     @Override

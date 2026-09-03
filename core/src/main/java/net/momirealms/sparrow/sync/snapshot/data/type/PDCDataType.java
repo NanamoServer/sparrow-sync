@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt.CompoundTag> {
     public static final DataKey PERSISTENT_DATA = DataKey.sparrow("persistent_data");
@@ -100,7 +101,8 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     }
 
     @Override
-    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
         net.minecraft.nbt.Tag current = playerData.get("BukkitValues");
         net.minecraft.nbt.CompoundTag merged = current instanceof net.minecraft.nbt.CompoundTag compound
                 ? compound.copy()
@@ -108,7 +110,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
         mergeCompound(merged, value, PluginConfig.synchronization$pdcMergeNamespaces());
         // 子树在副本中完成合并, 到这里才替换根节点, 合并异常不会污染尚未发布的本地数据.
         playerData.put("BukkitValues", merged);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     @NotNull

@@ -19,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public final class LocationDataType extends CodecDataType<LocationDataType.PlayerLocation> implements NativePlayerDataType<LocationDataType.PlayerLocation> {
     public static final DataKey LOCATION = DataKey.sparrow("location");
@@ -53,8 +54,9 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull PlayerLocation value) {
-        if (value.world().isEmpty() || !Double.isFinite(value.x()) || !Double.isFinite(value.y()) || !Double.isFinite(value.z()) || !Float.isFinite(value.yaw()) || !Float.isFinite(value.pitch())) return false;
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull PlayerLocation value) {
+        if (value.world().isEmpty() || !Double.isFinite(value.x()) || !Double.isFinite(value.y()) || !Double.isFinite(value.z()) || !Float.isFinite(value.yaw()) || !Float.isFinite(value.pitch())) return NativeApplyResult.NOT_APPLIED;
 
         ListTag position = new ListTag();
         position.add(DoubleTag.valueOf(value.x()));
@@ -72,7 +74,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
         playerData.putString("world", value.world());
         playerData.put("Pos", position);
         playerData.put("Rotation", rotation);
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     public record PlayerLocation(@NotNull String world, double x, double y, double z, float yaw, float pitch) {

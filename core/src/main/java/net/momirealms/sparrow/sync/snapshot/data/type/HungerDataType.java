@@ -11,6 +11,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.UUID;
 
 public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> implements NativePlayerDataType<HungerDataType.Hunger> {
     public static final DataKey HUNGER = DataKey.sparrow("hunger");
@@ -43,12 +44,13 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
     }
 
     @Override
-    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Hunger value) {
+    @NotNull
+    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Hunger value) {
         playerData.putInt("foodLevel", value.food());
         playerData.putFloat("foodSaturationLevel", value.saturation());
         playerData.putFloat("foodExhaustionLevel", value.exhaustion());
         // foodTickTimer 是目标服本地的恢复/饥饿进度, 不属于快照值, 保留原 tag.
-        return true;
+        return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     public record Hunger(int food, float saturation, float exhaustion) {

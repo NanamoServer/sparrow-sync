@@ -14,6 +14,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -139,7 +140,7 @@ public final class PlayerDataPipeline {
         return new PrepareResult.Ready(context);
     }
 
-    /** 在 Gate 阶段把可原生表达的 pending 槽位写入尚未发布的玩家 tag. */
+    /** 在 Gate 阶段把可原生表达的 pending 槽位写入原版登录数据源. */
     @NotNull
     public Optional<CompoundTag> applyNative(@NotNull UUID player, @NotNull String playerName, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
         // 本地 .dat 是写入基底, 本地为空时先建立可丢弃的候选根 tag
@@ -151,7 +152,7 @@ public final class PlayerDataPipeline {
             bukkit.putLong("firstPlayed", System.currentTimeMillis());
             working.put("bukkit", bukkit);
         }
-        boolean appliedAny = false;
+        boolean playerDataApplied = false;
         int size = context.size();
         // 冻结槽位已经按依赖排序, join-only 与非 pending 类型自然跳过
         for (int i = 0; i < size; i++) {
@@ -159,18 +160,18 @@ public final class PlayerDataPipeline {
             NativePlayerDataType<?> nativeType = this.dataRegistry.nativeTypeAt(i);
             if (nativeType == null) continue;
             try {
-                if (applyNativeValue(nativeType, working, context.valueAt(i))) {
-                    context.appliedNative(i);
-                    appliedAny = true;
-                }
+                NativePlayerDataType.NativeApplyResult result = applyNativeValue(nativeType, player, working, context.valueAt(i));
+                if (result == NativePlayerDataType.NativeApplyResult.NOT_APPLIED) continue;
+                context.appliedNative(i);
+                if (result == NativePlayerDataType.NativeApplyResult.APPLIED_PLAYER_DATA) playerDataApplied = true;
             } catch (Throwable throwable) {
                 // 异常槽位保持 PENDING, Join 可以回退应用并且后续 Native 类型继续执行
                 context.nativeFailed(i, throwable);
                 this.logger.warn(LogCategory.DATA, player, playerName, throwable, LogConstants.DATA_NATIVE_APPLY_FALLBACK, this.dataRegistry.keyAt(i).asString(), playerName);
             }
         }
-        // 没有字段成功写入时丢弃候选, 玩家仍保持原版的新玩家语义
-        if (synthetic && !appliedAny) return Optional.empty();
+        // 没有 .dat 字段成功写入时丢弃候选根 tag, 玩家仍保持原版的新玩家语义
+        if (synthetic && !playerDataApplied) return Optional.empty();
         return synthetic ? Optional.of(working) : playerData;
     }
 
@@ -216,8 +217,8 @@ public final class PlayerDataPipeline {
 
     // Native 类型数组与 Context 共用冻结槽位, 这里恢复 applyNative 所需的 T
     @SuppressWarnings("unchecked")
-    private static <T> boolean applyNativeValue(NativePlayerDataType<T> type, CompoundTag playerData, Object value) {
-        return type.applyNative(playerData, (T) value);
+    private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, UUID player, CompoundTag playerData, Object value) throws IOException {
+        return type.applyNative(player, playerData, (T) value);
     }
 
     /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */

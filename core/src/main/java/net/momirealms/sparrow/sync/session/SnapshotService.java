@@ -73,7 +73,7 @@ public final class SnapshotService {
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
     }
 
-    /** 在 Gate 阶段把远端快照写入尚未发布的原版玩家数据. */
+    /** 在 Gate 阶段把远端快照写入原版登录数据源. */
     @NotNull
     Optional<CompoundTag> applyNative(@NotNull UUID player, @NotNull String playerName, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
         return this.playerDataPipeline.applyNative(player, playerName, localData, loaded.context());

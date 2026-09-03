@@ -12,6 +12,7 @@ import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
@@ -224,7 +225,7 @@ class PlayerDataPipelineTest {
     }
 
     @Test
-    void nativeFalseStaysPendingWithoutFailure() {
+    void nativeNotAppliedStaysPendingWithoutFailure() {
         PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).unsupportedNative());
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
         CompoundTag local = new CompoundTag();
@@ -236,6 +237,20 @@ class PlayerDataPipelineTest {
         assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
         assertEquals(List.of(), context.failures());
         assertEquals(List.of(ALPHA), assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context)).applied());
+    }
+
+    @Test
+    void externalNativeSuccessDoesNotPublishSyntheticPlayerData() {
+        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative());
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
+
+        Optional<CompoundTag> playerData = pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context);
+        PlayerDataPipeline.ApplyResult.Success result = assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
+
+        assertTrue(playerData.isEmpty());
+        assertEquals(List.of(ALPHA), this.nativeApplied);
+        assertEquals(List.of(ALPHA), result.applied());
+        assertEquals(List.of(), this.applied);
     }
 
     @Test
@@ -442,7 +457,7 @@ class PlayerDataPipelineTest {
     }
 
     private final class NativeFakeType extends FakeType implements NativePlayerDataType<String> {
-        private boolean nativeSupported = true;
+        private NativeApplyResult nativeResult = NativeApplyResult.APPLIED_PLAYER_DATA;
         private boolean nativeFails;
 
         private NativeFakeType(DataKey key, StorageFormat storage, boolean critical, Set<DataKey> dependencies) {
@@ -450,7 +465,12 @@ class PlayerDataPipelineTest {
         }
 
         private NativeFakeType unsupportedNative() {
-            this.nativeSupported = false;
+            this.nativeResult = NativeApplyResult.NOT_APPLIED;
+            return this;
+        }
+
+        private NativeFakeType externalNative() {
+            this.nativeResult = NativeApplyResult.APPLIED_EXTERNAL;
             return this;
         }
 
@@ -460,13 +480,14 @@ class PlayerDataPipelineTest {
         }
 
         @Override
-        public boolean applyNative(@NotNull CompoundTag playerData, @NotNull String value) {
+        @NotNull
+        public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull String value) {
             PlayerDataPipelineTest.this.nativeAttempts.add(this.key());
             if (this.nativeFails) throw new IllegalStateException("native failed");
-            if (!this.nativeSupported) return false;
-            playerData.putString(this.key().asString(), value);
+            if (this.nativeResult == NativeApplyResult.NOT_APPLIED) return this.nativeResult;
+            if (this.nativeResult == NativeApplyResult.APPLIED_PLAYER_DATA) playerData.putString(this.key().asString(), value);
             PlayerDataPipelineTest.this.nativeApplied.add(this.key());
-            return true;
+            return this.nativeResult;
         }
     }
 
