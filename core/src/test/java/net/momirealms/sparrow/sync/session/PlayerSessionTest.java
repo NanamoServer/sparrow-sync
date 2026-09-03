@@ -168,6 +168,16 @@ class PlayerSessionTest {
     }
 
     @Test
+    void failedLocalLoadPublishesAnEmptyReadyCache() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+
+        session.publishPlayerData(new PlayerDataPreload.Fallback());
+
+        assertEquals(Optional.empty(), session.loadPlayerData(() -> Optional.of(new CompoundTag())));
+        assertEquals(1, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+    }
+
+    @Test
     void unservedReadyPlayerDataReportsZeroLoads() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         session.publishPlayerData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())));

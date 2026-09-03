@@ -10,6 +10,8 @@ sealed interface PlayerDataPreload {
     record Ready(@NotNull Optional<CompoundTag> data) implements PlayerDataPreload {
     }
 
-    record Failed(@NotNull String detail) implements PlayerDataPreload {
+    /** 本地数据读取失败, 登录流程按空数据继续. */
+    // todo 直接改单例
+    record Fallback() implements PlayerDataPreload {
     }
 }

@@ -64,9 +64,13 @@ public final class PlayerSession implements PlayerDataEntry {
     }
 
     @NotNull
-    synchronized PlayerDataState publishPlayerData(@NotNull PlayerDataPreload.Ready playerData) {
+    synchronized PlayerDataState publishPlayerData(@NotNull PlayerDataPreload playerData) {
         if (this.playerDataState instanceof PlayerDataState.Preloading) {
-            this.playerDataState = new PlayerDataState.Ready(playerData.data(), 0);
+            Optional<CompoundTag> data = switch (playerData) {
+                case PlayerDataPreload.Ready ready -> ready.data();
+                case PlayerDataPreload.Fallback ignored -> Optional.empty();
+            };
+            this.playerDataState = new PlayerDataState.Ready(data, 0);
         }
         return this.playerDataState;
     }

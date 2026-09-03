@@ -81,12 +81,12 @@ public final class SnapshotService {
                 .thenApply(latest -> latest
                         .map(snapshot -> this.prepare(snapshot, player, playerName, loadStart))
                         .orElseGet(() -> {
-                            this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName);
+                            this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName, millis(loadStart, System.nanoTime()));
                             return new SnapshotLoadResult.Empty();
                         }))
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
-                        this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, String.valueOf(throwable));
+                        this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, millis(loadStart, System.nanoTime()), String.valueOf(throwable));
                     }
                 });
     }
@@ -100,7 +100,7 @@ public final class SnapshotService {
             }
             case SnapshotApplier.PreparedSnapshot.Failed failed -> {
                 String detail = failed.key().asString() + ": " + failed.detail();
-                this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, detail);
+                this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, millis(loadStart, System.nanoTime()), detail);
                 yield new SnapshotLoadResult.Failed(detail);
             }
         };

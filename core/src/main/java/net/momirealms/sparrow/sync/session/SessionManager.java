@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /** 玩家会话的注册表与生命周期编排入口. */
@@ -60,7 +61,7 @@ public final class SessionManager {
         return this.sessions.putIfAbsent(player, session) == null ? session : null;
     }
 
-    /** 并行读取原版玩家数据和远端快照, 两边都成功后放行 Gate. */
+    /** 并行读取原版玩家数据和远端快照, 远端成功且本地已得到结果后放行 Gate. */
     @NotNull
     public CompletableFuture<SessionPrepareResult> prepare(@NotNull PlayerSession session) {
         CompletableFuture<PlayerDataPreload> playerData;
@@ -70,9 +71,21 @@ public final class SessionManager {
                 return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
             }
             // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取.
+            long playerDataLoadStart = System.nanoTime();
             playerData = CompletableFuture
                     .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
-                    .handle((loaded, throwable) -> throwable == null ? new PlayerDataPreload.Ready(loaded) : new PlayerDataPreload.Failed(String.valueOf(throwable)));
+                    .handle((loaded, throwable) -> {
+                        String loadMillis = String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - playerDataLoadStart));
+                        // 读取本地数据失败
+                        if (throwable != null) {
+                            String detail = String.valueOf(throwable);
+                            this.logger.warnWithFileCause(LogCategory.APPLY, session.uuid(), session.playerName(), throwable, LogConstants.SYNC_LOCAL_DATA_FALLBACK, session.playerName(), loadMillis, detail);
+                            return new PlayerDataPreload.Fallback();
+                        }
+                        // 正常读取成功
+                        this.logger.file(LogCategory.APPLY, session.uuid(), session.playerName(), loaded.isPresent() ? LogConstants.SYNC_LOCAL_DATA_READY : LogConstants.SYNC_LOCAL_DATA_EMPTY, session.playerName(), loadMillis);
+                        return new PlayerDataPreload.Ready(loaded);
+                    });
             snapshot = this.snapshots
                     .loadLatest(session.uuid(), session.playerName())
                     .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
@@ -84,16 +97,11 @@ public final class SessionManager {
                 if (!this.owns(session) || session.state() != SessionState.PREPARING) {
                     return new SessionPrepareResult.Rejected();
                 }
-                //todo 都加载结果都需要补文件日志
-                if (local instanceof PlayerDataPreload.Failed(String detail)) {
-                    PlayerDataState failed = session.failPlayerData(detail);
-                    return new SessionPrepareResult.Failed(failed instanceof PlayerDataState.Failed(String failure) ? failure : detail);
-                }
                 if (remote instanceof SnapshotLoadResult.Failed(String detail)) {
                     PlayerDataState failed = session.failPlayerData(detail);
                     return new SessionPrepareResult.Failed(failed instanceof PlayerDataState.Failed(String failure) ? failure : detail);
                 }
-                PlayerDataState published = session.publishPlayerData((PlayerDataPreload.Ready) local);
+                PlayerDataState published = session.publishPlayerData(local);
                 if (published instanceof PlayerDataState.Failed(String detail)) {
                     return new SessionPrepareResult.Failed(detail);
                 }

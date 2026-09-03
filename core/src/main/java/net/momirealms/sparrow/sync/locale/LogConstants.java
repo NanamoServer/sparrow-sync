@@ -56,6 +56,9 @@ public interface LogConstants {
 
     String SYNC_LOAD_READY = "log.sync.load_ready";
     String SYNC_LOAD_EMPTY = "log.sync.load_empty";
+    String SYNC_LOCAL_DATA_READY = "log.sync.local_data_ready";
+    String SYNC_LOCAL_DATA_EMPTY = "log.sync.local_data_empty";
+    String SYNC_LOCAL_DATA_FALLBACK = "log.sync.local_data_fallback";
     String SYNC_APPLY_STARTED = "log.sync.apply_started";
     String SYNC_SAVE_STARTED = "log.sync.save_started";
     String SYNC_SAVED = "log.sync.saved";
