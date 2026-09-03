@@ -125,13 +125,15 @@ class PlayerSessionTest {
         SnapshotLoadResult.Ready loaded = new SnapshotLoadResult.Ready(snapshot, newApplyContext(registry, passthrough), 0L);
         Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
 
-        session.publishLoginData(new PlayerDataPreload.Ready(playerData), loaded);
+        session.publishLoginData(new PlayerDataPreload.Ready(playerData), loaded, 12L, 34L);
         assertSame(playerData, session.loadPlayerData(Optional::empty));
         LoginDataState.Ready ready = assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData());
 
         assertSame(playerData, ready.playerData());
         assertSame(loaded, ready.snapshot());
         assertEquals(1, ready.loads());
+        assertEquals(12L, ready.asyncReadNanos());
+        assertEquals(34L, ready.nativeApplyNanos());
         assertInstanceOf(LoginDataState.Cleared.class, session.finishLoginData());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
@@ -144,7 +146,7 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
 
-        assertInstanceOf(LoginDataState.Ready.class, session.publishLoginData(new PlayerDataPreload.Ready(playerData), null));
+        assertInstanceOf(LoginDataState.Ready.class, session.publishLoginData(new PlayerDataPreload.Ready(playerData), null, 0L, 0L));
         assertSame(playerData, session.loadPlayerData(() -> {
             throw new AssertionError("ready cache must not read original data");
         }));
@@ -163,7 +165,7 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         Optional<CompoundTag> empty = Optional.empty();
 
-        session.publishLoginData(new PlayerDataPreload.Ready(empty), null);
+        session.publishLoginData(new PlayerDataPreload.Ready(empty), null, 0L, 0L);
 
         assertSame(empty, session.loadPlayerData(() -> Optional.of(new CompoundTag())));
         assertEquals(1, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
@@ -173,7 +175,7 @@ class PlayerSessionTest {
     void failedLocalLoadPublishesAnEmptyReadyCache() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
 
-        session.publishLoginData(new PlayerDataPreload.Fallback(), null);
+        session.publishLoginData(new PlayerDataPreload.Fallback(), null, 0L, 0L);
 
         assertEquals(Optional.empty(), session.loadPlayerData(() -> Optional.of(new CompoundTag())));
         assertEquals(1, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
@@ -182,7 +184,7 @@ class PlayerSessionTest {
     @Test
     void unservedReadyPlayerDataReportsZeroLoads() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
-        session.publishLoginData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())), null);
+        session.publishLoginData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())), null, 0L, 0L);
 
         assertEquals(0, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
     }
@@ -194,7 +196,7 @@ class PlayerSessionTest {
 
         assertSame(original, session.loadPlayerData(() -> original));
 
-        LoginDataState.Failed failed = assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null));
+        LoginDataState.Failed failed = assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L));
         assertEquals("PlayerDataStorage.load ran before player data preload completed", failed.detail());
         assertEquals(failed, session.finishLoginData());
     }
@@ -205,7 +207,7 @@ class PlayerSessionTest {
 
         assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("first")).detail());
         assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("second")).detail());
-        assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null)).detail());
+        assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L)).detail());
     }
 
     @Test
@@ -213,7 +215,7 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         session.finishLoginData();
 
-        assertInstanceOf(LoginDataState.Cleared.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null));
+        assertInstanceOf(LoginDataState.Cleared.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L));
     }
 
     private static SnapshotApplyContext newApplyContext(DataRegistry registry, Map<DataKey, Tag> passthrough) {

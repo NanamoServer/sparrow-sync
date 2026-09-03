@@ -11,7 +11,13 @@ sealed interface LoginDataState {
     record Preloading() implements LoginDataState {
     }
 
-    record Ready(@NotNull Optional<CompoundTag> playerData, int loads, @Nullable SnapshotLoadResult.Ready snapshot) implements LoginDataState {
+    record Ready(
+            @NotNull Optional<CompoundTag> playerData,
+            int loads,
+            @Nullable SnapshotLoadResult.Ready snapshot,
+            long asyncReadNanos,
+            long nativeApplyNanos
+    ) implements LoginDataState {
     }
 
     record Failed(@NotNull String detail) implements LoginDataState {

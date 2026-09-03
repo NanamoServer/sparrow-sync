@@ -70,7 +70,7 @@ class WriteAttemptTest {
 
         assertEquals(first.snapshot(), second.snapshot());
         assertEquals(first.maxRetries(), second.maxRetries());
-        assertEquals(first.acceptedAtNanos(), second.acceptedAtNanos());
+        assertEquals(first.captureNanos(), second.captureNanos());
         assertEquals(first.number() + 1, second.number());
     }
 

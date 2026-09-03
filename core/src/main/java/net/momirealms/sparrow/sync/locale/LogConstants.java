@@ -59,9 +59,12 @@ public interface LogConstants {
     String SYNC_LOCAL_DATA_READY = "log.sync.local_data_ready";
     String SYNC_LOCAL_DATA_EMPTY = "log.sync.local_data_empty";
     String SYNC_LOCAL_DATA_FALLBACK = "log.sync.local_data_fallback";
+    String SYNC_LOGIN_COMPLETE = "log.sync.login_complete";
     String SYNC_APPLY_STARTED = "log.sync.apply_started";
     String SYNC_SAVE_STARTED = "log.sync.save_started";
     String SYNC_SAVED = "log.sync.saved";
+    String SYNC_DISCONNECT_SAVED = "log.sync.disconnect_saved";
+    String SYNC_SHUTDOWN_PLAYER_SAVED = "log.sync.shutdown_player_saved";
     String SYNC_SAVE_FAILED = "log.sync.save_failed";
     String SYNC_SAVE_PENDING_RETRY = "log.sync.save_pending_retry";
     String SYNC_SAVE_RETRIES_EXHAUSTED = "log.sync.save_retries_exhausted";

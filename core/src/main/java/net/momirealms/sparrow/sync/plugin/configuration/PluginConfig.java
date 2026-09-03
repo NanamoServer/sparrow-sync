@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.Plugin;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
@@ -90,7 +91,7 @@ public final class PluginConfig {
         DatabaseOptions database = new DatabaseOptions();
 
         @BlankLineBefore
-        @Comment("Local activity log")
+        @Comment("Logging")
         LoggingOptions logging = new LoggingOptions();
 
         @BlankLineBefore
@@ -101,6 +102,14 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class LoggingOptions {
+        @Comment({
+                "Successful snapshot causes printed to the console",
+                "Disconnect and command saves are enabled by default",
+                "When local-file is enabled, every successful save is still written there"
+        })
+        ConsoleSaveCauses consoleSaveCauses = new ConsoleSaveCauses();
+
+        @BlankLineBefore
         @Comment({
                 "Writes every plugin log line, including those hidden from the console,",
                 "to a <date>.log file per day under the directory below",
@@ -124,6 +133,39 @@ public final class PluginConfig {
                 "It decides when a new file starts, e.g. yyyy-MM would roll monthly instead of daily"
         })
         String fileDateFormat = "yyyy-MM-dd";
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class ConsoleSaveCauses {
+        boolean disconnect = true;
+        boolean worldChange = false;
+        boolean gameModeChange = false;
+        boolean preDeath = false;
+        boolean death = false;
+        boolean shutdown = false;
+        boolean worldSave = false;
+        boolean command = true;
+        boolean restore = false;
+        boolean edit = false;
+        boolean api = false;
+        boolean unknown = false;
+
+        boolean enabled(@NotNull SaveCause cause) {
+            return switch (cause) {
+                case DISCONNECT -> this.disconnect;
+                case WORLD_CHANGE -> this.worldChange;
+                case GAME_MODE_CHANGE -> this.gameModeChange;
+                case PRE_DEATH -> this.preDeath;
+                case DEATH -> this.death;
+                case SHUTDOWN -> this.shutdown;
+                case WORLD_SAVE -> this.worldSave;
+                case COMMAND -> this.command;
+                case RESTORE -> this.restore;
+                case EDIT -> this.edit;
+                case API -> this.api;
+                case UNKNOWN -> this.unknown;
+            };
+        }
     }
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
@@ -735,6 +777,10 @@ public final class PluginConfig {
 
     public static boolean debug() {
         return config.debug;
+    }
+
+    public static boolean logging$consoleSave(@NotNull SaveCause cause) {
+        return config.logging.consoleSaveCauses.enabled(cause);
     }
 
     public static boolean logging$localFile() {

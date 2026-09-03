@@ -20,11 +20,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /** 玩家会话的注册表与生命周期编排入口. */
@@ -71,13 +71,13 @@ public final class SessionManager {
         if (session.state() != SessionState.PREPARING) {
             return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
         }
+        long loadStart = System.nanoTime();
         boolean nativeApply = PluginConfig.synchronization$nativeApply();
         // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取
-        long playerDataLoadStart = System.nanoTime();
         CompletableFuture<PlayerDataPreload> playerData = CompletableFuture
                 .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
                 .handle((loaded, throwable) -> {
-                    String loadMillis = String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - playerDataLoadStart));
+                    String loadMillis = millis(loadStart, System.nanoTime());
                     // 读取本地数据失败
                     if (throwable != null) {
                         String detail = String.valueOf(throwable);
@@ -94,16 +94,20 @@ public final class SessionManager {
 
         // 两份结果齐全后在 worker 生成最终 tag, 再重验 Session 并一次发布进入世界需要的数据
         return playerData.thenCombineAsync(snapshot, (local, remote) -> {
+            long asyncReadNanos = System.nanoTime() - loadStart;
             // 已结束的登录不再执行原生数据转换
             if (session.state() != SessionState.PREPARING) {
                 return new SessionPrepareResult.Rejected();
             }
             SnapshotLoadResult.Ready loadedSnapshot = remote instanceof SnapshotLoadResult.Ready ready ? ready : null;
             PlayerDataPreload preparedLocal = local;
+            long nativeApplyNanos = 0L;
             // 如果开启了 nativeApply, 则进行修改
             if (nativeApply && loadedSnapshot != null) {
                 Optional<CompoundTag> localData = local instanceof PlayerDataPreload.Ready(Optional<CompoundTag> data) ? data : Optional.empty();
+                long nativeApplyStart = System.nanoTime();
                 preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session.uuid(), session.playerName(), localData, loadedSnapshot));
+                nativeApplyNanos = System.nanoTime() - nativeApplyStart;
             }
             // 发布与 abort 共用 Session 监视器, 缓存和快照一起提交
             synchronized (session) {
@@ -116,7 +120,7 @@ public final class SessionManager {
                     return new SessionPrepareResult.Failed(failed instanceof LoginDataState.Failed(String failure) ? failure : detail);
                 }
                 // 尝试发布本地数据的缓存到会话并检查
-                LoginDataState published = session.publishLoginData(preparedLocal, loadedSnapshot);
+                LoginDataState published = session.publishLoginData(preparedLocal, loadedSnapshot, asyncReadNanos, nativeApplyNanos);
                 if (published instanceof LoginDataState.Failed(String detail)) {
                     return new SessionPrepareResult.Failed(detail);
                 }
@@ -146,6 +150,8 @@ public final class SessionManager {
     @NotNull
     SnapshotApplyResult activate(@NotNull PlayerSession session, @NotNull Player player) {
         SnapshotLoadResult.Ready loaded;
+        long asyncReadNanos;
+        long nativeApplyNanos;
         synchronized (session) {
             if (!this.owns(session) || !session.tryTransition(SessionState.PREPARING, SessionState.APPLYING)) {
                 return new SnapshotApplyResult.Rejected();
@@ -156,31 +162,34 @@ public final class SessionManager {
                 case LoginDataState.Ready ready -> {
                     if (ready.loads() == 0) return new SnapshotApplyResult.Failed("player data cache was not read before PlayerJoinEvent");
                     loaded = ready.snapshot();
+                    asyncReadNanos = ready.asyncReadNanos();
+                    nativeApplyNanos = ready.nativeApplyNanos();
                 }
                 case LoginDataState.Failed failed -> {return new SnapshotApplyResult.Failed(failed.detail());}
                 case LoginDataState.Preloading ignored -> {return new SnapshotApplyResult.Failed("player data cache was still preloading at PlayerJoinEvent");}
                 case LoginDataState.Cleared ignored -> {return new SnapshotApplyResult.Failed("player data cache was cleared before PlayerJoinEvent");}
             }
         }
+        SnapshotApplyResult result;
+        long syncApplyNanos = 0L;
         if (loaded == null) {
-            synchronized (session) {
-                if (!this.owns(session) || !session.tryTransition(SessionState.APPLYING, SessionState.ACTIVE)) {
-                    return new SnapshotApplyResult.Rejected();
-                }
-            }
-            return new SnapshotApplyResult.Applied(List.of(), List.of(), List.of());
+            result = new SnapshotApplyResult.Applied(List.of(), List.of(), List.of());
+        } else {
+            long syncApplyStart = System.nanoTime();
+            result = this.snapshotService.apply(player, loaded);
+            syncApplyNanos = System.nanoTime() - syncApplyStart;
         }
-
-        SnapshotApplyResult result = this.snapshotService.apply(player, loaded);
         if (result instanceof SnapshotApplyResult.Applied applied) {
             synchronized (session) {
                 if (!this.owns(session) || session.state() != SessionState.APPLYING) {
                     return new SnapshotApplyResult.Rejected();
                 }
-                session.retainedData(loaded.context().passthrough());
+                if (loaded != null) session.retainedData(loaded.context().passthrough());
                 session.transition(SessionState.ACTIVE);
             }
-            EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
+            if (loaded != null) EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
+            this.logger.info(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SYNC_LOGIN_COMPLETE,
+                    player.getName(), millis(0, asyncReadNanos), millis(0, nativeApplyNanos), millis(0, syncApplyNanos));
         }
         return result;
     }
@@ -378,6 +387,10 @@ public final class SessionManager {
 
     private boolean owns(PlayerSession session) {
         return this.sessions.get(session.uuid()) == session;
+    }
+
+    private static String millis(long fromNanos, long toNanos) {
+        return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
     // beginClose 时对会话状态的裁定, 调用方据此选择保存、延迟释放或结束处理.

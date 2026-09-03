@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
@@ -35,9 +36,9 @@ final class SnapshotWriter {
     }
 
     /** 开始写入已经编码完成的快照, 并收敛到调用方提供的完成结果. */
-    void write(@NotNull Snapshot snapshot, @NotNull String playerName, long acceptedAtNanos, @NotNull CompletableFuture<SnapshotSaveResult> completion) {
+    void write(@NotNull Snapshot snapshot, @NotNull String playerName, long captureNanos, @NotNull CompletableFuture<SnapshotSaveResult> completion) {
         this.logger.file(LogCategory.SAVE, snapshot.meta().player(), playerName, LogConstants.SYNC_SAVE_STARTED, playerName, snapshot.meta().cause().name(), snapshot.meta().id().toString());
-        WriteAttempt attempt = WriteAttempt.first(snapshot, playerName, PluginConfig.synchronization$maxSaveRetries(), acceptedAtNanos);
+        WriteAttempt attempt = WriteAttempt.first(snapshot, playerName, PluginConfig.synchronization$maxSaveRetries(), captureNanos);
         this.unsettledWrites.put(completion, attempt);
         completion.whenComplete((result, throwable) -> this.unsettledWrites.remove(completion));
         this.write(attempt, completion);
@@ -61,7 +62,7 @@ final class SnapshotWriter {
             }
             SaveResult result = outcome.result();
             if (result.stored()) {
-                this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), millis(attempt.acceptedAtNanos(), submittedAt), millis(submittedAt, System.nanoTime()));
+                this.logSaved(attempt, result, System.nanoTime() - submittedAt);
                 this.rotateHistory(attempt.player(), attempt.playerName());
                 completion.complete(new SnapshotSaveResult.Settled(result));
                 return;
@@ -75,6 +76,37 @@ final class SnapshotWriter {
             }
             this.stashFailed(attempt, result, outcome.failure(), completion);
         });
+    }
+
+    private void logSaved(WriteAttempt attempt, SaveResult result, long storeNanos) {
+        SaveCause cause = attempt.snapshot().meta().cause();
+        String captureMillis = millis(0, attempt.captureNanos());
+        String storeMillis = millis(0, storeNanos);
+        if (cause == SaveCause.DISCONNECT) {
+            if (PluginConfig.logging$consoleSave(cause)) {
+                this.logger.info(LogCategory.QUIT, attempt.player(), attempt.playerName(), LogConstants.SYNC_DISCONNECT_SAVED,
+                        attempt.playerName(), captureMillis, storeMillis);
+            } else {
+                this.logger.file(LogCategory.QUIT, attempt.player(), attempt.playerName(), LogConstants.SYNC_DISCONNECT_SAVED,
+                        attempt.playerName(), captureMillis, storeMillis);
+            }
+            return;
+        }
+        if (cause == SaveCause.SHUTDOWN) {
+            if (PluginConfig.logging$consoleSave(cause)) {
+                this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SHUTDOWN_PLAYER_SAVED,
+                        attempt.playerName(), captureMillis, storeMillis);
+            } else {
+                this.logger.file(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SHUTDOWN_PLAYER_SAVED,
+                        attempt.playerName(), captureMillis, storeMillis);
+            }
+            return;
+        }
+        if (PluginConfig.logging$consoleSave(cause)) {
+            this.logger.info(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), captureMillis, storeMillis);
+        } else {
+            this.logger.file(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVED, attempt.playerName(), attempt.cause(), result.name(), captureMillis, storeMillis);
+        }
     }
 
     static void logRetry(@NotNull SyncLogger logger, @NotNull WriteAttempt attempt, @Nullable Throwable failure) {
@@ -137,15 +169,15 @@ final class SnapshotWriter {
     }
 
     /** 一次快照写入尝试. */
-    record WriteAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long acceptedAtNanos) {
+    record WriteAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureNanos) {
         private static final int FREE_ATTEMPTS = 5;
         private static final long RETRY_DELAY_STEP_MILLIS = 100;
         private static final long MAX_RETRY_DELAY_MILLIS = 1000;
         private static final int LOG_INTERVAL = 10;
 
         @NotNull
-        static WriteAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long acceptedAtNanos) {
-            return new WriteAttempt(snapshot, playerName, 1, maxRetries, acceptedAtNanos);
+        static WriteAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureNanos) {
+            return new WriteAttempt(snapshot, playerName, 1, maxRetries, captureNanos);
         }
 
         @NotNull
@@ -173,7 +205,7 @@ final class SnapshotWriter {
 
         @NotNull
         WriteAttempt next() {
-            return new WriteAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.acceptedAtNanos);
+            return new WriteAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureNanos);
         }
     }
 }

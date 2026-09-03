@@ -63,13 +63,18 @@ public final class PlayerSession implements PlayerDataEntry {
     }
 
     @NotNull
-    synchronized LoginDataState publishLoginData(@NotNull PlayerDataPreload playerData, @Nullable SnapshotLoadResult.Ready snapshot) {
+    synchronized LoginDataState publishLoginData(
+            @NotNull PlayerDataPreload playerData,
+            @Nullable SnapshotLoadResult.Ready snapshot,
+            long asyncReadNanos,
+            long nativeApplyNanos
+    ) {
         if (this.loginDataState instanceof LoginDataState.Preloading) {
             Optional<CompoundTag> data = switch (playerData) {
                 case PlayerDataPreload.Ready ready -> ready.data();
                 case PlayerDataPreload.Fallback ignored -> Optional.empty();
             };
-            this.loginDataState = new LoginDataState.Ready(data, 0, snapshot);
+            this.loginDataState = new LoginDataState.Ready(data, 0, snapshot, asyncReadNanos, nativeApplyNanos);
         }
         return this.loginDataState;
     }
@@ -94,7 +99,7 @@ public final class PlayerSession implements PlayerDataEntry {
     public Optional<CompoundTag> loadPlayerData(@NotNull Supplier<Optional<CompoundTag>> original) {
         synchronized (this) {
             if (this.loginDataState instanceof LoginDataState.Ready ready) {
-                this.loginDataState = new LoginDataState.Ready(ready.playerData(), ready.loads() + 1, ready.snapshot());
+                this.loginDataState = new LoginDataState.Ready(ready.playerData(), ready.loads() + 1, ready.snapshot(), ready.asyncReadNanos(), ready.nativeApplyNanos());
                 return ready.playerData();
             }
             if (this.loginDataState instanceof LoginDataState.Preloading) {

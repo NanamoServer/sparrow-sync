@@ -126,7 +126,7 @@ public final class SnapshotService {
         context.acceptEventValues(event.decoded());
         return switch (this.playerDataPipeline.apply(player, context)) {
             case PlayerDataPipeline.ApplyResult.Success success -> {
-                this.logger.info(LogCategory.APPLY, player.getUniqueId(), player.getName(),
+                this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(),
                         LogConstants.SYNC_APPLIED,
                         player.getName(),
                         String.valueOf(success.applied().size()),
@@ -148,11 +148,13 @@ public final class SnapshotService {
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
+        long captureStart = System.nanoTime();
         if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
             request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
             return request.completion;
         }
-        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request), request);
+        long captureNanos = System.nanoTime() - captureStart;
+        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, captureNanos, request), request);
         return request.completion;
     }
 
@@ -164,17 +166,18 @@ public final class SnapshotService {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
         this.submitSerial(context.meta().player(), () -> {
+            long captureStart = System.nanoTime();
             if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, request);
+            this.encodeAndSubmit(context, captured, System.nanoTime() - captureStart, request);
         }, request);
         return request.completion;
     }
 
     // 进入这里时已经只持有脱离 Player 的采集值.
-    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
+    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, long captureNanos, SaveRequest request) {
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
@@ -187,7 +190,7 @@ public final class SnapshotService {
             return;
         }
         // write 返回时首次存储任务已入队或快照已转交 stash, 最终 settle 继续走 completion
-        this.writer.write(snapshot, context.playerName(), context.acceptedAtNanos(), request.completion);
+        this.writer.write(snapshot, context.playerName(), captureNanos, request.completion);
         request.handedOff();
     }
 
@@ -209,8 +212,7 @@ public final class SnapshotService {
 
     @NotNull
     private SaveContext newContext(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
-        long acceptedAtNanos = System.nanoTime();
-        return new SaveContext(this.newMetadata(player, cause), player.getName(), retainedData, acceptedAtNanos);
+        return new SaveContext(this.newMetadata(player, cause), player.getName(), retainedData);
     }
 
     private SnapshotMeta newMetadata(Player player, SaveCause cause) {
@@ -256,7 +258,7 @@ public final class SnapshotService {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
-    private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData, long acceptedAtNanos) {
+    private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData) {
     }
 
     private final class SaveRequest {
