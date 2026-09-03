@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -14,12 +15,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -132,6 +135,73 @@ class PlayerSessionTest {
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
         session.retainedData(replacement);
         assertEquals(replacement, session.retainedData());
+    }
+
+    @Test
+    void readyPlayerDataCanBeLoadedMoreThanOnce() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
+
+        assertInstanceOf(PlayerDataState.Ready.class, session.publishPlayerData(new PlayerDataPreload.Ready(playerData)));
+        assertSame(playerData, session.loadPlayerData(() -> {
+            throw new AssertionError("ready cache must not read original data");
+        }));
+        assertSame(playerData, session.loadPlayerData(() -> {
+            throw new AssertionError("ready cache must not read original data");
+        }));
+
+        PlayerDataState.Ready state = assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData());
+        assertEquals(2, state.loads());
+        Optional<CompoundTag> original = Optional.of(new CompoundTag());
+        assertSame(original, session.loadPlayerData(() -> original));
+    }
+
+    @Test
+    void emptyPlayerDataIsStillAReadyCacheHit() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        Optional<CompoundTag> empty = Optional.empty();
+
+        session.publishPlayerData(new PlayerDataPreload.Ready(empty));
+
+        assertSame(empty, session.loadPlayerData(() -> Optional.of(new CompoundTag())));
+        assertEquals(1, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+    }
+
+    @Test
+    void unservedReadyPlayerDataReportsZeroLoads() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        session.publishPlayerData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())));
+
+        assertEquals(0, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+    }
+
+    @Test
+    void earlyPlayerDataLoadFallsBackAndRejectsPublication() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        Optional<CompoundTag> original = Optional.of(new CompoundTag());
+
+        assertSame(original, session.loadPlayerData(() -> original));
+
+        PlayerDataState.Failed failed = assertInstanceOf(PlayerDataState.Failed.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty())));
+        assertEquals("PlayerDataStorage.load ran before player data preload completed", failed.detail());
+        assertEquals(failed, session.finishPlayerData());
+    }
+
+    @Test
+    void firstPlayerDataFailureWins() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+
+        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.failPlayerData("first")).detail());
+        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.failPlayerData("second")).detail());
+        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty()))).detail());
+    }
+
+    @Test
+    void clearedPlayerDataRejectsLatePublication() {
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        session.finishPlayerData();
+
+        assertInstanceOf(PlayerDataState.Cleared.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty())));
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

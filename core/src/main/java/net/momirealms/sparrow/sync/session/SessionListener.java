@@ -47,18 +47,16 @@ public final class SessionListener implements Listener {
             result = this.sessions.activate(session, player);
         } catch (Throwable throwable) {
             this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), throwable, LogConstants.GATE_KICKED, player.getName(), String.valueOf(throwable));
-            this.kick(session, player);
+            this.kick(player);
             return;
         }
         if (result instanceof SnapshotApplyResult.Failed(String detail)) {
             this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), detail);
-            this.kick(session, player);
+            this.kick(player);
         }
     }
 
-    // kick 会同步触发 quit 事件, 所以先作废半加载会话.
-    private void kick(PlayerSession session, Player player) {
-        this.sessions.abort(session);
+    private void kick(Player player) {
         player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 
@@ -68,6 +66,7 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null) return;
         this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
+        // 原版会在 PlayerQuitEvent 返回后立刻保存玩家文件, 玩家所在 Region 的下一 tick 再采集时本地数据已经就绪.
         this.sessions.disconnect(session, player);
     }
 

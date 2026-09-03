@@ -7,11 +7,16 @@ import net.momirealms.sparrow.reflection.SReflection;
 import net.momirealms.sparrow.reflection.remapper.Remapper;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.MinecraftServerProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.players.PlayerListProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataEntry;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch1_21_4;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch1_21_6;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch1_21_9;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public final class BukkitProxy {
     private static final int MIN_PLAYER_DATA_STORAGE_VERSION = MinecraftPredicate.parseVersionToInteger("1.21.4");
@@ -37,10 +42,9 @@ public final class BukkitProxy {
         }
     }
 
-    /**
-     * 注入原版的 PlayerDataStorage.
-     */
-    public static void injectPlayerDataStorage(String version) {
+    /** 替换原版 PlayerDataStorage, 并返回可读取 original 数据的版本适配器. */
+    @NotNull
+    public static PlayerDataStoragePatch injectPlayerDataStorage(@NotNull String version, @NotNull Map<UUID, ? extends PlayerDataEntry> sessions) {
         MinecraftServerProxy serverProxy = MinecraftServerProxy.INSTANCE;
         Object server = serverProxy.getServer();
         Object playerList = serverProxy.getPlayerList(server);
@@ -49,20 +53,27 @@ public final class BukkitProxy {
         LevelStorageSource.LevelStorageAccess levelAccess = (LevelStorageSource.LevelStorageAccess) serverProxy.getStorageSource(server);
         DataFixer fixerUpper = serverProxy.getFixerUpper(server);
         // 构造并注入字段
-        PlayerDataStorage patch = newPlayerDataStoragePatch(version, levelAccess, fixerUpper, original);
+        PlayerDataStoragePatch patch = createPlayerDataStoragePatch(version, levelAccess, fixerUpper, original, sessions);
         PlayerListProxy.INSTANCE.setPlayerIo(playerList, patch);
+        return patch;
     }
 
     /**
      * 构造代理的 PlayerDataStorage.
      */
-    private static PlayerDataStorage newPlayerDataStoragePatch(String versionString, LevelStorageSource.LevelStorageAccess levelAccess, DataFixer fixerUpper, PlayerDataStorage original) {
+    private static PlayerDataStoragePatch createPlayerDataStoragePatch(
+            String versionString,
+            LevelStorageSource.LevelStorageAccess levelAccess,
+            DataFixer fixerUpper,
+            PlayerDataStorage original,
+            Map<UUID, ? extends PlayerDataEntry> sessions
+    ) {
         int version = MinecraftPredicate.parseVersionToInteger(versionString);
         if (version < MIN_PLAYER_DATA_STORAGE_VERSION || version > MAX_PLAYER_DATA_STORAGE_VERSION) {
             throw new IllegalArgumentException("Unsupported PlayerDataStorage version: " + versionString);
         }
-        if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_9) return new PlayerDataStoragePatch1_21_9(levelAccess, fixerUpper, original);
-        if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_6) return new PlayerDataStoragePatch1_21_6(levelAccess, fixerUpper, original);
-        return new PlayerDataStoragePatch1_21_4(levelAccess, fixerUpper, original);
+        if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_9) return new PlayerDataStoragePatch1_21_9(levelAccess, fixerUpper, original, sessions);
+        if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_6) return new PlayerDataStoragePatch1_21_6(levelAccess, fixerUpper, original, sessions);
+        return new PlayerDataStoragePatch1_21_4(levelAccess, fixerUpper, original, sessions);
     }
 }

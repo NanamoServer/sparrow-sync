@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
+import org.bukkit.GameMode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -43,7 +44,7 @@ class DataTypeCodecTest {
         GameModeDataType type = new GameModeDataType();
         CompoundTag ignored = NBT.createCompound();
 
-        assertEquals(GameType.SURVIVAL, type.decode(NBT.createString("survival"), 0));
+        assertEquals(GameMode.SURVIVAL, type.decode(NBT.createString("survival"), 0));
         assertThrows(IOException.class, () -> type.decode(NBT.createString("SURVIVAL"), 0));
         assertThrows(IOException.class, () -> type.decode(NBT.createString("NOT_A_MODE"), 0));
         assertThrows(IOException.class, () -> type.decode(ignored, 0));

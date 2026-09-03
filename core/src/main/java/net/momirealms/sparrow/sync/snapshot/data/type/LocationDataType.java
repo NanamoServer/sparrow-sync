@@ -38,6 +38,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
         if (world == null) {
             throw new IllegalStateException("location world is not loaded: " + value.world());
         }
+        // todo 需要包装一下, folia 不能直接用 teleport.
         if (!player.teleport(new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch()))) {
             throw new IllegalStateException("location teleport was rejected: " + value.world());
         }

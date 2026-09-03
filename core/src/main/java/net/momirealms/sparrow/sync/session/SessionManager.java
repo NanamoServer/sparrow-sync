@@ -7,9 +7,12 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.util.EventUtils;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,11 +26,12 @@ import java.util.function.Supplier;
 /** 玩家会话的注册表与生命周期编排入口. */
 public final class SessionManager {
     private final SparrowSync plugin;
+    private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
     private SnapshotService snapshots;
     private SessionLock sessionLock;
     private HandoffManager handoffs;
     private SyncLogger logger;
-    private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
+    private PlayerDataStoragePatch playerDataStorage;
     private volatile boolean accepting = true;
 
     public SessionManager(@NotNull SparrowSync plugin) {
@@ -45,6 +49,10 @@ public final class SessionManager {
         Bukkit.getPluginManager().registerEvents(new SessionListener(this.plugin, this), this.plugin.javaPlugin());
     }
 
+    public void injectPlayerDataStorage(@NotNull String version) {
+        this.playerDataStorage = BukkitProxy.injectPlayerDataStorage(version, this.sessions);
+    }
+
     @Nullable
     public synchronized PlayerSession tryOpen(@NotNull UUID player, @NotNull String playerName) {
         if (!this.accepting) return null;
@@ -52,27 +60,48 @@ public final class SessionManager {
         return this.sessions.putIfAbsent(player, session) == null ? session : null;
     }
 
-    /** 读取并预解码会话进入世界前需要的数据. */
+    /** 并行读取原版玩家数据和远端快照, 两边都成功后放行 Gate. */
     @NotNull
     public CompletableFuture<SessionPrepareResult> prepare(@NotNull PlayerSession session) {
+        CompletableFuture<PlayerDataPreload> playerData;
+        CompletableFuture<SnapshotLoadResult> snapshot;
         synchronized (session) {
             if (!this.owns(session) || session.state() != SessionState.PREPARING) {
                 return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
             }
+            // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取.
+            playerData = CompletableFuture
+                    .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
+                    .handle((loaded, throwable) -> throwable == null ? new PlayerDataPreload.Ready(loaded) : new PlayerDataPreload.Failed(String.valueOf(throwable)));
+            snapshot = this.snapshots
+                    .loadLatest(session.uuid(), session.playerName())
+                    .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
         }
-        return this.snapshots.loadLatest(session.uuid(), session.playerName()).thenApply(result -> {
+
+        // 两份结果齐全后重验 Session, 再一次发布进入世界需要的数据.
+        return playerData.thenCombine(snapshot, (local, remote) -> {
             synchronized (session) {
                 if (!this.owns(session) || session.state() != SessionState.PREPARING) {
                     return new SessionPrepareResult.Rejected();
                 }
-                return switch (result) {
-                    case SnapshotLoadResult.Empty ignored -> new SessionPrepareResult.Ready();
-                    case SnapshotLoadResult.Failed failed -> new SessionPrepareResult.Failed(failed.detail());
-                    case SnapshotLoadResult.Ready ready -> {
-                        session.loadedSnapshot(ready);
-                        yield new SessionPrepareResult.Ready();
-                    }
-                };
+                //todo 都加载结果都需要补文件日志
+                if (local instanceof PlayerDataPreload.Failed(String detail)) {
+                    PlayerDataState failed = session.failPlayerData(detail);
+                    return new SessionPrepareResult.Failed(failed instanceof PlayerDataState.Failed(String failure) ? failure : detail);
+                }
+                if (remote instanceof SnapshotLoadResult.Failed(String detail)) {
+                    PlayerDataState failed = session.failPlayerData(detail);
+                    return new SessionPrepareResult.Failed(failed instanceof PlayerDataState.Failed(String failure) ? failure : detail);
+                }
+                PlayerDataState published = session.publishPlayerData((PlayerDataPreload.Ready) local);
+                if (published instanceof PlayerDataState.Failed(String detail)) {
+                    return new SessionPrepareResult.Failed(detail);
+                }
+                if (!(published instanceof PlayerDataState.Ready)) {
+                    return new SessionPrepareResult.Failed("player data cache no longer accepts preload results");
+                }
+                if (remote instanceof SnapshotLoadResult.Ready ready) session.loadedSnapshot(ready);
+                return new SessionPrepareResult.Ready();
             }
         });
     }
@@ -99,6 +128,16 @@ public final class SessionManager {
             if (!this.owns(session) || !session.tryTransition(SessionState.PREPARING, SessionState.APPLYING)) {
                 return new SnapshotApplyResult.Rejected();
             }
+            // Join 验收后 Session 解除对原版数据的引用.
+            PlayerDataState playerDataState = session.finishPlayerData();
+            // todo 多语言日志
+            String playerDataFailure = switch (playerDataState) {
+                case PlayerDataState.Ready ready -> ready.loads() == 0 ? "player data cache was not read before PlayerJoinEvent" : null;
+                case PlayerDataState.Failed failed -> failed.detail();
+                case PlayerDataState.Preloading ignored -> "player data cache was still preloading at PlayerJoinEvent";
+                case PlayerDataState.Cleared ignored -> "player data cache was cleared before PlayerJoinEvent";
+            };
+            if (playerDataFailure != null) return new SnapshotApplyResult.Failed(playerDataFailure);
             loaded = session.takeLoadedSnapshot();
         }
         if (loaded == null) {
@@ -202,57 +241,85 @@ public final class SessionManager {
             SessionState state = session.state();
             if (state == SessionState.ACTIVE || state == SessionState.SAVING || state == SessionState.CLOSED) return false;
             session.transition(SessionState.CLOSED);
+            session.finishPlayerData();
             this.releaseSession(session);
             return true;
         }
     }
 
-    /** 封口玩家会话并把最终退出快照提交到玩家串行线程. */
+    /** 封口玩家会话, 并在退出所在 Region 的下一 tick 提交最终快照. */
     public void disconnect(@NotNull PlayerSession session, @NotNull Player player) {
-        CloseAction action = this.closeWithFinalSave(session, () -> this.snapshots.captureLaterAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
+        CloseAction action = this.beginClose(session);
+        if (action == CloseAction.IGNORED) return;
+        // Region 定位取自 Quit 事件线程, 下一 tick 严格排在原版退出调用栈之后.
+        Location location = player.getLocation();
+        this.plugin.scheduler().sync().runLater(() -> {
+            if (action == CloseAction.SAVE_ACCEPTED) {
+                this.closeAfterSave(session, this.snapshots.captureLaterAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
+            } else {
+                this.releaseSession(session);
+            }
+        }, 1, player.getWorld(), location.getBlockX() >> 4, location.getBlockZ() >> 4);
         if (action == CloseAction.ABORTED) {
             this.logger.file(LogCategory.SAVE, player.getUniqueId(), player.getName(), LogConstants.SYNC_SAVE_SKIPPED_UNSYNCED, player.getName());
         }
     }
 
-    // ACTIVE 先进入 SAVING 封口, 最终保存 settle 后才释放锁与注册表条目.
-    private CloseAction closeWithFinalSave(PlayerSession session, Supplier<CompletableFuture<SnapshotSaveResult>> finalSave) {
+    // 关服路径没有可等待的下一 Region tick, 立即启动最终保存.
+    CloseAction closeWithFinalSave(PlayerSession session, Supplier<CompletableFuture<SnapshotSaveResult>> finalSave) {
+        CloseAction action = this.beginClose(session);
+        if (action == CloseAction.SAVE_ACCEPTED) {
+            this.closeAfterSave(session, finalSave.get());
+        } else if (action == CloseAction.ABORTED) {
+            this.releaseSession(session);
+        }
+        return action;
+    }
+
+    // 封口与任务启动分离, Quit 事件返回前就停止接纳该玩家的新保存.
+    private CloseAction beginClose(PlayerSession session) {
         synchronized (session) {
-            // 不存在的会话
             if (!this.owns(session)) return CloseAction.IGNORED;
-            // 检查是否跳过保存直接作废
             SessionState state = session.state();
             if (state == SessionState.SAVING || state == SessionState.CLOSED) return CloseAction.IGNORED;
-            if (state != SessionState.ACTIVE) {
-                session.transition(SessionState.CLOSED);
-                this.releaseSession(session);
-                return CloseAction.ABORTED;
+            if (state == SessionState.ACTIVE) {
+                session.transition(SessionState.SAVING);
+                return CloseAction.SAVE_ACCEPTED;
             }
-            // 进入保存并注册释放锁的回调
-            session.transition(SessionState.SAVING);
-            finalSave.get().whenComplete((result, throwable) -> {
-                if (result instanceof SnapshotSaveResult.Settled settled && settled.result().stored()) {
-                    this.handoffs.recordSettled(session.uuid());
-                }
-                synchronized (session) {
-                    session.transition(SessionState.CLOSED);
-                    this.releaseSession(session);
-                }
-            });
-            return CloseAction.SAVE_ACCEPTED;
+            session.transition(SessionState.CLOSED);
+            session.finishPlayerData();
+            return CloseAction.ABORTED;
         }
     }
 
-    // 先发起拆锁, 再摘注册表并完成 released.
+    // 最终保存完成后记录成功写入的 handoff, 再结束 Session 并进入锁释放流程.
+    private void closeAfterSave(PlayerSession session, CompletableFuture<SnapshotSaveResult> finalSave) {
+        finalSave.whenComplete((result, throwable) -> {
+            if (result instanceof SnapshotSaveResult.Settled settled && settled.result().stored()) {
+                this.handoffs.recordSettled(session.uuid());
+            }
+            synchronized (session) {
+                session.transition(SessionState.CLOSED);
+                this.releaseSession(session);
+            }
+        });
+    }
+
+    // Redis 释放尝试完成后再摘注册表, released 对等待方代表旧锁已经处理完毕.
     private void releaseSession(PlayerSession session) {
         String lockToken = session.lockToken();
         if (lockToken != null) {
             this.sessionLock
                     .release(session.uuid(), lockToken)
-                    .whenComplete((deleted, throwable) ->
-                            this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted))
-                    );
+                    .whenComplete((deleted, throwable) -> {
+                        this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted));
+                        // released 在注册表摘除后完成, 等待方此时才可创建下一代 Session.
+                        this.sessions.remove(session.uuid(), session);
+                        session.released().complete(null);
+                    });
+            return;
         }
+        // released 在注册表摘除后完成, 等待方此时才可创建下一代 Session.
         this.sessions.remove(session.uuid(), session);
         session.released().complete(null);
     }
@@ -291,7 +358,8 @@ public final class SessionManager {
         return this.sessions.get(session.uuid()) == session;
     }
 
-    private enum CloseAction {
+    // beginClose 时对会话状态的裁定, 调用方据此选择保存、延迟释放或结束处理.
+    enum CloseAction {
         SAVE_ACCEPTED,
         ABORTED,
         IGNORED

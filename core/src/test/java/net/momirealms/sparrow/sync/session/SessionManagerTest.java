@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.session;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 只覆盖不触碰 Bukkit 与外部服务的会话注册和作废路径.
+// 覆盖不触碰 Bukkit 与外部服务的会话注册和最终保存边界.
 class SessionManagerTest {
     private final SessionManager manager = new SessionManager(null);
 
@@ -91,6 +92,40 @@ class SessionManagerTest {
         this.manager.abort(session);
 
         assertNull(observed.get());
+    }
+
+    @Test
+    void finalSaveKeepsSessionUntilTheRemoteWriteCompletes() {
+        UUID player = UUID.randomUUID();
+        PlayerSession session = this.manager.tryOpen(player, "Steve");
+        session.transition(SessionState.ACTIVE);
+        CompletableFuture<SnapshotSaveResult> remoteSave = new CompletableFuture<>();
+        AtomicReference<PlayerSession> observed = new AtomicReference<>(session);
+        session.released().thenRun(() -> observed.set(this.manager.find(player)));
+
+        assertEquals(SessionManager.CloseAction.SAVE_ACCEPTED, this.manager.closeWithFinalSave(session, () -> remoteSave));
+        assertEquals(SessionState.SAVING, session.state());
+        assertSame(session, this.manager.find(player));
+
+        remoteSave.complete(new SnapshotSaveResult.Cancelled());
+
+        assertEquals(SessionState.CLOSED, session.state());
+        assertNull(this.manager.find(player));
+        assertTrue(session.released().isDone());
+        assertNull(observed.get());
+    }
+
+    @Test
+    void finalSaveIsNotStartedForAHalfLoadedSession() {
+        UUID player = UUID.randomUUID();
+        PlayerSession session = this.manager.tryOpen(player, "Steve");
+
+        assertEquals(SessionManager.CloseAction.ABORTED, this.manager.closeWithFinalSave(session, () -> {
+            throw new AssertionError("unsynchronized session must not be saved remotely");
+        }));
+
+        assertEquals(SessionState.CLOSED, session.state());
+        assertNull(this.manager.find(player));
     }
 
     @Test

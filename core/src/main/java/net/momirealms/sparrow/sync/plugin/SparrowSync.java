@@ -336,7 +336,7 @@ public class SparrowSync implements Plugin {
     // 注入玩家存储代理, 接管原版登录读取路径.
     public void injectPlayerDataStorage() {
         try {
-            BukkitProxy.injectPlayerDataStorage(VersionHelper.MINECRAFT_VERSION.version());
+            this.sessionManager.injectPlayerDataStorage(VersionHelper.MINECRAFT_VERSION.version());
         } catch (Throwable throwable) {
             this.logger.error(LogCategory.LIFECYCLE, null, null, throwable, LogConstants.PLAYER_DATA_STORAGE_INJECT_FAILED);
             Bukkit.getServer().shutdown();
