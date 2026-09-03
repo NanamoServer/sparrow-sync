@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
+import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.nbt.TagParser;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -7,12 +8,15 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.visitor.CompactStringTagVisitor;
-import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy1_21_4;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy1_21_5;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bson.Document;
 import org.bson.json.JsonWriterSettings;
 import org.jetbrains.annotations.NotNull;
@@ -30,7 +34,7 @@ import java.util.UUID;
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     static final String FIELD_FORMAT = "format";    // 树形态的版本在帧头字节里, JSON 形态以顶层字段自述
 
-    private static final TagParser<Tag> SNBT_PARSER = TagParser.create(NBTOps.INSTANCE);
+    private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5() ? TagParserProxy1_21_5.INSTANCE.create(NBTOps.INSTANCE) : null;
     private static final JsonWriterSettings JSON_WRITER = JsonWriterSettings.builder().indent(true).build();
 
     @Override
@@ -96,7 +100,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                     throw new IOException("data field '" + entry.getKey() + "' must be an SNBT string");
                 }
                 try {
-                    data.put(entry.getKey(), SNBT_PARSER.parseFully(snbt));
+                    data.put(entry.getKey(), parseSnbt(snbt));
                 } catch (CommandSyntaxException exception) {
                     throw new IOException("data field '" + entry.getKey() + "': " + exception.getMessage());
                 }
@@ -104,6 +108,16 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         }
         root.put(BinarySnapshotCodec.FIELD_DATA, data);
         return root;
+    }
+
+    private static Tag parseSnbt(String input) throws CommandSyntaxException {
+        if (SNBT_PARSER != null) return (Tag) TagParserProxy1_21_5.INSTANCE.parseFully(SNBT_PARSER, input);
+        StringReader reader = new StringReader(input);
+        TagParserProxy1_21_4 parser = TagParserProxy1_21_4.INSTANCE;
+        net.minecraft.nbt.Tag nativeTag = (net.minecraft.nbt.Tag) parser.readValue(parser.newInstance(reader));
+        reader.skipWhitespace();
+        if (reader.canRead()) throw TagParser.ERROR_TRAILING_DATA.createWithContext(reader);
+        return (Tag) net.minecraft.nbt.NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, nativeTag);
     }
 
     private static String requireString(Document document, String field) {

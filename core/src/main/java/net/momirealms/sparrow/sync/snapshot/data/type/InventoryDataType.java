@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -19,6 +20,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * 背包同步: 全部槽位 (含盔甲、副手及 1.21.5 起的 body/saddle) 与手持槽位.
@@ -118,8 +120,9 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
             net.minecraft.nbt.CompoundTag equipment = current instanceof net.minecraft.nbt.CompoundTag compound
                     ? compound.copy()
                     : new net.minecraft.nbt.CompoundTag();
-            equipment.remove("mainhand");
-            for (int i = 0; i < EQUIPMENT_KEYS.length; i++) equipment.remove(EQUIPMENT_KEYS[i]);
+            Map<String, net.minecraft.nbt.Tag> equipmentTags = CompoundTagProxy.INSTANCE.getTags(equipment);
+            equipmentTags.remove("mainhand");
+            for (int i = 0; i < EQUIPMENT_KEYS.length; i++) equipmentTags.remove(EQUIPMENT_KEYS[i]);
             for (int i = 0; i < EQUIPMENT_KEYS.length; i++) {
                 ItemStack item = value.contents()[STORAGE_SIZE + i];
                 if (item != null && !item.isEmpty()) equipment.put(EQUIPMENT_KEYS[i], ItemCodec.saveNativeItem(item));

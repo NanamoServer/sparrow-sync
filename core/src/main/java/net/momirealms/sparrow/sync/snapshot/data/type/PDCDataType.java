@@ -18,11 +18,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.util.Map;
 
-/**
- * PDC 同步会把快照数据递归合入本服 {@code custom_data}, 黑名单路径留在各服务器本地.
- * 玩家线程只深拷贝原版 CompoundTag, 黑名单过滤与 Sparrow NBT 转换由编码阶段完成.
- * 黑名单子树不会进入新快照, 也不会从已有快照写回.
- */
 public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt.CompoundTag> {
     public static final DataKey PERSISTENT_DATA = DataKey.sparrow("persistent_data");
 

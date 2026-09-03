@@ -27,9 +27,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 统计数据使用平行的类型、值与数量数组存储, 采集时直接复制原版同步稀疏表.
- */
 public final class StatisticsDataType implements PlayerDataType<StatisticsDataType.Statistics> {
     public static final DataKey STATISTICS = DataKey.sparrow("statistics");
 

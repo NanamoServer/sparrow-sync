@@ -125,13 +125,25 @@ class NativeDataTypeTest {
         InventoryDataType type = allocateWithoutConstructor(InventoryDataType.class);
         int nativeSize = VersionHelper.isOrAbove1_21_5() ? 43 : 41;
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        if (VersionHelper.isOrAbove1_21_5()) {
+            net.minecraft.nbt.CompoundTag equipment = new net.minecraft.nbt.CompoundTag();
+            equipment.putString("mainhand", "local-mainhand");
+            equipment.putString("feet", "local-feet");
+            equipment.putString("plugin-data", "kept");
+            playerData.put("equipment", equipment);
+        }
 
         assertTrue(type.applyNative(playerData, new Inventory(new ItemStack[nativeSize], 6, 0)));
 
         CompoundTag stored = compound(playerData);
         assertEquals(0, stored.getList("Inventory").size());
         assertEquals(6, stored.getInt("SelectedItemSlot"));
-        if (VersionHelper.isOrAbove1_21_5()) assertInstanceOf(CompoundTag.class, stored.get("equipment"));
+        if (VersionHelper.isOrAbove1_21_5()) {
+            CompoundTag equipment = stored.getCompound("equipment");
+            assertNull(equipment.get("mainhand"));
+            assertNull(equipment.get("feet"));
+            assertEquals("kept", equipment.getString("plugin-data"));
+        }
 
         net.minecraft.nbt.CompoundTag mismatched = new net.minecraft.nbt.CompoundTag();
         assertFalse(type.applyNative(mismatched, new Inventory(new ItemStack[nativeSize == 43 ? 41 : 43], 0, 0)));
