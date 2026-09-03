@@ -43,8 +43,18 @@ class DataTypeCodecTest {
 
     @Test
     void hungerCodecRoundTrips() {
-        HungerDataType.Hunger value = new HungerDataType.Hunger(18, 5.0f, 0.4f);
+        HungerDataType.Hunger value = new HungerDataType.Hunger(18, 5.0f, 0.4f, 37);
         assertEquals(value, roundTrip(HungerDataType.Hunger.CODEC, value));
+    }
+
+    @Test
+    void hungerCodecDefaultsLegacyTickTimerToZero() {
+        CompoundTag legacy = NBT.createCompound();
+        legacy.putInt("food", 18);
+        legacy.putFloat("saturation", 5.0f);
+        legacy.putFloat("exhaustion", 0.4f);
+
+        assertEquals(new HungerDataType.Hunger(18, 5.0f, 0.4f, 0), HungerDataType.Hunger.CODEC.parse(NBTOps.INSTANCE, legacy).getOrThrow());
     }
 
     // 药水效果改走 NMS MobEffectInstance CODEC (保留隐藏效果链), 依赖注册表, 由 3.8 真机手测覆盖

@@ -3,10 +3,12 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,7 +32,8 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
     @Override
     @NotNull
     protected Hunger captureValue(@NotNull Player player) {
-        return new Hunger(player.getFoodLevel(), player.getSaturation(), player.getExhaustion());
+        int tickTimer = FoodDataProxy.INSTANCE.getTickTimer(((CraftPlayer) player).getHandle().getFoodData());
+        return new Hunger(player.getFoodLevel(), player.getSaturation(), player.getExhaustion(), tickTimer);
     }
 
     @Override
@@ -38,6 +41,7 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
         player.setFoodLevel(value.food());
         player.setSaturation(value.saturation());
         player.setExhaustion(value.exhaustion());
+        FoodDataProxy.INSTANCE.setTickTimer(((CraftPlayer) player).getHandle().getFoodData(), value.tickTimer());
         // 饥饿是纯数据写入, 而先应用的 health 已把旧饥饿值随血量包发给了客户端,
         // vanilla 只在值区别于上次发送时才重发, 这里主动推一次保证 HUD 同步
         player.sendHealthUpdate();
@@ -49,15 +53,16 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
         playerData.putInt("foodLevel", value.food());
         playerData.putFloat("foodSaturationLevel", value.saturation());
         playerData.putFloat("foodExhaustionLevel", value.exhaustion());
-        // foodTickTimer 是目标服本地的恢复/饥饿进度, 不属于快照值, 保留原 tag.
+        playerData.putInt("foodTickTimer", value.tickTimer());
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
-    public record Hunger(int food, float saturation, float exhaustion) {
+    public record Hunger(int food, float saturation, float exhaustion, int tickTimer) {
         public static final Codec<Hunger> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 Codec.INT.fieldOf("food").forGetter(Hunger::food),
                 Codec.FLOAT.fieldOf("saturation").forGetter(Hunger::saturation),
-                Codec.FLOAT.fieldOf("exhaustion").forGetter(Hunger::exhaustion)
+                Codec.FLOAT.fieldOf("exhaustion").forGetter(Hunger::exhaustion),
+                Codec.INT.optionalFieldOf("tickTimer", 0).forGetter(Hunger::tickTimer)
         ).apply(instance, Hunger::new));
     }
 }
