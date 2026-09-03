@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -22,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,8 +84,61 @@ class FileLogWriterTest {
         writer.close();
 
         // Assert
-        assertTrue(Files.readString(this.todayFile(dayA)).contains("first day"));
+        assertFalse(Files.exists(this.todayFile(dayA)));
+        assertTrue(readGzip(this.archiveFile(this.todayFile(dayA), 1)).contains("first day"));
         assertTrue(Files.readString(this.todayFile(dayB)).contains("second day"));
+    }
+
+    @Test
+    void compressesExistingLogsAtStartupAndStartsTheCurrentPeriod() throws IOException {
+        LocalDate today = LocalDate.now();
+        Path oldLog = this.logFile(today.minusDays(1));
+        Path currentLog = this.logFile(today);
+        Files.writeString(oldLog, "old day", StandardCharsets.UTF_8);
+        Files.writeString(currentLog, "previous session", StandardCharsets.UTF_8);
+
+        FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
+        writer.submit(System.currentTimeMillis(), LogCategory.LIFECYCLE, null, null, "new session", null, null);
+        writer.close();
+
+        assertFalse(Files.exists(oldLog));
+        assertEquals("old day", readGzip(this.archiveFile(oldLog, 1)));
+        assertEquals("previous session", readGzip(this.archiveFile(currentLog, 1)));
+        String current = Files.readString(currentLog);
+        assertTrue(current.contains("new session"));
+        assertFalse(current.contains("previous session"));
+    }
+
+    @Test
+    void keepsAnExistingArchiveAndUsesANumberedName() throws IOException {
+        Path oldLog = this.logFile(LocalDate.now().minusDays(1));
+        Path existingArchive = this.archiveFile(oldLog, 1);
+        Files.writeString(oldLog, "new log", StandardCharsets.UTF_8);
+        Files.writeString(existingArchive, "existing archive", StandardCharsets.UTF_8);
+
+        FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
+        writer.close();
+
+        assertEquals("existing archive", Files.readString(existingArchive));
+        assertEquals("new log", readGzip(this.archiveFile(oldLog, 2)));
+    }
+
+    @Test
+    void customDatePatternKeepsOneFileWithinTheSamePeriod() throws IOException {
+        LocalDate first = LocalDate.now().withDayOfMonth(1);
+        LocalDate second = first.plusDays(1);
+        ZoneId zone = ZoneId.systemDefault();
+        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM", new QuietLogger());
+
+        writer.submit(first.atStartOfDay(zone).toInstant().toEpochMilli(), LogCategory.SAVE, null, null, "first", null, null);
+        writer.submit(second.atStartOfDay(zone).toInstant().toEpochMilli(), LogCategory.SAVE, null, null, "second", null, null);
+        writer.close();
+
+        Path log = this.directory.resolve(DateTimeFormatter.ofPattern("yyyy-MM").format(first) + ".log");
+        String content = Files.readString(log);
+        assertTrue(content.contains("first"));
+        assertTrue(content.contains("second"));
+        assertFalse(Files.exists(this.archiveFile(log, 1)));
     }
 
     @Test
@@ -146,7 +201,22 @@ class FileLogWriterTest {
 
     private Path todayFile(long epochMillis) {
         LocalDate day = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate();
+        return this.logFile(day);
+    }
+
+    private Path logFile(LocalDate day) {
         return this.directory.resolve(DAY_FORMAT.format(day) + ".log");
+    }
+
+    private Path archiveFile(Path log, int index) {
+        String name = log.getFileName().toString();
+        return log.resolveSibling(name.substring(0, name.length() - ".log".length()) + "-" + index + ".log.gz");
+    }
+
+    private static String readGzip(Path file) throws IOException {
+        try (GZIPInputStream input = new GZIPInputStream(Files.newInputStream(file))) {
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private static BufferedWriter failingWriter() {

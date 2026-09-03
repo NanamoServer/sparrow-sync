@@ -130,7 +130,8 @@ public final class PluginConfig {
 
         @Comment({
                 "Date format of the daily log file names, a java DateTimeFormatter pattern",
-                "It decides when a new file starts, e.g. yyyy-MM would roll monthly instead of daily"
+                "It decides when a new file starts, e.g. yyyy-MM would roll monthly instead of daily",
+                "Closed files are compressed as <date>-<index>.log.gz, including an existing log on startup"
         })
         String fileDateFormat = "yyyy-MM-dd";
     }

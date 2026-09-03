@@ -4,13 +4,17 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
@@ -23,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPOutputStream;
 
 public final class FileLogWriter implements AutoCloseable {
     private static final String DEFAULT_TIME_PATTERN = "HH:mm:ss.SSS";
@@ -54,7 +59,7 @@ public final class FileLogWriter implements AutoCloseable {
 
     // 以下状态只被 worker 线程触碰
     private BufferedWriter writer;
-    private LocalDate writerDay;
+    private Path writerFile;
     private boolean failureReported;
 
     public FileLogWriter(@NotNull Path directory, @NotNull PluginLogger fallback) {
@@ -111,6 +116,8 @@ public final class FileLogWriter implements AutoCloseable {
     private void drainLoop() {
         List<Entry> batch = new ArrayList<>(MAX_BATCH);
         try {
+            // 启动归档与后续写入在同一 worker 上串行
+            this.archiveOldLogs();
             while (true) {
                 try {
                     batch.add(this.queue.take());
@@ -165,20 +172,68 @@ public final class FileLogWriter implements AutoCloseable {
     }
 
     private void ensureWriter(LocalDate day) throws IOException {
-        if (this.writer != null && day.equals(this.writerDay)) return;
+        Path file = this.logFile(day);
+        if (this.writer != null && file.equals(this.writerFile)) return;
         BufferedWriter previous = this.writer;
         this.writer = null;
-        this.writerDay = null;
+        this.writerFile = null;
         if (previous != null) {
             previous.close();
+            this.archiveOldLogs();
         }
         Files.createDirectories(this.directory);
         try {
-            this.writer = this.writerFactory.apply(this.directory.resolve(this.dayFormat.format(day) + ".log"));
+            this.writer = this.writerFactory.apply(file);
         } catch (UncheckedIOException exception) {
             throw exception.getCause();
         }
-        this.writerDay = day;
+        this.writerFile = file;
+    }
+
+    private void archiveOldLogs() {
+        try {
+            Files.createDirectories(this.directory);
+            try (DirectoryStream<Path> logs = Files.newDirectoryStream(this.directory, "*.log")) {
+                for (Path log : logs) {
+                    if (!Files.isRegularFile(log, LinkOption.NOFOLLOW_LINKS)) continue;
+                    try {
+                        compressLog(log);
+                    } catch (IOException exception) {
+                        this.fallback.warn("Failed to compress old local log file '" + log.getFileName() + "'", exception);
+                    }
+                }
+            }
+        } catch (IOException exception) {
+            this.fallback.warn("Failed to scan old local log files for compression", exception);
+        }
+    }
+
+    private Path logFile(LocalDate day) {
+        return this.directory.resolve(this.dayFormat.format(day) + ".log");
+    }
+
+    private static void compressLog(Path log) throws IOException {
+        Path archive = nextArchive(log);
+        Path temporary = Files.createTempFile(log.getParent(), ".sparrow-sync-log-", ".gz.tmp");
+        try {
+            try (BufferedInputStream input = new BufferedInputStream(Files.newInputStream(log));
+                 GZIPOutputStream output = new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary, StandardOpenOption.TRUNCATE_EXISTING)))) {
+                input.transferTo(output);
+            }
+            Files.move(temporary, archive);
+            Files.delete(log);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static Path nextArchive(Path log) {
+        String fileName = log.getFileName().toString();
+        String baseName = fileName.substring(0, fileName.length() - ".log".length());
+        for (int index = 1; ; index++) {
+            Path archive = log.resolveSibling(baseName + "-" + index + ".log.gz");
+            if (!Files.exists(archive)) return archive;
+        }
     }
 
     private static BufferedWriter openWriter(Path file) {
@@ -223,7 +278,7 @@ public final class FileLogWriter implements AutoCloseable {
         } catch (IOException ignored) {
         } finally {
             this.writer = null;
-            this.writerDay = null;
+            this.writerFile = null;
         }
     }
 
