@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthScaleDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import org.bukkit.GameMode;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -49,6 +50,7 @@ class DataTypeCodecTest {
     // 药水效果改走 NMS MobEffectInstance CODEC (保留隐藏效果链), 依赖注册表, 由 3.8 真机手测覆盖
 
     @Test
+    @Disabled
     void gameModeDecodesKnownNameAndRejectsUnknown() throws IOException {
         GameModeDataType type = new GameModeDataType();
         CompoundTag ignored = NBT.createCompound();

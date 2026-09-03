@@ -45,6 +45,7 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
     private static final String INCOMPLETE_CRITERION = "sparrow-sync:incomplete";
     private static final Codec<Map<Object, AdvancementProgress>> STORED_CODEC = Codec.unboundedMap(IdentifierProxy.INSTANCE.getCodec(), AdvancementProgress.CODEC);
     static final Codec<Advancements> CODEC = STORED_CODEC.xmap(AdvancementsDataType::fromStored, AdvancementsDataType::toStored);
+    private static final int INDEX_THRESHOLD = 8; // criterion 数超过该值时为快照值建哈希索引, 少量时线性扫描更快
 
     public AdvancementsDataType() {
         super(ADVANCEMENTS, StorageFormat.STRUCTURED, CODEC);
@@ -70,13 +71,14 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
         ServerPlayer handle = handle(player);
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
-        Map<Object, AdvancementValue> captured = index(value.values());
+        Map<Object, CapturedValue> captured = index(value.values());
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
+        Set<Object> progressChanged = proxy.getProgressChanged(playerAdvancements);
         boolean changed = false;
         for (Map.Entry<Object, Object> entry : progressByAdvancement.entrySet()) {
             AdvancementHolder advancement = (AdvancementHolder) entry.getKey();
-            AdvancementValue target = captured.get(AdvancementHolderProxy.INSTANCE.id(advancement));
-            if (applyProgress(playerAdvancements, advancement, (AdvancementProgress) entry.getValue(), target)) {
+            CapturedValue target = captured.get(AdvancementHolderProxy.INSTANCE.id(advancement));
+            if (applyProgress(playerAdvancements, advancement, (AdvancementProgress) entry.getValue(), target, progressChanged)) {
                 changed = true;
             }
         }
@@ -90,20 +92,30 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
         }
     }
 
-    private static Map<Object, AdvancementValue> index(AdvancementValue[] values) {
-        Map<Object, AdvancementValue> indexed = new HashMap<>(values.length * 2);
+    private static Map<Object, CapturedValue> index(AdvancementValue[] values) {
+        Map<Object, CapturedValue> indexed = new HashMap<>(values.length * 2);
         for (int i = 0; i < values.length; i++) {
             AdvancementValue value = values[i];
-            indexed.put(value.id(), value);
+            String[] criteria = value.criteria();
+            // criterion 少时线性扫描更快, 多时建哈希索引
+            Map<String, Instant> lookup = null;
+            if (criteria.length > INDEX_THRESHOLD) {
+                Instant[] obtained = value.obtained();
+                lookup = new HashMap<>(criteria.length * 2);
+                for (int j = 0; j < criteria.length; j++) {
+                    lookup.put(criteria[j], obtained[j]);
+                }
+            }
+            indexed.put(value.id(), new CapturedValue(value, lookup));
         }
         return indexed;
     }
 
-    private static boolean applyProgress(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, AdvancementProgress progress, @Nullable AdvancementValue target) {
+    private static boolean applyProgress(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, AdvancementProgress progress, @Nullable CapturedValue target, Set<Object> progressChanged) {
         Map<String, Object> criteria = AdvancementProgressProxy.INSTANCE.getCriteria(progress);
         Map<String, ?> definitions = advancement.value().criteria();
-        boolean wasDone = progress.isDone();
         boolean changed = false;
+        boolean wasDone = false;
         for (Map.Entry<String, ?> entry : definitions.entrySet()) {
             String name = entry.getKey();
             CriterionProgress criterion = (CriterionProgress) criteria.get(name);
@@ -111,9 +123,13 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
             Instant expected = findObtained(target, name);
             if (Objects.equals(current, expected)) continue;
 
+            // 首个差异出现时才读完成态, 此时尚未写入, 结果就是改动前的基线
+            if (!changed) {
+                wasDone = progress.isDone();
+                changed = true;
+            }
             // 直接改原对象, 绕过 award/revoke 产生的事件、奖励与广播.
             CriterionProgressProxy.INSTANCE.setObtained(criterion, expected);
-            changed = true;
             if (!wasDone && (current == null) != (expected == null)) {
                 setTriggerActive(playerAdvancements, advancement, name, entry.getValue(), expected == null);
             }
@@ -125,16 +141,19 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
             reconcileTriggers(playerAdvancements, advancement, progress, definitions, !done);
             PlayerAdvancementsProxy.INSTANCE.markForVisibilityUpdate(playerAdvancements, advancement);
         }
-        PlayerAdvancementsProxy.INSTANCE.getProgressChanged(playerAdvancements).add(advancement);
+        progressChanged.add(advancement);
         return true;
     }
 
     @Nullable
-    private static Instant findObtained(@Nullable AdvancementValue target, String criterion) {
+    private static Instant findObtained(@Nullable CapturedValue target, String criterion) {
         if (target == null) return null;
-        String[] criteria = target.criteria();
+        Map<String, Instant> lookup = target.index();
+        if (lookup != null) return lookup.get(criterion);
+        String[] criteria = target.value().criteria();
+        Instant[] obtained = target.value().obtained();
         for (int i = 0; i < criteria.length; i++) {
-            if (criteria[i].equals(criterion)) return target.obtained()[i];
+            if (criteria[i].equals(criterion)) return obtained[i];
         }
         return null;
     }
@@ -262,5 +281,8 @@ public final class AdvancementsDataType extends CodecDataType<AdvancementsDataTy
             @NotNull Instant @NotNull [] obtained,
             boolean done
     ) {
+    }
+
+    private record CapturedValue(AdvancementValue value, @Nullable Map<String, Instant> index) {
     }
 }
