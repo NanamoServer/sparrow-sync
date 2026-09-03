@@ -6,24 +6,13 @@ import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.CriterionProgress;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
-import net.momirealms.sparrow.nbt.ByteArrayTag;
-import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.nbt.IntArrayTag;
-import net.momirealms.sparrow.nbt.ListTag;
-import net.momirealms.sparrow.nbt.LongArrayTag;
-import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionListenerProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.TriggerInstanceKeyProxy;
+import net.momirealms.sparrow.nbt.*;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.proxy.minecraft.advancements.*;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
-import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -39,15 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 同步玩家 advancement 进度, 快照只保留已完成 criterion 及其完成时间.
@@ -214,7 +195,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
-        if (!ServerConfig.nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        if (!PluginConfig.synchronization$nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
         if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encodeNativeJson(value))) {
             throw new IOException("atomic advancements JSON replacement failed or is not supported");
         }

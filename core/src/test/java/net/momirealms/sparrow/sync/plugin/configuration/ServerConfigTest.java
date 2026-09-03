@@ -47,7 +47,6 @@ class ServerConfigTest {
 
         assertEquals("", ServerConfig.serverId());
         assertEquals("main", ServerConfig.clusterId());
-        assertTrue(ServerConfig.nativeJson());
         YamlDocument document = yaml.load(this.directory.resolve("server.yml"));
         assertEquals(DependencyVersions.CONFIG_VERSION, document.getString(Route.from("config-version")));
         assertTrue(document.getBoolean(Route.from("native-json")));
@@ -66,7 +65,6 @@ class ServerConfigTest {
         ServerConfig serverConfig = new ServerConfig(this.plugin(), newYaml());
 
         serverConfig.reload();
-        assertFalse(ServerConfig.nativeJson());
         UUID player = UUID.randomUUID();
         CompoundTag playerData = new CompoundTag();
         assertEquals(NativeApplyResult.NOT_APPLIED, new StatisticsDataType().applyNative(player, playerData, new Statistics(new Stat<?>[0], new int[0])));
@@ -78,8 +76,6 @@ class ServerConfigTest {
                 native-json: true
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
         serverConfig.reload();
-
-        assertTrue(ServerConfig.nativeJson());
     }
 
     @Test
@@ -96,7 +92,6 @@ class ServerConfigTest {
 
         assertEquals("test", ServerConfig.serverId());
         assertEquals("network", ServerConfig.clusterId());
-        assertTrue(ServerConfig.nativeJson());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
         assertTrue(upgraded.getBoolean(Route.from("native-json")));

@@ -238,7 +238,7 @@ public final class SnapshotService {
 
     /** 执行器排空超时后, 把尚未 settle 的快照留到本地 pending. */
     public void stashUnsettled() {
-        this.writer.stashUnsettled();
+        if (this.writer != null) this.writer.stashUnsettled();
     }
 
     /**

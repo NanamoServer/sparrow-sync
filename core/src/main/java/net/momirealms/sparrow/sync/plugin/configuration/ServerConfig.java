@@ -60,10 +60,6 @@ public final class ServerConfig {
         return config.clusterId;
     }
 
-    public static boolean nativeJson() {
-        return config.nativeJson;
-    }
-
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
         @Comment("Do not modify this value")
@@ -83,13 +79,5 @@ public final class ServerConfig {
                 "it prefixes every Redis key so two clusters can share one Redis without interfering"
         })
         String clusterId = "main";
-
-        @BlankLineBefore
-        @Comment({
-                "Writes statistics and advancements into vanilla JSON files during the login gate",
-                "Disable this when the server reads these records from a non-standard data source",
-                "Reloading applies this option to login preparations started afterwards"
-        })
-        boolean nativeJson = true;
     }
 }

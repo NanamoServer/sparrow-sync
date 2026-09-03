@@ -213,6 +213,13 @@ public final class PluginConfig {
         })
         boolean nativeApply = true;
 
+        @Comment({
+                "Writes statistics and advancements into vanilla JSON files during the login gate",
+                "Disable this when the server reads these records from a non-standard data source",
+                "Reloading applies this option to login preparations started afterwards"
+        })
+        boolean nativeJson = true;
+
         @BlankLineBefore
         @Comment({
                 "Built-in player data enabled for synchronization",
@@ -813,6 +820,10 @@ public final class PluginConfig {
 
     public static boolean synchronization$nativeApply() {
         return config.synchronization.nativeApply;
+    }
+
+    public static boolean synchronization$nativeJson() {
+        return config.synchronization.nativeJson;
     }
 
     @NotNull

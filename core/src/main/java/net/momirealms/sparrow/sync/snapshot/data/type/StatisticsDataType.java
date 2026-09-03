@@ -9,17 +9,13 @@ import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
 import net.minecraft.stats.Stats;
-import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.nbt.IntArrayTag;
-import net.momirealms.sparrow.nbt.ListTag;
-import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.nbt.*;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
-import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -151,7 +147,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Statistics value) throws IOException {
-        if (!ServerConfig.nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        if (!PluginConfig.synchronization$nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
         if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.STATISTICS, encodeNativeJson(value))) {
             throw new IOException("atomic statistics JSON replacement failed or is not supported");
         }
