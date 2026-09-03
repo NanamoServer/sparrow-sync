@@ -41,7 +41,7 @@ public final class SessionListener implements Listener {
             return;
         }
         this.plugin.logger().file(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SESSION_JOIN);
-        // 正式在玩家线程消费登录阶段的数据并激活会话.
+        // todo 设计插件 API 时重新确定登录时的数据同步事件.
         SnapshotApplyResult result;
         try {
             result = this.sessions.activate(session, player);

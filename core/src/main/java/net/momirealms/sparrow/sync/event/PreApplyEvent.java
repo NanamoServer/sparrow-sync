@@ -11,10 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * 快照完成解码、写入在线玩家前派发. 监听器可以修改本次仍会通过 Bukkit 路径完整应用的解码数据.
- * 登录期间已经写入原生玩家数据的槽位不会暴露在此事件中; 在线恢复仍暴露全部槽位.
- */
+/** 在线恢复快照写入玩家前派发, 监听器可以修改本次通过 Bukkit 路径应用的解码数据. */
 public final class PreApplyEvent extends PlayerEvent {
     private static final HandlerList HANDLERS = new HandlerList();
 

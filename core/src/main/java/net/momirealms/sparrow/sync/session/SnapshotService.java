@@ -2,7 +2,6 @@ package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -121,9 +120,6 @@ public final class SnapshotService {
         long applyStart = System.nanoTime();
         this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(), LogConstants.SYNC_APPLY_STARTED, player.getName());
         SnapshotApplyContext context = loaded.context();
-        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), context.pendingValues());
-        EventUtils.fireAndForget(event);
-        context.acceptEventValues(event.decoded());
         return switch (this.playerDataPipeline.apply(player, context)) {
             case PlayerDataPipeline.ApplyResult.Success success -> {
                 this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(),

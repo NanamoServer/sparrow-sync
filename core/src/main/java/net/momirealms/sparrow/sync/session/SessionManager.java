@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.session;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
+import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -244,6 +245,10 @@ public final class SessionManager {
                 }
             }
             try {
+                // todo 优化 PreApplyEvent 背后的复制一类的逻辑
+                PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
+                EventUtils.fireAndForget(event);
+                loaded.context().acceptEventValues(event.decoded());
                 switch (this.snapshotService.apply(player, loaded)) {
                     case SnapshotApplyResult.Applied applied -> {
                         synchronized (session) {
