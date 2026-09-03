@@ -15,7 +15,8 @@ public interface NativePlayerDataType<T> extends PlayerDataType<T> {
 
     /**
      * 在 Gate worker 上把本类型写入原版玩家数据.
-     * 实现应先完成子树转换再安装到 {@code playerData}; 返回 {@code false} 时不得改变传入 tag.
+     * 实现应先完成子树转换再安装到 {@code playerData}.
+     * <strong>返回 {@code false} 或抛出异常时不得改变传入 tag</strong>.
      *
      * @return 本次值是否已经完整写入原版玩家数据
      */

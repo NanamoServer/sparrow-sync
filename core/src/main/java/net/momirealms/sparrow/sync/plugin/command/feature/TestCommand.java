@@ -14,7 +14,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
@@ -126,8 +126,8 @@ public final class TestCommand extends BukkitCommandFeature {
     private List<String> runSmoke(Player player) {
         List<String> report = new ArrayList<>();
         // 用插件正式装配的那一套, 冒烟覆盖的就是运行期真正生效的类型集合 (含第三方注册的)
-        SnapshotApplier applier = plugin().snapshotApplier();
-        if (applier == null) {
+        PlayerDataPipeline pipeline = plugin().playerDataPipeline();
+        if (pipeline == null) {
             report.add("[FAIL] data registry is not assembled yet");
             return summarize(report);
         }
@@ -137,11 +137,11 @@ public final class TestCommand extends BukkitCommandFeature {
 
         try {
             // 采集原始快照
-            if (!(applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
+            if (!(pipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 check(report, "capture", false, "critical data could not be captured");
                 return summarize(report);
             }
-            if (!(applier.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+            if (!(pipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
                 check(report, "encode", false, "critical data could not be encoded");
                 return summarize(report);
             }
@@ -168,8 +168,8 @@ public final class TestCommand extends BukkitCommandFeature {
             }
 
             // 预解码走完整链路的快照, 关键失败则不扰动直接终止
-            SnapshotApplier.PreparedSnapshot prepared = applier.prepare(roundTripped);
-            if (!(prepared instanceof SnapshotApplier.PreparedSnapshot.Ready ready)) {
+            PlayerDataPipeline.PrepareResult prepared = pipeline.prepare(roundTripped);
+            if (!(prepared instanceof PlayerDataPipeline.PrepareResult.Ready ready)) {
                 check(report, "prepare", false, String.valueOf(prepared));
                 return summarize(report);
             }
@@ -177,10 +177,10 @@ public final class TestCommand extends BukkitCommandFeature {
 
             // 扰动后应用还原, 应用失败时再试一次尽力恢复
             disturb(player);
-            SnapshotApplier.ApplyResult result = applier.apply(player, ready);
-            if (!(result instanceof SnapshotApplier.ApplyResult.Success)) {
+            PlayerDataPipeline.ApplyResult result = pipeline.apply(player, ready.context());
+            if (!(result instanceof PlayerDataPipeline.ApplyResult.Success)) {
                 check(report, "apply", false, String.valueOf(result));
-                applier.apply(player, ready);
+                if (pipeline.prepare(roundTripped) instanceof PlayerDataPipeline.PrepareResult.Ready recovery) pipeline.apply(player, recovery.context());
                 report.add("!! player state may be disturbed, rejoin to be safe");
                 return summarize(report);
             }
@@ -190,11 +190,11 @@ public final class TestCommand extends BukkitCommandFeature {
             player.getPersistentDataContainer().remove(SMOKE_MARKER);
 
             // 复采集并逐类型比对
-            if (!(applier.capture(player) instanceof SnapshotApplier.CaptureResult.Ready recaptured)) {
+            if (!(pipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready recaptured)) {
                 check(report, "re-capture", false, "critical data could not be captured");
                 return summarize(report);
             }
-            if (!(applier.encode(recaptured) instanceof SnapshotApplier.EncodeResult.Ready reencoded)) {
+            if (!(pipeline.encode(recaptured) instanceof PlayerDataPipeline.EncodeResult.Ready reencoded)) {
                 check(report, "re-encode", false, "critical data could not be encoded");
                 return summarize(report);
             }

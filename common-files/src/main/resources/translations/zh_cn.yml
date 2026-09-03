@@ -121,6 +121,7 @@ log.data.capture_failed: '采集 <arg:1> 的关键数据 <arg:0> 时出错，这
 log.data.encode_skipped: '编码 <arg:1> 的非关键数据 <arg:0> 时出错，这次的快照不含这一项'
 log.data.encode_failed: '编码 <arg:1> 的关键数据 <arg:0> 时出错，这次不产出快照'
 log.data.decode_skipped: '跳过了快照 <arg:1> 里的非关键数据 <arg:0>'
+log.data.native_apply_fallback: '向 <arg:1> 的原生玩家数据写入 <arg:0> 时出错，回退到 join 应用'
 log.data.apply_failed: '向 <arg:1> 应用关键数据 <arg:0> 时出错'
 log.data.apply_skipped: '向 <arg:1> 应用时跳过了非关键数据 <arg:0>'
 log.data.inventory_dropped: '向 <arg:1> 应用快照时丢弃了 <arg:0> 件放不下的背包物品'

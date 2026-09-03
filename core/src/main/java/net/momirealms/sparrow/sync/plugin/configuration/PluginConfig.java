@@ -164,6 +164,13 @@ public final class PluginConfig {
         })
         int loginTimeoutSeconds = 15;
 
+        @Comment({
+                "Writes compatible snapshot data into vanilla player data during the login gate",
+                "Disable this on non-standard servers to apply every type during PlayerJoinEvent",
+                "Reloading applies this option to login preparations started afterwards"
+        })
+        boolean nativeApply = true;
+
         @BlankLineBefore
         @Comment({
                 "Built-in player data enabled for synchronization",
@@ -756,6 +763,10 @@ public final class PluginConfig {
 
     public static int synchronization$loginTimeoutSeconds() {
         return config.synchronization.loginTimeoutSeconds;
+    }
+
+    public static boolean synchronization$nativeApply() {
+        return config.synchronization.nativeApply;
     }
 
     @NotNull

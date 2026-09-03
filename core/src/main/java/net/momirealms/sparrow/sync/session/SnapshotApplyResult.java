@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.List;
 sealed interface SnapshotApplyResult {
 
     /** 快照已应用, 或该玩家没有需要应用的历史快照. */
-    record Applied(@NotNull List<DataKey> applied, @NotNull List<DataKey> skipped) implements SnapshotApplyResult {
+    record Applied(@NotNull List<DataKey> applied, @NotNull List<DataKey> skipped, @NotNull List<SnapshotApplyContext.Failure> failures) implements SnapshotApplyResult {
     }
 
     /** 关键数据应用失败, 玩家不能进入 ACTIVE. */

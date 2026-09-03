@@ -43,6 +43,7 @@ class PluginConfigDataTypesTest {
         SparrowYaml yaml = newYaml();
         new PluginConfig(this.plugin(), yaml).reload();
 
+        assertTrue(PluginConfig.synchronization$nativeApply());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         AttributeOptions attributes = PluginConfig.synchronization$attributes();
         assertEquals(ATTRIBUTE_WHITELIST, attributes.whitelist());
@@ -58,12 +59,37 @@ class PluginConfigDataTypesTest {
         Path file = this.directory.resolve("config.yml");
         YamlDocument document = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, document.getString(Route.from("config-version")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "native-apply")));
         assertDefaultDataTypeDocument(document);
         assertEquals(ATTRIBUTE_WHITELIST, document.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, document.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
         String generated = Files.readString(file, StandardCharsets.UTF_8);
         assertTrue(generated.contains("Read once during startup; changes require a server restart"), generated);
+        assertTrue(generated.contains("Reloading applies this option to login preparations started afterwards"), generated);
         assertTrue(generated.contains("Reloading the plugin applies attribute filters to later captures and applications"), generated);
+    }
+
+    @Test
+    void reloadPublishesNativeApplyForLaterLoginPreparations() throws Exception {
+        Path file = this.directory.resolve("config.yml");
+        Files.writeString(file, """
+                config-version: "%s"
+                synchronization:
+                  native-apply: false
+                """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
+        PluginConfig pluginConfig = new PluginConfig(this.plugin(), newYaml());
+
+        pluginConfig.reload();
+        assertFalse(PluginConfig.synchronization$nativeApply());
+
+        Files.writeString(file, """
+                config-version: "%s"
+                synchronization:
+                  native-apply: true
+                """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
+        pluginConfig.reload();
+
+        assertTrue(PluginConfig.synchronization$nativeApply());
     }
 
     @Test
@@ -119,9 +145,11 @@ class PluginConfigDataTypesTest {
 
         assertFalse(PluginConfig.metrics());
         assertEquals(8, PluginConfig.synchronization$workerThreads());
+        assertTrue(PluginConfig.synchronization$nativeApply());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
         assertDefaultDataTypeDocument(upgraded);
         assertEquals(ATTRIBUTE_WHITELIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
@@ -132,6 +160,25 @@ class PluginConfigDataTypesTest {
         }
         assertEquals(1, backups.size());
         assertEquals(original, Files.readString(backups.getFirst(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void upgradesVersionSevenWithNativeApplyEnabled() throws Exception {
+        String original = """
+                config-version: "7"
+                synchronization:
+                  worker-threads: 8
+                """;
+        Path file = this.directory.resolve("config.yml");
+        Files.writeString(file, original, StandardCharsets.UTF_8);
+        SparrowYaml yaml = newYaml();
+
+        new PluginConfig(this.plugin(), yaml).reload();
+
+        assertTrue(PluginConfig.synchronization$nativeApply());
+        YamlDocument upgraded = yaml.load(file);
+        assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
     }
 
     private static void assertDefaultDataTypes(DataTypes types) {

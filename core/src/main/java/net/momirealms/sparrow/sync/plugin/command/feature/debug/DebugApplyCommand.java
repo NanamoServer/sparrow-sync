@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.plugin.command.feature.debug;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.bukkit.command.CommandSender;
@@ -44,8 +44,8 @@ public final class DebugApplyCommand extends BukkitCommandFeature {
     }
 
     private void loadAndApply(Player player, String relative) {
-        SnapshotApplier applier = plugin().snapshotApplier();
-        if (applier == null) {
+        PlayerDataPipeline pipeline = plugin().playerDataPipeline();
+        if (pipeline == null) {
             SnapshotUtils.send(player, "[FAIL] data registry is not assembled yet", false);
             return;
         }
@@ -67,19 +67,19 @@ public final class DebugApplyCommand extends BukkitCommandFeature {
             return;
         }
         // 预解码在异步线程完成, 关键数据解不开则不动玩家
-        SnapshotApplier.PreparedSnapshot prepared = applier.prepare(snapshot);
-        if (!(prepared instanceof SnapshotApplier.PreparedSnapshot.Ready ready)) {
+        PlayerDataPipeline.PrepareResult prepared = pipeline.prepare(snapshot);
+        if (!(prepared instanceof PlayerDataPipeline.PrepareResult.Ready ready)) {
             SnapshotUtils.send(player, "[FAIL] prepare: " + prepared, false);
             plugin().logger().warn("Debug apply failed to prepare debug/" + relative + " for " + player.getName() + ": " + prepared);
             return;
         }
         player.getScheduler().run(plugin().javaPlugin(), task -> {
-            switch (applier.apply(player, ready)) {
-                case SnapshotApplier.ApplyResult.Success success -> {
+            switch (pipeline.apply(player, ready.context())) {
+                case PlayerDataPipeline.ApplyResult.Success success -> {
                     SnapshotUtils.send(player, "[PASS] applied " + success.applied().size() + " type(s), " + success.skipped().size() + " skipped, from debug/" + relative, true);
                     plugin().logger().info("Debug apply: " + success.applied().size() + " type(s) to " + player.getName() + " (" + player.getUniqueId() + ") from debug/" + relative);
                 }
-                case SnapshotApplier.ApplyResult.Failure failure -> {
+                case PlayerDataPipeline.ApplyResult.Failure failure -> {
                     SnapshotUtils.send(player, "[FAIL] apply " + failure.failedKey().asString() + ": " + failure.detail(), false);
                     plugin().logger().warn("Debug apply of " + failure.failedKey().asString() + " failed for " + player.getName() + ": " + failure.detail());
                 }

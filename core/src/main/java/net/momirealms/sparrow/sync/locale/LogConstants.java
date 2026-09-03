@@ -89,6 +89,7 @@ public interface LogConstants {
     String DATA_ENCODE_SKIPPED = "log.data.encode_skipped";
     String DATA_ENCODE_FAILED = "log.data.encode_failed";
     String DATA_DECODE_SKIPPED = "log.data.decode_skipped";
+    String DATA_NATIVE_APPLY_FALLBACK = "log.data.native_apply_fallback";
     String DATA_APPLY_FAILED = "log.data.apply_failed";
     String DATA_APPLY_SKIPPED = "log.data.apply_skipped";
     String DATA_INVENTORY_DROPPED = "log.data.inventory_dropped";

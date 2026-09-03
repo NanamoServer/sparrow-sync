@@ -10,7 +10,7 @@ import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.plugin.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.type.*;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.session.gate.ConfigurationPacketGate;
@@ -94,7 +94,7 @@ public class SparrowSync implements Plugin {
     private final DocumentSnapshotCodec documentCodec;
     private final MongoStorageProvider storageProvider;
     private final SnapshotStash snapshotStash;
-    private final SnapshotApplier snapshotApplier;
+    private final PlayerDataPipeline playerDataPipeline;
     private final SnapshotService snapshotService;
     private final RedisConnector redisConnector;
     private final SessionLock sessionLock;
@@ -139,7 +139,7 @@ public class SparrowSync implements Plugin {
         this.documentCodec = new DocumentSnapshotCodec(this);
         this.storageProvider = new MongoStorageProvider(this);
         this.snapshotStash = new SnapshotStash(this);
-        this.snapshotApplier = new SnapshotApplier(this);
+        this.playerDataPipeline = new PlayerDataPipeline(this);
         this.snapshotService = new SnapshotService(this);
         this.redisConnector = new RedisConnector(this);
         this.sessionLock = new SessionLock(this);
@@ -182,7 +182,7 @@ public class SparrowSync implements Plugin {
         }
         // 加载基础组件
         this.setUpInternalDataTypes();
-        this.snapshotApplier.onLoad();
+        this.playerDataPipeline.onLoad();
         this.snapshotService.onLoad();
         this.sessionManager.onLoad();
         // 链接 Redis
@@ -662,8 +662,8 @@ public class SparrowSync implements Plugin {
         return this.playerExecutor;
     }
 
-    public SnapshotApplier snapshotApplier() {
-        return this.snapshotApplier;
+    public PlayerDataPipeline playerDataPipeline() {
+        return this.playerDataPipeline;
     }
 
     public SnapshotService snapshotService() {

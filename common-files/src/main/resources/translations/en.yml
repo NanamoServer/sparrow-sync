@@ -121,6 +121,7 @@ log.data.capture_failed: 'Failed to capture the critical data <arg:0> of <arg:1>
 log.data.encode_skipped: 'Failed to encode the non-critical data <arg:0> of <arg:1>, this snapshot goes without it'
 log.data.encode_failed: 'Failed to encode the critical data <arg:0> of <arg:1>, no snapshot is produced this time'
 log.data.decode_skipped: 'Skipping the non-critical data <arg:0> of the snapshot <arg:1>'
+log.data.native_apply_fallback: 'Falling back to join apply after <arg:0> failed to write into the native player data of <arg:1>'
 log.data.apply_failed: 'The critical data <arg:0> failed to apply to <arg:1>'
 log.data.apply_skipped: 'Skipping the non-critical data <arg:0> while applying to <arg:1>'
 log.data.inventory_dropped: 'Dropped <arg:0> overflowing inventory item(s) while applying the snapshot to <arg:1>'

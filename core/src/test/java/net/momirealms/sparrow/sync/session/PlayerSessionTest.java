@@ -3,16 +3,15 @@ package net.momirealms.sparrow.sync.session;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
-import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -113,7 +111,7 @@ class PlayerSessionTest {
     }
 
     @Test
-    void loadedSnapshotCanOnlyBeTakenOnce() {
+    void loginDataPublishesAndConsumesPlayerDataWithSnapshotAtomically() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         DataKey unknown = DataKey.of("other", "unknown");
         Map<DataKey, Tag> passthrough = Map.of(unknown, NBT.createString("retained"));
@@ -123,14 +121,18 @@ class PlayerSessionTest {
                 .cause(SaveCause.DISCONNECT)
                 .build(), passthrough);
         DataRegistry registry = new DataRegistry();
-        SnapshotApplier applier = new SnapshotApplier(registry, new SyncLogger(new QuietLogger()));
         registry.freeze();
-        SnapshotLoadResult.Ready loaded = new SnapshotLoadResult.Ready(
-                snapshot, (SnapshotApplier.PreparedSnapshot.Ready) applier.prepare(snapshot), 0L);
-        session.loadedSnapshot(loaded);
+        SnapshotLoadResult.Ready loaded = new SnapshotLoadResult.Ready(snapshot, newApplyContext(registry, passthrough), 0L);
+        Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
 
-        assertSame(loaded, session.takeLoadedSnapshot());
-        assertNull(session.takeLoadedSnapshot());
+        session.publishLoginData(new PlayerDataPreload.Ready(playerData), loaded);
+        assertSame(playerData, session.loadPlayerData(Optional::empty));
+        LoginDataState.Ready ready = assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData());
+
+        assertSame(playerData, ready.playerData());
+        assertSame(loaded, ready.snapshot());
+        assertEquals(1, ready.loads());
+        assertInstanceOf(LoginDataState.Cleared.class, session.finishLoginData());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
         session.retainedData(replacement);
@@ -142,7 +144,7 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
 
-        assertInstanceOf(PlayerDataState.Ready.class, session.publishPlayerData(new PlayerDataPreload.Ready(playerData)));
+        assertInstanceOf(LoginDataState.Ready.class, session.publishLoginData(new PlayerDataPreload.Ready(playerData), null));
         assertSame(playerData, session.loadPlayerData(() -> {
             throw new AssertionError("ready cache must not read original data");
         }));
@@ -150,7 +152,7 @@ class PlayerSessionTest {
             throw new AssertionError("ready cache must not read original data");
         }));
 
-        PlayerDataState.Ready state = assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData());
+        LoginDataState.Ready state = assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData());
         assertEquals(2, state.loads());
         Optional<CompoundTag> original = Optional.of(new CompoundTag());
         assertSame(original, session.loadPlayerData(() -> original));
@@ -161,28 +163,28 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
         Optional<CompoundTag> empty = Optional.empty();
 
-        session.publishPlayerData(new PlayerDataPreload.Ready(empty));
+        session.publishLoginData(new PlayerDataPreload.Ready(empty), null);
 
         assertSame(empty, session.loadPlayerData(() -> Optional.of(new CompoundTag())));
-        assertEquals(1, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+        assertEquals(1, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
     }
 
     @Test
     void failedLocalLoadPublishesAnEmptyReadyCache() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
 
-        session.publishPlayerData(new PlayerDataPreload.Fallback());
+        session.publishLoginData(new PlayerDataPreload.Fallback(), null);
 
         assertEquals(Optional.empty(), session.loadPlayerData(() -> Optional.of(new CompoundTag())));
-        assertEquals(1, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+        assertEquals(1, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
     }
 
     @Test
     void unservedReadyPlayerDataReportsZeroLoads() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
-        session.publishPlayerData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())));
+        session.publishLoginData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())), null);
 
-        assertEquals(0, assertInstanceOf(PlayerDataState.Ready.class, session.finishPlayerData()).loads());
+        assertEquals(0, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
     }
 
     @Test
@@ -192,26 +194,36 @@ class PlayerSessionTest {
 
         assertSame(original, session.loadPlayerData(() -> original));
 
-        PlayerDataState.Failed failed = assertInstanceOf(PlayerDataState.Failed.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty())));
+        LoginDataState.Failed failed = assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null));
         assertEquals("PlayerDataStorage.load ran before player data preload completed", failed.detail());
-        assertEquals(failed, session.finishPlayerData());
+        assertEquals(failed, session.finishLoginData());
     }
 
     @Test
     void firstPlayerDataFailureWins() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
 
-        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.failPlayerData("first")).detail());
-        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.failPlayerData("second")).detail());
-        assertEquals("first", assertInstanceOf(PlayerDataState.Failed.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty()))).detail());
+        assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("first")).detail());
+        assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("second")).detail());
+        assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null)).detail());
     }
 
     @Test
     void clearedPlayerDataRejectsLatePublication() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
-        session.finishPlayerData();
+        session.finishLoginData();
 
-        assertInstanceOf(PlayerDataState.Cleared.class, session.publishPlayerData(new PlayerDataPreload.Ready(Optional.empty())));
+        assertInstanceOf(LoginDataState.Cleared.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null));
+    }
+
+    private static SnapshotApplyContext newApplyContext(DataRegistry registry, Map<DataKey, Tag> passthrough) {
+        try {
+            Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, Map.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(registry, passthrough);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 
     private static void awaitQuietly(CountDownLatch latch) {
@@ -222,26 +234,4 @@ class PlayerSessionTest {
         }
     }
 
-    private static final class QuietLogger implements PluginLogger {
-
-        @Override
-        public void info(String message) {
-        }
-
-        @Override
-        public void warn(String message) {
-        }
-
-        @Override
-        public void warn(String message, Throwable throwable) {
-        }
-
-        @Override
-        public void error(String message) {
-        }
-
-        @Override
-        public void error(String message, Throwable throwable) {
-        }
-    }
 }

@@ -1,10 +1,12 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -18,6 +20,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,7 +31,7 @@ import java.util.function.Supplier;
 public final class SessionManager {
     private final SparrowSync plugin;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
-    private SnapshotService snapshots;
+    private SnapshotService snapshotService;
     private SessionLock sessionLock;
     private HandoffManager handoffs;
     private SyncLogger logger;
@@ -40,7 +43,7 @@ public final class SessionManager {
     }
 
     public void onLoad() {
-        this.snapshots = this.plugin.snapshotService();
+        this.snapshotService = this.plugin.snapshotService();
         this.sessionLock = this.plugin.sessionLock();
         this.handoffs = this.plugin.handoffManager();
         this.logger = this.plugin.logger();
@@ -64,54 +67,65 @@ public final class SessionManager {
     /** 并行读取原版玩家数据和远端快照, 远端成功且本地已得到结果后放行 Gate. */
     @NotNull
     public CompletableFuture<SessionPrepareResult> prepare(@NotNull PlayerSession session) {
-        CompletableFuture<PlayerDataPreload> playerData;
-        CompletableFuture<SnapshotLoadResult> snapshot;
-        synchronized (session) {
-            if (!this.owns(session) || session.state() != SessionState.PREPARING) {
-                return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
-            }
-            // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取.
-            long playerDataLoadStart = System.nanoTime();
-            playerData = CompletableFuture
-                    .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
-                    .handle((loaded, throwable) -> {
-                        String loadMillis = String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - playerDataLoadStart));
-                        // 读取本地数据失败
-                        if (throwable != null) {
-                            String detail = String.valueOf(throwable);
-                            this.logger.warnWithFileCause(LogCategory.APPLY, session.uuid(), session.playerName(), throwable, LogConstants.SYNC_LOCAL_DATA_FALLBACK, session.playerName(), loadMillis, detail);
-                            return new PlayerDataPreload.Fallback();
-                        }
-                        // 正常读取成功
-                        this.logger.file(LogCategory.APPLY, session.uuid(), session.playerName(), loaded.isPresent() ? LogConstants.SYNC_LOCAL_DATA_READY : LogConstants.SYNC_LOCAL_DATA_EMPTY, session.playerName(), loadMillis);
-                        return new PlayerDataPreload.Ready(loaded);
-                    });
-            snapshot = this.snapshots
-                    .loadLatest(session.uuid(), session.playerName())
-                    .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
+        // 迟到的锁结果不再为已经关闭的会话启动读取
+        if (session.state() != SessionState.PREPARING) {
+            return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
         }
+        boolean nativeApply = PluginConfig.synchronization$nativeApply();
+        // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取
+        long playerDataLoadStart = System.nanoTime();
+        CompletableFuture<PlayerDataPreload> playerData = CompletableFuture
+                .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
+                .handle((loaded, throwable) -> {
+                    String loadMillis = String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - playerDataLoadStart));
+                    // 读取本地数据失败
+                    if (throwable != null) {
+                        String detail = String.valueOf(throwable);
+                        this.logger.warnWithFileCause(LogCategory.APPLY, session.uuid(), session.playerName(), throwable, LogConstants.SYNC_LOCAL_DATA_FALLBACK, session.playerName(), loadMillis, detail);
+                        return new PlayerDataPreload.Fallback();
+                    }
+                    // 正常读取成功
+                    this.logger.file(LogCategory.APPLY, session.uuid(), session.playerName(), loaded.isPresent() ? LogConstants.SYNC_LOCAL_DATA_READY : LogConstants.SYNC_LOCAL_DATA_EMPTY, session.playerName(), loadMillis);
+                    return new PlayerDataPreload.Ready(loaded);
+                });
+        CompletableFuture<SnapshotLoadResult> snapshot = this.snapshotService
+                .loadLatest(session.uuid(), session.playerName())
+                .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
 
-        // 两份结果齐全后重验 Session, 再一次发布进入世界需要的数据.
-        return playerData.thenCombine(snapshot, (local, remote) -> {
+        // 两份结果齐全后在 worker 生成最终 tag, 再重验 Session 并一次发布进入世界需要的数据
+        return playerData.thenCombineAsync(snapshot, (local, remote) -> {
+            // 已结束的登录不再执行原生数据转换
+            if (session.state() != SessionState.PREPARING) {
+                return new SessionPrepareResult.Rejected();
+            }
+            SnapshotLoadResult.Ready loadedSnapshot = remote instanceof SnapshotLoadResult.Ready ready ? ready : null;
+            PlayerDataPreload preparedLocal = local;
+            // 如果开启了 nativeApply, 则进行修改
+            if (nativeApply && loadedSnapshot != null) {
+                Optional<CompoundTag> localData = local instanceof PlayerDataPreload.Ready(Optional<CompoundTag> data) ? data : Optional.empty();
+                preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session.uuid(), session.playerName(), localData, loadedSnapshot));
+            }
+            // 发布与 abort 共用 Session 监视器, 缓存和快照一起提交
             synchronized (session) {
-                if (!this.owns(session) || session.state() != SessionState.PREPARING) {
+                if (session.state() != SessionState.PREPARING) {
                     return new SessionPrepareResult.Rejected();
                 }
+                // 检查快照和本地数据读取是否成功
                 if (remote instanceof SnapshotLoadResult.Failed(String detail)) {
-                    PlayerDataState failed = session.failPlayerData(detail);
-                    return new SessionPrepareResult.Failed(failed instanceof PlayerDataState.Failed(String failure) ? failure : detail);
+                    LoginDataState failed = session.failLoginData(detail);
+                    return new SessionPrepareResult.Failed(failed instanceof LoginDataState.Failed(String failure) ? failure : detail);
                 }
-                PlayerDataState published = session.publishPlayerData(local);
-                if (published instanceof PlayerDataState.Failed(String detail)) {
+                // 尝试发布本地数据的缓存到会话并检查
+                LoginDataState published = session.publishLoginData(preparedLocal, loadedSnapshot);
+                if (published instanceof LoginDataState.Failed(String detail)) {
                     return new SessionPrepareResult.Failed(detail);
                 }
-                if (!(published instanceof PlayerDataState.Ready)) {
+                if (!(published instanceof LoginDataState.Ready)) {
                     return new SessionPrepareResult.Failed("player data cache no longer accepts preload results");
                 }
-                if (remote instanceof SnapshotLoadResult.Ready ready) session.loadedSnapshot(ready);
                 return new SessionPrepareResult.Ready();
             }
-        });
+        }, this.plugin.scheduler().async());
     }
 
     /**
@@ -137,16 +151,16 @@ public final class SessionManager {
                 return new SnapshotApplyResult.Rejected();
             }
             // Join 验收后 Session 解除对原版数据的引用.
-            PlayerDataState playerDataState = session.finishPlayerData();
-            // todo 多语言日志
-            String playerDataFailure = switch (playerDataState) {
-                case PlayerDataState.Ready ready -> ready.loads() == 0 ? "player data cache was not read before PlayerJoinEvent" : null;
-                case PlayerDataState.Failed failed -> failed.detail();
-                case PlayerDataState.Preloading ignored -> "player data cache was still preloading at PlayerJoinEvent";
-                case PlayerDataState.Cleared ignored -> "player data cache was cleared before PlayerJoinEvent";
-            };
-            if (playerDataFailure != null) return new SnapshotApplyResult.Failed(playerDataFailure);
-            loaded = session.takeLoadedSnapshot();
+            LoginDataState loginDataState = session.finishLoginData();
+            switch (loginDataState) {
+                case LoginDataState.Ready ready -> {
+                    if (ready.loads() == 0) return new SnapshotApplyResult.Failed("player data cache was not read before PlayerJoinEvent");
+                    loaded = ready.snapshot();
+                }
+                case LoginDataState.Failed failed -> {return new SnapshotApplyResult.Failed(failed.detail());}
+                case LoginDataState.Preloading ignored -> {return new SnapshotApplyResult.Failed("player data cache was still preloading at PlayerJoinEvent");}
+                case LoginDataState.Cleared ignored -> {return new SnapshotApplyResult.Failed("player data cache was cleared before PlayerJoinEvent");}
+            }
         }
         if (loaded == null) {
             synchronized (session) {
@@ -154,16 +168,16 @@ public final class SessionManager {
                     return new SnapshotApplyResult.Rejected();
                 }
             }
-            return new SnapshotApplyResult.Applied(List.of(), List.of());
+            return new SnapshotApplyResult.Applied(List.of(), List.of(), List.of());
         }
 
-        SnapshotApplyResult result = this.snapshots.apply(player, loaded);
+        SnapshotApplyResult result = this.snapshotService.apply(player, loaded);
         if (result instanceof SnapshotApplyResult.Applied applied) {
             synchronized (session) {
                 if (!this.owns(session) || session.state() != SessionState.APPLYING) {
                     return new SnapshotApplyResult.Rejected();
                 }
-                session.retainedData(loaded.data().passthrough());
+                session.retainedData(loaded.context().passthrough());
                 session.transition(SessionState.ACTIVE);
             }
             EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
@@ -179,7 +193,7 @@ public final class SessionManager {
     public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
             if (!this.accepting || !this.owns(session) || session.state() != SessionState.ACTIVE) return null;
-            return this.snapshots.captureNowAndSave(player, cause, session.retainedData());
+            return this.snapshotService.captureNowAndSave(player, cause, session.retainedData());
         }
     }
 
@@ -191,7 +205,7 @@ public final class SessionManager {
     public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
             if (!this.accepting || !this.owns(session) || session.state() != SessionState.ACTIVE) return null;
-            return this.snapshots.captureLaterAndSave(player, cause, session.retainedData());
+            return this.snapshotService.captureLaterAndSave(player, cause, session.retainedData());
         }
     }
 
@@ -205,7 +219,7 @@ public final class SessionManager {
                 return CompletableFuture.completedFuture(new SnapshotRestoreResult.Gone());
             }
         }
-        return this.snapshots.loadLatest(player.getUniqueId(), player.getName()).thenCompose(result -> switch (result) {
+        return this.snapshotService.loadLatest(player.getUniqueId(), player.getName()).thenCompose(result -> switch (result) {
             case SnapshotLoadResult.Empty ignored -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Empty());
             case SnapshotLoadResult.Failed failed -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Failed(failed.detail()));
             case SnapshotLoadResult.Ready ready -> this.applyRestored(session, player, ready);
@@ -222,11 +236,11 @@ public final class SessionManager {
                 }
             }
             try {
-                switch (this.snapshots.apply(player, loaded)) {
+                switch (this.snapshotService.apply(player, loaded)) {
                     case SnapshotApplyResult.Applied applied -> {
                         synchronized (session) {
                             if (this.owns(session) && session.state() == SessionState.ACTIVE) {
-                                session.retainedData(loaded.data().passthrough());
+                                session.retainedData(loaded.context().passthrough());
                             }
                         }
                         EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
@@ -249,7 +263,7 @@ public final class SessionManager {
             SessionState state = session.state();
             if (state == SessionState.ACTIVE || state == SessionState.SAVING || state == SessionState.CLOSED) return false;
             session.transition(SessionState.CLOSED);
-            session.finishPlayerData();
+            session.finishLoginData();
             this.releaseSession(session);
             return true;
         }
@@ -263,7 +277,7 @@ public final class SessionManager {
         Location location = player.getLocation();
         this.plugin.scheduler().sync().runLater(() -> {
             if (action == CloseAction.SAVE_ACCEPTED) {
-                this.closeAfterSave(session, this.snapshots.captureLaterAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
+                this.closeAfterSave(session, this.snapshotService.captureLaterAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
             } else {
                 this.releaseSession(session);
             }
@@ -295,7 +309,7 @@ public final class SessionManager {
                 return CloseAction.SAVE_ACCEPTED;
             }
             session.transition(SessionState.CLOSED);
-            session.finishPlayerData();
+            session.finishLoginData();
             return CloseAction.ABORTED;
         }
     }
@@ -354,7 +368,7 @@ public final class SessionManager {
                 this.abort(session);
                 continue;
             }
-            CloseAction action = this.closeWithFinalSave(session, () -> this.snapshots.captureNowAndSave(player, SaveCause.SHUTDOWN, session.retainedData()));
+            CloseAction action = this.closeWithFinalSave(session, () -> this.snapshotService.captureNowAndSave(player, SaveCause.SHUTDOWN, session.retainedData()));
             if (action == CloseAction.SAVE_ACCEPTED) accepted++;
         }
         if (accepted > 0) {

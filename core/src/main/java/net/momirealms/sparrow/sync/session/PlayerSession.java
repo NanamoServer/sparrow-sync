@@ -20,8 +20,7 @@ public final class PlayerSession implements PlayerDataEntry {
     private final String playerName;
     private final CompletableFuture<Void> released = new CompletableFuture<>(); // 会话从注册表移除后完成
     private SessionState state = SessionState.PREPARING;
-    private PlayerDataState playerDataState = new PlayerDataState.Preloading();
-    private SnapshotLoadResult.Ready loadedSnapshot;
+    private LoginDataState loginDataState = new LoginDataState.Preloading();
     private Map<DataKey, Tag> retainedData = Map.of(); // 本服不认识或已关闭的数据类型, 保存时原样写回快照
     private String lockToken; // 分布式锁的持有值, 释放时原样传回
 
@@ -64,29 +63,29 @@ public final class PlayerSession implements PlayerDataEntry {
     }
 
     @NotNull
-    synchronized PlayerDataState publishPlayerData(@NotNull PlayerDataPreload playerData) {
-        if (this.playerDataState instanceof PlayerDataState.Preloading) {
+    synchronized LoginDataState publishLoginData(@NotNull PlayerDataPreload playerData, @Nullable SnapshotLoadResult.Ready snapshot) {
+        if (this.loginDataState instanceof LoginDataState.Preloading) {
             Optional<CompoundTag> data = switch (playerData) {
                 case PlayerDataPreload.Ready ready -> ready.data();
                 case PlayerDataPreload.Fallback ignored -> Optional.empty();
             };
-            this.playerDataState = new PlayerDataState.Ready(data, 0);
+            this.loginDataState = new LoginDataState.Ready(data, 0, snapshot);
         }
-        return this.playerDataState;
+        return this.loginDataState;
     }
 
     @NotNull
-    synchronized PlayerDataState failPlayerData(@NotNull String detail) {
-        if (this.playerDataState instanceof PlayerDataState.Preloading) {
-            this.playerDataState = new PlayerDataState.Failed(detail);
+    synchronized LoginDataState failLoginData(@NotNull String detail) {
+        if (this.loginDataState instanceof LoginDataState.Preloading) {
+            this.loginDataState = new LoginDataState.Failed(detail);
         }
-        return this.playerDataState;
+        return this.loginDataState;
     }
 
     @NotNull
-    synchronized PlayerDataState finishPlayerData() {
-        PlayerDataState result = this.playerDataState;
-        this.playerDataState = new PlayerDataState.Cleared();
+    synchronized LoginDataState finishLoginData() {
+        LoginDataState result = this.loginDataState;
+        this.loginDataState = new LoginDataState.Cleared();
         return result;
     }
 
@@ -94,26 +93,15 @@ public final class PlayerSession implements PlayerDataEntry {
     @NotNull
     public Optional<CompoundTag> loadPlayerData(@NotNull Supplier<Optional<CompoundTag>> original) {
         synchronized (this) {
-            if (this.playerDataState instanceof PlayerDataState.Ready(Optional<CompoundTag> data, int loads)) {
-                this.playerDataState = new PlayerDataState.Ready(data, loads + 1);
-                return data;
+            if (this.loginDataState instanceof LoginDataState.Ready ready) {
+                this.loginDataState = new LoginDataState.Ready(ready.playerData(), ready.loads() + 1, ready.snapshot());
+                return ready.playerData();
             }
-            if (this.playerDataState instanceof PlayerDataState.Preloading) {
-                this.playerDataState = new PlayerDataState.Failed(EARLY_PLAYER_DATA_LOAD);
+            if (this.loginDataState instanceof LoginDataState.Preloading) {
+                this.loginDataState = new LoginDataState.Failed(EARLY_PLAYER_DATA_LOAD);
             }
         }
         return original.get();
-    }
-
-    synchronized void loadedSnapshot(@NotNull SnapshotLoadResult.Ready loadedSnapshot) {
-        this.loadedSnapshot = loadedSnapshot;
-    }
-
-    @Nullable
-    synchronized SnapshotLoadResult.Ready takeLoadedSnapshot() {
-        SnapshotLoadResult.Ready loaded = this.loadedSnapshot;
-        this.loadedSnapshot = null;
-        return loaded;
     }
 
     @NotNull

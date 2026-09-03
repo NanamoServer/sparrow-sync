@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
@@ -15,7 +16,8 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplier;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.util.EventUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
@@ -26,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -38,7 +41,7 @@ public final class SnapshotService {
     private final SparrowSync plugin;
     private SyncLogger logger;
     private DataRegistry dataRegistry;
-    private SnapshotApplier playerData;
+    private PlayerDataPipeline playerDataPipeline;
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
     private SnapshotWriter writer;
@@ -52,7 +55,7 @@ public final class SnapshotService {
     public void onLoad() {
         this.logger = this.plugin.logger();
         this.dataRegistry = this.plugin.dataRegistry();
-        this.playerData = this.plugin.snapshotApplier();
+        this.playerDataPipeline = this.plugin.playerDataPipeline();
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);
@@ -62,12 +65,18 @@ public final class SnapshotService {
         // 冻结数据类型注册表并记录最终装配顺序.
         this.dataRegistry.freeze();
         StringJoiner activeTypes = new StringJoiner(", ");
-        List<DataKey> applyOrder = this.playerData.applyOrder();
+        List<DataKey> applyOrder = this.playerDataPipeline.applyOrder();
         int dataTypeCount = applyOrder.size();
         for (int i = 0; i < dataTypeCount; i++) {
             activeTypes.add(applyOrder.get(i).asString());
         }
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
+    }
+
+    /** 在 Gate 阶段把远端快照写入尚未发布的原版玩家数据. */
+    @NotNull
+    Optional<CompoundTag> applyNative(@NotNull UUID player, @NotNull String playerName, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
+        return this.playerDataPipeline.applyNative(player, playerName, localData, loaded.context());
     }
 
     /**
@@ -92,13 +101,13 @@ public final class SnapshotService {
     }
 
     private SnapshotLoadResult prepare(Snapshot snapshot, UUID player, String playerName, long loadStart) {
-        return switch (this.playerData.prepare(snapshot)) {
-            case SnapshotApplier.PreparedSnapshot.Ready ready -> {
+        return switch (this.playerDataPipeline.prepare(snapshot)) {
+            case PlayerDataPipeline.PrepareResult.Ready ready -> {
                 long loadNanos = System.nanoTime() - loadStart;
                 this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, loadNanos));
-                yield new SnapshotLoadResult.Ready(snapshot, ready, loadNanos);
+                yield new SnapshotLoadResult.Ready(snapshot, ready.context(), loadNanos);
             }
-            case SnapshotApplier.PreparedSnapshot.Failed failed -> {
+            case PlayerDataPipeline.PrepareResult.Failed failed -> {
                 String detail = failed.key().asString() + ": " + failed.detail();
                 this.logger.error(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_FAILED, playerName, millis(loadStart, System.nanoTime()), detail);
                 yield new SnapshotLoadResult.Failed(detail);
@@ -111,11 +120,12 @@ public final class SnapshotService {
     SnapshotApplyResult apply(@NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
         long applyStart = System.nanoTime();
         this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(), LogConstants.SYNC_APPLY_STARTED, player.getName());
-        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.data().values());
+        SnapshotApplyContext context = loaded.context();
+        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), context.pendingValues());
         EventUtils.fireAndForget(event);
-        SnapshotApplier.PreparedSnapshot.Ready data = this.playerData.afterEvent(event.decoded(), loaded.data());
-        return switch (this.playerData.apply(player, data)) {
-            case SnapshotApplier.ApplyResult.Success success -> {
+        context.acceptEventValues(event.decoded());
+        return switch (this.playerDataPipeline.apply(player, context)) {
+            case PlayerDataPipeline.ApplyResult.Success success -> {
                 this.logger.info(LogCategory.APPLY, player.getUniqueId(), player.getName(),
                         LogConstants.SYNC_APPLIED,
                         player.getName(),
@@ -124,9 +134,9 @@ public final class SnapshotService {
                         millis(0, loaded.loadNanos()),
                         millis(applyStart, System.nanoTime())
                 );
-                yield new SnapshotApplyResult.Applied(success.applied(), success.skipped());
+                yield new SnapshotApplyResult.Applied(success.applied(), success.skipped(), success.failures());
             }
-            case SnapshotApplier.ApplyResult.Failure failure -> new SnapshotApplyResult.Failed(failure.failedKey().asString() + ": " + failure.detail());
+            case PlayerDataPipeline.ApplyResult.Failure failure -> new SnapshotApplyResult.Failed(failure.failedKey().asString() + ": " + failure.detail());
         };
     }
 
@@ -138,7 +148,7 @@ public final class SnapshotService {
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
-        if (!(this.playerData.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
+        if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
             request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
             return request.completion;
         }
@@ -154,7 +164,7 @@ public final class SnapshotService {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
         this.submitSerial(context.meta().player(), () -> {
-            if (!(this.playerData.capture(player) instanceof SnapshotApplier.CaptureResult.Ready captured)) {
+            if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
@@ -164,8 +174,8 @@ public final class SnapshotService {
     }
 
     // 进入这里时已经只持有脱离 Player 的采集值.
-    private void encodeAndSubmit(SaveContext context, SnapshotApplier.CaptureResult.Ready captured, SaveRequest request) {
-        if (!(this.playerData.encode(captured) instanceof SnapshotApplier.EncodeResult.Ready encoded)) {
+    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
+        if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
         }

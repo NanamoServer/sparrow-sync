@@ -12,7 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 快照完成解码、写入玩家前派发. 监听器可以修改本次应用使用的解码数据.
+ * 快照完成解码、写入在线玩家前派发. 监听器可以修改本次仍会通过 Bukkit 路径完整应用的解码数据.
+ * 登录期间已经写入原生玩家数据的槽位不会暴露在此事件中; 在线恢复仍暴露全部槽位.
  */
 public final class PreApplyEvent extends PlayerEvent {
     private static final HandlerList HANDLERS = new HandlerList();
@@ -38,7 +39,7 @@ public final class PreApplyEvent extends PlayerEvent {
     }
 
     /**
-     * 返回本次应用使用的可变解码数据.
+     * 返回本次通过 Bukkit 路径完整应用的可变解码数据.
      * 监听器可以替换或删除已有值, 也可以为本次解码跳过的已注册类型补值.
      * <strong>写入值必须符合对应 PlayerDataType 的解码结果类型</strong>.
      * 事件返回后会丢弃未注册的键与 null 值.
