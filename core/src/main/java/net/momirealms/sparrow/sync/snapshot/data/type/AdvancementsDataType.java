@@ -32,6 +32,7 @@ import java.util.Set;
  * 同步玩家 advancement 进度, 使用原版 Codec 保留 criterion 完成时间.
  * 采集值只保留脱离玩家状态的标识、criterion 与时间数组, 不携带活的 AdvancementProgress.
  * 应用时直接替换完整进度并刷新监听, 奖励与广播流程不会被触发.
+ * todo 性能存在问题, 也需要Native化
  */
 public final class AdvancementsDataType extends CodecDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");

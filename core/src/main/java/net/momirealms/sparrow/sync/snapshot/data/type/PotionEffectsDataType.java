@@ -1,9 +1,12 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -18,7 +21,7 @@ import java.util.List;
  * (力量 III 压住的力量 II 在 III 过期后恢复, Bukkit 的 addPotionEffect 无法直接重建该链).
  * ambient 效果 (信标, 潮涌核心) 由环境持续施加, 按顶层过滤不采集; 应用时清空现有效果后逐个放入.
  */
-public final class PotionEffectsDataType extends CodecDataType<List<MobEffectInstance>> {
+public final class PotionEffectsDataType extends CodecDataType<List<MobEffectInstance>> implements NativePlayerDataType<List<MobEffectInstance>> {
     public static final DataKey POTION_EFFECTS = DataKey.sparrow("potion_effects");
 
 
@@ -46,6 +49,16 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
         for (int i = 0; i < size; i++) {
             handle.addEffect(value.get(i));
         }
+    }
+
+    @Override
+    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
+        net.minecraft.nbt.Tag effects = value.isEmpty()
+                ? new net.minecraft.nbt.ListTag()
+                : NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, this.encode(value));
+        // 空列表也必须显式写入, 否则本服 .dat 中的旧效果会在 vanilla load 时复活.
+        playerData.put("active_effects", effects);
+        return true;
     }
 
     private static ServerPlayer handle(Player player) {

@@ -2,7 +2,9 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
@@ -10,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
 
-public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> {
+public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> implements NativePlayerDataType<ExperienceDataType.Experience> {
     public static final DataKey EXPERIENCE = DataKey.sparrow("experience");
 
 
@@ -35,6 +37,15 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
         player.setTotalExperience(value.total());
         player.setLevel(value.level());
         player.setExp(Math.clamp(value.progress(), 0.0f, 1.0f));
+    }
+
+    @Override
+    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Experience value) {
+        if (value.total() < 0 || value.level() < 0 || Float.isNaN(value.progress())) return false;
+        playerData.putInt("XpTotal", value.total());
+        playerData.putInt("XpLevel", value.level());
+        playerData.putFloat("XpP", Math.clamp(value.progress(), 0.0f, 1.0f));
+        return true;
     }
 
     public record Experience(int total, int level, float progress) {

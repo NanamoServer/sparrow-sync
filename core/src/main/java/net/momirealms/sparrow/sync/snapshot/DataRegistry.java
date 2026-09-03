@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -25,6 +26,7 @@ public final class DataRegistry {
     private final Map<DataKey, PlayerDataType<?>> types = new ConcurrentHashMap<>();
     private DataKey[] orderedKeys = new DataKey[0];
     private PlayerDataType<?>[] orderedTypes = new PlayerDataType<?>[0];
+    private NativePlayerDataType<?>[] orderedNativeTypes = new NativePlayerDataType<?>[0];
     private Map<DataKey, Integer> slots = Map.of();
     private List<DataKey> applyOrder = List.of();
     private volatile boolean frozen;
@@ -51,15 +53,18 @@ public final class DataRegistry {
         int size = order.size();
         DataKey[] keys = new DataKey[size];
         PlayerDataType<?>[] types = new PlayerDataType<?>[size];
+        NativePlayerDataType<?>[] nativeTypes = new NativePlayerDataType<?>[size];
         Map<DataKey, Integer> slots = new HashMap<>(size);
         for (int i = 0; i < size; i++) {
             DataKey key = order.get(i);
             keys[i] = key;
             types[i] = this.types.get(key);
+            if (types[i] instanceof NativePlayerDataType<?> nativeType) nativeTypes[i] = nativeType;
             slots.put(key, i);
         }
         this.orderedKeys = keys;
         this.orderedTypes = types;
+        this.orderedNativeTypes = nativeTypes;
         this.slots = Map.copyOf(slots);
         this.applyOrder = List.copyOf(order);
         this.frozen = true;
@@ -110,6 +115,12 @@ public final class DataRegistry {
     @NotNull
     public PlayerDataType<?> typeAt(int slot) {
         return this.orderedTypes[slot];
+    }
+
+    /** 返回冻结槽位的原生写入实现, join-only 类型返回 null. */
+    @Nullable
+    public NativePlayerDataType<?> nativeTypeAt(int slot) {
+        return this.orderedNativeTypes[slot];
     }
 
     /**

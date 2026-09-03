@@ -2,7 +2,9 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.attribute.Attribute;
@@ -13,9 +15,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
 
-public final class HealthDataType extends CodecDataType<HealthDataType.Health> {
+public final class HealthDataType extends CodecDataType<HealthDataType.Health> implements NativePlayerDataType<HealthDataType.Health> {
     public static final DataKey HEALTH = DataKey.sparrow("health");
-
 
     public HealthDataType() {
         super(HEALTH, StorageFormat.STRUCTURED, Health.CODEC);
@@ -24,20 +25,17 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> {
     @Override
     @NotNull
     public Set<DataKey> dependencies() {
-        return Set.of(AttributesDataType.ATTRIBUTES);
+        return Set.of(AttributesDataType.ATTRIBUTES, HealthScaleDataType.HEALTH_SCALE);
     }
 
     @Override
     @NotNull
     protected Health captureValue(@NotNull Player player) {
-        return new Health(player.getHealth(), player.getHealthScale(), player.isHealthScaled());
+        return new Health(player.getHealth());
     }
 
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Health value) {
-        // setHealthScale 会顺带把缩放开关置真, 必须先设数值再落开关
-        player.setHealthScale(Math.max(1.0, value.scale()));
-        player.setHealthScaled(value.scaled());
         CraftPlayer craft = (CraftPlayer) player;
         // 快照死
         if (value.health() <= 0.0) {
@@ -59,11 +57,18 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> {
         player.setHealth(target);
     }
 
-    public record Health(double health, double scale, boolean scaled) {
+    @Override
+    public boolean applyNative(@NotNull CompoundTag playerData, @NotNull Health value) {
+        if (Double.isNaN(value.health())) return false;
+        playerData.putFloat("Health", (float) value.health());
+        // 本地死亡残留不能跟着活快照进入新 Player, 否则实体会带正血量继续死亡计时.
+        if (value.health() > 0.0) playerData.putShort("DeathTime", (short) 0);
+        return true;
+    }
+
+    public record Health(double health) {
         public static final Codec<Health> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                Codec.DOUBLE.fieldOf("health").forGetter(Health::health),
-                Codec.DOUBLE.fieldOf("scale").forGetter(Health::scale),
-                Codec.BOOL.fieldOf("scaled").forGetter(Health::scaled)
+                Codec.DOUBLE.fieldOf("health").forGetter(Health::health)
         ).apply(instance, Health::new));
     }
 }

@@ -9,7 +9,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.PDCMergeBlacklist;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -23,7 +23,7 @@ import java.util.Map;
  * 玩家线程只深拷贝原版 CompoundTag, 黑名单过滤与 Sparrow NBT 转换由编码阶段完成.
  * 黑名单子树不会进入新快照, 也不会从已有快照写回.
  */
-public final class PDCDataType implements PlayerDataType<net.minecraft.nbt.CompoundTag> {
+public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt.CompoundTag> {
     public static final DataKey PERSISTENT_DATA = DataKey.sparrow("persistent_data");
 
     @Override
@@ -102,6 +102,18 @@ public final class PDCDataType implements PlayerDataType<net.minecraft.nbt.Compo
             }
             target.put(entry.getKey(), mergeTag(target.get(entry.getKey()), entry.getValue(), child));
         }
+    }
+
+    @Override
+    public boolean applyNative(@NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
+        net.minecraft.nbt.Tag current = playerData.get("BukkitValues");
+        net.minecraft.nbt.CompoundTag merged = current instanceof net.minecraft.nbt.CompoundTag compound
+                ? compound.copy()
+                : new net.minecraft.nbt.CompoundTag();
+        mergeCompound(merged, value, PluginConfig.synchronization$pdcMergeNamespaces());
+        // 子树在副本中完成合并, 到这里才替换根节点, 合并异常不会污染尚未发布的本地数据.
+        playerData.put("BukkitValues", merged);
+        return true;
     }
 
     @NotNull

@@ -11,7 +11,8 @@ class BuiltinDataDependenciesTest {
     @Test
     void dependentTypesDeclareTheM16ApplicationOrder() {
         assertEquals(Set.of(AdvancementsDataType.ADVANCEMENTS), new ExperienceDataType().dependencies());
-        assertEquals(Set.of(AttributesDataType.ATTRIBUTES), new HealthDataType().dependencies());
+        assertEquals(Set.of(AttributesDataType.ATTRIBUTES), new HealthScaleDataType().dependencies());
+        assertEquals(Set.of(AttributesDataType.ATTRIBUTES, HealthScaleDataType.HEALTH_SCALE), new HealthDataType().dependencies());
         assertEquals(Set.of(AttributesDataType.ATTRIBUTES), new HungerDataType().dependencies());
         assertEquals(Set.of(GameModeDataType.GAME_MODE), new FlightStatusDataType().dependencies());
         assertEquals(

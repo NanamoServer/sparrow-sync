@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.StringTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
@@ -24,10 +26,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,6 +43,7 @@ class SnapshotApplierTest {
     private final QuietLogger console = new QuietLogger();
     private final SyncLogger logger = new SyncLogger(this.console);
     private final List<DataKey> applied = new ArrayList<>();
+    private final List<DataKey> nativeApplied = new ArrayList<>();
     // 只响应身份查询 (getName/getUniqueId, 供日志检索列) 的代理玩家, 其余任何调用直接失败, 顺带证明编排器不解引用玩家状态
     private final Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> switch (method.getName()) {
         case "getName", "toString" -> "TestPlayer";
@@ -194,6 +199,104 @@ class SnapshotApplierTest {
     }
 
     @Test
+    void nativeSlotsAreHiddenFromJoinEventAndSkippedDuringJoinApply() {
+        NativeFakeType alpha = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false);
+        FakeType bravo = new FakeType(BRAVO, StorageFormat.STRUCTURED);
+        SnapshotApplier applier = createApplier(alpha, bravo);
+        PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA, BRAVO)));
+        CompoundTag local = new CompoundTag();
+
+        SnapshotApplier.NativeApplyResult.Ready nativeResult = assertInstanceOf(
+                SnapshotApplier.NativeApplyResult.Ready.class,
+                applier.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(local), prepared)
+        );
+
+        assertEquals(List.of(ALPHA), this.nativeApplied);
+        assertTrue(nativeResult.playerData().orElseThrow() == local);
+        assertEquals(ALPHA.asString(), assertInstanceOf(StringTag.class, local.get(ALPHA.asString())).value());
+        assertEquals(Set.of(BRAVO), prepared.joinValues().keySet());
+
+        PreparedSnapshot.Ready afterEvent = applier.afterJoinEvent(prepared.joinValues(), prepared);
+        ApplyResult.Success joining = assertInstanceOf(ApplyResult.Success.class, applier.applyJoining(this.player, afterEvent));
+        assertEquals(List.of(ALPHA, BRAVO), joining.applied());
+        assertEquals(List.of(BRAVO), this.applied);
+
+        this.applied.clear();
+        applier.apply(this.player, prepared);
+        assertEquals(List.of(ALPHA, BRAVO), this.applied);
+    }
+
+    @Test
+    void nativeFalseLeavesTagUntouchedAndFallsBackToFullJoinApply() {
+        NativeFakeType alpha = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false).unsupportedNative();
+        SnapshotApplier applier = createApplier(alpha);
+        PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA)));
+        CompoundTag local = new CompoundTag();
+        local.putString("local", "kept");
+
+        applier.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(local), prepared);
+
+        assertFalse(local.contains(ALPHA.asString()));
+        assertEquals(Set.of(ALPHA), prepared.joinValues().keySet());
+        applier.applyJoining(this.player, prepared);
+        assertEquals(List.of(ALPHA), this.applied);
+    }
+
+    @Test
+    void syntheticPlayerDataOnlyExistsWhenANativeSlotWasWritten() {
+        SnapshotApplier joinOnly = createApplier(new FakeType(ALPHA, StorageFormat.STRUCTURED));
+        PreparedSnapshot.Ready joinOnlyData = assertInstanceOf(PreparedSnapshot.Ready.class, joinOnly.prepare(snapshotWith(ALPHA)));
+
+        SnapshotApplier.NativeApplyResult.Ready empty = assertInstanceOf(
+                SnapshotApplier.NativeApplyResult.Ready.class,
+                joinOnly.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), joinOnlyData)
+        );
+
+        assertTrue(empty.playerData().isEmpty());
+
+        SnapshotApplier nativeApplier = createApplier(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false));
+        PreparedSnapshot.Ready nativeData = assertInstanceOf(PreparedSnapshot.Ready.class, nativeApplier.prepare(snapshotWith(ALPHA)));
+        SnapshotApplier.NativeApplyResult.Ready synthesized = assertInstanceOf(
+                SnapshotApplier.NativeApplyResult.Ready.class,
+                nativeApplier.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), nativeData)
+        );
+        CompoundTag root = synthesized.playerData().orElseThrow();
+        assertTrue(root.contains("DataVersion"));
+        CompoundTag bukkit = assertInstanceOf(CompoundTag.class, root.get("bukkit"));
+        assertTrue(bukkit.contains("firstPlayed"));
+    }
+
+    @Test
+    void criticalNativeFailureRejectsThePreparedPlayerData() {
+        NativeFakeType critical = new NativeFakeType(ALPHA, StorageFormat.BINARY, true).failingNative();
+        SnapshotApplier applier = createApplier(critical);
+        PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA)));
+
+        SnapshotApplier.NativeApplyResult.Failed failed = assertInstanceOf(
+                SnapshotApplier.NativeApplyResult.Failed.class,
+                applier.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(new CompoundTag()), prepared)
+        );
+
+        assertEquals(ALPHA, failed.key());
+    }
+
+    @Test
+    void nonCriticalNativeFailureFallsBackToJoinApply() {
+        NativeFakeType alpha = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false).failingNative();
+        SnapshotApplier applier = createApplier(alpha);
+        PreparedSnapshot.Ready prepared = assertInstanceOf(PreparedSnapshot.Ready.class, applier.prepare(snapshotWith(ALPHA)));
+
+        assertInstanceOf(
+                SnapshotApplier.NativeApplyResult.Ready.class,
+                applier.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(new CompoundTag()), prepared)
+        );
+        applier.applyJoining(this.player, prepared);
+
+        assertEquals(List.of(ALPHA), this.applied);
+        assertTrue(this.console.warnings > 0);
+    }
+
+    @Test
     void freezeIncludesTypesRegisteredByThirdParties() {
         // 模拟第三方在 onLoad 期注册的类型: 不在 builtin 集合里, 仍进入冻结槽位
         DataRegistry registry = new DataRegistry();
@@ -327,6 +430,34 @@ class SnapshotApplierTest {
         @Override
         public void apply(@NotNull Player player, @NotNull String value) {
             applied.add(this.key);
+        }
+    }
+
+    private final class NativeFakeType extends FakeType implements NativePlayerDataType<String> {
+        private boolean nativeSupported = true;
+        private boolean nativeFails;
+
+        private NativeFakeType(DataKey key, StorageFormat storage, boolean critical) {
+            super(key, storage, critical, Set.of());
+        }
+
+        private NativeFakeType unsupportedNative() {
+            this.nativeSupported = false;
+            return this;
+        }
+
+        private NativeFakeType failingNative() {
+            this.nativeFails = true;
+            return this;
+        }
+
+        @Override
+        public boolean applyNative(@NotNull CompoundTag playerData, @NotNull String value) {
+            if (this.nativeFails) throw new IllegalStateException("native failed");
+            if (!this.nativeSupported) return false;
+            playerData.putString(this.key().asString(), value);
+            nativeApplied.add(this.key());
+            return true;
         }
     }
 

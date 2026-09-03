@@ -8,6 +8,7 @@ import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.HealthScaleDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import org.bukkit.GameMode;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DataTypeCodecTest {
@@ -27,8 +29,15 @@ class DataTypeCodecTest {
 
     @Test
     void healthCodecRoundTrips() {
-        HealthDataType.Health value = new HealthDataType.Health(19.5, 20.0, true);
+        HealthDataType.Health value = new HealthDataType.Health(19.5);
         assertEquals(value, roundTrip(HealthDataType.Health.CODEC, value));
+    }
+
+    @Test
+    void healthScaleCodecRoundTripsWithoutNativeCapability() {
+        HealthScaleDataType.HealthScale value = new HealthScaleDataType.HealthScale(40.0, true);
+        assertEquals(value, roundTrip(HealthScaleDataType.HealthScale.CODEC, value));
+        assertFalse(NativePlayerDataType.class.isAssignableFrom(HealthScaleDataType.class));
     }
 
     @Test

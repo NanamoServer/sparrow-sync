@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.util;
 
 import com.mojang.serialization.Dynamic;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.fixes.References;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -50,6 +51,30 @@ public final class ItemCodec {
                 .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getType() + ": " + message));
         if (!(tag instanceof CompoundTag compound)) {
             throw new IllegalStateException("item " + item.getType() + " encoded to non-compound tag");
+        }
+        return compound;
+    }
+
+    /** 把标准容器编码为原版 {@code ItemStackWithSlot} 使用的稀疏列表. */
+    @NotNull
+    public static net.minecraft.nbt.ListTag saveNativeItems(@Nullable ItemStack @NotNull [] items) {
+        net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
+        for (int i = 0; i < items.length; i++) {
+            ItemStack item = items[i];
+            if (item == null || item.isEmpty()) continue;
+            net.minecraft.nbt.CompoundTag compound = saveNativeItem(item);
+            compound.putByte("Slot", (byte) i);
+            list.add(compound);
+        }
+        return list;
+    }
+
+    /** 把单个 Bukkit 物品编码为当前服务端原生玩家文件使用的 NMS compound. */
+    @NotNull
+    public static net.minecraft.nbt.CompoundTag saveNativeItem(@NotNull ItemStack item) {
+        net.minecraft.nbt.Tag tag = NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, saveItem(item));
+        if (!(tag instanceof net.minecraft.nbt.CompoundTag compound)) {
+            throw new IllegalStateException("item " + item.getType() + " encoded to non-compound native tag");
         }
         return compound;
     }

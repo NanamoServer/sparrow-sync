@@ -350,6 +350,7 @@ public class SparrowSync implements Plugin {
         if (enabled.enderChest())       this.dataRegistry.register(new EnderChestDataType());
         if (enabled.persistentData())   this.dataRegistry.register(new PDCDataType());
         if (enabled.experience())       this.dataRegistry.register(new ExperienceDataType());
+        if (enabled.health())           this.dataRegistry.register(new HealthScaleDataType());
         if (enabled.health())           this.dataRegistry.register(new HealthDataType());
         if (enabled.hunger())           this.dataRegistry.register(new HungerDataType());
         if (enabled.gameMode())         this.dataRegistry.register(new GameModeDataType());
