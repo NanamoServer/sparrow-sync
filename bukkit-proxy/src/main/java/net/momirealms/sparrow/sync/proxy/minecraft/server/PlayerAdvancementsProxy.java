@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.proxy.minecraft.server;
 
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
+import net.momirealms.sparrow.reflection.proxy.annotation.FieldSetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
@@ -18,6 +19,9 @@ public interface PlayerAdvancementsProxy {
 
     @FieldGetter(name = "progressChanged")
     Set<Object> getProgressChanged(Object target);
+
+    @FieldSetter(name = "progressChanged")
+    void setProgressChanged(Object target, Set<Object> value);
 
     @FieldGetter(name = "criterionData", activeIf = "max_version=26.1.2")
     Map<Object, Set<Object>> getCriterionData(Object target);

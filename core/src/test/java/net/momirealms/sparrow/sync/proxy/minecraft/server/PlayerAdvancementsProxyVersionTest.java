@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +33,16 @@ class PlayerAdvancementsProxyVersionTest {
     void fullListenerRebuildMethodsAreNotExposed() {
         assertThrows(NoSuchMethodException.class, () -> PlayerAdvancementsProxy.class.getDeclaredMethod("clearTriggers", Object.class));
         assertThrows(NoSuchMethodException.class, () -> PlayerAdvancementsProxy.class.getDeclaredMethod("registerListeners", Object.class, Object.class));
+    }
+
+    /** 验证生成代理把 progressChanged setter 绑定到唯一且正确的 NMS 字段名. */
+    @Test
+    void progressChangedExposesFinalFieldSetter() throws ReflectiveOperationException {
+        // 只检查代理声明, 不依赖真实玩家或服务端生命周期
+        Annotation setter = annotation(PlayerAdvancementsProxy.class.getDeclaredMethod("setProgressChanged", Object.class, Set.class), "FieldSetter");
+
+        // 字段名漂移会让 final setter 静默失去目标, 因此要求精确匹配
+        assertArrayEquals(new String[]{"progressChanged"}, (String[]) setter.annotationType().getMethod("name").invoke(setter));
     }
 
     @Test

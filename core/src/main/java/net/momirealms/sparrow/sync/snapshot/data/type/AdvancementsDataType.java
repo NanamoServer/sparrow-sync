@@ -30,12 +30,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-/**
- * 同步玩家 advancement 进度, 快照只保留已完成 criterion 及其完成时间.
- * 采集值不携带活的 AdvancementProgress, 原生文件按 Mojang JSON 格式独立生成.
- * 应用时修补现有 CriterionProgress, 奖励、广播和 Bukkit advancement 事件不会被触发.
- * todo 再审
- */
 public final class AdvancementsDataType implements NativePlayerDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
 
@@ -46,6 +40,8 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     private static final String DONE_KEY = "done";
     private static final int INDEX_THRESHOLD = 8; // criterion 数超过该值时为快照值建哈希索引, 少量时线性扫描更快
     private static final DateTimeFormatter OBTAINED_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z", Locale.ROOT).withZone(ZoneId.systemDefault());
+
+    private final AdvancementSlots advancementSlots = new AdvancementSlots(); // 全服共享的稳定 advancement 槽位, 所有玩家候选位图都以此布局解释.
 
     @Override
     @NotNull
@@ -59,11 +55,98 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         return StorageFormat.STRUCTURED;
     }
 
+    /**
+     * 在玩家首次应用和首次常规 flush 前安装进度跟踪器.
+     * 重复调用会识别现有 wrapper 并保持原对象, 因此同一玩家只安装一次.
+     *
+     * @param player 已完成 Join 且尚未执行 Sparrow Player apply 的玩家
+     * @throws IllegalStateException 当当前布局不稳定或 final 字段写入后的身份校验失败时
+     */
+    public void attachTracker(@NotNull Player player) {
+        // 读取实际 PlayerAdvancements, wrapper 必须安装到 Bukkit Player 持有的同一个对象
+        ServerPlayer handle = handle(player);
+        PlayerAdvancements advancements = handle.getAdvancements();
+        Set<Object> progressChanged = PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
+        if (progressChanged instanceof AdvancementProgressChangedWrapperSet) return;
+        // 先得到完整布局, 构造 wrapper 时才能覆盖原 dirty Set 中的全部已有进度
+        if (this.advancementSlots.current() == null) {
+            throw new IllegalStateException("advancement layout changed while progress tracking was attached");
+        }
+
+        // 代理掉 PlayerAdvancements#progressChanged 以监听变化.
+        AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(progressChanged, PlayerAdvancementsProxy.INSTANCE.getProgress(advancements), this.advancementSlots);
+        PlayerAdvancementsProxy.INSTANCE.setProgressChanged(advancements, tracking);
+        // final 字段写入属于 JVM 特殊路径, 身份回读是启用跟踪的硬闸门
+        if (PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements) != tracking) {
+            throw new IllegalStateException("progressChanged field did not retain the tracking set");
+        }
+    }
+
+    /**
+     * 从当前 PlayerAdvancements 生成只包含实际进度的脱离快照.
+     *
+     * @param player 要采集的在线玩家
+     * @return 完全脱离玩家可变状态的 advancement 数据
+     */
     @Override
     @NotNull
     public Advancements capture(@NotNull Player player) {
         ServerPlayer handle = handle(player);
-        Map<Object, Object> progress = PlayerAdvancementsProxy.INSTANCE.getProgress(handle.getAdvancements());
+        PlayerAdvancements advancements = handle.getAdvancements();
+        Map<Object, Object> progress = PlayerAdvancementsProxy.INSTANCE.getProgress(advancements);
+        Set<Object> progressChanged = PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
+        // 候选完整且布局稳定时使用稀疏路径
+        if (progressChanged instanceof AdvancementProgressChangedWrapperSet tracking && tracking.complete()) {
+            AdvancementSlots.Layout layout = this.advancementSlots.current();
+            if (layout != null) return captureSparse(progress, tracking, layout);
+        }
+        // 布局换代冲突或候选缺失时使用完整 Map
+        return captureDense(progress);
+    }
+
+    /**
+     * 稀疏采集
+     * 只访问跟踪位图中的槽位, 并用当前 holder 和 progress 做最终有效性校验.
+     *
+     * @param progress 当前玩家的 holder -> AdvancementProgress Map
+     * @param tracking 候选位图完整的玩家 tracker
+     * @param layout 当前服务端 advancement 布局
+     * @return 仅包含仍有实际进度的脱离值
+     */
+    static Advancements captureSparse(Map<Object, Object> progress, AdvancementProgressChangedWrapperSet tracking, AdvancementSlots.Layout layout) {
+        long[] candidates = tracking.candidates(); // Copy
+        // 候选是结果容量上界, 预先计数避免使用固定数组
+        int capacity = 0;
+        for (int i = 0; i < candidates.length; i++) {
+            capacity += Long.bitCount(candidates[i]);
+        }
+        AdvancementValue[] captured = new AdvancementValue[capacity];
+        int count = 0;
+        for (int i = 0; i < candidates.length; i++) {
+            long word = candidates[i];
+            while (word != 0L) {
+                // 每轮读取并清掉最低置位, 循环次数等于候选数量
+                int bit = Long.numberOfTrailingZeros(word);
+                Object holder = layout.holder((i << 6) + bit);
+                // reload 删除项对应 null holder, 已撤销进度则由 captureProgress 返回 null
+                if (holder != null && progress.get(holder) instanceof AdvancementProgress current) {
+                    AdvancementValue value = captureProgress(holder, current);
+                    if (value != null) captured[count++] = value;
+                }
+                word &= word - 1L;
+            }
+        }
+        return new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
+    }
+
+    /**
+     * 稠密采集
+     * 扫描玩家完整 progress Map, 作为所有安全回退场景的参考采集算法.
+     *
+     * @param progress 当前玩家的 holder -> AdvancementProgress Map
+     * @return 仅包含至少一个已取得 criterion 的脱离值
+     */
+    static Advancements captureDense(Map<Object, Object> progress) {
         AdvancementValue[] captured = new AdvancementValue[progress.size()];
         int count = 0;
         for (Map.Entry<Object, Object> entry : progress.entrySet()) {
@@ -171,9 +254,81 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         ServerPlayer handle = handle(player);
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
+        // 目标值按 ID 建立本次应用索引, sparse 路径会移除已经处理的本地候选
         Map<Object, CapturedValue> captured = index(value.values());
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
         Set<Object> progressChanged = proxy.getProgressChanged(playerAdvancements);
+        boolean changed;
+        // 与 capture 相同, 候选完整时才进行稀疏扫描
+        if (progressChanged instanceof AdvancementProgressChangedWrapperSet tracking && tracking.complete()) {
+            AdvancementSlots.Layout layout = this.advancementSlots.current();
+            changed = layout == null
+                    ? applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged)
+                    : applySparse(playerAdvancements, progressByAdvancement, captured, progressChanged, tracking.candidates(), layout);
+        } else {
+            changed = applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged);
+        }
+        if (!changed) return;
+
+        // 所有 criterion 差量完成后只 flush 一次
+        if (VersionHelper.isOrAbove1_21_5()) {
+            proxy.flushDirty$0(playerAdvancements, handle, false);
+        } else {
+            proxy.flushDirty(playerAdvancements, handle);
+        }
+    }
+
+    /**
+     * 稀疏应用
+     * 应用本地候选与远端快照 ID 的并集, 使本地撤销和远端新增都进入同一差量逻辑.
+     * <strong>captured 是本次调用的工作索引, 已与本地候选匹配的条目会被移除</strong>.
+     *
+     * @param playerAdvancements 玩家原有的 PlayerAdvancements 对象
+     * @param progressByAdvancement 当前完整进度 Map
+     * @param captured 按 ID 索引的远端目标工作集
+     * @param progressChanged NMS 客户端 dirty Set
+     * @param candidates 玩家曾有实际进度的稳定槽位位图
+     * @param layout 当前服务端 advancement 布局
+     * @return 任一 criterion 实际变化时返回 true
+     */
+    private static boolean applySparse(PlayerAdvancements playerAdvancements, Map<Object, Object> progressByAdvancement, Map<Object, CapturedValue> captured, Set<Object> progressChanged, long[] candidates, AdvancementSlots.Layout layout) {
+        boolean changed = false;
+        // 先处理全部本地候选. 远端缺少对应 ID 时 target 为 null, applyProgress 会撤销旧进度
+        for (int i = 0; i < candidates.length; i++) {
+            long word = candidates[i];
+            while (word != 0L) {
+                int bit = Long.numberOfTrailingZeros(word);
+                Object holder = layout.holder((i << 6) + bit);
+                if (holder instanceof AdvancementHolder advancement && progressByAdvancement.get(holder) instanceof AdvancementProgress progress) {
+                    CapturedValue target = captured.remove(AdvancementHolderProxy.INSTANCE.id(advancement));
+                    if (applyProgress(playerAdvancements, advancement, progress, target, progressChanged)) changed = true;
+                }
+                word &= word - 1L;
+            }
+        }
+        // 剩余条目只存在于远端快照, 用当前 layout 定位 holder 后执行授予
+        for (CapturedValue target : captured.values()) {
+            int slot = layout.slot(target.value().id());
+            Object holder = layout.holder(slot);
+            if (holder instanceof AdvancementHolder advancement && progressByAdvancement.get(holder) instanceof AdvancementProgress progress
+                    && applyProgress(playerAdvancements, advancement, progress, target, progressChanged)) {
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * 完整应用
+     * 遍历玩家完整 progress Map 并应用目标差量.
+     *
+     * @param playerAdvancements 玩家原有的 PlayerAdvancements 对象
+     * @param progressByAdvancement 当前完整进度 Map
+     * @param captured 按 ID 索引的远端目标
+     * @param progressChanged NMS 客户端 dirty Set
+     * @return 任一 criterion 实际变化时返回 true
+     */
+    private static boolean applyDense(PlayerAdvancements playerAdvancements, Map<Object, Object> progressByAdvancement, Map<Object, CapturedValue> captured, Set<Object> progressChanged) {
         boolean changed = false;
         for (Map.Entry<Object, Object> entry : progressByAdvancement.entrySet()) {
             AdvancementHolder advancement = (AdvancementHolder) entry.getKey();
@@ -182,14 +337,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 changed = true;
             }
         }
-        if (!changed) return;
-
-        // dirty 状态一次发给客户端, false 会关闭同步产生的 advancement toast
-        if (VersionHelper.isOrAbove1_21_5()) {
-            proxy.flushDirty$0(playerAdvancements, handle, false);
-        } else {
-            proxy.flushDirty(playerAdvancements, handle);
-        }
+        return changed;
     }
 
     @Override
