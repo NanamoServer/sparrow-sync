@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -40,6 +41,19 @@ public final class SessionListener implements Listener {
             player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
             return;
         }
+
+        // 注入玩家的 PlayerAdvancements#progressChanged, 注入失败时拒绝进入.
+        if (PluginConfig.synchronization$dataTypes().advancements() && this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements) {
+            try {
+                advancements.injectTracker(player);
+            } catch (Throwable throwable) {
+                this.plugin.logger().error(LogCategory.KICK, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_ADVANCEMENT_TRACKER_INSTALL_FAILED, player.getName());
+                this.sessions.abort(session);
+                this.kick(player);
+                return;
+            }
+        }
+
         this.plugin.logger().file(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SESSION_JOIN);
         // todo 设计插件 API 时重新确定登录时的数据同步事件.
         SnapshotApplyResult result;

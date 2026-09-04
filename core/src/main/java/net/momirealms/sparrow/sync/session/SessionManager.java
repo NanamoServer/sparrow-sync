@@ -13,7 +13,6 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
 import net.momirealms.sparrow.sync.util.EventUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -37,7 +36,6 @@ public final class SessionManager {
     private HandoffManager handoffs;
     private SyncLogger logger;
     private PlayerDataStoragePatch playerDataStorage;
-    private volatile boolean advancementTrackingDisabled; // 挂载出现异常后关闭本服 advancement 稀疏优化, 后续玩家继续使用 dense 路径.
     private volatile boolean accepting = true;
 
     public SessionManager(@NotNull SparrowSync plugin) {
@@ -172,10 +170,6 @@ public final class SessionManager {
                 case LoginDataState.Cleared ignored -> {return new SnapshotApplyResult.Failed("player data cache was cleared before PlayerJoinEvent");}
             }
         }
-        // Join 后且任何 Player apply 前安装 AdvancementTracker, loaded 为空的玩家也需要参与后续定时保存
-        if (!this.advancementTrackingDisabled){
-            this.attachAdvancementTracker(player);
-        }
         // 应用数据
         SnapshotApplyResult result;
         long syncApplyNanos = 0L;
@@ -198,24 +192,6 @@ public final class SessionManager {
             this.logger.info(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SYNC_LOGIN_COMPLETE, player.getName(), millis(0, asyncReadNanos), millis(0, nativeApplyNanos), millis(0, syncApplyNanos));
         }
         return result;
-    }
-
-    /**
-     * 为启用了 advancements 数据类型的玩家安装内部进度跟踪器.
-     * final 字段替换或布局准备失败时记录错误并关闭本服稀疏路径, 登录流程继续执行.
-     *
-     * @param player 正在进入 ACTIVE 阶段的玩家
-     */
-    private void attachAdvancementTracker(@NotNull Player player) {
-        // 内置类型可以由配置关闭
-        if (!(this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements)) return;
-        try {
-            advancements.attachTracker(player);
-        } catch (Throwable throwable) {
-            // wrapper 未通过安全门时不会启用 sparse, 当前登录仍按 dense 语义继续
-            this.advancementTrackingDisabled = true;
-            this.logger.warn("Failed to attach advancement tracking for " + player.getName(), throwable);
-        }
     }
 
     /**

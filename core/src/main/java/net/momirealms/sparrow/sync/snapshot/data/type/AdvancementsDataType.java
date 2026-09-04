@@ -60,9 +60,9 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      * 在玩家首次应用和首次常规 flush 前安装进度跟踪器.
      * 重复调用会识别现有 wrapper 并保持原对象, 因此同一玩家只安装一次.
      *
-     * @param player 已完成 Join 且尚未执行 Sparrow Player apply 的玩家
+     * @param player 已进入 PlayerJoinEvent 且尚未执行 Sparrow Player apply 的玩家
      */
-    public void attachTracker(@NotNull Player player) {
+    public void injectTracker(@NotNull Player player) {
         // 读取实际 PlayerAdvancements, wrapper 必须安装到 Bukkit Player 持有的同一个对象
         ServerPlayer handle = handle(player);
         PlayerAdvancements advancements = handle.getAdvancements();
