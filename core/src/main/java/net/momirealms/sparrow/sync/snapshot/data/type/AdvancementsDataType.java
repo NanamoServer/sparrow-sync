@@ -7,6 +7,7 @@ import net.minecraft.advancements.CriterionProgress;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.nbt.*;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.*;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
@@ -28,6 +29,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Consumer;
 
 public final class AdvancementsDataType implements NativePlayerDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
@@ -88,13 +90,13 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         Set<Object> progressChanged = PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
         AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
         // 候选完整且布局稳定时使用稀疏路径
-        if (tracking != null && tracking.complete()) {
-            AdvancementSlots.Layout layout = this.advancementSlots.current();
-            if (layout != null) return captureSparse(progress, tracking, layout);
-        }
+        AdvancementSlots.Layout layout = tracking != null && tracking.complete() ? this.advancementSlots.current() : null;
+        long[] candidates = layout == null ? null : tracking.candidates();
         // 布局换代冲突或候选缺失时使用完整 Map
-        Advancements captured = captureDense(progress);
-        return tracking == null ? captured : mergeRetained(captured, tracking.retainedUnknown());
+        Advancements captured = layout == null ? captureDense(progress) : captureSparse(progress, candidates, layout);
+        if (tracking == null || !PluginConfig.synchronization$keepUnknownAdvancements()) return captured;
+        // 将采集到的和进服时记录的未知 ID 的成就合并起来一起保存
+        return mergeRetained(captured, tracking.retainedUnknown(), layout, candidates);
     }
 
     /**
@@ -102,12 +104,11 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      * 只访问跟踪位图中的槽位, 并用当前 holder 和 progress 做最终有效性校验.
      *
      * @param progress 当前玩家的 holder -> AdvancementProgress Map
-     * @param tracking 候选位图完整的玩家 tracker
+     * @param candidates 本次采集共用的候选位图副本
      * @param layout 当前服务端 advancement 布局
      * @return 仅包含仍有实际进度的脱离值
      */
-    static Advancements captureSparse(Map<Object, Object> progress, AdvancementProgressChangedWrapperSet tracking, AdvancementSlots.Layout layout) {
-        long[] candidates = tracking.candidates(); // Copy
+    static Advancements captureSparse(Map<Object, Object> progress, long[] candidates, AdvancementSlots.Layout layout) {
         // 候选是结果容量上界, 预先计数避免使用固定数组
         int capacity = 0;
         for (int i = 0; i < candidates.length; i++) {
@@ -129,8 +130,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 word &= word - 1L;
             }
         }
-        Advancements current = new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
-        return mergeRetained(current, tracking.retainedUnknown());
+        return new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
     }
 
     /**
@@ -152,21 +152,31 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     // 本服实时进度覆盖同 ID 保留值, 其余未知项继续进入下一份快照
-    private static Advancements mergeRetained(Advancements captured, AdvancementValue[] retained) {
+    private static Advancements mergeRetained(Advancements captured, AdvancementValue[] retained, @Nullable AdvancementSlots.Layout layout, @Nullable long[] candidates) {
         if (retained.length == 0) return captured;
         AdvancementValue[] current = captured.values();
         AdvancementValue[] merged = Arrays.copyOf(current, current.length + retained.length);
         int count = current.length;
         for (int i = 0; i < retained.length; i++) {
             AdvancementValue unknown = retained[i];
-            boolean present = false;
-            for (int j = 0; j < current.length; j++) {
-                if (current[j].id().equals(unknown.id())) {
-                    present = true;
-                    break;
+            boolean present;
+            if (layout == null) {
+                present = false;
+                for (int j = 0; j < current.length; j++) {
+                    if (current[j].id().equals(unknown.id())) {
+                        present = true;
+                        break;
+                    }
                 }
+            } else {
+                // 本服曾产生进度后以本服为准; 最后一个 criterion 撤销也不能重新带回旧远端值
+                int slot = layout.slot(unknown.id());
+                int word = slot >>> 6;
+                present = slot >= 0 && word < candidates.length && (candidates[word] & (1L << (slot & 63))) != 0L;
             }
-            if (!present) merged[count++] = unknown;
+            if (!present) {
+                merged[count++] = unknown;
+            }
         }
         return new Advancements(count == merged.length ? merged : Arrays.copyOf(merged, count));
     }
@@ -273,18 +283,18 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
         Set<Object> progressChanged = proxy.getProgressChanged(playerAdvancements);
         AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
+        AdvancementSlots.Layout layout = tracking == null ? null : this.advancementSlots.current();
         boolean changed;
         // 与 capture 相同, 候选完整时才进行稀疏扫描
-        if (tracking != null && tracking.complete()) {
-            AdvancementSlots.Layout layout = this.advancementSlots.current();
-            changed = layout == null
-                    ? applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged)
-                    : applySparse(playerAdvancements, progressByAdvancement, captured, progressChanged, tracking.candidates(), layout);
+        if (tracking != null && tracking.complete() && layout != null) {
+            changed = applySparse(playerAdvancements, progressByAdvancement, captured, progressChanged, tracking.candidates(), layout);
         } else {
             changed = applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged);
         }
-        // 工作索引中只剩本服无法定位的 ID, 后续快照继续携带这些进度
-        if (tracking != null) tracking.retainedUnknown(remainingValues(captured));
+        // 工作索引中只剩本服无法定位的 ID, 配置开启时交给后续快照继续携带
+        if (tracking != null) {
+            tracking.retainedUnknown(PluginConfig.synchronization$keepUnknownAdvancements() ? remainingValues(captured) : EMPTY_VALUES);
+        }
         if (!changed) return;
 
         // 所有 criterion 差量完成后只 flush 一次
@@ -363,41 +373,69 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
         if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
-        AdvancementSlots.Layout layout = this.advancementSlots.current();
-        // 原版读取后会丢弃未知 ID, 这类快照留到 Join 应用并挂入玩家 tracker
-        if (layout == null || containsUnknown(value.values(), layout)) return NativeApplyResult.NOT_APPLIED;
-        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encodeNativeJson(value))) {
+        AdvancementSlots.Layout layout = null;
+        // 如果获取不到 Layout 就回退到普通 Apply
+        if (PluginConfig.synchronization$keepUnknownAdvancements()) {
+            layout = this.advancementSlots.current();
+            if (layout == null) return NativeApplyResult.NOT_APPLIED;
+        }
+        // 将结果写入 Json
+        NativeEncoding encoded = encodeNativeJson(value, layout);
+        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encoded.json())) {
             throw new IOException("atomic advancements JSON replacement failed or is not supported");
         }
-        return NativeApplyResult.APPLIED_EXTERNAL;
+        // 根据设置情况交接未知成就
+        return layout == null
+                ? NativeApplyResult.APPLIED_EXTERNAL
+                : NativeApplyResult.APPLIED_EXTERNAL.withHandoff(this.nativeHandoff(layout, value, encoded.unknown()));
     }
 
-    private static boolean containsUnknown(AdvancementValue[] values, AdvancementSlots.Layout layout) {
-        for (int i = 0; i < values.length; i++) {
-            int slot = layout.slot(values[i].id());
-            if (layout.holder(slot) == null) return true;
-        }
-        return false;
+    // 回调随登录 Context 保留到 Join, registry 换代时由完整快照纠正本服进度
+    private Consumer<Player> nativeHandoff(AdvancementSlots.Layout layout, Advancements snapshot, AdvancementValue[] unknown) {
+        return player -> {
+            if (this.advancementSlots.current() != layout) {
+                this.apply(player, snapshot);
+                return;
+            }
+            PlayerAdvancements advancements = handle(player).getAdvancements();
+            AdvancementProgressChangedWrapperSet tracking = (AdvancementProgressChangedWrapperSet) PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
+            tracking.retainedUnknown(unknown);
+        };
     }
 
-    private static byte[] encodeNativeJson(@NotNull Advancements value) {
+    static NativeEncoding encodeNativeJson(@NotNull Advancements value, @Nullable AdvancementSlots.Layout layout) {
         JsonObject root = new JsonObject();
         AdvancementValue[] values = value.values();
+        AdvancementValue[] unknown = EMPTY_VALUES;
+        int unknownCount = 0;
         for (int i = 0; i < values.length; i++) {
             AdvancementValue advancement = values[i];
-            JsonObject criteria = new JsonObject();
-            String[] names = advancement.criteria();
-            Instant[] obtained = advancement.obtained();
-            for (int j = 0; j < names.length; j++) {
-                criteria.addProperty(names[j], OBTAINED_TIME_FORMAT.format(obtained[j]));
+            if (layout != null && layout.holder(layout.slot(advancement.id())) == null) {
+                if (unknownCount == unknown.length) {
+                    int capacity = unknown.length == 0 ? Math.min(4, values.length) : Math.min(unknown.length << 1, values.length);
+                    unknown = Arrays.copyOf(unknown, capacity);
+                }
+                unknown[unknownCount++] = advancement;
+                continue;
             }
-            JsonObject progress = new JsonObject();
-            progress.add("criteria", criteria);
-            progress.addProperty("done", advancement.done());
-            root.add(advancement.id().toString(), progress);
+            appendNativeJson(root, advancement);
         }
         root.addProperty("DataVersion", VersionHelper.WORLD_VERSION);
-        return GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
+        byte[] json = GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
+        return new NativeEncoding(json, unknownCount == unknown.length ? unknown : Arrays.copyOf(unknown, unknownCount));
+    }
+
+    private static void appendNativeJson(JsonObject root, AdvancementValue advancement) {
+        JsonObject criteria = new JsonObject();
+        String[] names = advancement.criteria();
+        Instant[] obtained = advancement.obtained();
+        for (int i = 0; i < names.length; i++) {
+            criteria.addProperty(names[i], OBTAINED_TIME_FORMAT.format(obtained[i]));
+        }
+        JsonObject progress = new JsonObject();
+        progress.add("criteria", criteria);
+        progress.addProperty("done", advancement.done());
+        root.add(advancement.id().toString(), progress);
     }
 
     private static Map<Object, CapturedValue> index(AdvancementValue[] values) {
@@ -560,6 +598,9 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             @NotNull Instant @NotNull [] obtained,
             boolean done
     ) {
+    }
+
+    record NativeEncoding(byte @NotNull [] json, @NotNull AdvancementValue @NotNull [] unknown) {
     }
 
     private record CapturedValue(AdvancementValue value, @Nullable Map<String, Instant> index) {

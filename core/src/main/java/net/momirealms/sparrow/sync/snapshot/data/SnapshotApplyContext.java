@@ -3,15 +3,18 @@ package net.momirealms.sparrow.sync.snapshot.data;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class SnapshotApplyContext {
     private final DataRegistry dataRegistry;       // DataKey 与冻结槽位的稳定映射
-    private final Object[] values;                 // 解码值按槽位存放, 应用完成后释放引用
+    private final Object[] values;                 // PENDING 存解码值, APPLIED_NATIVE 存可选的 Join 回调, 消费后释放
     private final ApplyState[] states;             // 每个槽位在本轮解码和应用中的进度
     private final Map<DataKey, Tag> passthrough;   // 未注册类型原样保留到玩家后续保存
     private List<Failure> failures;                // 首次失败时创建, 按发生顺序记录
@@ -112,19 +115,25 @@ public final class SnapshotApplyContext {
         this.recordFailure(slot, FailureStage.DECODE, throwable);
     }
 
-    void appliedNative(int slot) {
+    void appliedPlayer(int slot) {
         this.values[slot] = null;
+        this.states[slot] = ApplyState.APPLIED_PLAYER;
+    }
+
+    void appliedNative(int slot, @Nullable Consumer<Player> joinHandoff) {
+        this.values[slot] = joinHandoff;
         this.states[slot] = ApplyState.APPLIED_NATIVE;
+    }
+
+    @Nullable
+    @SuppressWarnings("unchecked")
+    Consumer<Player> nativeHandoffAt(int slot) {
+        return this.states[slot] == ApplyState.APPLIED_NATIVE ? (Consumer<Player>) this.values[slot] : null;
     }
 
     // 槽位保持 PENDING, Join 阶段执行完整的 Player 回退
     void nativeFailed(int slot, @NotNull Throwable throwable) {
         this.recordFailure(slot, FailureStage.NATIVE, throwable);
-    }
-
-    void appliedPlayer(int slot) {
-        this.values[slot] = null;
-        this.states[slot] = ApplyState.APPLIED_PLAYER;
     }
 
     void playerSkipped(int slot, @NotNull Throwable throwable) {

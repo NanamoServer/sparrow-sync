@@ -43,7 +43,7 @@ public final class SessionListener implements Listener {
         }
 
         // 注入玩家的 PlayerAdvancements#progressChanged, 注入失败时拒绝进入.
-        if (PluginConfig.synchronization$dataTypes().advancements() && this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements) {
+        if (this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements) {
             try {
                 advancements.injectTracker(player);
             } catch (Throwable throwable) {

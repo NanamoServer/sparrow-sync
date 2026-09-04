@@ -25,7 +25,7 @@ class SnapshotApplyContextTest {
         SnapshotApplyContext context = new SnapshotApplyContext(registry, Map.of(UNKNOWN, NBT.createString("unknown")));
         context.decoded(registry.slot(FIRST), "first");
         context.decodeSkipped(registry.slot(SECOND), new IllegalStateException("corrupted"));
-        context.appliedNative(registry.slot(FIRST));
+        context.appliedNative(registry.slot(FIRST), null);
         Map<DataKey, Object> eventData = new LinkedHashMap<>();
         eventData.put(FIRST, "must-be-ignored");
         eventData.put(SECOND, "recovered");

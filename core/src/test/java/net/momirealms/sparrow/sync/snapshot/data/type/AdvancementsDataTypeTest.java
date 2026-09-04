@@ -18,6 +18,7 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
@@ -28,6 +29,8 @@ import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advan
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advancements;
 import org.bukkit.craftbukkit.entity.CraftEntity;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
+import org.bukkit.entity.Player;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -44,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,14 +61,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdvancementsDataTypeTest {
+    private static Field pluginConfigField;
+    private static Object previousPluginConfig;
 
     /** 初始化 1.21.8 代理描述与测试所需的原版注册表. */
     @BeforeAll
-    static void bootstrapRegistries() {
+    static void bootstrapRegistries() throws ReflectiveOperationException {
         // final setter 和进度字段访问必须先绑定到本测试使用的 NMS 版本
         BukkitProxy.init("1.21.8", List.of("paper"));
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        pluginConfigField = PluginConfig.class.getDeclaredField("config");
+        pluginConfigField.setAccessible(true);
+        previousPluginConfig = pluginConfigField.get(null);
+        pluginConfigField.set(null, new PluginConfig.ConfigDefinition());
+    }
+
+    @AfterAll
+    static void restorePluginConfig() throws IllegalAccessException {
+        pluginConfigField.set(null, previousPluginConfig);
     }
 
     @Test
@@ -217,7 +232,7 @@ class AdvancementsDataTypeTest {
 
         // 对同一份 NMS 状态分别执行参考算法和稀疏算法
         Advancements dense = AdvancementsDataType.captureDense(progress);
-        Advancements sparse = AdvancementsDataType.captureSparse(progress, tracking, slots.current());
+        Advancements sparse = AdvancementsDataType.captureSparse(progress, tracking.candidates(), slots.current());
 
         // 比较持久化可见字段, 排除仅靠数量相等掩盖内容错误
         assertEquals(1, dense.values().length);
@@ -262,19 +277,141 @@ class AdvancementsDataTypeTest {
         assertEquals(Set.of(localId, unknownId), ids);
     }
 
-    /** 验证 Native JSON 只接收当前服务器能够加载的 advancement ID. */
+    /** 验证关闭 Native 时仍由保留配置决定 Player apply 是否转发未知进度. */
     @Test
-    void nativeJsonEligibilityRejectsUnknownAdvancementIds() throws Exception {
+    void playerApplyDiscardsUnknownAdvancementsWhenRetentionIsDisabled() throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:a");
+        AdvancementHolder localHolder = holder(localId);
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        progress.put(localHolder, progress("done", null));
+        Map<Object, Object> advancements = Map.of(localId, localHolder);
+        AdvancementSlots slots = new AdvancementSlots(() -> advancements);
+        PlayerFixture fixture = playerFixture(progress, slots);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{Instant.now()}, true);
+        setKeepUnknownAdvancements(false);
+
+        try {
+            fixture.type.apply(fixture.player, new Advancements(new AdvancementValue[]{unknown}));
+            assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        } finally {
+            setKeepUnknownAdvancements(true);
+        }
+
+        assertEquals(0, fixture.tracking.retainedUnknown().length);
+    }
+
+    /** 验证 Native 分类结果在布局稳定时直接进入已安装的玩家 tracker. */
+    @Test
+    void nativeHandoffSeedsTrackerWithoutPlayerApply() throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:a");
+        AdvancementHolder localHolder = holder(localId);
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        progress.put(localHolder, progress("done", null));
+        Map<Object, Object> advancements = Map.of(localId, localHolder);
+        AdvancementSlots slots = new AdvancementSlots(() -> advancements);
+        PlayerFixture fixture = playerFixture(progress, slots);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{Instant.now()}, true);
+        Advancements snapshot = new Advancements(new AdvancementValue[]{unknown});
+        AdvancementSlots.Layout layout = slots.current();
+
+        nativeHandoff(fixture.type, layout, snapshot, new AdvancementValue[]{unknown}).accept(fixture.player);
+
+        assertArrayEquals(new AdvancementValue[]{unknown}, fixture.tracking.retainedUnknown());
+        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+    }
+
+    /** 验证 Gate 与 Join 之间的布局换代会恢复完整 Player apply. */
+    @Test
+    void nativeHandoffFallsBackWhenAdvancementLayoutChanges() throws Exception {
+        Object firstId = IdentifierProxy.INSTANCE.tryParse("ce:a");
+        Object secondId = IdentifierProxy.INSTANCE.tryParse("ce:b");
+        AdvancementHolder firstHolder = holder(firstId);
+        AdvancementHolder secondHolder = holder(secondId);
+        AtomicReference<Map<?, ?>> source = new AtomicReference<>(Map.of(firstId, firstHolder));
+        AdvancementSlots slots = new AdvancementSlots(source::get);
+        AdvancementSlots.Layout initial = slots.current();
+        Advancements snapshot = new Advancements(new AdvancementValue[]{new AdvancementValue(firstId, new String[]{"done"}, new Instant[]{Instant.now()}, true)});
+        PlayerFixture fixture = playerFixture(new LinkedHashMap<>(), slots);
+        Consumer<Player> handoff = nativeHandoff(fixture.type, initial, snapshot, new AdvancementValue[0]);
+        source.set(Map.of(secondId, secondHolder));
+
+        handoff.accept(fixture.player);
+
+        assertArrayEquals(snapshot.values(), fixture.tracking.retainedUnknown());
+    }
+
+    /** 验证 Native JSON 在同一轮编码中分开本服进度与未知进度. */
+    @Test
+    void nativeJsonPartitionsUnknownAdvancementIds() throws Exception {
         Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
         Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:a");
         AdvancementHolder localHolder = holder(localId);
         Map<Object, Object> advancements = Map.of(localId, localHolder);
         AdvancementSlots.Layout layout = new AdvancementSlots(() -> advancements).current();
-        Method containsUnknown = AdvancementsDataType.class.getDeclaredMethod("containsUnknown", AdvancementValue[].class, AdvancementSlots.Layout.class);
-        containsUnknown.setAccessible(true);
+        AdvancementValue local = new AdvancementValue(localId, new String[0], new Instant[0], false);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[0], new Instant[0], false);
 
-        assertFalse((boolean) containsUnknown.invoke(null, new AdvancementValue[]{new AdvancementValue(localId, new String[0], new Instant[0], false)}, layout));
-        assertTrue((boolean) containsUnknown.invoke(null, new AdvancementValue[]{new AdvancementValue(unknownId, new String[0], new Instant[0], false)}, layout));
+        AdvancementsDataType.NativeEncoding encoded = AdvancementsDataType.encodeNativeJson(new Advancements(new AdvancementValue[]{local, unknown}), layout);
+        JsonObject root = JsonParser.parseString(new String(encoded.json(), StandardCharsets.UTF_8)).getAsJsonObject();
+
+        assertTrue(root.has(localId.toString()));
+        assertFalse(root.has(unknownId.toString()));
+        assertArrayEquals(new AdvancementValue[]{unknown}, encoded.unknown());
+    }
+
+    /** 验证关闭未知进度保留时, Native 编码不查询布局并交由 Vanilla 处理完整 JSON. */
+    @Test
+    void nativeJsonKeepsEverySnapshotValueWhenUnknownRetentionIsDisabled() {
+        CountingId localId = new CountingId("ce:b");
+        CountingId unknownId = new CountingId("ce:a");
+        AdvancementValue local = new AdvancementValue(localId, new String[0], new Instant[0], false);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[0], new Instant[0], false);
+
+        AdvancementsDataType.NativeEncoding encoded = AdvancementsDataType.encodeNativeJson(new Advancements(new AdvancementValue[]{local, unknown}), null);
+        JsonObject root = JsonParser.parseString(new String(encoded.json(), StandardCharsets.UTF_8)).getAsJsonObject();
+
+        assertTrue(root.has(localId.toString()));
+        assertTrue(root.has(unknownId.toString()));
+        assertEquals(0, encoded.unknown().length);
+        assertEquals(0, localId.hashCalls + unknownId.hashCalls);
+    }
+
+    /** 验证未知 ID 注册后本服进度及撤销优先, 采集不修改 retained 数组. */
+    @Test
+    void retainedUnknownDoesNotShadowProgressCreatedAfterReload() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("ce:unknown");
+        AdvancementHolder holder = holder(id);
+        Instant remoteTime = Instant.now().minusSeconds(60);
+        Instant localTime = remoteTime.plusSeconds(10);
+        AtomicReference<Map<?, ?>> source = new AtomicReference<>(Map.of());
+        AdvancementSlots slots = new AdvancementSlots(source::get);
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        PlayerFixture fixture = playerFixture(progress, slots);
+        AdvancementValue unknown = new AdvancementValue(id, new String[]{"done"}, new Instant[]{remoteTime}, true);
+        AdvancementValue[] retained = new AdvancementValue[]{unknown};
+        fixture.tracking.retainedUnknown(retained);
+        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+
+        source.set(Map.of(id, holder));
+        AdvancementProgress local = progress("done", null);
+        progress.put(holder, local);
+        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+        CriterionProgress criterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(local).get("done");
+        CriterionProgressProxy.INSTANCE.setObtained(criterion, localTime);
+        fixture.tracking.add(holder);
+
+        Advancements captured = fixture.type.capture(fixture.player);
+
+        assertEquals(1, captured.values().length);
+        assertArrayEquals(new Instant[]{localTime}, captured.values()[0].obtained());
+        assertSame(retained, fixture.tracking.retainedUnknown());
+
+        CriterionProgressProxy.INSTANCE.setObtained(criterion, null);
+        fixture.tracking.add(holder);
+        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertSame(retained, fixture.tracking.retainedUnknown());
     }
 
     /** 验证玩家线程扩展候选位图时, 并发 capture 副本不会破坏或永久丢失已写入槽位. */
@@ -445,6 +582,16 @@ class AdvancementsDataTypeTest {
         field.set(target, value);
     }
 
+    private static void setKeepUnknownAdvancements(boolean value) throws ReflectiveOperationException {
+        PluginConfig.ConfigDefinition config = (PluginConfig.ConfigDefinition) pluginConfigField.get(null);
+        Field synchronization = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
+        synchronization.setAccessible(true);
+        Object options = synchronization.get(config);
+        Field keepUnknown = options.getClass().getDeclaredField("keepUnknownAdvancements");
+        keepUnknown.setAccessible(true);
+        keepUnknown.setBoolean(options, value);
+    }
+
     /**
      * 创建只含一个 criterion 的 AdvancementProgress.
      *
@@ -462,14 +609,56 @@ class AdvancementsDataTypeTest {
         return progress;
     }
 
-    private static byte[] encodeNativeJson(Advancements value) throws Exception {
-        Method method = AdvancementsDataType.class.getDeclaredMethod("encodeNativeJson", Advancements.class);
+    private static byte[] encodeNativeJson(Advancements value) {
+        return AdvancementsDataType.encodeNativeJson(value, null).json();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Consumer<Player> nativeHandoff(AdvancementsDataType type, AdvancementSlots.Layout layout, Advancements snapshot, AdvancementValue[] unknown) throws Exception {
+        Method method = AdvancementsDataType.class.getDeclaredMethod("nativeHandoff", AdvancementSlots.Layout.class, Advancements.class, AdvancementValue[].class);
         method.setAccessible(true);
-        return (byte[]) method.invoke(null, value);
+        return (Consumer<Player>) method.invoke(type, layout, snapshot, unknown);
+    }
+
+    private static PlayerFixture playerFixture(Map<Object, Object> progress, AdvancementSlots slots) throws Exception {
+        AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(new HashSet<>(), progress, slots);
+        PlayerAdvancements advancements = allocateWithoutConstructor(PlayerAdvancements.class);
+        setField(PlayerAdvancements.class, advancements, "progress", progress);
+        setField(PlayerAdvancements.class, advancements, "progressChanged", tracking);
+        ServerPlayer handle = allocateWithoutConstructor(ServerPlayer.class);
+        setField(ServerPlayer.class, handle, "advancements", advancements);
+        CraftPlayer player = allocateWithoutConstructor(CraftPlayer.class);
+        setField(CraftEntity.class, player, "entity", handle);
+        AdvancementsDataType type = new AdvancementsDataType();
+        setField(AdvancementsDataType.class, type, "advancementSlots", slots);
+        return new PlayerFixture(player, type, tracking);
+    }
+
+    private record PlayerFixture(CraftPlayer player, AdvancementsDataType type, AdvancementProgressChangedWrapperSet tracking) {
     }
 
     private static Codec<Map<Object, AdvancementProgress>> vanillaCodec() {
         Codec<Map<Object, AdvancementProgress>> codec = Codec.unboundedMap(IdentifierProxy.INSTANCE.getCodec(), AdvancementProgress.CODEC);
         return DataFixTypes.ADVANCEMENTS.wrapCodec(codec, DataFixers.getDataFixer(), 1343);
+    }
+
+    private static final class CountingId {
+        private final String value;
+        private int hashCalls;
+
+        private CountingId(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public int hashCode() {
+            this.hashCalls++;
+            return this.value.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return this.value;
+        }
     }
 }

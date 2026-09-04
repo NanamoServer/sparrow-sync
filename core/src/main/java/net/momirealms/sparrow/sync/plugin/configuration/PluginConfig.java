@@ -216,9 +216,9 @@ public final class PluginConfig {
 
         @Comment({
                 "Keeps advancement progress for IDs the applying server does not register",
-                "The native JSON write carries only the known IDs while the unknown ones wait for the join tracker,",
-                "so servers with different advancement registries stay on the native path",
-                "Disable when every server shares the same advancements and the per-login scan is not wanted"
+                "Native apply writes known IDs to vanilla JSON and hands unknown IDs to the join tracker",
+                "Without native apply, the PlayerJoin path applies known IDs and keeps unknown IDs in the same tracker",
+                "Disable when every server shares the same advancements; native JSON then skips the membership scan"
         })
         boolean keepUnknownAdvancements = true;
 

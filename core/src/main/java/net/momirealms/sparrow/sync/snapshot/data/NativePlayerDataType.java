@@ -1,11 +1,14 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.minecraft.nbt.CompoundTag;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * 可以在登录 Gate worker 准备原版登录数据的类型.
@@ -20,15 +23,27 @@ public interface NativePlayerDataType<T> extends PlayerDataType<T> {
      * 把本类型安装到原版登录读取的数据源.
      * <strong>返回 {@link NativeApplyResult#NOT_APPLIED} 或抛出异常时不得留下部分可见的写入</strong>.
      *
-     * @return 应用结果, 用于决定槽位状态以及 synthetic player data 是否需要发布
+     * @return 应用目标与可选的 Join 回调, 用于更新槽位状态和发布 synthetic player data
      * @throws IOException 当外部原生数据源写入失败时
      */
     @NotNull
     NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull T value) throws IOException;
 
-    enum NativeApplyResult {
-        NOT_APPLIED,
-        APPLIED_PLAYER_DATA,
-        APPLIED_EXTERNAL
+    /** joinHandoff 在玩家线程按类型依赖顺序执行一次, 执行后随槽位释放. */
+    record NativeApplyResult(@NotNull Target target, @Nullable Consumer<Player> joinHandoff) {
+        public static final NativeApplyResult NOT_APPLIED = new NativeApplyResult(Target.NOT_APPLIED, null);
+        public static final NativeApplyResult APPLIED_PLAYER_DATA = new NativeApplyResult(Target.APPLIED, null);
+        public static final NativeApplyResult APPLIED_EXTERNAL = new NativeApplyResult(Target.EXTERNAL, null);
+
+        @NotNull
+        public NativeApplyResult withHandoff(@NotNull Consumer<Player> joinHandoff) {
+            return new NativeApplyResult(this.target, joinHandoff);
+        }
+
+        enum Target {
+            NOT_APPLIED,
+            APPLIED,
+            EXTERNAL
+        }
     }
 }

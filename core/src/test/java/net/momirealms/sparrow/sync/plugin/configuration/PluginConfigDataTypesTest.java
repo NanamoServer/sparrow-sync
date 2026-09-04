@@ -44,6 +44,7 @@ class PluginConfigDataTypesTest {
         new PluginConfig(this.plugin(), yaml).reload();
 
         assertTrue(PluginConfig.synchronization$nativeApply());
+        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         AttributeOptions attributes = PluginConfig.synchronization$attributes();
         assertEquals(ATTRIBUTE_WHITELIST, attributes.whitelist());
@@ -60,36 +61,42 @@ class PluginConfigDataTypesTest {
         YamlDocument document = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, document.getString(Route.from("config-version")));
         assertTrue(document.getBoolean(Route.from("synchronization", "native-apply")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
         assertDefaultDataTypeDocument(document);
         assertEquals(ATTRIBUTE_WHITELIST, document.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, document.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
         String generated = Files.readString(file, StandardCharsets.UTF_8);
         assertTrue(generated.contains("Read once during startup; changes require a server restart"), generated);
         assertTrue(generated.contains("Reloading applies this option to login preparations started afterwards"), generated);
+        assertTrue(generated.contains("Keeps advancement progress for IDs the applying server does not register"), generated);
         assertTrue(generated.contains("Reloading the plugin applies attribute filters to later captures and applications"), generated);
     }
 
     @Test
-    void reloadPublishesNativeApplyForLaterLoginPreparations() throws Exception {
+    void reloadPublishesLoginApplyOptionsForLaterPreparations() throws Exception {
         Path file = this.directory.resolve("config.yml");
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
                   native-apply: false
+                  keep-unknown-advancements: false
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
         PluginConfig pluginConfig = new PluginConfig(this.plugin(), newYaml());
 
         pluginConfig.reload();
         assertFalse(PluginConfig.synchronization$nativeApply());
+        assertFalse(PluginConfig.synchronization$keepUnknownAdvancements());
 
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
                   native-apply: true
+                  keep-unknown-advancements: true
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
         pluginConfig.reload();
 
         assertTrue(PluginConfig.synchronization$nativeApply());
+        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
     }
 
     @Test
@@ -146,10 +153,12 @@ class PluginConfigDataTypesTest {
         assertFalse(PluginConfig.metrics());
         assertEquals(8, PluginConfig.synchronization$workerThreads());
         assertTrue(PluginConfig.synchronization$nativeApply());
+        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
         assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
         assertDefaultDataTypeDocument(upgraded);
         assertEquals(ATTRIBUTE_WHITELIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
@@ -176,9 +185,11 @@ class PluginConfigDataTypesTest {
         new PluginConfig(this.plugin(), yaml).reload();
 
         assertTrue(PluginConfig.synchronization$nativeApply());
+        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
         assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
     }
 
     private static void assertDefaultDataTypes(DataTypes types) {

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class PlayerDataPipeline {
@@ -161,9 +162,9 @@ public final class PlayerDataPipeline {
             if (nativeType == null) continue;
             try {
                 NativePlayerDataType.NativeApplyResult result = applyNativeValue(nativeType, player, working, context.valueAt(i));
-                if (result == NativePlayerDataType.NativeApplyResult.NOT_APPLIED) continue;
-                context.appliedNative(i);
-                if (result == NativePlayerDataType.NativeApplyResult.APPLIED_PLAYER_DATA) playerDataApplied = true;
+                if (result.target() == NativePlayerDataType.NativeApplyResult.Target.NOT_APPLIED) continue;
+                context.appliedNative(i, result.joinHandoff());
+                if (result.target() == NativePlayerDataType.NativeApplyResult.Target.APPLIED) playerDataApplied = true;
             } catch (Throwable throwable) {
                 // 异常槽位保持 PENDING, Join 可以回退应用并且后续 Native 类型继续执行
                 context.nativeFailed(i, throwable);
@@ -175,18 +176,24 @@ public final class PlayerDataPipeline {
         return synthetic ? Optional.of(working) : playerData;
     }
 
-    /** 在玩家线程按拓扑序应用 Context 中仍为 pending 的槽位. */
+    /** 在玩家线程按拓扑序应用 pending 数据或消费 Native 交接回调. */
     @NotNull
     public ApplyResult apply(@NotNull Player player, @NotNull SnapshotApplyContext context) {
-        // 这里只消费仍为 PENDING 的槽位, Native 成功项不会再次写入 Player
+        // Join 回调与 PENDING 数据共用依赖顺序和失败处理
         int size = context.size();
         for (int i = 0; i < size; i++) {
-            if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING) continue;
+            Consumer<Player> handoff = context.nativeHandoffAt(i);
+            if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING && handoff == null) continue;
             DataKey key = this.dataRegistry.keyAt(i);
             PlayerDataType<?> type = this.dataRegistry.typeAt(i);
             try {
-                applyValue(type, player, context.valueAt(i));
-                context.appliedPlayer(i);
+                if (handoff == null) {
+                    applyValue(type, player, context.valueAt(i));
+                    context.appliedPlayer(i);
+                } else {
+                    handoff.accept(player);
+                    context.appliedNative(i, null);
+                }
             } catch (Throwable throwable) {
                 // 关键失败会留下 FAILED 状态, 调用方据此拒绝会话进入 ACTIVE
                 if (type.critical()) {

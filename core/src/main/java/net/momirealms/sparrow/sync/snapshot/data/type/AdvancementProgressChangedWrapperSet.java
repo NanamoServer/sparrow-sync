@@ -19,7 +19,7 @@ final class AdvancementProgressChangedWrapperSet extends AbstractSet<Object> {
     private final BitSet candidates = new BitSet(); // 单调候选位图, 所有读写都持有当前对象监视器.
 
     private volatile boolean complete = true; // 初始 dirty 项和后续真实进度是否都成功映射到稳定槽位.
-    private volatile AdvancementValue[] retainedUnknown = EMPTY_VALUES; // 玩家线程整组替换的未知进度, 异步 capture 原样转发
+    private volatile AdvancementValue[] retainedUnknown = EMPTY_VALUES; // 未知进度, 玩家线程整组替换, 异步 capture 只读
 
     // 包装原 dirty Set, 并在 NMS 首次 flush 前为已经加载的进度播种候选位图.
     AdvancementProgressChangedWrapperSet(Set<Object> delegate, Map<Object, Object> progress, AdvancementSlots slots) {

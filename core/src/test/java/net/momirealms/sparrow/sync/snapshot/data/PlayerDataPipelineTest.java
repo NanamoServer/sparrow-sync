@@ -12,10 +12,11 @@ import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -28,10 +29,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -251,6 +254,55 @@ class PlayerDataPipelineTest {
         assertEquals(List.of(ALPHA), this.nativeApplied);
         assertEquals(List.of(ALPHA), result.applied());
         assertEquals(List.of(), this.applied);
+    }
+
+    @Test
+    void nativeHandoffsRunOnceInDependencyOrderAlongsidePlayerApply() {
+        PlayerDataPipeline pipeline = this.createPipeline(
+                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).withHandoff(player -> {
+                    assertSame(this.player, player);
+                    this.applied.add(ALPHA);
+                }),
+                new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA)).externalNative().withHandoff(player -> this.applied.add(BRAVO)),
+                new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO))
+        );
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE));
+
+        Optional<CompoundTag> playerData = pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context);
+
+        assertTrue(playerData.isPresent());
+        assertEquals(List.of(), this.applied);
+        assertEquals(Set.of(CHARLIE), context.pendingValues().keySet());
+        assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
+        assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
+        assertEquals(List.of(ALPHA, BRAVO, CHARLIE), this.applied);
+        assertNull(context.nativeHandoffAt(0));
+        assertNull(context.nativeHandoffAt(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void handoffFailureUsesItsDataTypeCriticality(boolean critical) {
+        PlayerDataPipeline pipeline = this.createPipeline(
+                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, critical, Set.of()).externalNative().withHandoff(player -> {
+                    throw new IllegalStateException("handoff failed");
+                }),
+                new FakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA))
+        );
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
+        assertTrue(pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context).isEmpty());
+
+        PlayerDataPipeline.ApplyResult result = pipeline.apply(this.player, context);
+
+        if (critical) {
+            assertEquals(ALPHA, assertInstanceOf(PlayerDataPipeline.ApplyResult.Failure.class, result).failedKey());
+            assertEquals(List.of(), this.applied);
+        } else {
+            assertEquals(List.of(ALPHA), assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, result).skipped());
+            assertEquals(List.of(BRAVO), this.applied);
+        }
+        assertEquals(SnapshotApplyContext.FailureStage.PLAYER, context.failures().getFirst().stage());
+        assertNull(context.nativeHandoffAt(0));
     }
 
     @Test
@@ -474,6 +526,11 @@ class PlayerDataPipelineTest {
             return this;
         }
 
+        private NativeFakeType withHandoff(Consumer<Player> joinHandoff) {
+            this.nativeResult = this.nativeResult.withHandoff(joinHandoff);
+            return this;
+        }
+
         private NativeFakeType failingNative() {
             this.nativeFails = true;
             return this;
@@ -484,8 +541,8 @@ class PlayerDataPipelineTest {
         public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull String value) {
             PlayerDataPipelineTest.this.nativeAttempts.add(this.key());
             if (this.nativeFails) throw new IllegalStateException("native failed");
-            if (this.nativeResult == NativeApplyResult.NOT_APPLIED) return this.nativeResult;
-            if (this.nativeResult == NativeApplyResult.APPLIED_PLAYER_DATA) playerData.putString(this.key().asString(), value);
+            if (this.nativeResult.target() == NativeApplyResult.Target.NOT_APPLIED) return this.nativeResult;
+            if (this.nativeResult.target() == NativeApplyResult.Target.APPLIED) playerData.putString(this.key().asString(), value);
             PlayerDataPipelineTest.this.nativeApplied.add(this.key());
             return this.nativeResult;
         }
