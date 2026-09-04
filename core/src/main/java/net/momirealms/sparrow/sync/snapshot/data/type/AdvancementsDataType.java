@@ -7,7 +7,6 @@ import net.minecraft.advancements.CriterionProgress;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.nbt.*;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.*;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
@@ -363,7 +362,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
-        if (!PluginConfig.synchronization$nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
         AdvancementSlots.Layout layout = this.advancementSlots.current();
         // 原版读取后会丢弃未知 ID, 这类快照留到 Join 应用并挂入玩家 tracker
         if (layout == null || containsUnknown(value.values(), layout)) return NativeApplyResult.NOT_APPLIED;

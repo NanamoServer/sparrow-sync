@@ -215,11 +215,12 @@ public final class PluginConfig {
         boolean nativeApply = true;
 
         @Comment({
-                "Writes statistics and advancements into vanilla JSON files during the login gate",
-                "Disable this when the server reads these records from a non-standard data source",
-                "Reloading applies this option to login preparations started afterwards"
+                "Keeps advancement progress for IDs the applying server does not register",
+                "The native JSON write carries only the known IDs while the unknown ones wait for the join tracker,",
+                "so servers with different advancement registries stay on the native path",
+                "Disable when every server shares the same advancements and the per-login scan is not wanted"
         })
-        boolean nativeJson = true;
+        boolean keepUnknownAdvancements = true;
 
         @BlankLineBefore
         @Comment({
@@ -823,8 +824,8 @@ public final class PluginConfig {
         return config.synchronization.nativeApply;
     }
 
-    public static boolean synchronization$nativeJson() {
-        return config.synchronization.nativeJson;
+    public static boolean synchronization$keepUnknownAdvancements() {
+        return config.synchronization.keepUnknownAdvancements;
     }
 
     @NotNull
