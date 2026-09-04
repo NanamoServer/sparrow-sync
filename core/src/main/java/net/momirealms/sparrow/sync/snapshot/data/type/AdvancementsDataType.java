@@ -39,6 +39,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     private static final String OBTAINED_KEY = "obtained";
     private static final String DONE_KEY = "done";
     private static final int INDEX_THRESHOLD = 8; // criterion 数超过该值时为快照值建哈希索引, 少量时线性扫描更快
+    private static final AdvancementValue[] EMPTY_VALUES = new AdvancementValue[0];
     private static final DateTimeFormatter OBTAINED_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss Z", Locale.ROOT).withZone(ZoneId.systemDefault());
 
     private final AdvancementSlots advancementSlots = new AdvancementSlots(); // 全服共享的稳定 advancement 槽位, 所有玩家候选位图都以此布局解释.
@@ -60,7 +61,6 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      * 重复调用会识别现有 wrapper 并保持原对象, 因此同一玩家只安装一次.
      *
      * @param player 已完成 Join 且尚未执行 Sparrow Player apply 的玩家
-     * @throws IllegalStateException 当当前布局不稳定或 final 字段写入后的身份校验失败时
      */
     public void attachTracker(@NotNull Player player) {
         // 读取实际 PlayerAdvancements, wrapper 必须安装到 Bukkit Player 持有的同一个对象
@@ -68,18 +68,10 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         PlayerAdvancements advancements = handle.getAdvancements();
         Set<Object> progressChanged = PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
         if (progressChanged instanceof AdvancementProgressChangedWrapperSet) return;
-        // 先得到完整布局, 构造 wrapper 时才能覆盖原 dirty Set 中的全部已有进度
-        if (this.advancementSlots.current() == null) {
-            throw new IllegalStateException("advancement layout changed while progress tracking was attached");
-        }
 
         // 代理掉 PlayerAdvancements#progressChanged 以监听变化.
         AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(progressChanged, PlayerAdvancementsProxy.INSTANCE.getProgress(advancements), this.advancementSlots);
         PlayerAdvancementsProxy.INSTANCE.setProgressChanged(advancements, tracking);
-        // final 字段写入属于 JVM 特殊路径, 身份回读是启用跟踪的硬闸门
-        if (PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements) != tracking) {
-            throw new IllegalStateException("progressChanged field did not retain the tracking set");
-        }
     }
 
     /**
@@ -95,13 +87,15 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         PlayerAdvancements advancements = handle.getAdvancements();
         Map<Object, Object> progress = PlayerAdvancementsProxy.INSTANCE.getProgress(advancements);
         Set<Object> progressChanged = PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements);
+        AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
         // 候选完整且布局稳定时使用稀疏路径
-        if (progressChanged instanceof AdvancementProgressChangedWrapperSet tracking && tracking.complete()) {
+        if (tracking != null && tracking.complete()) {
             AdvancementSlots.Layout layout = this.advancementSlots.current();
             if (layout != null) return captureSparse(progress, tracking, layout);
         }
         // 布局换代冲突或候选缺失时使用完整 Map
-        return captureDense(progress);
+        Advancements captured = captureDense(progress);
+        return tracking == null ? captured : mergeRetained(captured, tracking.retainedUnknown());
     }
 
     /**
@@ -136,7 +130,8 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 word &= word - 1L;
             }
         }
-        return new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
+        Advancements current = new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
+        return mergeRetained(current, tracking.retainedUnknown());
     }
 
     /**
@@ -155,6 +150,26 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             if (value != null) captured[count++] = value;
         }
         return new Advancements(count == captured.length ? captured : Arrays.copyOf(captured, count));
+    }
+
+    // 本服实时进度覆盖同 ID 保留值, 其余未知项继续进入下一份快照
+    private static Advancements mergeRetained(Advancements captured, AdvancementValue[] retained) {
+        if (retained.length == 0) return captured;
+        AdvancementValue[] current = captured.values();
+        AdvancementValue[] merged = Arrays.copyOf(current, current.length + retained.length);
+        int count = current.length;
+        for (int i = 0; i < retained.length; i++) {
+            AdvancementValue unknown = retained[i];
+            boolean present = false;
+            for (int j = 0; j < current.length; j++) {
+                if (current[j].id().equals(unknown.id())) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) merged[count++] = unknown;
+        }
+        return new Advancements(count == merged.length ? merged : Arrays.copyOf(merged, count));
     }
 
     @Override
@@ -254,13 +269,14 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         ServerPlayer handle = handle(player);
         PlayerAdvancements playerAdvancements = handle.getAdvancements();
         PlayerAdvancementsProxy proxy = PlayerAdvancementsProxy.INSTANCE;
-        // 目标值按 ID 建立本次应用索引, sparse 路径会移除已经处理的本地候选
+        // 目标值按 ID 建立工作索引, 成功匹配的本服条目会从中移除
         Map<Object, CapturedValue> captured = index(value.values());
         Map<Object, Object> progressByAdvancement = proxy.getProgress(playerAdvancements);
         Set<Object> progressChanged = proxy.getProgressChanged(playerAdvancements);
+        AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
         boolean changed;
         // 与 capture 相同, 候选完整时才进行稀疏扫描
-        if (progressChanged instanceof AdvancementProgressChangedWrapperSet tracking && tracking.complete()) {
+        if (tracking != null && tracking.complete()) {
             AdvancementSlots.Layout layout = this.advancementSlots.current();
             changed = layout == null
                     ? applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged)
@@ -268,6 +284,8 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         } else {
             changed = applyDense(playerAdvancements, progressByAdvancement, captured, progressChanged);
         }
+        // 工作索引中只剩本服无法定位的 ID, 后续快照继续携带这些进度
+        if (tracking != null) tracking.retainedUnknown(remainingValues(captured));
         if (!changed) return;
 
         // 所有 criterion 差量完成后只 flush 一次
@@ -281,7 +299,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     /**
      * 稀疏应用
      * 应用本地候选与远端快照 ID 的并集, 使本地撤销和远端新增都进入同一差量逻辑.
-     * <strong>captured 是本次调用的工作索引, 已与本地候选匹配的条目会被移除</strong>.
+     * <strong>captured 是本次调用的工作索引, 能在本服应用的条目会被移除</strong>.
      *
      * @param playerAdvancements 玩家原有的 PlayerAdvancements 对象
      * @param progressByAdvancement 当前完整进度 Map
@@ -306,13 +324,15 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 word &= word - 1L;
             }
         }
-        // 剩余条目只存在于远端快照, 用当前 layout 定位 holder 后执行授予
-        for (CapturedValue target : captured.values()) {
+        // 应用远端独有项, 成功定位的条目从工作索引移除
+        Iterator<CapturedValue> iterator = captured.values().iterator();
+        while (iterator.hasNext()) {
+            CapturedValue target = iterator.next();
             int slot = layout.slot(target.value().id());
             Object holder = layout.holder(slot);
-            if (holder instanceof AdvancementHolder advancement && progressByAdvancement.get(holder) instanceof AdvancementProgress progress
-                    && applyProgress(playerAdvancements, advancement, progress, target, progressChanged)) {
-                changed = true;
+            if (holder instanceof AdvancementHolder advancement && progressByAdvancement.get(holder) instanceof AdvancementProgress progress) {
+                if (applyProgress(playerAdvancements, advancement, progress, target, progressChanged)) changed = true;
+                iterator.remove();
             }
         }
         return changed;
@@ -332,7 +352,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         boolean changed = false;
         for (Map.Entry<Object, Object> entry : progressByAdvancement.entrySet()) {
             AdvancementHolder advancement = (AdvancementHolder) entry.getKey();
-            CapturedValue target = captured.get(AdvancementHolderProxy.INSTANCE.id(advancement));
+            CapturedValue target = captured.remove(AdvancementHolderProxy.INSTANCE.id(advancement));
             if (applyProgress(playerAdvancements, advancement, (AdvancementProgress) entry.getValue(), target, progressChanged)) {
                 changed = true;
             }
@@ -344,10 +364,21 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
         if (!PluginConfig.synchronization$nativeJson() || !VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
+        AdvancementSlots.Layout layout = this.advancementSlots.current();
+        // 原版读取后会丢弃未知 ID, 这类快照留到 Join 应用并挂入玩家 tracker
+        if (layout == null || containsUnknown(value.values(), layout)) return NativeApplyResult.NOT_APPLIED;
         if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encodeNativeJson(value))) {
             throw new IOException("atomic advancements JSON replacement failed or is not supported");
         }
         return NativeApplyResult.APPLIED_EXTERNAL;
+    }
+
+    private static boolean containsUnknown(AdvancementValue[] values, AdvancementSlots.Layout layout) {
+        for (int i = 0; i < values.length; i++) {
+            int slot = layout.slot(values[i].id());
+            if (layout.holder(slot) == null) return true;
+        }
+        return false;
     }
 
     private static byte[] encodeNativeJson(@NotNull Advancements value) {
@@ -387,6 +418,14 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             indexed.put(value.id(), new CapturedValue(value, lookup));
         }
         return indexed;
+    }
+
+    private static AdvancementValue[] remainingValues(Map<Object, CapturedValue> remaining) {
+        if (remaining.isEmpty()) return EMPTY_VALUES;
+        AdvancementValue[] values = new AdvancementValue[remaining.size()];
+        int index = 0;
+        for (CapturedValue value : remaining.values()) values[index++] = value.value();
+        return values;
     }
 
     private static boolean applyProgress(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, AdvancementProgress progress, @Nullable CapturedValue target, Set<Object> progressChanged) {

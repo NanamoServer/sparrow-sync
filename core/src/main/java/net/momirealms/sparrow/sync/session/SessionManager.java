@@ -207,8 +207,7 @@ public final class SessionManager {
      * @param player 正在进入 ACTIVE 阶段的玩家
      */
     private void attachAdvancementTracker(@NotNull Player player) {
-        if (this.advancementTrackingDisabled) return;
-        // 内置类型可以由配置关闭, 未注册时无需创建额外状态
+        // 内置类型可以由配置关闭
         if (!(this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements)) return;
         try {
             advancements.attachTracker(player);

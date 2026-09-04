@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.minecraft.advancements.AdvancementProgress;
+import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.AdvancementValue;
 import org.jspecify.annotations.NonNull;
 
 import java.util.AbstractSet;
@@ -10,12 +11,15 @@ import java.util.Map;
 import java.util.Set;
 
 final class AdvancementProgressChangedWrapperSet extends AbstractSet<Object> {
+    private static final AdvancementValue[] EMPTY_VALUES = new AdvancementValue[0];
+
     private final Set<Object> delegate;         // PlayerAdvancements 构造时创建的原始 progressChanged Set
     private final Map<Object, Object> progress; // 当前玩家的 holder -> AdvancementProgress Map, 用于排除只有可见性变化的空进度
     private final AdvancementSlots slots;       // 将 holder ID 转换为服务器生命周期稳定槽位的共享布局.
     private final BitSet candidates = new BitSet(); // 单调候选位图, 所有读写都持有当前对象监视器.
 
     private volatile boolean complete = true; // 初始 dirty 项和后续真实进度是否都成功映射到稳定槽位.
+    private volatile AdvancementValue[] retainedUnknown = EMPTY_VALUES; // 玩家线程整组替换的未知进度, 异步 capture 原样转发
 
     // 包装原 dirty Set, 并在 NMS 首次 flush 前为已经加载的进度播种候选位图.
     AdvancementProgressChangedWrapperSet(Set<Object> delegate, Map<Object, Object> progress, AdvancementSlots slots) {
@@ -68,6 +72,14 @@ final class AdvancementProgressChangedWrapperSet extends AbstractSet<Object> {
 
     synchronized long[] candidates() {
         return this.candidates.toLongArray();
+    }
+
+    AdvancementValue[] retainedUnknown() {
+        return this.retainedUnknown;
+    }
+
+    void retainedUnknown(AdvancementValue[] values) {
+        this.retainedUnknown = values;
     }
 
     // 检查和 holder 上是否有真实的成就进度, 如果有就翻转 BitSet, 代表这些进度是序列化真正关心的进度.

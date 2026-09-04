@@ -11,6 +11,7 @@ import net.minecraft.advancements.AdvancementRequirements;
 import net.minecraft.advancements.CriterionProgress;
 import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -25,6 +26,8 @@ import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.AdvancementValue;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advancements;
+import org.bukkit.craftbukkit.entity.CraftEntity;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -223,6 +226,57 @@ class AdvancementsDataTypeTest {
         assertArrayEquals(dense.values()[0].obtained(), sparse.values()[0].obtained());
     }
 
+    /** 验证本服无法识别的远端 advancement 会随下一份快照继续传递. */
+    @Test
+    void unknownAdvancementSurvivesApplyAndNextServerCapture() throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:a");
+        AdvancementHolder localHolder = holder(localId);
+        Instant obtained = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        AdvancementProgress localProgress = progress("done", null);
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        progress.put(localHolder, localProgress);
+        Map<Object, Object> advancements = Map.of(localId, localHolder);
+        AdvancementSlots slots = new AdvancementSlots(() -> advancements);
+        AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(new HashSet<>(), progress, slots);
+        PlayerAdvancements playerAdvancements = allocateWithoutConstructor(PlayerAdvancements.class);
+        setField(PlayerAdvancements.class, playerAdvancements, "progress", progress);
+        setField(PlayerAdvancements.class, playerAdvancements, "progressChanged", tracking);
+        ServerPlayer handle = allocateWithoutConstructor(ServerPlayer.class);
+        setField(ServerPlayer.class, handle, "advancements", playerAdvancements);
+        CraftPlayer player = allocateWithoutConstructor(CraftPlayer.class);
+        setField(CraftEntity.class, player, "entity", handle);
+        AdvancementsDataType type = new AdvancementsDataType();
+        setField(AdvancementsDataType.class, type, "advancementSlots", slots);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{obtained}, true);
+
+        type.apply(player, new Advancements(new AdvancementValue[]{unknown}));
+        CriterionProgress localCriterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(localProgress).get("done");
+        CriterionProgressProxy.INSTANCE.setObtained(localCriterion, obtained);
+        tracking.add(localHolder);
+        Advancements captured = type.capture(player);
+        Advancements forwarded = type.decode(type.encode(captured), 0);
+
+        Set<Object> ids = new HashSet<>();
+        for (AdvancementValue value : forwarded.values()) ids.add(value.id());
+        assertEquals(Set.of(localId, unknownId), ids);
+    }
+
+    /** 验证 Native JSON 只接收当前服务器能够加载的 advancement ID. */
+    @Test
+    void nativeJsonEligibilityRejectsUnknownAdvancementIds() throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:a");
+        AdvancementHolder localHolder = holder(localId);
+        Map<Object, Object> advancements = Map.of(localId, localHolder);
+        AdvancementSlots.Layout layout = new AdvancementSlots(() -> advancements).current();
+        Method containsUnknown = AdvancementsDataType.class.getDeclaredMethod("containsUnknown", AdvancementValue[].class, AdvancementSlots.Layout.class);
+        containsUnknown.setAccessible(true);
+
+        assertFalse((boolean) containsUnknown.invoke(null, new AdvancementValue[]{new AdvancementValue(localId, new String[0], new Instant[0], false)}, layout));
+        assertTrue((boolean) containsUnknown.invoke(null, new AdvancementValue[]{new AdvancementValue(unknownId, new String[0], new Instant[0], false)}, layout));
+    }
+
     /** 验证玩家线程扩展候选位图时, 并发 capture 副本不会破坏或永久丢失已写入槽位. */
     @Test
     void candidateSnapshotsDoNotLoseBitsWhileTheWriterGrowsTheArray() throws Exception {
@@ -382,6 +436,13 @@ class AdvancementsDataTypeTest {
         field.setAccessible(true);
         Object unsafe = field.get(null);
         return type.cast(unsafeType.getMethod("allocateInstance", Class.class).invoke(unsafe, type));
+    }
+
+    /** 把测试状态装入跳过构造器创建的 NMS 或 CraftBukkit 对象. */
+    private static void setField(Class<?> owner, Object target, String name, Object value) throws Exception {
+        Field field = owner.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 
     /**
