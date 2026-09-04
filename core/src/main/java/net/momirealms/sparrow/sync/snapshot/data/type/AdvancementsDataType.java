@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -77,6 +78,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
 
     /**
      * 从当前 PlayerAdvancements 生成只包含实际进度的脱离快照.
+     * <strong>返回值可能复用历史采集结果, 数组及其元素须按只读使用
      *
      * @param player 要采集的在线玩家
      * @return 完全脱离玩家可变状态的 advancement 数据
@@ -91,10 +93,15 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
         // 候选完整且布局稳定时使用稀疏路径
         AdvancementSlots.Layout layout = tracking != null && tracking.complete() ? this.advancementSlots.current() : null;
+        boolean keepUnknown = PluginConfig.synchronization$keepUnknownAdvancements();
+        if (layout != null) {
+            Advancements cached = tracking.capture(layout, keepUnknown);
+            if (cached != null) return cached;
+        }
         long[] candidates = layout == null ? null : tracking.candidates();
-        // 布局换代冲突或候选缺失时使用完整 Map
+        // 缓存占用时独立采集, 布局不稳定或候选缺失时使用完整 Map
         Advancements captured = layout == null ? captureDense(progress) : captureSparse(progress, candidates, layout);
-        if (tracking == null || !PluginConfig.synchronization$keepUnknownAdvancements()) return captured;
+        if (tracking == null || !keepUnknown) return captured;
         // 将采集到的和进服时记录的未知 ID 的成就合并起来一起保存
         return mergeRetained(captured, tracking.retainedUnknown(), layout, candidates);
     }
@@ -152,7 +159,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     // 本服实时进度覆盖同 ID 保留值, 其余未知项继续进入下一份快照
-    private static Advancements mergeRetained(Advancements captured, AdvancementValue[] retained, @Nullable AdvancementSlots.Layout layout, @Nullable long[] candidates) {
+    static Advancements mergeRetained(Advancements captured, AdvancementValue[] retained, @Nullable AdvancementSlots.Layout layout, long[] candidates) {
         if (retained.length == 0) return captured;
         AdvancementValue[] current = captured.values();
         AdvancementValue[] merged = Arrays.copyOf(current, current.length + retained.length);
@@ -205,7 +212,8 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             done[i] = advancement.done() ? (byte) 1 : 0;
             for (int j = 0; j < names.length; j++) {
                 criteria.add(NBT.createString(names[j]));
-                obtained[criterionIndex++] = times[j].toEpochMilli();
+                // obtained 字段使用毫秒单位, 保留原版时间精度
+                obtained[criterionIndex++] = times[j].truncatedTo(ChronoUnit.SECONDS).toEpochMilli();
             }
         }
 
@@ -265,7 +273,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                     throw new IOException("invalid advancement criterion at index " + criterionIndex);
                 }
                 names[j] = name;
-                obtained[j] = Instant.ofEpochMilli(storedObtained[criterionIndex]);
+                obtained[j] = Instant.ofEpochMilli(storedObtained[criterionIndex]).truncatedTo(ChronoUnit.SECONDS);
                 criterionIndex++;
             }
             values[i] = new AdvancementValue(id, names, obtained, done[i] != 0);
@@ -475,7 +483,10 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             CriterionProgress criterion = (CriterionProgress) criteria.get(name);
             Instant current = criterion.getObtained();
             Instant expected = findObtained(target, name);
-            if (Objects.equals(current, expected)) continue;
+            // 原版文件只保留整秒, 内存中的小数秒属于相同进度
+            if (current == expected || current != null && expected != null && current.getEpochSecond() == expected.getEpochSecond()) {
+                continue;
+            }
 
             // 首个差异出现时才读完成态, 此时尚未写入, 结果就是改动前的基线
             if (!changed) {
@@ -483,7 +494,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 changed = true;
             }
             // 直接改原对象, 绕过 award/revoke 产生的事件、奖励与广播.
-            CriterionProgressProxy.INSTANCE.setObtained(criterion, expected);
+            CriterionProgressProxy.INSTANCE.setObtained(criterion, expected == null ? null : expected.truncatedTo(ChronoUnit.SECONDS));
             if (!wasDone && (current == null) != (expected == null)) {
                 setTriggerActive(playerAdvancements, advancement, name, entry.getValue(), expected == null);
             }
@@ -560,7 +571,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     @Nullable
-    private static AdvancementValue captureProgress(Object advancement, AdvancementProgress progress) {
+    static AdvancementValue captureProgress(Object advancement, AdvancementProgress progress) {
         Map<String, Object> criteria = AdvancementProgressProxy.INSTANCE.getCriteria(progress);
         String[] names = null;
         Instant[] obtained = null;
@@ -574,7 +585,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
                 obtained = new Instant[criteria.size()];
             }
             names[count] = entry.getKey();
-            obtained[count] = time;
+            obtained[count] = time.truncatedTo(ChronoUnit.SECONDS);
             count++;
         }
         if (names == null) return null;

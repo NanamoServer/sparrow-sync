@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.SharedConstants;
+import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.AdvancementRequirements;
@@ -45,7 +46,12 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -55,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -84,7 +91,7 @@ class AdvancementsDataTypeTest {
 
     @Test
     void parallelArrayFormatRoundTripsDetachedCriterionCompletionTimes() throws IOException {
-        Instant first = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.MILLIS);
+        Instant first = Instant.parse("2026-09-05T00:00:00.987654321Z");
         Instant second = first.plusMillis(125);
         Object firstId = IdentifierProxy.INSTANCE.tryParse("minecraft:adventure/root");
         Object secondId = IdentifierProxy.INSTANCE.tryParse("example:custom");
@@ -99,7 +106,7 @@ class AdvancementsDataTypeTest {
 
         assertEquals(firstId, decoded.values()[0].id());
         assertArrayEquals(new String[]{"tick", "second"}, decoded.values()[0].criteria());
-        assertArrayEquals(new Instant[]{first, second}, decoded.values()[0].obtained());
+        assertArrayEquals(new Instant[]{first.truncatedTo(ChronoUnit.SECONDS), second.truncatedTo(ChronoUnit.SECONDS)}, decoded.values()[0].obtained());
         assertFalse(decoded.values()[0].done());
         assertEquals(secondId, decoded.values()[1].id());
         assertTrue(decoded.values()[1].done());
@@ -112,8 +119,64 @@ class AdvancementsDataTypeTest {
         assertEquals("tick", criteria.getString(0));
         assertEquals("complete", criteria.getString(2));
         assertArrayEquals(new int[]{2, 1}, root.getIntArray("counts"));
-        assertArrayEquals(new long[]{first.toEpochMilli(), second.toEpochMilli(), second.toEpochMilli()}, root.getLongArray("obtained"));
+        assertArrayEquals(new long[]{first.getEpochSecond() * 1000, second.getEpochSecond() * 1000, second.getEpochSecond() * 1000}, root.getLongArray("obtained"));
         assertArrayEquals(new byte[]{0, 1}, root.getByteArray("done"));
+    }
+
+    @Test
+    void decodeNormalizesLegacyMillisecondsWithoutChangingTheStoredUnit() throws IOException {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:legacy");
+        AdvancementsDataType type = new AdvancementsDataType();
+        Advancements value = new Advancements(new AdvancementValue[]{
+                new AdvancementValue(id, new String[]{"first", "second"}, new Instant[]{Instant.EPOCH, Instant.EPOCH}, true)
+        });
+        CompoundTag encoded = (CompoundTag) type.encode(value);
+        encoded.putLongArray("obtained", new long[]{1999, -1});
+
+        Advancements decoded = type.decode(encoded, 0);
+
+        assertArrayEquals(new Instant[]{Instant.ofEpochSecond(1), Instant.ofEpochSecond(-1)}, decoded.values()[0].obtained());
+    }
+
+    @Test
+    void playerApplyIgnoresSubsecondDifferencesWithoutDirtyingOrFlushing() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:precision");
+        AdvancementHolder holder = applicableHolder(id);
+        Instant original = Instant.parse("2026-09-05T00:00:00.123456789Z");
+        AdvancementProgress progress = progress("done", original);
+        Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
+        Map<Object, Object> registry = Map.of(id, holder);
+        PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
+        Advancements before = fixture.type.capture(fixture.player);
+        fixture.tracking.clear();
+        AdvancementValue target = new AdvancementValue(id, new String[]{"done"}, new Instant[]{original.plusMillis(500)}, true);
+
+        fixture.type.apply(fixture.player, new Advancements(new AdvancementValue[]{target}));
+
+        assertSame(original, progress.getCriterion("done").getObtained());
+        assertTrue(fixture.tracking.isEmpty());
+        assertSame(before, fixture.type.capture(fixture.player));
+    }
+
+    @Test
+    void playerApplyWithDifferentSecondsUpdatesTheCaptureCache() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:precision");
+        AdvancementHolder holder = applicableHolder(id);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        AdvancementProgress progress = progress("done", original);
+        Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
+        Map<Object, Object> registry = Map.of(id, holder);
+        PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
+        Advancements before = fixture.type.capture(fixture.player);
+        Instant expected = original.plusSeconds(5).plusNanos(123456789);
+        AdvancementValue target = new AdvancementValue(id, new String[]{"done"}, new Instant[]{expected}, true);
+
+        fixture.type.apply(fixture.player, new Advancements(new AdvancementValue[]{target}));
+        Advancements after = fixture.type.capture(fixture.player);
+
+        assertEquals(expected.truncatedTo(ChronoUnit.SECONDS), progress.getCriterion("done").getObtained());
+        assertArrayEquals(new Instant[]{expected.truncatedTo(ChronoUnit.SECONDS)}, after.values()[0].obtained());
+        assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
     }
 
     @Test
@@ -405,13 +468,257 @@ class AdvancementsDataTypeTest {
         Advancements captured = fixture.type.capture(fixture.player);
 
         assertEquals(1, captured.values().length);
-        assertArrayEquals(new Instant[]{localTime}, captured.values()[0].obtained());
+        assertArrayEquals(new Instant[]{localTime.truncatedTo(ChronoUnit.SECONDS)}, captured.values()[0].obtained());
         assertSame(retained, fixture.tracking.retainedUnknown());
 
         CriterionProgressProxy.INSTANCE.setObtained(criterion, null);
         fixture.tracking.add(holder);
         assertEquals(0, fixture.type.capture(fixture.player).values().length);
         assertSame(retained, fixture.tracking.retainedUnknown());
+    }
+
+    @Test
+    void cachedCaptureReusesUnchangedValuesAndRefreshesOnlyDirtySlots() throws Exception {
+        Object firstId = IdentifierProxy.INSTANCE.tryParse("example:first");
+        Object secondId = IdentifierProxy.INSTANCE.tryParse("example:second");
+        AdvancementHolder firstHolder = holder(firstId);
+        AdvancementHolder secondHolder = holder(secondId);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        ObservedProgress first = new ObservedProgress(original);
+        ObservedProgress second = new ObservedProgress(original);
+        Map<Object, Object> progress = new LinkedHashMap<>(Map.of(firstHolder, first, secondHolder, second));
+        Map<Object, Object> registry = Map.of(firstId, firstHolder, secondId, secondHolder);
+        PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
+
+        Advancements before = fixture.type.capture(fixture.player);
+        fixture.tracking.clear();
+        assertSame(before, fixture.type.capture(fixture.player));
+        assertEquals(1, first.captures);
+        assertEquals(1, second.captures);
+
+        CriterionProgressProxy.INSTANCE.setObtained(first.getCriterion("done"), original.plusSeconds(5));
+        fixture.tracking.add(firstHolder);
+        Advancements after = fixture.type.capture(fixture.player);
+
+        assertEquals(2, first.captures);
+        assertEquals(1, second.captures);
+        assertNotSame(before, after);
+        assertSame(findValue(before, secondId), findValue(after, secondId));
+        assertArrayEquals(new Instant[]{original}, findValue(before, firstId).obtained());
+        assertArrayEquals(new Instant[]{original.plusSeconds(5)}, findValue(after, firstId).obtained());
+    }
+
+    @Test
+    void cachedCaptureObservesLastRevokeAfterVanillaClearsDirtySet() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:revoked");
+        AdvancementHolder holder = holder(id);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        AdvancementProgress progress = progress("done", original);
+        Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
+        Map<Object, Object> registry = Map.of(id, holder);
+        PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
+        Advancements before = fixture.type.capture(fixture.player);
+
+        CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), null);
+        fixture.tracking.add(holder);
+        fixture.tracking.clear();
+
+        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
+
+        CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), original.plusSeconds(1));
+        fixture.tracking.add(holder);
+        assertArrayEquals(new Instant[]{original.plusSeconds(1)}, fixture.type.capture(fixture.player).values()[0].obtained());
+    }
+
+    @Test
+    void cachedCaptureRebuildsAgainstReplacementHoldersAndDropsDeletedSlots() throws Exception {
+        Object firstId = IdentifierProxy.INSTANCE.tryParse("example:first");
+        Object secondId = IdentifierProxy.INSTANCE.tryParse("example:second");
+        AdvancementHolder first = holder(firstId);
+        AdvancementHolder replacement = holder(firstId);
+        AdvancementHolder second = holder(secondId);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        AtomicReference<Map<?, ?>> registry = new AtomicReference<>(Map.of(firstId, first));
+        Map<Object, Object> progress = new LinkedHashMap<>(Map.of(first, progress("done", original)));
+        PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(registry::get));
+        Advancements before = fixture.type.capture(fixture.player);
+
+        registry.set(Map.of(firstId, replacement, secondId, second));
+        progress.clear();
+        fixture.tracking.clear();
+        progress.put(replacement, progress("done", original.plusSeconds(1)));
+        progress.put(second, progress("done", original.plusSeconds(2)));
+        fixture.tracking.add(replacement);
+        fixture.tracking.add(second);
+        Advancements reloaded = fixture.type.capture(fixture.player);
+
+        assertEquals(2, reloaded.values().length);
+        assertArrayEquals(new Instant[]{original.plusSeconds(1)}, findValue(reloaded, firstId).obtained());
+        assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
+
+        registry.set(Map.of(secondId, second));
+        progress.remove(replacement);
+        Advancements removed = fixture.type.capture(fixture.player);
+        assertEquals(1, removed.values().length);
+        assertEquals(secondId, removed.values()[0].id());
+    }
+
+    @Test
+    void cachedCaptureDropsReloadedProgressEvenWhenTheRegistryMapIsUnchanged() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:reload");
+        AdvancementHolder holder = holder(id);
+        Map<Object, Object> progress = new LinkedHashMap<>(Map.of(holder, progress("done", Instant.now())));
+        Map<Object, Object> registry = Map.of(id, holder);
+        PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
+        assertEquals(1, fixture.type.capture(fixture.player).values().length);
+
+        // 对照 PlayerAdvancements.reload 的顺序, progress 在 dirty Set 之前清空
+        progress.clear();
+        fixture.tracking.clear();
+        progress.put(holder, progress("done", null));
+
+        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+    }
+
+    @Test
+    void failedCacheRefreshKeepsDirtySlotsForTheNextCapture() throws Exception {
+        Object id = IdentifierProxy.INSTANCE.tryParse("example:retry");
+        AdvancementHolder holder = holder(id);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        ObservedProgress progress = new ObservedProgress(original);
+        Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
+        Map<Object, Object> registry = Map.of(id, holder);
+        PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
+        Advancements before = fixture.type.capture(fixture.player);
+        CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), original.plusSeconds(1));
+        fixture.tracking.add(holder);
+        progress.onCapture = () -> { throw new IllegalStateException("capture failed"); };
+
+        assertThrows(IllegalStateException.class, () -> fixture.type.capture(fixture.player));
+        progress.onCapture = null;
+        Advancements recovered = fixture.type.capture(fixture.player);
+
+        assertArrayEquals(new Instant[]{original.plusSeconds(1)}, recovered.values()[0].obtained());
+        assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
+    }
+
+    @Test
+    void overlappingCaptureDoesNotWaitOrConsumeChangesArrivingDuringRefresh() throws Exception {
+        Object firstId = IdentifierProxy.INSTANCE.tryParse("example:first");
+        Object secondId = IdentifierProxy.INSTANCE.tryParse("example:second");
+        AdvancementHolder firstHolder = holder(firstId);
+        AdvancementHolder secondHolder = holder(secondId);
+        Instant original = Instant.parse("2026-09-05T00:00:00Z");
+        ObservedProgress first = new ObservedProgress(original);
+        AdvancementProgress second = progress("done", null);
+        Map<Object, Object> values = new LinkedHashMap<>(Map.of(firstHolder, first, secondHolder, second));
+        Map<Object, Object> registry = Map.of(firstId, firstHolder, secondId, secondHolder);
+        PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
+        fixture.type.capture(fixture.player);
+        CriterionProgressProxy.INSTANCE.setObtained(first.getCriterion("done"), original.plusSeconds(1));
+        fixture.tracking.add(firstHolder);
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean blocked = new AtomicBoolean();
+        first.onCapture = () -> {
+            if (blocked.compareAndSet(false, true)) {
+                reading.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new AssertionError("capture was not released");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+            }
+        };
+
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var refreshing = workers.submit(() -> fixture.type.capture(fixture.player));
+            try {
+                assertTrue(reading.await(5, TimeUnit.SECONDS));
+                CriterionProgressProxy.INSTANCE.setObtained(second.getCriterion("done"), original.plusSeconds(2));
+                fixture.tracking.add(secondHolder);
+                fixture.tracking.clear();
+                Advancements overlapping = workers.submit(() -> fixture.type.capture(fixture.player)).get(2, TimeUnit.SECONDS);
+                assertEquals(2, overlapping.values().length);
+            } finally {
+                release.countDown();
+            }
+            refreshing.get(5, TimeUnit.SECONDS);
+        }
+
+        Advancements after = fixture.type.capture(fixture.player);
+        assertEquals(2, after.values().length);
+        assertArrayEquals(new Instant[]{original.plusSeconds(2)}, findValue(after, secondId).obtained());
+    }
+
+    @Test
+    void incrementalCaptureMatchesDenseReferenceAcrossGrantsAndRevokes() throws Exception {
+        int size = 130;
+        AdvancementHolder[] holders = new AdvancementHolder[size];
+        AdvancementProgress[] progresses = new AdvancementProgress[size];
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        Map<Object, Object> registry = new LinkedHashMap<>();
+        for (int i = 0; i < size; i++) {
+            Object id = IdentifierProxy.INSTANCE.tryParse("example:sequence_" + i);
+            holders[i] = holder(id);
+            progresses[i] = new AdvancementProgress();
+            progresses[i].update(AdvancementRequirements.allOf(List.of("first", "second")));
+            progress.put(holders[i], progresses[i]);
+            registry.put(id, holders[i]);
+        }
+        PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
+        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        Random random = new Random(12345);
+        Instant start = Instant.parse("2026-09-05T00:00:00Z");
+        for (int step = 0; step < 400; step++) {
+            int slot = random.nextInt(size);
+            String criterion = random.nextBoolean() ? "first" : "second";
+            Instant time = random.nextBoolean() ? start.plusMillis(step * 123L) : null;
+            CriterionProgressProxy.INSTANCE.setObtained(progresses[slot].getCriterion(criterion), time);
+            fixture.tracking.add(holders[slot]);
+            fixture.tracking.clear();
+
+            Advancements expected = AdvancementsDataType.captureDense(progress);
+            Advancements captured = fixture.type.capture(fixture.player);
+            assertEquals(expected.values().length, captured.values().length);
+            for (int i = 0; i < expected.values().length; i++) {
+                AdvancementValue reference = expected.values()[i];
+                AdvancementValue actual = captured.values()[i];
+                assertEquals(reference.id(), actual.id());
+                assertArrayEquals(reference.criteria(), actual.criteria());
+                assertArrayEquals(reference.obtained(), actual.obtained());
+                assertEquals(reference.done(), actual.done());
+            }
+        }
+    }
+
+    @Test
+    void cachedCaptureMergesTheCurrentUnknownSetAndRetentionSetting() throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("example:local");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("example:unknown");
+        AdvancementHolder holder = holder(localId);
+        Instant obtained = Instant.parse("2026-09-05T00:00:00Z");
+        Map<Object, Object> progress = new LinkedHashMap<>(Map.of(holder, progress("done", obtained)));
+        Map<Object, Object> registry = Map.of(localId, holder);
+        PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
+        Advancements known = fixture.type.capture(fixture.player);
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{obtained}, true);
+        fixture.tracking.retainedUnknown(new AdvancementValue[]{unknown});
+
+        assertEquals(2, fixture.type.capture(fixture.player).values().length);
+        setKeepUnknownAdvancements(false);
+        try {
+            assertSame(known, fixture.type.capture(fixture.player));
+        } finally {
+            setKeepUnknownAdvancements(true);
+        }
+        assertSame(unknown, findValue(fixture.type.capture(fixture.player), unknownId));
+        fixture.tracking.retainedUnknown(new AdvancementValue[0]);
+        assertSame(known, fixture.type.capture(fixture.player));
     }
 
     /** 验证玩家线程扩展候选位图时, 并发 capture 副本不会破坏或永久丢失已写入槽位. */
@@ -482,7 +789,7 @@ class AdvancementsDataTypeTest {
         assertNotNull(captured);
         assertEquals(id, captured.id());
         assertArrayEquals(new String[]{"complete"}, captured.criteria());
-        assertArrayEquals(new Instant[]{obtained}, captured.obtained());
+        assertArrayEquals(new Instant[]{obtained.truncatedTo(ChronoUnit.SECONDS)}, captured.obtained());
         assertFalse(captured.done());
     }
 
@@ -559,6 +866,11 @@ class AdvancementsDataTypeTest {
         return (AdvancementHolder) AdvancementHolder.class.getDeclaredConstructors()[0].newInstance(id, null);
     }
 
+    private static AdvancementHolder applicableHolder(Object id) throws Exception {
+        Advancement advancement = Advancement.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("{\"criteria\":{\"done\":{\"trigger\":\"minecraft:impossible\"}}}")).getOrThrow();
+        return (AdvancementHolder) AdvancementHolder.class.getDeclaredConstructors()[0].newInstance(id, advancement);
+    }
+
     /**
      * 分配不执行构造器的 NMS 实例, 供 final 字段代理测试隔离服务器依赖.
      *
@@ -621,10 +933,12 @@ class AdvancementsDataTypeTest {
     }
 
     private static PlayerFixture playerFixture(Map<Object, Object> progress, AdvancementSlots slots) throws Exception {
-        AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(new HashSet<>(), progress, slots);
+        AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(new HashSet<>(progress.keySet()), progress, slots);
         PlayerAdvancements advancements = allocateWithoutConstructor(PlayerAdvancements.class);
         setField(PlayerAdvancements.class, advancements, "progress", progress);
         setField(PlayerAdvancements.class, advancements, "progressChanged", tracking);
+        setField(PlayerAdvancements.class, advancements, "rootsToUpdate", new HashSet<>());
+        setField(PlayerAdvancements.class, advancements, "visible", new HashSet<>());
         ServerPlayer handle = allocateWithoutConstructor(ServerPlayer.class);
         setField(ServerPlayer.class, handle, "advancements", advancements);
         CraftPlayer player = allocateWithoutConstructor(CraftPlayer.class);
@@ -635,6 +949,33 @@ class AdvancementsDataTypeTest {
     }
 
     private record PlayerFixture(CraftPlayer player, AdvancementsDataType type, AdvancementProgressChangedWrapperSet tracking) {
+    }
+
+    private static AdvancementValue findValue(Advancements value, Object id) {
+        AdvancementValue[] values = value.values();
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].id().equals(id)) return values[i];
+        }
+        throw new AssertionError("missing advancement " + id);
+    }
+
+    private static final class ObservedProgress extends AdvancementProgress {
+        private int captures;
+        private Runnable onCapture;
+
+        private ObservedProgress(Instant obtained) {
+            this.update(AdvancementRequirements.allOf(List.of("done")));
+            CriterionProgressProxy.INSTANCE.setObtained(this.getCriterion("done"), obtained);
+        }
+
+        @Override
+        public boolean isDone() {
+            this.captures++;
+            if (this.onCapture != null) {
+                this.onCapture.run();
+            }
+            return super.isDone();
+        }
     }
 
     private static Codec<Map<Object, AdvancementProgress>> vanillaCodec() {
