@@ -25,14 +25,22 @@ import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.AttributeValue;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.Attributes;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.ModifierValue;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -46,12 +54,16 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * 通用真机测试命令, 按参数分发到各测试项, 输出为纯技术文本不进翻译体系.
@@ -78,6 +90,12 @@ public final class TestCommand extends BukkitCommandFeature {
                         case SAVE -> this.saveTest(context);
                         case LOAD -> this.loadTest(context);
                         case BURST -> this.burstTest(context);
+                        case CAPTURE_SYNC -> this.captureTest(context, CaptureMode.SYNC);
+                        case CAPTURE_ASYNC -> this.captureTest(context, CaptureMode.ASYNC);
+                        case CAPTURE_OFFLINE -> this.captureTest(context, CaptureMode.OFFLINE);
+                        case ATTRIBUTES_HIT -> this.attributesTest(context, 0);
+                        case ATTRIBUTES_HALF_DIRTY -> this.attributesTest(context, 50);
+                        case ATTRIBUTES_ALL_DIRTY -> this.attributesTest(context, 100);
                         case LIST -> this.listTest(context);
                         case PIN -> this.pinTest(context, true);
                         case UNPIN -> this.pinTest(context, false);
@@ -98,6 +116,12 @@ public final class TestCommand extends BukkitCommandFeature {
         SAVE,       // 立即采集并落库一次, 不用退服
         LOAD,       // 读库最新快照并应用, 不用重进
         BURST,      // 同 tick 连发 count 次保存, 压 timestamp 钳制与提交序
+        CAPTURE_SYNC,    // 玩家线程采集全部类型, 串行 worker 编码
+        CAPTURE_ASYNC,   // 玩家线程采同步组, 串行 worker 补齐异步组并编码
+        CAPTURE_OFFLINE, // 静止测试玩家在串行 worker 采集并编码, 无需真的退出
+        ATTRIBUTES_HIT,       // 属性缓存全部命中
+        ATTRIBUTES_HALF_DIRTY, // 一半属性变脏后采集, 奇数项向上取整
+        ATTRIBUTES_ALL_DIRTY, // 全部属性变脏后采集
         LIST,       // 列出最近 count 份快照元数据, 与数据库对照
         PIN,        // 固定最新一份, 配合 ROTATE 验证豁免
         UNPIN,
@@ -308,6 +332,189 @@ public final class TestCommand extends BukkitCommandFeature {
         }
         report.add("smoke test finished: " + passed + " passed, " + (report.size() - passed) + " failed");
         return report;
+    }
+
+    // 采集基准只经过类型 capture 和 encode, 测量结果由 Pipeline 的临时探针打印
+    private void captureTest(CommandContext<CommandSender> context, CaptureMode mode) {
+        CommandSender sender = context.sender();
+        Player player = target(context);
+        if (player == null) return;
+        int count = context.<Integer>optional("count").orElse(1);
+        this.plugin().logger().console.info("[CaptureTest] BEGIN mode=" + mode + " player=" + player.getName() + " count=" + count);
+        send(sender, "capture benchmark " + mode + " x" + count + "; see console for nanosecond samples", true);
+        this.captureBatch(player, mode, count).whenCompleteAsync((ignored, throwable) -> {
+            String result = "[CaptureTest] " + (throwable == null ? "END" : "FAILED") + " mode=" + mode + " count=" + count;
+            if (throwable != null) {
+                result += " " + throwable;
+            }
+            this.plugin().logger().console.info(result);
+            send(sender, result, throwable == null);
+        }, this.plugin().playerExecutor().executor(player.getUniqueId()));
+    }
+
+    // 编码完成后再调度下一轮, 同步模式的多轮采样会分散到多个玩家 tick
+    private CompletableFuture<Void> captureBatch(Player player, CaptureMode mode, int count) {
+        CompletableFuture<Void> batch = CompletableFuture.completedFuture(null);
+        for (int i = 0; i < count; i++) {
+            int sample = i + 1;
+            batch = batch.thenCompose(ignored -> {
+                this.plugin().logger().console.info("[CaptureTest] SAMPLE mode=" + mode + " index=" + sample + "/" + count);
+                return this.captureSample(player, mode);
+            });
+        }
+        return batch;
+    }
+
+    // OFFLINE 仅用于已确认无并发修改的测试玩家, 借用值在同一个 worker 任务内完成编码
+    private CompletableFuture<Void> captureSample(Player player, CaptureMode mode) {
+        PlayerDataPipeline pipeline = this.plugin().playerDataPipeline();
+        Executor worker = this.plugin().playerExecutor().executor(player.getUniqueId());
+        if (mode == CaptureMode.OFFLINE) {
+            return CompletableFuture.runAsync(() -> this.encodeCaptureSample(pipeline.capture(player, CaptureMode.OFFLINE)), worker);
+        }
+
+        CompletableFuture<PlayerDataPipeline.CaptureResult> captured = new CompletableFuture<>();
+        this.plugin().scheduler().entity().run(player, () -> {
+            try {
+                captured.complete(pipeline.capture(player, mode));
+            } catch (Throwable throwable) {
+                // 把调度回调的异常交给命令完成提示, 后续轮次随这份 Future 一起终止
+                captured.completeExceptionally(throwable);
+            }
+        }, () -> captured.completeExceptionally(new IllegalStateException("player retired before capture")));
+        return captured.thenAcceptAsync(result -> {
+            PlayerDataPipeline.CaptureResult complete = result instanceof PlayerDataPipeline.CaptureResult.Pending pending
+                    ? pipeline.captureAsync(player, pending)
+                    : result;
+            this.encodeCaptureSample(complete);
+        }, worker);
+    }
+
+    // 跳过任何类型都视为本轮无效, 基准不能把漏采得到的低耗时当作收益
+    private void encodeCaptureSample(PlayerDataPipeline.CaptureResult result) {
+        if (!(result instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
+            throw new IllegalStateException("capture did not complete: " + result);
+        }
+        if (!captured.skipped().isEmpty()) {
+            throw new IllegalStateException("capture skipped types: " + captured.skipped());
+        }
+        PlayerDataPipeline.EncodeResult encoded = this.plugin().playerDataPipeline().encode(captured);
+        if (!(encoded instanceof PlayerDataPipeline.EncodeResult.Ready ready)) {
+            throw new IllegalStateException("encode did not complete: " + encoded);
+        }
+        if (!ready.skipped().isEmpty()) {
+            throw new IllegalStateException("encode skipped types: " + ready.skipped());
+        }
+    }
+
+    /**
+     * 单独检查属性缓存的命中与失效. 每轮先建立基线, 再按比例施加零值临时 modifier.
+     * 变更、采集和撤销都在同一次玩家线程回调内完成; 编码与校验在 worker 执行, 不落库.
+     */
+    private void attributesTest(CommandContext<CommandSender> context, int dirtyPercent) {
+        Player player = target(context);
+        if (player == null) return;
+        if (!(this.plugin().dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType type)) {
+            send(context.sender(), "[AttributesTest] attributes type is not enabled", false);
+            return;
+        }
+        int count = context.<Integer>optional("count").orElse(1);
+        Executor worker = this.plugin().playerExecutor().executor(player.getUniqueId());
+        this.plugin().logger().console.info("[AttributesTest] BEGIN dirty=" + dirtyPercent + "% count=" + count + " (primed samples; all timings in ns)");
+        this.plugin().logger().console.info("[AttributesTest] sample | types dirty hit rebuild |   mutate(ns)  capture(ns)      sum(ns)  cleanup(ns)   encode(ns)");
+        CompletableFuture<Void> batch = CompletableFuture.completedFuture(null);
+        for (int i = 0; i < count; i++) {
+            int index = i + 1;
+            batch = batch.thenCompose(ignored -> {
+                CompletableFuture<AttributeSample> captured = new CompletableFuture<>();
+                this.plugin().scheduler().entity().run(player, () -> {
+                    try {
+                        captured.complete(captureAttributeSample(player, type, dirtyPercent));
+                    } catch (Throwable throwable) {
+                        captured.completeExceptionally(throwable);
+                    }
+                }, () -> captured.completeExceptionally(new IllegalStateException("player retired before attribute capture")));
+                return captured.thenAcceptAsync(sample -> {
+                    verifyAttributeSample(sample);
+                    long start = System.nanoTime();
+                    type.encode(sample.captured());
+                    long encodeNanos = System.nanoTime() - start;
+                    int size = sample.captured().values().length;
+                    this.plugin().logger().console.info(String.format(Locale.ROOT,
+                            "[AttributesTest] %6d | %5d %5d %3d %7d | %12d %12d %12d %12d %12d",
+                            index, size, sample.changed(), size - sample.changed(), sample.changed(), sample.mutateNanos(), sample.captureNanos(),
+                            sample.mutateNanos() + sample.captureNanos(), sample.cleanupNanos(), encodeNanos));
+                }, worker);
+            });
+        }
+        batch.whenCompleteAsync((ignored, failure) -> {
+            String result = "[AttributesTest] " + (failure == null ? "PASS" : "FAILED " + failure) + " dirty=" + dirtyPercent + "% count=" + count;
+            this.plugin().logger().console.info(result);
+            send(context.sender(), result, failure == null);
+        }, worker);
+    }
+
+    private static AttributeSample captureAttributeSample(Player player, AttributesDataType type, int dirtyPercent) {
+        // 基线采集不计时, 固定每轮的命中率; 冷路径仍由原有 CAPTURE_SYNC 命令观察.
+        Attributes before = type.capture(player, CaptureMode.SYNC);
+        if (before.values().length == 0) throw new IllegalStateException("attribute whitelist contains no player attributes");
+        int changed = (before.values().length * dirtyPercent + 99) / 100;
+        AttributeInstance[] targets = new AttributeInstance[changed];
+        for (int i = 0; i < changed; i++) {
+            targets[i] = player.getAttribute(Registry.ATTRIBUTE.get(before.values()[i].key()));
+        }
+        NamespacedKey key = new NamespacedKey("sparrow_sync", "attribute_probe_" + UUID.randomUUID());
+        AttributeModifier probe = new AttributeModifier(key, 0.0, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.ANY);
+        boolean included = !PluginConfig.synchronization$attributes().modifierBlacklisted(key.toString());
+        Attributes captured;
+        long mutateNanos;
+        long captureNanos;
+        long cleanupNanos;
+        try {
+            long start = System.nanoTime();
+            for (int i = 0; i < targets.length; i++) {
+                targets[i].addTransientModifier(probe);
+            }
+            mutateNanos = changed == 0 ? 0 : System.nanoTime() - start;
+            start = System.nanoTime();
+            captured = type.capture(player, CaptureMode.SYNC);
+            captureNanos = System.nanoTime() - start;
+        } finally {
+            // 唯一 key 避免覆盖插件的 modifier; 采集失败也必须撤销本轮修改.
+            long start = System.nanoTime();
+            for (int i = 0; i < targets.length; i++) {
+                targets[i].removeModifier(probe);
+            }
+            cleanupNanos = changed == 0 ? 0 : System.nanoTime() - start;
+        }
+        Attributes restored = type.capture(player, CaptureMode.SYNC);
+        return new AttributeSample(before, captured, restored, key, included, changed, mutateNanos, captureNanos, cleanupNanos);
+    }
+
+    // 同时检查对象复用和数据内容, 避免失效回调未生效时把陈旧值当作快速采集.
+    private static void verifyAttributeSample(AttributeSample sample) {
+        AttributeValue[] before = sample.before().values();
+        AttributeValue[] captured = sample.captured().values();
+        AttributeValue[] restored = sample.restored().values();
+        if (before.length != captured.length || before.length != restored.length) throw new IllegalStateException("attribute count changed during sample");
+        ModifierValue probe = new ModifierValue(sample.probe(), 0.0, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.ANY);
+        for (int i = 0; i < before.length; i++) {
+            boolean changed = i < sample.changed();
+            Set<ModifierValue> modifiers = new HashSet<>(Arrays.asList(captured[i].modifiers()));
+            boolean hasProbe = modifiers.remove(probe);
+            Set<ModifierValue> original = new HashSet<>(Arrays.asList(before[i].modifiers()));
+            if ((before[i] == captured[i]) == changed
+                    || hasProbe != (changed && sample.probeIncluded())
+                    || !before[i].key().equals(captured[i].key()) || !before[i].key().equals(restored[i].key())
+                    || Double.compare(before[i].base(), captured[i].base()) != 0 || Double.compare(before[i].base(), restored[i].base()) != 0
+                    || !original.equals(modifiers) || !original.equals(new HashSet<>(Arrays.asList(restored[i].modifiers())))) {
+                throw new IllegalStateException("attribute cache or cleanup mismatch: " + before[i].key());
+            }
+        }
+    }
+
+    private record AttributeSample(Attributes before, Attributes captured, Attributes restored, NamespacedKey probe, boolean probeIncluded,
+                                   int changed, long mutateNanos, long captureNanos, long cleanupNanos) {
     }
 
     // ---- SAVE / LOAD / BURST / LIST / PIN / ROTATE: 存储纵线的手动触发与验收, 不用退服重进即可对照数据库观察.

@@ -11,6 +11,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,10 +32,22 @@ class CaptureProxyVersionTest {
     void fieldsBindToTheirDeclaringClassWithExactPrimitiveAndMapDescriptors() throws Exception {
         check(InventoryProxy.class, "net.minecraft.world.entity.player.Inventory", "getSelected", "selected", int.class);
         check(AttributeInstanceProxy.class, "net.minecraft.world.entity.ai.attributes.AttributeInstance", "getModifierById", "modifierById", Map.class);
+        check(AttributeInstanceProxy.class, "net.minecraft.world.entity.ai.attributes.AttributeInstance", "getOnDirty", "onDirty", Consumer.class);
         var setter = InventoryProxy.class.getDeclaredMethod("setSelected", Object.class, int.class);
         Annotation mapping = annotation(setter, "FieldSetter");
         assertArrayEquals(new String[]{"selected"}, (String[]) mapping.annotationType().getMethod("name").invoke(mapping));
         assertEquals(void.class, setter.getReturnType());
+    }
+
+    @Test
+    void attributeDirtySetterUsesTheConsumerDescriptorAndAllowsDenseFallback() throws Exception {
+        var setter = AttributeInstanceProxy.class.getDeclaredMethod("setOnDirty", Object.class, Consumer.class);
+        Annotation mapping = annotation(setter, "FieldSetter");
+        assertArrayEquals(new String[]{"onDirty"}, (String[]) mapping.annotationType().getMethod("name").invoke(mapping));
+        assertEquals(void.class, setter.getReturnType());
+        assertEquals(true, mapping.annotationType().getMethod("optional").invoke(mapping));
+        Annotation getter = annotation(AttributeInstanceProxy.class.getDeclaredMethod("getOnDirty", Object.class), "FieldGetter");
+        assertEquals(true, getter.annotationType().getMethod("optional").invoke(getter));
     }
 
     private static void check(Class<?> proxyType, String owner, String method, String field, Class<?> result) throws Exception {

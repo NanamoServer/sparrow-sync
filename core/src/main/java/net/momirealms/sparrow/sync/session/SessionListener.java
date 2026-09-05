@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -53,6 +54,11 @@ public final class SessionListener implements Listener {
                 this.kick(player);
                 return;
             }
+        }
+
+        // 属性回调在 Player apply 前安装, 单实例失败由类型保留普通采集路径.
+        if (this.plugin.dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType attributes) {
+            attributes.injectTracker(player);
         }
 
         this.plugin.logger().file(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SESSION_JOIN);
