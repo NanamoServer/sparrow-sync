@@ -5,6 +5,7 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -18,7 +19,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.util.UUID;
 
 /**
  * 末影箱同步. 原版 27 槽, 但魔改服务端与扩容插件可放大到 54 槽,
@@ -93,13 +93,13 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull ItemCodec.LoadedItems value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull ItemCodec.LoadedItems value) {
         if (value.items().length != FALLBACK_SIZE || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;
         net.minecraft.nbt.ListTag items = ItemCodec.saveNativeItems(value.items());
         playerData.put("EnderItems", items);

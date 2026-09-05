@@ -18,11 +18,13 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.ServerStatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -39,11 +41,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 public final class StatisticsDataType implements NativePlayerDataType<StatisticsDataType.Statistics> {
     public static final DataKey STATISTICS = DataKey.sparrow("statistics");
 
+    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7(); // Paper 在此版本起支持延后构造玩家
     private static final String TYPES_KEY = "types";
     private static final String VALUES_KEY = "values";
     private static final String AMOUNTS_KEY = "amounts";
@@ -155,15 +157,16 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     }
 
     @Override
-    public boolean shouldApply() {
-        return PluginConfig.synchronization$nativeAsyncApply().advancements() && !VersionHelper.isOrAbove1_21_7() && VersionHelper.isPaper();
+    public boolean shouldApply(@NotNull PlayerSession session) {
+        return NATIVE_APPLY_SUPPORTED
+                && PluginConfig.synchronization$nativeAsyncApply().statistics()
+                && ConnectionProxy.INSTANCE.getSavedPlayerForLegacyEvents(session.connection()) == null;
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Statistics value) throws IOException {
-        if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
-        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.STATISTICS, encodeNativeJson(value))) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Statistics value) throws IOException {
+        if (!PlayerJsonStorage.materialize(session.uuid(), PlayerJsonFile.STATISTICS, encodeNativeJson(value))) {
             throw new IOException("atomic statistics JSON replacement failed or is not supported");
         }
         return NativeApplyResult.APPLIED_EXTERNAL;

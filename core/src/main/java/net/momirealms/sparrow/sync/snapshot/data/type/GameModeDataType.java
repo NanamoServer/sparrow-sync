@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -12,7 +13,6 @@ import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.UUID;
 
 public final class GameModeDataType extends CodecDataType<GameMode> implements NativePlayerDataType<GameMode> {
     public static final DataKey GAME_MODE = DataKey.sparrow("game_mode");
@@ -36,13 +36,13 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull GameMode value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull GameMode value) {
         int id = switch (value) {
             case SURVIVAL -> 0;
             case CREATIVE -> 1;

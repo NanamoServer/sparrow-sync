@@ -4,6 +4,7 @@ import com.destroystokyo.paper.profile.PlayerProfile;
 import io.netty.channel.Channel;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent;
+import net.minecraft.network.Connection;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
@@ -65,13 +66,14 @@ public final class PaperEventGate implements LoginGate, Listener {
             }
         }
         if (channel.isActive()) {
-            this.beginLogin(connection, channel, uuid, name);
+            this.beginLogin(connection, listener.connection, uuid, name);
         }
     }
 
     // Paper 在所有监听器返回后继续配置任务, 此处等待异步准备链完成
-    private void beginLogin(PlayerConfigurationConnection connection, Channel channel, UUID uuid, String name) {
-        PlayerSession session = this.sessionManager.tryOpen(uuid, name);
+    private void beginLogin(PlayerConfigurationConnection connection, Connection handle, UUID uuid, String name) {
+        Channel channel = handle.channel;
+        PlayerSession session = this.sessionManager.tryOpen(uuid, name, handle);
         if (session == null) {
             this.rejectTooFast(connection, uuid, name, "another connection won session registration");
             return;

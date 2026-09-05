@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -12,7 +13,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
-import java.util.UUID;
 
 public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> implements NativePlayerDataType<ExperienceDataType.Experience> {
     public static final DataKey EXPERIENCE = DataKey.sparrow("experience");
@@ -42,13 +42,13 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Experience value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Experience value) {
         if (value.total() < 0 || value.level() < 0 || Float.isNaN(value.progress())) return NativeApplyResult.NOT_APPLIED;
         playerData.putInt("XpTotal", value.total());
         playerData.putInt("XpLevel", value.level());

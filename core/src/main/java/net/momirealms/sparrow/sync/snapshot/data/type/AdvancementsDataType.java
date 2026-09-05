@@ -9,10 +9,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.nbt.*;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.*;
+import net.momirealms.sparrow.sync.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -35,6 +37,7 @@ import java.util.function.Consumer;
 public final class AdvancementsDataType implements NativePlayerDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
 
+    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7(); // Paper 在此版本起支持延后构造玩家
     private static final String IDS_KEY = "ids";
     private static final String CRITERIA_KEY = "criteria";
     private static final String COUNTS_KEY = "counts";
@@ -378,13 +381,16 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     @Override
-    public boolean shouldApply() {
-        return PluginConfig.synchronization$nativeAsyncApply().advancements() && !VersionHelper.isOrAbove1_21_7() && VersionHelper.isPaper();
+    public boolean shouldApply(@NotNull PlayerSession session) {
+        // 提前构造的 PlayerAdvancements 已读取本地 JSON, 需要在 Join 应用到现有对象
+        return NATIVE_APPLY_SUPPORTED
+                && PluginConfig.synchronization$nativeAsyncApply().advancements()
+                && ConnectionProxy.INSTANCE.getSavedPlayerForLegacyEvents(session.connection()) == null;
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
         AdvancementSlots.Layout layout = null;
         // 如果获取不到 Layout 就回退到普通 Apply
         if (PluginConfig.synchronization$advancements().keepUnknownAdvancements()) {
@@ -393,7 +399,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         }
         // 将结果写入 Json
         NativeEncoding encoded = encodeNativeJson(value, layout);
-        if (!PlayerJsonStorage.materialize(player, PlayerJsonFile.ADVANCEMENTS, encoded.json())) {
+        if (!PlayerJsonStorage.materialize(session.uuid(), PlayerJsonFile.ADVANCEMENTS, encoded.json())) {
             throw new IOException("atomic advancements JSON replacement failed or is not supported");
         }
         // 根据设置情况交接未知成就

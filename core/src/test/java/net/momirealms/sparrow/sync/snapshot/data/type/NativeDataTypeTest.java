@@ -10,6 +10,8 @@ import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
+import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.AttributeValue;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.Attributes;
@@ -20,6 +22,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthScaleDataType.Health
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType.Hunger;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType.Inventory;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType.PlayerLocation;
+import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
@@ -45,6 +48,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class NativeDataTypeTest {
     private static final UUID PLAYER = new UUID(0L, 0L);
 
+    private final PlayerSession session = new SessionManager(null).tryOpen(PLAYER, "Steve", ConnectionFixture.create());
+
     @Test
     void foodDataProxyReadsAndWritesPrivateTickTimer() {
         BukkitProxy.init("1.21.8", List.of("paper"));
@@ -60,10 +65,10 @@ class NativeDataTypeTest {
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
         playerData.putInt("foodTickTimer", 17);
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new ExperienceDataType().applyNative(PLAYER, playerData, new Experience(1200, 31, 1.5f)));
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new EnchantmentSeedDataType().applyNative(PLAYER, playerData, 13579));
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new HungerDataType().applyNative(PLAYER, playerData, new Hunger(18, 4.5f, 0.75f, 43)));
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new GameModeDataType().applyNative(PLAYER, playerData, GameMode.CREATIVE));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new ExperienceDataType().applyNative(this.session, playerData, new Experience(1200, 31, 1.5f)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new EnchantmentSeedDataType().applyNative(this.session, playerData, 13579));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new HungerDataType().applyNative(this.session, playerData, new Hunger(18, 4.5f, 0.75f, 43)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new GameModeDataType().applyNative(this.session, playerData, GameMode.CREATIVE));
 
         CompoundTag stored = compound(playerData);
         assertEquals(1200, stored.getInt("XpTotal"));
@@ -82,7 +87,7 @@ class NativeDataTypeTest {
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
         playerData.putInt("XpSeed", 42);
 
-        assertEquals(NativeApplyResult.NOT_APPLIED, new EnchantmentSeedDataType().applyNative(PLAYER, playerData, 0));
+        assertEquals(NativeApplyResult.NOT_APPLIED, new EnchantmentSeedDataType().applyNative(this.session, playerData, 0));
 
         assertEquals(42, compound(playerData).getInt("XpSeed"));
     }
@@ -93,7 +98,7 @@ class NativeDataTypeTest {
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
         playerData.putShort("DeathTime", (short) 19);
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(PLAYER, playerData, new Health(16.5)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new Health(16.5)));
 
         CompoundTag stored = compound(playerData);
         assertEquals(16.5f, stored.getFloat("Health"));
@@ -116,7 +121,7 @@ class NativeDataTypeTest {
         PotionEffectsDataType type = allocateWithoutConstructor(PotionEffectsDataType.class);
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(PLAYER, playerData, List.of()));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, List.of()));
 
         assertEquals(0, assertInstanceOf(ListTag.class, sparrow(playerData.get("active_effects"))).size());
     }
@@ -126,12 +131,12 @@ class NativeDataTypeTest {
         EnderChestDataType type = allocateWithoutConstructor(EnderChestDataType.class);
         net.minecraft.nbt.CompoundTag standard = new net.minecraft.nbt.CompoundTag();
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(PLAYER, standard, new ItemCodec.LoadedItems(new ItemStack[27], 0)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, standard, new ItemCodec.LoadedItems(new ItemStack[27], 0)));
         assertEquals(0, assertInstanceOf(ListTag.class, sparrow(standard.get("EnderItems"))).size());
 
         net.minecraft.nbt.CompoundTag expanded = new net.minecraft.nbt.CompoundTag();
         expanded.putInt("marker", 1);
-        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(PLAYER, expanded, new ItemCodec.LoadedItems(new ItemStack[54], 0)));
+        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, expanded, new ItemCodec.LoadedItems(new ItemStack[54], 0)));
         assertNull(expanded.get("EnderItems"));
         assertEquals(1, compound(expanded).getInt("marker"));
     }
@@ -149,7 +154,7 @@ class NativeDataTypeTest {
             playerData.put("equipment", equipment);
         }
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(PLAYER, playerData, new Inventory(new ItemStack[nativeSize], 6, 0)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new Inventory(new ItemStack[nativeSize], 6, 0)));
 
         CompoundTag stored = compound(playerData);
         assertEquals(0, stored.getList("Inventory").size());
@@ -162,7 +167,7 @@ class NativeDataTypeTest {
         }
 
         net.minecraft.nbt.CompoundTag mismatched = new net.minecraft.nbt.CompoundTag();
-        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(PLAYER, mismatched, new Inventory(new ItemStack[nativeSize == 43 ? 41 : 43], 0, 0)));
+        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, mismatched, new Inventory(new ItemStack[nativeSize == 43 ? 41 : 43], 0, 0)));
         assertNull(mismatched.get("Inventory"));
     }
 
@@ -219,7 +224,7 @@ class NativeDataTypeTest {
         playerData.putLong("WorldUUIDMost", 12L);
         playerData.putLong("WorldUUIDLeast", 34L);
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(PLAYER, playerData, new PlayerLocation("target", 12.5, 70.0, -4.25, 90.0f, -15.0f)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new PlayerLocation("target", 12.5, 70.0, -4.25, 90.0f, -15.0f)));
 
         CompoundTag stored = compound(playerData);
         assertEquals("target", stored.getString("world"));
@@ -237,8 +242,8 @@ class NativeDataTypeTest {
 
         net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
         playerData.putInt("marker", 1);
-        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(PLAYER, playerData, new PlayerLocation("target", Double.NaN, 0.0, 0.0, 0.0f, 0.0f)));
-        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(PLAYER, playerData, new PlayerLocation("", 0.0, 0.0, 0.0, 0.0f, 0.0f)));
+        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, playerData, new PlayerLocation("target", Double.NaN, 0.0, 0.0, 0.0f, 0.0f)));
+        assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, playerData, new PlayerLocation("", 0.0, 0.0, 0.0, 0.0f, 0.0f)));
         assertEquals(1, compound(playerData).getInt("marker"));
         assertNull(playerData.get("world"));
         assertNull(playerData.get("Pos"));

@@ -7,6 +7,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.PDCMergeBlacklist;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -17,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.UUID;
 
 public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt.CompoundTag> {
     public static final DataKey PERSISTENT_DATA = DataKey.sparrow("persistent_data");
@@ -101,13 +101,13 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
         net.minecraft.nbt.Tag current = playerData.get("BukkitValues");
         net.minecraft.nbt.CompoundTag merged = current instanceof net.minecraft.nbt.CompoundTag compound
                 ? compound.copy()

@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataEntry;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -18,15 +19,17 @@ public final class PlayerSession implements PlayerDataEntry {
 
     private final UUID uuid;
     private final String playerName;
+    private final Connection connection; // 随会话保留到最终保存和解锁结束
     private final CompletableFuture<Void> released = new CompletableFuture<>(); // 会话从注册表移除后完成
     private SessionState state = SessionState.PREPARING;
     private LoginDataState loginDataState = new LoginDataState.Preloading();
     private Map<DataKey, Tag> retainedData = Map.of(); // 本服不认识或已关闭的数据类型, 保存时原样写回快照
     private String lockToken; // 分布式锁的持有值, 释放时原样传回
 
-    PlayerSession(@NotNull UUID uuid, @NotNull String playerName) {
+    PlayerSession(@NotNull UUID uuid, @NotNull String playerName, @NotNull Connection connection) {
         this.uuid = uuid;
         this.playerName = playerName;
+        this.connection = connection;
     }
 
     @NotNull
@@ -37,6 +40,11 @@ public final class PlayerSession implements PlayerDataEntry {
     @NotNull
     public String playerName() {
         return this.playerName;
+    }
+
+    @NotNull
+    public Connection connection() {
+        return this.connection;
     }
 
     @NotNull

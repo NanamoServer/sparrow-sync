@@ -2,16 +2,20 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.network.Connection;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
@@ -30,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -48,6 +53,7 @@ class PlayerDataPipelineTest {
     private final List<DataKey> applied = new ArrayList<>();
     private final List<DataKey> nativeApplied = new ArrayList<>();
     private final List<DataKey> nativeAttempts = new ArrayList<>();
+    private final Connection connection = ConnectionFixture.create();
     private final Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> switch (method.getName()) {
         case "getName", "toString" -> "TestPlayer";
         case "getUniqueId" -> UUID.fromString("00000000-0000-0000-0000-000000000042");
@@ -55,6 +61,8 @@ class PlayerDataPipelineTest {
         case "equals" -> proxy == args[0];
         default -> throw new UnsupportedOperationException(method.getName());
     });
+
+    private final PlayerSession session = new SessionManager(null).tryOpen(this.player.getUniqueId(), this.player.getName(), this.connection);
 
     @Test
     void captureSkipsFailingNonCriticalType() {
@@ -211,7 +219,7 @@ class PlayerDataPipelineTest {
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
         CompoundTag local = new CompoundTag();
 
-        Optional<CompoundTag> resultTag = pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(local), context);
+        Optional<CompoundTag> resultTag = pipeline.applyNative(this.session, Optional.of(local), context);
 
         assertSame(local, resultTag.orElseThrow());
         assertEquals(List.of(ALPHA), this.nativeApplied);
@@ -234,7 +242,7 @@ class PlayerDataPipelineTest {
         CompoundTag local = new CompoundTag();
         local.putString("local", "kept");
 
-        pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(local), context);
+        pipeline.applyNative(this.session, Optional.of(local), context);
 
         assertFalse(local.contains(ALPHA.asString()));
         assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
@@ -243,11 +251,54 @@ class PlayerDataPipelineTest {
     }
 
     @Test
+    void ineligibleExternalTypeStaysPendingWhilePlayerDataIsApplied() {
+        NativeFakeType external = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative();
+        external.nativeEligibility = session -> {
+            assertSame(this.session, session);
+            assertSame(this.connection, session.connection());
+            return false;
+        };
+        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of()));
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
+        Object pendingValue = context.pendingValues().get(ALPHA);
+
+        CompoundTag playerData = pipeline.applyNative(this.session, Optional.empty(), context).orElseThrow();
+
+        assertEquals(List.of(BRAVO), this.nativeAttempts);
+        assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
+        assertSame(pendingValue, context.pendingValues().get(ALPHA));
+        assertEquals(List.of(), context.failures());
+        assertFalse(playerData.contains(ALPHA.asString()));
+        assertTrue(playerData.contains(BRAVO.asString()));
+
+        assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
+        assertEquals(List.of(ALPHA), this.applied);
+    }
+
+    @Test
+    void eligibilityFailureFallsBackAndContinuesOtherNativeTypes() {
+        NativeFakeType external = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative();
+        external.nativeEligibility = session -> {
+            throw new LinkageError("legacy player field unavailable");
+        };
+        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of()));
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
+
+        pipeline.applyNative(this.session, Optional.empty(), context);
+
+        assertEquals(List.of(BRAVO), this.nativeAttempts);
+        assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
+        assertEquals(List.of(SnapshotApplyContext.FailureStage.NATIVE), context.failures().stream().map(SnapshotApplyContext.Failure::stage).toList());
+        assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
+        assertEquals(List.of(ALPHA), this.applied);
+    }
+
+    @Test
     void externalNativeSuccessDoesNotPublishSyntheticPlayerData() {
         PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative());
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
 
-        Optional<CompoundTag> playerData = pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context);
+        Optional<CompoundTag> playerData = pipeline.applyNative(this.session, Optional.empty(), context);
         PlayerDataPipeline.ApplyResult.Success result = assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, pipeline.apply(this.player, context));
 
         assertTrue(playerData.isEmpty());
@@ -268,7 +319,7 @@ class PlayerDataPipelineTest {
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE));
 
-        Optional<CompoundTag> playerData = pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context);
+        Optional<CompoundTag> playerData = pipeline.applyNative(this.session, Optional.empty(), context);
 
         assertTrue(playerData.isPresent());
         assertEquals(List.of(), this.applied);
@@ -290,7 +341,7 @@ class PlayerDataPipelineTest {
                 new FakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA))
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
-        assertTrue(pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), context).isEmpty());
+        assertTrue(pipeline.applyNative(this.session, Optional.empty(), context).isEmpty());
 
         PlayerDataPipeline.ApplyResult result = pipeline.apply(this.player, context);
 
@@ -314,7 +365,7 @@ class PlayerDataPipelineTest {
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE));
 
-        pipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.of(new CompoundTag()), context);
+        pipeline.applyNative(this.session, Optional.of(new CompoundTag()), context);
 
         assertEquals(List.of(ALPHA, BRAVO, CHARLIE), this.nativeAttempts);
         assertEquals(List.of(CHARLIE), this.nativeApplied);
@@ -333,11 +384,11 @@ class PlayerDataPipelineTest {
         PlayerDataPipeline joinOnly = this.createPipeline(new FakeType(ALPHA, StorageFormat.STRUCTURED));
         SnapshotApplyContext joinOnlyContext = context(joinOnly, snapshotWith(ALPHA));
 
-        assertTrue(joinOnly.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), joinOnlyContext).isEmpty());
+        assertTrue(joinOnly.applyNative(this.session, Optional.empty(), joinOnlyContext).isEmpty());
 
         PlayerDataPipeline nativePipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()));
         SnapshotApplyContext nativeContext = context(nativePipeline, snapshotWith(ALPHA));
-        CompoundTag root = nativePipeline.applyNative(this.player.getUniqueId(), this.player.getName(), Optional.empty(), nativeContext).orElseThrow();
+        CompoundTag root = nativePipeline.applyNative(this.session, Optional.empty(), nativeContext).orElseThrow();
 
         assertTrue(root.contains("DataVersion"));
         assertTrue(assertInstanceOf(CompoundTag.class, root.get("bukkit")).contains("firstPlayed"));
@@ -511,6 +562,7 @@ class PlayerDataPipelineTest {
     private final class NativeFakeType extends FakeType implements NativePlayerDataType<String> {
         private NativeApplyResult nativeResult = NativeApplyResult.APPLIED_PLAYER_DATA;
         private boolean nativeFails;
+        private Predicate<PlayerSession> nativeEligibility = session -> true;
 
         private NativeFakeType(DataKey key, StorageFormat storage, boolean critical, Set<DataKey> dependencies) {
             super(key, storage, critical, dependencies);
@@ -537,13 +589,15 @@ class PlayerDataPipelineTest {
         }
 
         @Override
-        public boolean shouldApply() {
-            return true;
+        public boolean shouldApply(@NotNull PlayerSession session) {
+            assertSame(PlayerDataPipelineTest.this.session, session);
+            return this.nativeEligibility.test(session);
         }
 
         @Override
         @NotNull
-        public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull String value) {
+        public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull String value) {
+            assertSame(PlayerDataPipelineTest.this.session, session);
             PlayerDataPipelineTest.this.nativeAttempts.add(this.key());
             if (this.nativeFails) throw new IllegalStateException("native failed");
             if (this.nativeResult.target() == NativeApplyResult.Target.NOT_APPLIED) return this.nativeResult;

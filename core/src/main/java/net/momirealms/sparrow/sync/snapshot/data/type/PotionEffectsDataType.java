@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -16,13 +17,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
-/**
- * 药水效果同步, 经 NMS MobEffectInstance CODEC 序列化以保留递归的隐藏效果链
- * (力量 III 压住的力量 II 在 III 过期后恢复, Bukkit 的 addPotionEffect 无法直接重建该链).
- * ambient 效果 (信标, 潮涌核心) 由环境持续施加, 按顶层过滤不采集; 应用时清空现有效果后逐个放入.
- */
 public final class PotionEffectsDataType extends CodecDataType<List<MobEffectInstance>> implements NativePlayerDataType<List<MobEffectInstance>> {
     public static final DataKey POTION_EFFECTS = DataKey.sparrow("potion_effects");
 
@@ -37,7 +32,7 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
         List<MobEffectInstance> effects = new ArrayList<>();
         for (MobEffectInstance instance : handle(player).getActiveEffects()) {
             if (instance.isAmbient()) continue;
-            effects.add(copyOf(instance)); // todo 我觉得得分同步采集和异步采集2个方法, 不然同步采集也复制不好.
+            effects.add(copyOf(instance));
         }
         return effects;
     }
@@ -54,13 +49,13 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
         net.minecraft.nbt.Tag effects = value.isEmpty()
                 ? new net.minecraft.nbt.ListTag()
                 : NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, this.encode(value));

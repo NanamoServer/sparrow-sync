@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -9,6 +10,7 @@ import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
+import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
@@ -27,6 +29,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerSessionTest {
+    private final Connection connection = ConnectionFixture.create();
+
+    @Test
+    void identityAndConnectionAreBoundAtConstruction() {
+        UUID uuid = UUID.randomUUID();
+        PlayerSession session = new PlayerSession(uuid, "Steve", this.connection);
+
+        assertEquals(uuid, session.uuid());
+        assertEquals("Steve", session.playerName());
+        assertSame(this.connection, session.connection());
+    }
 
     @Test
     void transitionMatrixMatchesLifecycle() {
@@ -68,7 +81,7 @@ class PlayerSessionTest {
 
     @Test
     void illegalTransitionThrowsAndKeepsState() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
 
         assertThrows(IllegalStateException.class, () -> session.transition(SessionState.SAVING));
         assertEquals(SessionState.PREPARING, session.state());
@@ -76,7 +89,7 @@ class PlayerSessionTest {
 
     @Test
     void tryTransitionFailsOnStaleExpectation() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         session.transition(SessionState.APPLYING);
 
         assertFalse(session.tryTransition(SessionState.PREPARING, SessionState.APPLYING));
@@ -87,7 +100,7 @@ class PlayerSessionTest {
     void concurrentTransitionAdmitsExactlyOneWinner() throws InterruptedException {
         // 并发争抢 PREPARING -> CLOSED (断线清理) 与 PREPARING -> APPLYING (应用段), 恰有一方赢
         for (int round = 0; round < 100; round++) {
-            PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+            PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
             CountDownLatch start = new CountDownLatch(1);
             AtomicInteger winners = new AtomicInteger();
             Runnable closer = () -> {
@@ -112,7 +125,7 @@ class PlayerSessionTest {
 
     @Test
     void loginDataPublishesAndConsumesPlayerDataWithSnapshotAtomically() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         DataKey unknown = DataKey.of("other", "unknown");
         Map<DataKey, Tag> passthrough = Map.of(unknown, NBT.createString("retained"));
         Snapshot snapshot = new Snapshot(SnapshotMeta.builder()
@@ -143,7 +156,7 @@ class PlayerSessionTest {
 
     @Test
     void readyPlayerDataCanBeLoadedMoreThanOnce() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         Optional<CompoundTag> playerData = Optional.of(new CompoundTag());
 
         assertInstanceOf(LoginDataState.Ready.class, session.publishLoginData(new PlayerDataPreload.Ready(playerData), null, 0L, 0L));
@@ -162,7 +175,7 @@ class PlayerSessionTest {
 
     @Test
     void emptyPlayerDataIsStillAReadyCacheHit() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         Optional<CompoundTag> empty = Optional.empty();
 
         session.publishLoginData(new PlayerDataPreload.Ready(empty), null, 0L, 0L);
@@ -173,7 +186,7 @@ class PlayerSessionTest {
 
     @Test
     void failedLocalLoadPublishesAnEmptyReadyCache() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
 
         session.publishLoginData(new PlayerDataPreload.Fallback(), null, 0L, 0L);
 
@@ -183,7 +196,7 @@ class PlayerSessionTest {
 
     @Test
     void unservedReadyPlayerDataReportsZeroLoads() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         session.publishLoginData(new PlayerDataPreload.Ready(Optional.of(new CompoundTag())), null, 0L, 0L);
 
         assertEquals(0, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());
@@ -191,7 +204,7 @@ class PlayerSessionTest {
 
     @Test
     void earlyPlayerDataLoadFallsBackAndRejectsPublication() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         Optional<CompoundTag> original = Optional.of(new CompoundTag());
 
         assertSame(original, session.loadPlayerData(() -> original));
@@ -203,7 +216,7 @@ class PlayerSessionTest {
 
     @Test
     void firstPlayerDataFailureWins() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
 
         assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("first")).detail());
         assertEquals("first", assertInstanceOf(LoginDataState.Failed.class, session.failLoginData("second")).detail());
@@ -212,7 +225,7 @@ class PlayerSessionTest {
 
     @Test
     void clearedPlayerDataRejectsLatePublication() {
-        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve");
+        PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         session.finishLoginData();
 
         assertInstanceOf(LoginDataState.Cleared.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L));

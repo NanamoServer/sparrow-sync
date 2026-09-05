@@ -5,6 +5,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -14,7 +15,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
-import java.util.UUID;
 
 public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> implements NativePlayerDataType<HungerDataType.Hunger> {
     public static final DataKey HUNGER = DataKey.sparrow("hunger");
@@ -49,13 +49,13 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull Hunger value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Hunger value) {
         playerData.putInt("foodLevel", value.food());
         playerData.putFloat("foodSaturationLevel", value.saturation());
         playerData.putFloat("foodExhaustionLevel", value.exhaustion());

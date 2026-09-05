@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -20,9 +20,10 @@ import java.util.function.Consumer;
 public interface NativePlayerDataType<T> extends PlayerDataType<T> {
 
     /**
-     * 是否应该执行 applyNative, 主要用于检查配置选项开关和不符合条件的服务端跳过.
+     * 根据配置、服务端能力和会话绑定的登录连接判断是否执行 applyNative.
+     * <strong>调用期间 Gate 保持拦截状态</strong>, 返回 false 的数据留到 Join 应用.
      */
-    boolean shouldApply();
+    boolean shouldApply(@NotNull PlayerSession session);
 
     /**
      * 把本类型安装到原版登录读取的数据源.
@@ -32,7 +33,7 @@ public interface NativePlayerDataType<T> extends PlayerDataType<T> {
      * @throws IOException 当外部原生数据源写入失败时
      */
     @NotNull
-    NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull T value) throws IOException;
+    NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull T value) throws IOException;
 
     /** joinHandoff 在玩家线程按类型依赖顺序执行一次, 执行后随槽位释放. */
     record NativeApplyResult(@NotNull Target target, @Nullable Consumer<Player> joinHandoff) {

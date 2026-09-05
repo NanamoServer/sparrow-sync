@@ -64,8 +64,8 @@ public final class SnapshotService {
 
     /** 在 Gate 阶段把远端快照写入原版登录数据源. */
     @NotNull
-    Optional<CompoundTag> applyNative(@NotNull UUID player, @NotNull String playerName, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
-        return this.playerDataPipeline.applyNative(player, playerName, localData, loaded.context());
+    Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
+        return this.playerDataPipeline.applyNative(session, localData, loaded.context());
     }
 
     /**

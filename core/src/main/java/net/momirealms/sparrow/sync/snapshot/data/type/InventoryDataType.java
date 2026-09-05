@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -22,7 +23,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 背包同步: 全部槽位 (含盔甲、副手及 1.21.5 起的 body/saddle) 与手持槽位.
@@ -107,13 +107,13 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Inventory value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Inventory value) {
         boolean equipmentFormat = VersionHelper.isOrAbove1_21_5();
         int expectedSize = equipmentFormat ? EQUIPMENT_SIZE : LEGACY_SIZE;
         if (value.contents().length != expectedSize || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;

@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -143,7 +144,7 @@ public final class PlayerDataPipeline {
 
     /** 在 Gate 阶段把可原生表达的 pending 槽位写入原版登录数据源. */
     @NotNull
-    public Optional<CompoundTag> applyNative(@NotNull UUID player, @NotNull String playerName, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
+    public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
         // 本地 .dat 是写入基底, 本地为空时先建立可丢弃的候选根 tag
         CompoundTag working = playerData.orElseGet(CompoundTag::new);
         boolean synthetic = playerData.isEmpty();
@@ -159,16 +160,17 @@ public final class PlayerDataPipeline {
         for (int i = 0; i < size; i++) {
             if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING) continue;
             NativePlayerDataType<?> nativeType = this.dataRegistry.nativeTypeAt(i);
-            if (nativeType == null || !nativeType.shouldApply()) continue;
+            if (nativeType == null) continue;
             try {
-                NativePlayerDataType.NativeApplyResult result = applyNativeValue(nativeType, player, working, context.valueAt(i));
+                if (!nativeType.shouldApply(session)) continue;
+                NativePlayerDataType.NativeApplyResult result = applyNativeValue(nativeType, session, working, context.valueAt(i));
                 if (result.target() == NativePlayerDataType.NativeApplyResult.Target.NOT_APPLIED) continue;
                 context.appliedNative(i, result.joinHandoff());
                 if (result.target() == NativePlayerDataType.NativeApplyResult.Target.APPLIED) playerDataApplied = true;
             } catch (Throwable throwable) {
                 // 异常槽位保持 PENDING, Join 可以回退应用并且后续 Native 类型继续执行
                 context.nativeFailed(i, throwable);
-                this.logger.warn(LogCategory.DATA, player, playerName, throwable, LogConstants.DATA_NATIVE_APPLY_FALLBACK, this.dataRegistry.keyAt(i).asString(), playerName);
+                this.logger.warn(LogCategory.DATA, session.uuid(), session.playerName(), throwable, LogConstants.DATA_NATIVE_APPLY_FALLBACK, this.dataRegistry.keyAt(i).asString(), session.playerName());
             }
         }
         // 没有 .dat 字段成功写入时丢弃候选根 tag, 玩家仍保持原版的新玩家语义
@@ -224,8 +226,8 @@ public final class PlayerDataPipeline {
 
     // Native 类型数组与 Context 共用冻结槽位, 这里恢复 applyNative 所需的 T
     @SuppressWarnings("unchecked")
-    private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, UUID player, CompoundTag playerData, Object value) throws IOException {
-        return type.applyNative(player, playerData, (T) value);
+    private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, PlayerSession session, CompoundTag playerData, Object value) throws IOException {
+        return type.applyNative(session, playerData, (T) value);
     }
 
     /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */

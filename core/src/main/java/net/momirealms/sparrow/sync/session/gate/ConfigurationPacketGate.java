@@ -95,7 +95,7 @@ public final class ConfigurationPacketGate implements LoginGate {
 
     // 原子注册会话并启动配置阶段的数据准备
     private void beginLogin(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
-        PlayerSession session = this.sessionManager.tryOpen(uuid, name);
+        PlayerSession session = this.sessionManager.tryOpen(uuid, name, listener.connection);
         if (session == null) {
             this.rejectTooFast(listener, uuid, name, "another connection won session registration");
             return;

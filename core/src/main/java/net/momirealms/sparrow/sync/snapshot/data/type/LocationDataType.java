@@ -9,6 +9,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
@@ -20,7 +21,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 public final class LocationDataType extends CodecDataType<LocationDataType.PlayerLocation> implements NativePlayerDataType<LocationDataType.PlayerLocation> {
     public static final DataKey LOCATION = DataKey.sparrow("location");
@@ -55,13 +55,13 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
     }
 
     @Override
-    public boolean shouldApply() {
+    public boolean shouldApply(@NotNull PlayerSession session) {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull PlayerLocation value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull PlayerLocation value) {
         if (value.world().isEmpty() || !Double.isFinite(value.x()) || !Double.isFinite(value.y()) || !Double.isFinite(value.z()) || !Float.isFinite(value.yaw()) || !Float.isFinite(value.pitch())) return NativeApplyResult.NOT_APPLIED;
 
         ListTag position = new ListTag();

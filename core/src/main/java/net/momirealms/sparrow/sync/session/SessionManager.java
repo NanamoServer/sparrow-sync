@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.event.PreApplyEvent;
@@ -58,9 +59,9 @@ public final class SessionManager {
     }
 
     @Nullable
-    public synchronized PlayerSession tryOpen(@NotNull UUID player, @NotNull String playerName) {
+    public synchronized PlayerSession tryOpen(@NotNull UUID player, @NotNull String playerName, @NotNull Connection connection) {
         if (!this.accepting) return null;
-        PlayerSession session = new PlayerSession(player, playerName);
+        PlayerSession session = new PlayerSession(player, playerName, connection);
         return this.sessions.putIfAbsent(player, session) == null ? session : null;
     }
 
@@ -106,7 +107,7 @@ public final class SessionManager {
             if (nativeApply && loadedSnapshot != null) {
                 Optional<CompoundTag> localData = local instanceof PlayerDataPreload.Ready(Optional<CompoundTag> data) ? data : Optional.empty();
                 long nativeApplyStart = System.nanoTime();
-                preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session.uuid(), session.playerName(), localData, loadedSnapshot));
+                preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session, localData, loadedSnapshot));
                 nativeApplyNanos = System.nanoTime() - nativeApplyStart;
             }
             // 发布与 abort 共用 Session 监视器, 缓存和快照一起提交
