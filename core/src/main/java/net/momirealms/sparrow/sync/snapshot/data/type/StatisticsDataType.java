@@ -2,17 +2,23 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.google.gson.JsonObject;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.protocol.game.ClientboundAwardStatsPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.StatType;
 import net.minecraft.stats.Stats;
-import net.momirealms.sparrow.nbt.*;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.IntArrayTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.stats.ServerStatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
@@ -31,6 +37,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class StatisticsDataType implements NativePlayerDataType<StatisticsDataType.Statistics> {
@@ -56,15 +63,12 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     @NotNull
     public Statistics capture(@NotNull Player player) {
         Object2IntMap<Stat<?>> values = stats(handle(player).getStats());
+        Statistics captured;
+        int size;
         synchronized (values) {
-            int count = 0;
-            for (Object2IntMap.Entry<Stat<?>> entry : values.object2IntEntrySet()) {
-                if (entry.getIntValue() != 0) {
-                    count++;
-                }
-            }
-            Stat<?>[] statistics = new Stat<?>[count];
-            int[] amounts = new int[count];
+            size = values.size();
+            Stat<?>[] statistics = new Stat<?>[size];
+            int[] amounts = new int[size];
             int index = 0;
             for (Object2IntMap.Entry<Stat<?>> entry : values.object2IntEntrySet()) {
                 int amount = entry.getIntValue();
@@ -75,8 +79,13 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
                 amounts[index] = amount;
                 index++;
             }
-            return new Statistics(statistics, amounts);
+            if (index < size) {
+                statistics = Arrays.copyOf(statistics, index);
+                amounts = Arrays.copyOf(amounts, index);
+            }
+            captured = new Statistics(statistics, amounts);
         }
+        return captured;
     }
 
     @Override
@@ -154,7 +163,6 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
         return NativeApplyResult.APPLIED_EXTERNAL;
     }
 
-    @NotNull
     private static byte[] encodeNativeJson(@NotNull Statistics value) {
         JsonObject groups = new JsonObject();
         Stat<?>[] statistics = value.statistics();
@@ -164,6 +172,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
             if (amount == 0) continue;
             Stat<?> statistic = statistics[i];
             String typeName = registryKey(BuiltInRegistries.STAT_TYPE, statistic.getType()).toString();
+            String valueName = registryKey(statistic.getType().getRegistry(), statistic.getValue()).toString();
             JsonObject entries;
             if (groups.get(typeName) instanceof JsonObject group) {
                 entries = group;
@@ -171,7 +180,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
                 entries = new JsonObject();
                 groups.add(typeName, entries);
             }
-            entries.addProperty(registryKey(statistic.getType().getRegistry(), statistic.getValue()).toString(), amount);
+            entries.addProperty(valueName, amount);
         }
         JsonObject root = new JsonObject();
         root.add("stats", groups);
@@ -180,33 +189,39 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public void apply(@NotNull Player player, @NotNull Statistics value) {
         ServerPlayer handle = handle(player);
         ServerStatsCounter counter = handle.getStats();
         Object2IntMap<Stat<?>> current = stats(counter);
-        synchronized (current) {
-            // 先把旧键标脏, 在线恢复时被清除的统计也必须向客户端发送零值
-            counter.markAllDirty();
-            replace(current, value);
-            counter.markAllDirty();
-        }
-        counter.sendStats(handle);
-    }
-
-    private static void replace(Object2IntMap<Stat<?>> current, Statistics value) {
-        current.clear();
+        Set<Stat<?>> dirty = (Set<Stat<?>>) ServerStatsCounterProxy.INSTANCE.getDirty(counter);
         Stat<?>[] statistics = value.statistics();
         int[] amounts = value.amounts();
-        for (int i = 0; i < statistics.length; i++) {
-            Stat<?> statistic = statistics[i];
-            int amount = amounts[i];
-            if (amount != 0 && forcedAmount(statistic) == null) current.put(statistic, amount);
+        Object2IntMap<Stat<?>> packet;
+        synchronized (current) {
+            packet = new Object2IntOpenHashMap<>(Math.max(current.size(), statistics.length));
+            // 客户端按键更新统计, 被清除的旧值与已有 dirty 键都需要显式发送零值.
+            for (Stat<?> statistic : current.keySet()) packet.put(statistic, 0);
+            for (Stat<?> statistic : dirty) packet.put(statistic, 0);
+            current.clear();
+            for (int i = 0; i < statistics.length; i++) {
+                int amount = amounts[i];
+                if (amount == 0) continue;
+                Stat<?> statistic = statistics[i];
+                current.put(statistic, amount);
+                packet.put(statistic, amount);
+            }
+            // forced stats 在原版读取后覆盖文件值, Player 回退沿用同一结果.
+            for (Map.Entry<Object, Integer> entry : forcedStats().entrySet()) {
+                Stat<?> statistic = forcedStatistic(entry.getKey());
+                if (statistic == null) continue;
+                int amount = entry.getValue();
+                current.put(statistic, amount);
+                packet.put(statistic, amount);
+            }
+            dirty.clear();
         }
-        // forced stats 在原版读取后覆盖文件值, Player 回退沿用同一结果
-        for (Map.Entry<Object, Integer> entry : forcedStats().entrySet()) {
-            Stat<?> statistic = forcedStatistic(entry.getKey());
-            if (statistic != null) current.put(statistic, entry.getValue().intValue());
-        }
+        handle.connection.send(new ClientboundAwardStatsPacket(packet));
     }
 
     @SuppressWarnings("unchecked")
@@ -216,13 +231,6 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
 
     private static Object registryKey(Registry<?> registry, Object value) {
         return RegistryProxy.INSTANCE.getKey(registry, value);
-    }
-
-    @Nullable
-    private static Integer forcedAmount(Stat<?> statistic) {
-        if (statistic.getType() != Stats.CUSTOM) return null;
-        Object key = registryKey(BuiltInRegistries.CUSTOM_STAT, statistic.getValue());
-        return forcedStats().get(key);
     }
 
     @Nullable

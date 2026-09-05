@@ -36,12 +36,12 @@ public final class PlayerJsonStorage {
             Files.write(temporary, json, StandardOpenOption.TRUNCATE_EXISTING);
             try {
                 Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                return true;
             } catch (IOException ignored) {
                 return false;
             }
         } finally {
             Files.deleteIfExists(temporary);
         }
+        return true;
     }
 }
