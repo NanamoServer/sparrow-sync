@@ -492,13 +492,16 @@ class AdvancementsDataTypeTest {
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
 
         Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
-        fixture.tracking.clear();
+        // 调用真实 NMS flush, 验证客户端 dirty 清理不会使保存缓存失效
+        fixture.player.getHandle().getAdvancements().flushDirty(fixture.player.getHandle(), false);
+        assertTrue(fixture.tracking.isEmpty());
         assertSame(before, fixture.type.capture(fixture.player, CaptureMode.SYNC));
         assertEquals(1, first.captures);
         assertEquals(1, second.captures);
 
         CriterionProgressProxy.INSTANCE.setObtained(first.getCriterion("done"), original.plusSeconds(5));
         fixture.tracking.add(firstHolder);
+        fixture.player.getHandle().getAdvancements().flushDirty(fixture.player.getHandle(), false);
         Advancements after = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(2, first.captures);
@@ -896,11 +899,8 @@ class AdvancementsDataTypeTest {
     }
 
     private static void setKeepUnknownAdvancements(boolean value) throws ReflectiveOperationException {
-        PluginConfig.ConfigDefinition config = (PluginConfig.ConfigDefinition) pluginConfigField.get(null);
-        Field synchronization = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
-        synchronization.setAccessible(true);
-        Object options = synchronization.get(config);
-        Field keepUnknown = options.getClass().getDeclaredField("keepUnknownAdvancements");
+        PluginConfig.AdvancementsOptions options = PluginConfig.synchronization$advancements();
+        Field keepUnknown = PluginConfig.AdvancementsOptions.class.getDeclaredField("keepUnknownAdvancements");
         keepUnknown.setAccessible(true);
         keepUnknown.setBoolean(options, value);
     }

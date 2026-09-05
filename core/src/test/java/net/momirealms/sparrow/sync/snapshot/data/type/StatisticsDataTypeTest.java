@@ -48,6 +48,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,6 +104,35 @@ class StatisticsDataTypeTest {
 
         assertEquals(Map.of(playTime, 1200, stone, 64), values(captured));
         assertEquals(Map.of(playTime, 2400, pickaxe, 3), values(type.capture(fixture.player, CaptureMode.SYNC)));
+    }
+
+    @Test
+    void asyncCaptureSharesTheVanillaWritersMonitor() throws Exception {
+        PlayerFixture fixture = playerFixture();
+        StatisticsDataType type = new StatisticsDataType();
+        Stat<?> first = Stats.ITEM_USED.get(Items.DIAMOND);
+        Stat<?> second = Stats.ITEM_USED.get(Items.GOLD_INGOT);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var worker = Executors.newSingleThreadExecutor()) {
+            var captures = worker.submit(() -> {
+                assertTrue(start.await(2, TimeUnit.SECONDS));
+                for (int i = 0; i < 1000; i++) {
+                    Map<Stat<?>, Integer> captured = values(type.capture(fixture.player, CaptureMode.ASYNC));
+                    assertEquals(captured.get(first), captured.get(second));
+                }
+                return null;
+            });
+            start.countDown();
+            for (int i = 1; i <= 1000; i++) {
+                // 原版写入走同一同步 Map. 读端应在这组更新之前或之后取得一致的键值数组
+                synchronized (fixture.current) {
+                    fixture.counter.setValue(fixture.player.getHandle(), first, i);
+                    fixture.counter.setValue(fixture.player.getHandle(), second, i);
+                }
+            }
+            captures.get(3, TimeUnit.SECONDS);
+        }
+        assertEquals(Map.of(first, 1000, second, 1000), values(type.capture(fixture.player, CaptureMode.OFFLINE)));
     }
 
     @Test

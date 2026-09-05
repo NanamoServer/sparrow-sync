@@ -74,9 +74,11 @@ final class AdvancementProgressChangedWrapperSet extends AbstractSet<Object> {
     public void clear() {
         // flush 只清客户端 dirty 状态, 历史候选继续服务后续保存和远端撤销
         this.delegate.clear();
-        // reload 会先清空 progress, 文件中已删除的进度也要从缓存移除
-        synchronized (this) {
-            this.dirty.or(this.candidates);
+        // reload 在此调用前清空 progress, 同布局下也要重新核对文件已删除的进度
+        if (this.progress.isEmpty()) {
+            synchronized (this) {
+                this.dirty.or(this.candidates);
+            }
         }
     }
 

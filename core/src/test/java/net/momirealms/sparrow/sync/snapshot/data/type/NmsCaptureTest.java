@@ -25,8 +25,11 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -42,7 +45,11 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -164,6 +171,62 @@ class NmsCaptureTest {
                 new FlightStatusDataType(), new LocationDataType(), NmsPlayerFixture.allocate(InventoryDataType.class),
                 NmsPlayerFixture.allocate(EnderChestDataType.class))) {
             assertFalse(type.supportsAsyncCapture(), type.key().asString());
+        }
+    }
+
+    @Test
+    void worldSaveWorkerEncodesDetachedContainersAndOnlyReadsAsyncScalars() throws Exception {
+        Inventory inventory = inventory(this.player);
+        ItemStack item = new ItemStack(Items.DIAMOND_SWORD, 1);
+        item.set(DataComponents.CUSTOM_NAME, Component.literal("captured"));
+        inventory.setItem(0, item);
+        PlayerEnderChestContainer chest = new PlayerEnderChestContainer(this.player.getHandle());
+        chest.setItem(0, item);
+        NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, this.player.getHandle(), "enderChestInventory", chest);
+        net.minecraft.nbt.CompoundTag pdc = new net.minecraft.nbt.CompoundTag();
+        pdc.putInt("value", 1);
+        this.player.getPersistentDataContainer().getRaw().put("example:data", pdc);
+        this.player.getHandle().activeEffects.put(MobEffects.SPEED, new MobEffectInstance(MobEffects.SPEED, 80, 1));
+        this.player.getHandle().getAttributes().getInstance(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH).setBaseValue(32.0);
+
+        DataRegistry registry = new DataRegistry();
+        registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
+        registry.register(NmsPlayerFixture.allocate(EnderChestDataType.class));
+        registry.register(new PDCDataType());
+        registry.register(new PotionEffectsDataType());
+        registry.register(new AttributesDataType());
+        registry.register(new ExperienceDataType());
+        registry.freeze();
+        PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
+        PlayerDataPipeline.CaptureResult.Pending pending = assertInstanceOf(PlayerDataPipeline.CaptureResult.Pending.class, pipeline.capture(this.player, CaptureMode.ASYNC));
+
+        // 第一阶段返回后继续修改玩家, worker 编码同步组时仍应看到采集时的状态
+        item.setCount(4);
+        item.set(DataComponents.CUSTOM_NAME, Component.literal("changed"));
+        pdc.putInt("value", 2);
+        this.player.getHandle().activeEffects.clear();
+        this.player.getHandle().getAttributes().getInstance(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH).setBaseValue(40.0);
+        this.player.getHandle().totalExperience = 4321;
+
+        try (var worker = Executors.newSingleThreadExecutor()) {
+            Map<DataKey, Tag> encoded = worker.submit(() -> {
+                PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.captureAsync(this.player, pending));
+                assertTrue(captured.skipped().isEmpty());
+                return assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data();
+            }).get(2, TimeUnit.SECONDS);
+
+            InventoryDataType.Inventory savedInventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(encoded.get(InventoryDataType.INVENTORY), 0);
+            ItemCodec.LoadedItems savedChest = NmsPlayerFixture.allocate(EnderChestDataType.class).decode(encoded.get(EnderChestDataType.ENDER_CHEST), 0);
+            assertEquals(1, savedInventory.contents()[0].getCount());
+            assertEquals("captured", savedInventory.contents()[0].get(DataComponents.CUSTOM_NAME).getString());
+            assertEquals(1, savedChest.items()[0].getCount());
+            assertEquals("captured", savedChest.items()[0].get(DataComponents.CUSTOM_NAME).getString());
+            assertEquals(1, ((CompoundTag) encoded.get(PDCDataType.PERSISTENT_DATA)).getCompound("example:data").getInt("value"));
+            assertEquals(80, new PotionEffectsDataType().decode(encoded.get(PotionEffectsDataType.POTION_EFFECTS), 0).getFirst().getDuration());
+            AttributesDataType.Attributes attributes = new AttributesDataType().decode(encoded.get(AttributesDataType.ATTRIBUTES), 0);
+            assertEquals(32.0, Arrays.stream(attributes.values()).filter(value -> value.key().getKey().equals("max_health")).findFirst().orElseThrow().base());
+            assertEquals(4321, new ExperienceDataType().decode(encoded.get(ExperienceDataType.EXPERIENCE), 0).total());
         }
     }
 
