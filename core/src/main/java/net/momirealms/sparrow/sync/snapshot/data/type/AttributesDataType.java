@@ -36,11 +36,11 @@ import java.util.Set;
 
 /**
  * 同步白名单内属性的基础值与可跨服 modifier, 服务器本地 modifier 由配置黑名单保留.
- * todo 性能存在问题
  */
 public final class AttributesDataType extends CodecDataType<AttributesDataType.Attributes> implements NativePlayerDataType<AttributesDataType.Attributes> {
     public static final DataKey ATTRIBUTES = DataKey.sparrow("attributes");
 
+    private static final ModifierValue[] NO_MODIFIERS = new ModifierValue[0];
     private static final Codec<NamespacedKey> KEY_CODEC = IdentifierProxy.INSTANCE.getCodec().xmap(
             identifier -> new NamespacedKey(IdentifierProxy.INSTANCE.getNamespace(identifier), IdentifierProxy.INSTANCE.getPath(identifier)),
             key -> IdentifierProxy.INSTANCE.newInstance(key.getNamespace(), key.getKey())
@@ -63,6 +63,8 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     ).apply(instance, StoredAttribute::new));
     static final Codec<Attributes> CODEC = STORED_ATTRIBUTE_CODEC.listOf().xmap(AttributesDataType::fromStored, AttributesDataType::toStored);
 
+    private volatile CaptureTargets captureTargets;
+
     public AttributesDataType() {
         super(ATTRIBUTES, StorageFormat.STRUCTURED, CODEC);
     }
@@ -77,26 +79,39 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     @NotNull
     protected Attributes captureValue(@NotNull Player player) {
         AttributeOptions options = PluginConfig.synchronization$attributes();
-        AttributeValue[] values = new AttributeValue[16];
+        Attribute[] targets = this.captureTargets(options).attributes();
+        AttributeValue[] values = new AttributeValue[targets.length];
         int count = 0;
-        for (Attribute attribute : Registry.ATTRIBUTE) {
+        for (int i = 0; i < targets.length; i++) {
+            Attribute attribute = targets[i];
             NamespacedKey key = attribute.getKey();
-            if (!options.attributeAllowed(key.toString())) continue;
             AttributeInstance instance = player.getAttribute(attribute);
             if (instance == null) continue;
 
             Collection<AttributeModifier> currentModifiers = instance.getModifiers();
-            ModifierValue[] modifiers = new ModifierValue[currentModifiers.size()];
+            ModifierValue[] modifiers = currentModifiers.isEmpty() ? NO_MODIFIERS : new ModifierValue[currentModifiers.size()];
             int modifierCount = 0;
             for (AttributeModifier modifier : currentModifiers) {
                 if (options.modifierBlacklisted(modifier.getKey().toString())) continue;
                 modifiers[modifierCount++] = new ModifierValue(modifier.getKey(), modifier.getAmount(), modifier.getOperation(), modifier.getSlotGroup());
             }
             if (modifierCount < modifiers.length) modifiers = Arrays.copyOf(modifiers, modifierCount);
-            if (count == values.length) values = Arrays.copyOf(values, values.length << 1);
             values[count++] = new AttributeValue(key, instance.getBaseValue(), modifiers);
         }
-        return new Attributes(Arrays.copyOf(values, count));
+        return new Attributes(count == values.length ? values : Arrays.copyOf(values, count));
+    }
+
+    private CaptureTargets captureTargets(AttributeOptions options) {
+        CaptureTargets targets = this.captureTargets;
+        if (targets != null && targets.options() == options) return targets;
+        // 配置在 bootstrap 阶段加载, 属性注册表在首次采集时解析. reload 发布的新配置会重建目标数组.
+        List<Attribute> attributes = new ArrayList<>();
+        for (Attribute attribute : Registry.ATTRIBUTE) {
+            if (options.attributeAllowed(attribute.getKey().toString())) attributes.add(attribute);
+        }
+        targets = new CaptureTargets(options, attributes.toArray(Attribute[]::new));
+        this.captureTargets = targets;
+        return targets;
     }
 
     @Override
@@ -258,5 +273,8 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     }
 
     private record StoredAttribute(@NotNull NamespacedKey key, double base, @NotNull List<ModifierValue> modifiers) {
+    }
+
+    private record CaptureTargets(AttributeOptions options, Attribute[] attributes) {
     }
 }

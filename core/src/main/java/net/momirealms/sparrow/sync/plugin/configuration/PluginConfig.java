@@ -407,6 +407,11 @@ public final class PluginConfig {
                 "minecraft:creative_mode_*"
         );
 
+        @YamlIgnore
+        private KeyPattern[] attributePatterns = compilePatterns(this.whitelist);
+        @YamlIgnore
+        private KeyPattern[] modifierPatterns = compilePatterns(this.modifierBlacklist);
+
         @NotNull
         public List<String> whitelist() {
             return this.whitelist;
@@ -419,18 +424,18 @@ public final class PluginConfig {
 
         /** 判断属性 key 是否在同步白名单内. */
         public boolean attributeAllowed(@NotNull String attribute) {
-            int size = this.whitelist.size();
-            for (int i = 0; i < size; i++) {
-                if (matchesPattern(this.whitelist.get(i), attribute)) return true;
+            String key = namespaced(attribute);
+            for (int i = 0; i < this.attributePatterns.length; i++) {
+                if (this.attributePatterns[i].matches(key)) return true;
             }
             return false;
         }
 
         /** 判断 modifier key 是否留在当前服务器. */
         public boolean modifierBlacklisted(@NotNull String modifier) {
-            int size = this.modifierBlacklist.size();
-            for (int i = 0; i < size; i++) {
-                if (matchesPattern(this.modifierBlacklist.get(i), modifier)) return true;
+            String key = namespaced(modifier);
+            for (int i = 0; i < this.modifierPatterns.length; i++) {
+                if (this.modifierPatterns[i].matches(key)) return true;
             }
             return false;
         }
@@ -438,11 +443,20 @@ public final class PluginConfig {
         private void freeze() {
             this.whitelist = List.copyOf(this.whitelist);
             this.modifierBlacklist = List.copyOf(this.modifierBlacklist);
+            this.attributePatterns = compilePatterns(this.whitelist);
+            this.modifierPatterns = compilePatterns(this.modifierBlacklist);
+        }
+
+        private static KeyPattern[] compilePatterns(List<String> patterns) {
+            KeyPattern[] compiled = new KeyPattern[patterns.size()];
+            for (int i = 0; i < compiled.length; i++) {
+                String pattern = namespaced(patterns.get(i));
+                compiled[i] = new KeyPattern(pattern, pattern.indexOf('*'));
+            }
+            return compiled;
         }
 
         private static boolean matchesPattern(@NotNull String pattern, @NotNull String value) {
-            pattern = namespaced(pattern);
-            value = namespaced(value);
             int patternIndex = 0;
             int valueIndex = 0;
             int wildcardIndex = -1;
@@ -471,6 +485,14 @@ public final class PluginConfig {
         @NotNull
         private static String namespaced(@NotNull String key) {
             return key.indexOf(':') < 0 ? "minecraft:" + key : key;
+        }
+
+        private record KeyPattern(String value, int wildcard) {
+            private boolean matches(String key) {
+                if (this.wildcard < 0) return this.value.equals(key);
+                if (this.wildcard == this.value.length() - 1) return key.regionMatches(0, this.value, 0, this.wildcard);
+                return matchesPattern(this.value, key);
+            }
         }
     }
 
