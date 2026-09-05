@@ -5,6 +5,7 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
@@ -103,6 +104,11 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
         }
         inventory.setContents(fitted.items());
         inventory.setHeldItemSlot(value.heldSlot());
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

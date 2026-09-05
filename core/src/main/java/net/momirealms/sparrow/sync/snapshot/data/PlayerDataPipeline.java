@@ -159,7 +159,7 @@ public final class PlayerDataPipeline {
         for (int i = 0; i < size; i++) {
             if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING) continue;
             NativePlayerDataType<?> nativeType = this.dataRegistry.nativeTypeAt(i);
-            if (nativeType == null) continue;
+            if (nativeType == null || !nativeType.shouldApply()) continue;
             try {
                 NativePlayerDataType.NativeApplyResult result = applyNativeValue(nativeType, player, working, context.valueAt(i));
                 if (result.target() == NativePlayerDataType.NativeApplyResult.Target.NOT_APPLIED) continue;

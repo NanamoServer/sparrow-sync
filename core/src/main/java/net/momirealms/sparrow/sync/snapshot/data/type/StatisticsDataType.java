@@ -16,6 +16,7 @@ import net.momirealms.sparrow.nbt.IntArrayTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.ServerStatsCounterProxy;
@@ -151,6 +152,11 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
             amounts = Arrays.copyOf(amounts, count);
         }
         return new Statistics(statistics, amounts);
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().advancements() && !VersionHelper.isOrAbove1_21_7() && VersionHelper.isPaper();
     }
 
     @Override

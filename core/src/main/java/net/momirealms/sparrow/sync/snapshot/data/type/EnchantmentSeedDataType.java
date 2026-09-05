@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
@@ -27,6 +28,11 @@ public final class EnchantmentSeedDataType extends CodecDataType<Integer> implem
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Integer value) {
         player.setEnchantmentSeed(value);
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

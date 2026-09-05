@@ -4,6 +4,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -50,6 +51,11 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
         for (int i = 0; i < size; i++) {
             handle.addEffect(value.get(i));
         }
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

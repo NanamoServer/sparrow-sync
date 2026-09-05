@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -32,6 +33,11 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
         if (player.getGameMode() != value) {
             player.setGameMode(value);
         }
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

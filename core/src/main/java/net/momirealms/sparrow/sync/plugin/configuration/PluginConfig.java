@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
+import net.momirealms.sparrow.yaml.serializer.auto.annotation.AfterComment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
@@ -54,6 +55,7 @@ public final class PluginConfig {
             loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
             loadedConfig.synchronization.attributes.freeze();
             loadedConfig.synchronization.compiledSaveTriggers = SaveTriggers.of(loadedConfig.synchronization.saveTriggers);
+            loadedConfig.synchronization.compiledDeath = DeathTrigger.of(loadedConfig.synchronization.death);
             config = loadedConfig;
         } catch (Exception e) {
             this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
@@ -79,10 +81,6 @@ public final class PluginConfig {
         String forcedLocale = "";
 
         @BlankLineBefore
-        @Comment("Synchronization settings")
-        SynchronizationOptions synchronization = new SynchronizationOptions();
-
-        @BlankLineBefore
         @Comment("Redis, backs the cross server session lock and messaging")
         RedisOptions redis = new RedisOptions();
 
@@ -91,25 +89,17 @@ public final class PluginConfig {
         DatabaseOptions database = new DatabaseOptions();
 
         @BlankLineBefore
-        @Comment("Logging")
-        LoggingOptions logging = new LoggingOptions();
+        @Comment("Synchronization settings")
+        SynchronizationOptions synchronization = new SynchronizationOptions();
 
         @BlankLineBefore
-        @Comment("Debug")
-        boolean debug = false;
+        @Comment("Logging")
+        LoggingOptions logging = new LoggingOptions();
     }
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class LoggingOptions {
-        @Comment({
-                "Successful snapshot causes printed to the console",
-                "Disconnect and command saves are enabled by default",
-                "When local-file is enabled, every successful save is still written there"
-        })
-        ConsoleSaveCauses consoleSaveCauses = new ConsoleSaveCauses();
-
-        @BlankLineBefore
         @Comment({
                 "Writes every plugin log line, including those hidden from the console,",
                 "to a <date>.log file per day under the directory below",
@@ -134,6 +124,13 @@ public final class PluginConfig {
                 "Closed files are compressed as <date>-<index>.log.gz, including an existing log on startup"
         })
         String fileDateFormat = "yyyy-MM-dd";
+
+        @Comment({
+                "Successful snapshot causes printed to the console",
+                "Disconnect and command saves are enabled by default",
+                "When local-file is enabled, every successful save is still written there"
+        })
+        ConsoleSaveCauses consoleSaveCauses = new ConsoleSaveCauses();
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -205,42 +202,8 @@ public final class PluginConfig {
                 "How long the login gate waits for player data before giving up, in seconds",
                 "A player whose data is not ready in time is disconnected, never let in unsynced"
         })
-        int loginTimeoutSeconds = 15;
+        int loginTimeoutSeconds = 60;
 
-        @Comment({
-                "Writes compatible snapshot data into vanilla player data during the login gate",
-                "Disable this on non-standard servers to apply every type during PlayerJoinEvent",
-                "Reloading applies this option to login preparations started afterwards"
-        })
-        boolean nativeApply = true;
-
-        @Comment({
-                "Keeps advancement progress for IDs the applying server does not register",
-                "Native apply writes known IDs to vanilla JSON and hands unknown IDs to the join tracker",
-                "Without native apply, the PlayerJoin path applies known IDs and keeps unknown IDs in the same tracker",
-                "Disable when every server shares the same advancements; native JSON then skips the membership scan"
-        })
-        boolean keepUnknownAdvancements = true;
-
-        @BlankLineBefore
-        @Comment({
-                "Built-in player data enabled for synchronization",
-                "Read once during startup; changes require a server restart"
-        })
-        DataTypes dataTypes = new DataTypes();
-
-        @BlankLineBefore
-        @Comment("Attribute synchronization settings")
-        AttributeOptions attributes = new AttributeOptions();
-
-        @BlankLineBefore
-        @Comment({
-                "Automatic snapshot save triggers",
-                "Reloading the plugin applies these options to later trigger invocations"
-        })
-        SaveTriggerOptions saveTriggers = new SaveTriggerOptions();
-
-        @BlankLineBefore
         @Comment({
                 "How newly written snapshots are compressed, existing data stays readable whatever is set here",
                 "Available: ZSTD, DEFLATE, NONE",
@@ -250,6 +213,34 @@ public final class PluginConfig {
         })
         CompressorRegistry compression = CompressorRegistry.ZSTD;
 
+        @BlankLineBefore
+        @Comment({
+                "Built-in player data enabled for synchronization",
+                "Read once during startup; changes require a server restart"
+        })
+        DataTypes dataTypes = new DataTypes();
+
+        @BlankLineBefore
+        @Comment({
+                "Writes compatible snapshot data into vanilla player data during the login gate",
+                "Disable this on non-standard servers to apply every type during PlayerJoinEvent",
+                "Reloading applies this option to login preparations started afterwards"
+        })
+        NativeAsyncApplyOptions nativeAsyncApply = new NativeAsyncApplyOptions();
+
+        @BlankLineBefore
+        @Comment("Advancements synchronization settings")
+        AdvancementsOptions advancements = new AdvancementsOptions();
+
+        @BlankLineBefore
+        @Comment("Attribute synchronization settings")
+        AttributeOptions attributes = new AttributeOptions();
+
+        @BlankLineBefore
+        @Comment("Save snapshots around player death")
+        DeathTriggerOptions death = new DeathTriggerOptions();
+
+        @BlankLineBefore
         @Comment({
                 "Persistent data (PDC) merge blacklist; every entry is a path relative to custom_data",
                 "Blacklisted paths are neither captured nor merged",
@@ -257,49 +248,72 @@ public final class PluginConfig {
                 "Use [\"sparrow-sync\", \"ignore\"] for custom_data -> sparrow-sync -> ignore",
                 "Reloading the plugin applies these paths to later captures and applications"
         })
-        List<Object> pdcMergeNamespaces = List.of(
-                "sparrow-sync-ignore",
-                List.of("sparrow-sync", "ignore")
-        );
+        @AfterComment({
+                "- sparrow-sync-ignore",
+                "- [\"sparrow-sync\", \"ignore\"]"
+        })
+        List<Object> pdcMergeNamespaces = List.of();
+
+        @BlankLineBefore
+        @Comment({
+                "Automatic snapshot save triggers",
+                "Reloading the plugin applies these options to later trigger invocations"
+        })
+        SaveTriggerOptions saveTriggers = new SaveTriggerOptions();
 
         @YamlIgnore
         PDCMergeBlacklist pdcMergeBlacklist = PDCMergeBlacklist.empty();
 
         @YamlIgnore
         SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+
+        @YamlIgnore
+        DeathTrigger compiledDeath = DeathTrigger.of(this.death);
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DataTypes {
-        boolean inventory = true;
+        boolean advancements = true;
+        boolean attributes = true;
+        boolean enchantmentSeed = true;
         boolean enderChest = true;
-        boolean persistentData = true;
         boolean experience = true;
+        boolean flightStatus = true;
+        boolean gameMode = true;
         boolean health = true;
         boolean hunger = true;
-        boolean gameMode = true;
-        boolean potionEffects = true;
-        boolean advancements = true;
-        boolean statistics = true;
-        boolean attributes = true;
+        boolean inventory = true;
         boolean location = false;
-        boolean flightStatus = true;
-        boolean enchantmentSeed = true;
+        boolean persistentData = true;
+        boolean potionEffects = true;
+        boolean statistics = true;
 
-        public boolean inventory() {
-            return this.inventory;
+        public boolean advancements() {
+            return this.advancements;
+        }
+
+        public boolean attributes() {
+            return this.attributes;
+        }
+
+        public boolean enchantmentSeed() {
+            return this.enchantmentSeed;
         }
 
         public boolean enderChest() {
             return this.enderChest;
         }
 
-        public boolean persistentData() {
-            return this.persistentData;
-        }
-
         public boolean experience() {
             return this.experience;
+        }
+
+        public boolean flightStatus() {
+            return this.flightStatus;
+        }
+
+        public boolean gameMode() {
+            return this.gameMode;
         }
 
         public boolean health() {
@@ -310,12 +324,35 @@ public final class PluginConfig {
             return this.hunger;
         }
 
-        public boolean gameMode() {
-            return this.gameMode;
+        public boolean inventory() {
+            return this.inventory;
+        }
+
+        public boolean location() {
+            return this.location;
+        }
+
+        public boolean persistentData() {
+            return this.persistentData;
         }
 
         public boolean potionEffects() {
             return this.potionEffects;
+        }
+
+        public boolean statistics() {
+            return this.statistics;
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class NativeAsyncApplyOptions {
+        boolean playerData = true;
+        boolean advancements = true;
+        boolean statistics = true;
+
+        public boolean playerData() {
+            return this.playerData;
         }
 
         public boolean advancements() {
@@ -325,21 +362,20 @@ public final class PluginConfig {
         public boolean statistics() {
             return this.statistics;
         }
+    }
 
-        public boolean attributes() {
-            return this.attributes;
-        }
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class AdvancementsOptions {
+        @Comment({
+                "Keeps advancement progress for IDs the applying server does not register",
+                "Native apply writes known IDs to vanilla JSON and hands unknown IDs to the join tracker",
+                "Without native apply, the PlayerJoin path applies known IDs and keeps unknown IDs in the same tracker",
+                "Disable when every server shares the same advancements; native JSON then skips the membership scan"
+        })
+        boolean keepUnknownAdvancements = true;
 
-        public boolean location() {
-            return this.location;
-        }
-
-        public boolean flightStatus() {
-            return this.flightStatus;
-        }
-
-        public boolean enchantmentSeed() {
-            return this.enchantmentSeed;
+        public boolean keepUnknownAdvancements() {
+            return this.keepUnknownAdvancements;
         }
     }
 
@@ -450,10 +486,6 @@ public final class PluginConfig {
         @BlankLineBefore
         @Comment("Save after a player's game mode changes")
         GameModeChangeTriggerOptions gameModeChange = new GameModeChangeTriggerOptions();
-
-        @BlankLineBefore
-        @Comment("Save snapshots around player death")
-        DeathTriggerOptions death = new DeathTriggerOptions();
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -506,16 +538,14 @@ public final class PluginConfig {
 
     public record SaveTriggers(@NotNull WorldChangeTrigger worldChange,
                                @NotNull WorldSaveTrigger worldSave,
-                               @NotNull GameModeChangeTrigger gameModeChange,
-                               @NotNull DeathTrigger death) {
+                               @NotNull GameModeChangeTrigger gameModeChange) {
 
         @NotNull
         private static SaveTriggers of(@NotNull SaveTriggerOptions options) {
             return new SaveTriggers(
                     new WorldChangeTrigger(options.worldChange.enabled, Set.copyOf(options.worldChange.ignoredFromWorlds), Set.copyOf(options.worldChange.ignoredToWorlds)),
                     new WorldSaveTrigger(options.worldSave.enabled),
-                    new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes)),
-                    new DeathTrigger(options.death.saveBeforeDeath, options.death.saveAfterDeath, Set.copyOf(options.death.ignoredWorlds))
+                    new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes))
             );
         }
     }
@@ -530,6 +560,11 @@ public final class PluginConfig {
     }
 
     public record DeathTrigger(boolean saveBeforeDeath, boolean saveAfterDeath, @NotNull Set<String> ignoredWorlds) {
+
+        @NotNull
+        private static DeathTrigger of(@NotNull DeathTriggerOptions options) {
+            return new DeathTrigger(options.saveBeforeDeath, options.saveAfterDeath, Set.copyOf(options.ignoredWorlds));
+        }
     }
 
     /**
@@ -667,12 +702,12 @@ public final class PluginConfig {
         StorageType type = StorageType.MONGODB;
 
         @BlankLineBefore
-        @Comment("Read when type is MONGODB")
-        MongoOptions mongodb = new MongoOptions();
-
-        @BlankLineBefore
         @Comment("Read when type is MYSQL")
         MysqlOptions mysql = new MysqlOptions();
+
+        @BlankLineBefore
+        @Comment("Read when type is MONGODB")
+        MongoOptions mongodb = new MongoOptions();
     }
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
@@ -784,10 +819,6 @@ public final class PluginConfig {
         return TranslationManager.parseLocale(config.forcedLocale);
     }
 
-    public static boolean debug() {
-        return config.debug;
-    }
-
     public static boolean logging$consoleSave(@NotNull SaveCause cause) {
         return config.logging.consoleSaveCauses.enabled(cause);
     }
@@ -820,17 +851,24 @@ public final class PluginConfig {
         return config.synchronization.loginTimeoutSeconds;
     }
 
-    public static boolean synchronization$nativeApply() {
-        return config.synchronization.nativeApply;
+    @NotNull
+    public static NativeAsyncApplyOptions synchronization$nativeAsyncApply() {
+        return config.synchronization.nativeAsyncApply;
     }
 
-    public static boolean synchronization$keepUnknownAdvancements() {
-        return config.synchronization.keepUnknownAdvancements;
+    @NotNull
+    public static AdvancementsOptions synchronization$advancements() {
+        return config.synchronization.advancements;
     }
 
     @NotNull
     public static SaveTriggers synchronization$saveTriggers() {
         return config.synchronization.compiledSaveTriggers;
+    }
+
+    @NotNull
+    public static DeathTrigger synchronization$death() {
+        return config.synchronization.compiledDeath;
     }
 
     public static int synchronization$maxSaveRetries() {

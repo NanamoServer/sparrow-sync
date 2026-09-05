@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -38,6 +39,11 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
         player.setTotalExperience(value.total());
         player.setLevel(value.level());
         player.setExp(Math.clamp(value.progress(), 0.0f, 1.0f));
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

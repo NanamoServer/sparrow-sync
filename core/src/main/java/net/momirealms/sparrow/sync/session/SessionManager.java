@@ -72,7 +72,6 @@ public final class SessionManager {
             return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
         }
         long loadStart = System.nanoTime();
-        boolean nativeApply = PluginConfig.synchronization$nativeApply();
         // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取
         CompletableFuture<PlayerDataPreload> playerData = CompletableFuture
                 .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
@@ -103,6 +102,7 @@ public final class SessionManager {
             PlayerDataPreload preparedLocal = local;
             long nativeApplyNanos = 0L;
             // 如果开启了 nativeApply, 则进行修改
+            boolean nativeApply = PluginConfig.synchronization$nativeAsyncApply().playerData() || PluginConfig.synchronization$nativeAsyncApply().advancements() || PluginConfig.synchronization$nativeAsyncApply().statistics();
             if (nativeApply && loadedSnapshot != null) {
                 Optional<CompoundTag> localData = local instanceof PlayerDataPreload.Ready(Optional<CompoundTag> data) ? data : Optional.empty();
                 long nativeApplyStart = System.nanoTime();

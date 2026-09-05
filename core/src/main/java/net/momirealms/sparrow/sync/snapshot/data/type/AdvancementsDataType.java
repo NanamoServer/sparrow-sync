@@ -93,7 +93,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         AdvancementProgressChangedWrapperSet tracking = progressChanged instanceof AdvancementProgressChangedWrapperSet current ? current : null;
         // 候选完整且布局稳定时使用稀疏路径
         AdvancementSlots.Layout layout = tracking != null && tracking.complete() ? this.advancementSlots.current() : null;
-        boolean keepUnknown = PluginConfig.synchronization$keepUnknownAdvancements();
+        boolean keepUnknown = PluginConfig.synchronization$advancements().keepUnknownAdvancements();
         if (layout != null) {
             Advancements cached = tracking.capture(layout, keepUnknown);
             if (cached != null) return cached;
@@ -301,7 +301,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         }
         // 工作索引中只剩本服无法定位的 ID, 配置开启时交给后续快照继续携带
         if (tracking != null) {
-            tracking.retainedUnknown(PluginConfig.synchronization$keepUnknownAdvancements() ? remainingValues(captured) : EMPTY_VALUES);
+            tracking.retainedUnknown(PluginConfig.synchronization$advancements().keepUnknownAdvancements() ? remainingValues(captured) : EMPTY_VALUES);
         }
         if (!changed) return;
 
@@ -378,12 +378,16 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().advancements() && !VersionHelper.isOrAbove1_21_7() && VersionHelper.isPaper();
+    }
+
+    @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
-        if (!VersionHelper.isOrAbove1_21_7()) return NativeApplyResult.NOT_APPLIED;
         AdvancementSlots.Layout layout = null;
         // 如果获取不到 Layout 就回退到普通 Apply
-        if (PluginConfig.synchronization$keepUnknownAdvancements()) {
+        if (PluginConfig.synchronization$advancements().keepUnknownAdvancements()) {
             layout = this.advancementSlots.current();
             if (layout == null) return NativeApplyResult.NOT_APPLIED;
         }

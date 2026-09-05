@@ -7,6 +7,7 @@ import net.minecraft.nbt.DoubleTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
@@ -51,6 +52,11 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
         if (!player.teleport(new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch()))) {
             throw new IllegalStateException("location teleport was rejected: " + value.world());
         }
+    }
+
+    @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
     @Override

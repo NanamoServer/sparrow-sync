@@ -537,6 +537,11 @@ class PlayerDataPipelineTest {
         }
 
         @Override
+        public boolean shouldApply() {
+            return true;
+        }
+
+        @Override
         @NotNull
         public NativeApplyResult applyNative(@NotNull UUID player, @NotNull CompoundTag playerData, @NotNull String value) {
             PlayerDataPipelineTest.this.nativeAttempts.add(this.key());

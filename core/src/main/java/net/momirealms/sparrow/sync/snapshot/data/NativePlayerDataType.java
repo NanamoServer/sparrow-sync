@@ -20,6 +20,11 @@ import java.util.function.Consumer;
 public interface NativePlayerDataType<T> extends PlayerDataType<T> {
 
     /**
+     * 是否应该执行 applyNative, 主要用于检查配置选项开关和不符合条件的服务端跳过.
+     */
+    boolean shouldApply();
+
+    /**
      * 把本类型安装到原版登录读取的数据源.
      * <strong>返回 {@link NativeApplyResult#NOT_APPLIED} 或抛出异常时不得留下部分可见的写入</strong>.
      *

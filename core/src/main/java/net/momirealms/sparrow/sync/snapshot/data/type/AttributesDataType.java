@@ -127,6 +127,11 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     }
 
     @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
+    }
+
+    @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Attributes attributes) {
         net.minecraft.nbt.Tag merged = mergeNative(playerData.get("attributes"), attributes, PluginConfig.synchronization$attributes());

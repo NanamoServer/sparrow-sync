@@ -101,6 +101,11 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     }
 
     @Override
+    public boolean shouldApply() {
+        return PluginConfig.synchronization$nativeAsyncApply().playerData();
+    }
+
+    @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull UUID player, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull net.minecraft.nbt.CompoundTag value) {
         net.minecraft.nbt.Tag current = playerData.get("BukkitValues");
