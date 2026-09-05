@@ -43,8 +43,10 @@ class PluginConfigDataTypesTest {
         SparrowYaml yaml = newYaml();
         new PluginConfig(this.plugin(), yaml).reload();
 
-        assertTrue(PluginConfig.synchronization$nativeApply());
-        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$nativeAsyncApply().playerData());
+        assertTrue(PluginConfig.synchronization$advancements().keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$advancements().injectProgressChanged());
+        assertTrue(PluginConfig.synchronization$attributes().injectConsumer());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         AttributeOptions attributes = PluginConfig.synchronization$attributes();
         assertEquals(ATTRIBUTE_WHITELIST, attributes.whitelist());
@@ -60,8 +62,10 @@ class PluginConfigDataTypesTest {
         Path file = this.directory.resolve("config.yml");
         YamlDocument document = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, document.getString(Route.from("config-version")));
-        assertTrue(document.getBoolean(Route.from("synchronization", "native-apply")));
-        assertTrue(document.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "native-async-apply", "player-data")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "advancements", "keep-unknown-advancements")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "advancements", "inject-progress-changed")));
+        assertTrue(document.getBoolean(Route.from("synchronization", "attributes", "inject-consumer")));
         assertDefaultDataTypeDocument(document);
         assertEquals(ATTRIBUTE_WHITELIST, document.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, document.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
@@ -78,25 +82,39 @@ class PluginConfigDataTypesTest {
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
-                  native-apply: false
-                  keep-unknown-advancements: false
+                  native-async-apply:
+                    player-data: false
+                  advancements:
+                    keep-unknown-advancements: false
+                    inject-progress-changed: false
+                  attributes:
+                    inject-consumer: false
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
         PluginConfig pluginConfig = new PluginConfig(this.plugin(), newYaml());
 
         pluginConfig.reload();
-        assertFalse(PluginConfig.synchronization$nativeApply());
-        assertFalse(PluginConfig.synchronization$keepUnknownAdvancements());
+        assertFalse(PluginConfig.synchronization$nativeAsyncApply().playerData());
+        assertFalse(PluginConfig.synchronization$advancements().keepUnknownAdvancements());
+        assertFalse(PluginConfig.synchronization$advancements().injectProgressChanged());
+        assertFalse(PluginConfig.synchronization$attributes().injectConsumer());
 
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
-                  native-apply: true
-                  keep-unknown-advancements: true
+                  native-async-apply:
+                    player-data: true
+                  advancements:
+                    keep-unknown-advancements: true
+                    inject-progress-changed: true
+                  attributes:
+                    inject-consumer: true
                 """.formatted(DependencyVersions.CONFIG_VERSION), StandardCharsets.UTF_8);
         pluginConfig.reload();
 
-        assertTrue(PluginConfig.synchronization$nativeApply());
-        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$nativeAsyncApply().playerData());
+        assertTrue(PluginConfig.synchronization$advancements().keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$advancements().injectProgressChanged());
+        assertTrue(PluginConfig.synchronization$attributes().injectConsumer());
     }
 
     @Test
@@ -152,13 +170,17 @@ class PluginConfigDataTypesTest {
 
         assertFalse(PluginConfig.metrics());
         assertEquals(8, PluginConfig.synchronization$workerThreads());
-        assertTrue(PluginConfig.synchronization$nativeApply());
-        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$nativeAsyncApply().playerData());
+        assertTrue(PluginConfig.synchronization$advancements().keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$advancements().injectProgressChanged());
+        assertTrue(PluginConfig.synchronization$attributes().injectConsumer());
         assertDefaultDataTypes(PluginConfig.synchronization$dataTypes());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
-        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
-        assertTrue(upgraded.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-async-apply", "player-data")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "advancements", "keep-unknown-advancements")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "advancements", "inject-progress-changed")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "attributes", "inject-consumer")));
         assertDefaultDataTypeDocument(upgraded);
         assertEquals(ATTRIBUTE_WHITELIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "whitelist")));
         assertEquals(MODIFIER_BLACKLIST, upgraded.getList(String.class, Route.from("synchronization", "attributes", "modifier-blacklist")));
@@ -184,12 +206,16 @@ class PluginConfigDataTypesTest {
 
         new PluginConfig(this.plugin(), yaml).reload();
 
-        assertTrue(PluginConfig.synchronization$nativeApply());
-        assertTrue(PluginConfig.synchronization$keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$nativeAsyncApply().playerData());
+        assertTrue(PluginConfig.synchronization$advancements().keepUnknownAdvancements());
+        assertTrue(PluginConfig.synchronization$advancements().injectProgressChanged());
+        assertTrue(PluginConfig.synchronization$attributes().injectConsumer());
         YamlDocument upgraded = yaml.load(file);
         assertEquals(DependencyVersions.CONFIG_VERSION, upgraded.getString(Route.from("config-version")));
-        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-apply")));
-        assertTrue(upgraded.getBoolean(Route.from("synchronization", "keep-unknown-advancements")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "native-async-apply", "player-data")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "advancements", "keep-unknown-advancements")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "advancements", "inject-progress-changed")));
+        assertTrue(upgraded.getBoolean(Route.from("synchronization", "attributes", "inject-consumer")));
     }
 
     private static void assertDefaultDataTypes(DataTypes types) {

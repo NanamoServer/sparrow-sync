@@ -26,6 +26,38 @@ class AttributeOptionsTest {
     Path directory;
 
     @Test
+    void reloadPublishesInjectionSwitchesForAdvancementsAndAttributes() throws Exception {
+        Field field = PluginConfig.class.getDeclaredField("config");
+        field.setAccessible(true);
+        Object previous = field.get(null);
+        try {
+            Plugin plugin = (Plugin) Proxy.newProxyInstance(Plugin.class.getClassLoader(), new Class<?>[]{Plugin.class}, (proxy, method, args) -> switch (method.getName()) {
+                case "dataFolderPath" -> this.directory;
+                default -> throw new AssertionError(method.getName());
+            });
+            PluginConfig config = new PluginConfig(plugin, SparrowYaml.builder().build());
+            Files.writeString(this.directory.resolve("config.yml"), """
+                    config-version: "%s"
+                    synchronization:
+                      advancements:
+                        inject-progress-changed: false
+                      attributes:
+                        inject-consumer: false
+                    """.formatted(DependencyVersions.CONFIG_VERSION));
+
+            config.reload();
+
+            assertFalse(PluginConfig.synchronization$advancements().injectProgressChanged());
+            assertFalse(PluginConfig.synchronization$attributes().injectConsumer());
+            String generated = Files.readString(this.directory.resolve("config.yml"));
+            assertTrue(generated.contains("inject-progress-changed: false"));
+            assertTrue(generated.contains("inject-consumer: false"));
+        } finally {
+            field.set(null, previous);
+        }
+    }
+
+    @Test
     void compiledFiltersPreserveLiteralPrefixAndWildcardSemantics() throws Exception {
         List<String> patterns = List.of("max_health", "minecraft:effect.*", "*:custom_*_bonus", "mine*:*speed*", "a**b*c", "*", "*:*", "", "example:", "*foo*");
         List<String> keys = List.of("max_health", "minecraft:max_health", "minecraft:effect.speed", "minecraft:effect.", "example:custom_boost_bonus", "minecraft:movement_speed", "abc", "example:max_health", "", "example:", "foo", "example:foo");

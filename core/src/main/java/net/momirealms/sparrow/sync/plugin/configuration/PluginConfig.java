@@ -367,12 +367,22 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class AdvancementsOptions {
         @Comment({
+                "Injects the PlayerAdvancements progressChanged tracker during PlayerJoinEvent",
+                "Disable to use the regular full advancement capture path"
+        })
+        boolean injectProgressChanged = true;
+
+        @Comment({
                 "Keeps advancement progress for IDs the applying server does not register",
                 "Native apply writes known IDs to vanilla JSON and hands unknown IDs to the join tracker",
                 "Without native apply, the PlayerJoin path applies known IDs and keeps unknown IDs in the same tracker",
                 "Disable when every server shares the same advancements; native JSON then skips the membership scan"
         })
         boolean keepUnknownAdvancements = true;
+
+        public boolean injectProgressChanged() {
+            return this.injectProgressChanged;
+        }
 
         public boolean keepUnknownAdvancements() {
             return this.keepUnknownAdvancements;
@@ -381,6 +391,12 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class AttributeOptions {
+        @Comment({
+                "Injects an onDirty consumer into configured AttributeInstance objects during PlayerJoinEvent",
+                "Disable to use the regular full attribute capture path"
+        })
+        boolean injectConsumer = true;
+
         @Comment({
                 "Attribute keys saved by attribute synchronization; supports * wildcard matching",
                 "Both modern and legacy vanilla keys are listed across supported Minecraft versions",
@@ -415,6 +431,10 @@ public final class PluginConfig {
         @NotNull
         public List<String> whitelist() {
             return this.whitelist;
+        }
+
+        public boolean injectConsumer() {
+            return this.injectConsumer;
         }
 
         @NotNull

@@ -45,7 +45,10 @@ public final class SessionListener implements Listener {
         }
 
         // 注入玩家的 PlayerAdvancements#progressChanged, 注入失败时拒绝进入.
-        if (this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements) {
+        if (
+                PluginConfig.synchronization$advancements().injectProgressChanged()
+                && this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements
+        ) {
             try {
                 advancements.injectTracker(player);
             } catch (Throwable throwable) {
@@ -57,7 +60,10 @@ public final class SessionListener implements Listener {
         }
 
         // 属性回调在 Player apply 前安装, 单实例失败由类型保留普通采集路径.
-        if (this.plugin.dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType attributes) {
+        if (
+                PluginConfig.synchronization$attributes().injectConsumer()
+                && this.plugin.dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType attributes
+        ) {
             attributes.injectTracker(player);
         }
 
