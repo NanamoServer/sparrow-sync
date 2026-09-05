@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.codec.ops;
 
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.nbt.Tag;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class MinecraftRegistryOps {
     private static volatile @Nullable RegistryOps<Tag> sparrowNbt;
+    private static volatile @Nullable RegistryOps<net.minecraft.nbt.Tag> nativeNbt;
 
     private MinecraftRegistryOps() {
     }
@@ -36,6 +38,26 @@ public final class MinecraftRegistryOps {
                 }
                 ops = RegistryOps.create(NBTOps.INSTANCE, server.registryAccess());
                 sparrowNbt = ops;
+            }
+        }
+        return ops;
+    }
+
+    /**
+     * NMS NBT 域的注册表 ops, Native 物品编码直接产出原版 Tag.
+     *
+     * @throws IllegalStateException 服务器尚未就绪时, 该失败不缓存, 就绪后重试即可
+     */
+    @NotNull
+    public static RegistryOps<net.minecraft.nbt.Tag> nativeNbt() {
+        RegistryOps<net.minecraft.nbt.Tag> ops = nativeNbt;
+        if (ops != null) return ops;
+        synchronized (MinecraftRegistryOps.class) {
+            ops = nativeNbt;
+            if (ops == null) {
+                // 只替换 Tag 域, 复用已绑定的注册表查询上下文, 不为每件物品重新装配.
+                ops = sparrowNbt().withParent(NbtOps.INSTANCE);
+                nativeNbt = ops;
             }
         }
         return ops;

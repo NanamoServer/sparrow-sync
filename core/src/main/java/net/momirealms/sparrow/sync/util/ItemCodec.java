@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.util;
 
 import com.mojang.serialization.Dynamic;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.fixes.References;
 import net.minecraft.world.Container;
@@ -84,7 +83,10 @@ public final class ItemCodec {
     /** 把单个物品编码为当前服务端原生玩家文件使用的 NMS compound. */
     @NotNull
     public static net.minecraft.nbt.CompoundTag saveNativeItem(@NotNull ItemStack item) {
-        net.minecraft.nbt.Tag tag = NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, saveItem(item));
+        // 与快照编码保持相同的数量上限, 不修改 OFFLINE 采集借用的物品.
+        ItemStack encoded = item.getCount() > MAX_CODEC_COUNT ? item.copyWithCount(MAX_CODEC_COUNT) : item;
+        net.minecraft.nbt.Tag tag = ItemStack.CODEC.encodeStart(MinecraftRegistryOps.nativeNbt(), encoded)
+                .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getItem() + ": " + message));
         if (!(tag instanceof net.minecraft.nbt.CompoundTag compound)) {
             throw new IllegalStateException("item " + item.getItem() + " encoded to non-compound native tag");
         }
