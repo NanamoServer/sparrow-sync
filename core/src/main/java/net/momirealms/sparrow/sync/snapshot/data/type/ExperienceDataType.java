@@ -3,12 +3,15 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -29,9 +32,15 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected Experience captureValue(@NotNull Player player) {
-        return new Experience(player.getTotalExperience(), player.getLevel(), player.getExp());
+    protected Experience captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
+        ServerPlayer handle = ((CraftPlayer) player).getHandle();
+        return new Experience(handle.totalExperience, handle.experienceLevel, handle.experienceProgress);
     }
 
     @Override

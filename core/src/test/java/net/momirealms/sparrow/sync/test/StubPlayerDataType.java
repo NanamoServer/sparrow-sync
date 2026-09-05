@@ -1,9 +1,10 @@
 package net.momirealms.sparrow.sync.test;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -22,7 +23,7 @@ public record StubPlayerDataType(@NotNull DataKey key, @NotNull StorageFormat st
 
     @Override
     @NotNull
-    public Tag capture(@NotNull Player player) {
+    public Tag capture(@NotNull Player player, @NotNull CaptureMode mode) {
         throw new AssertionError("stub capture must not be called");
     }
 

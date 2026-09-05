@@ -5,11 +5,12 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.PDCMergeBlacklist;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
@@ -41,11 +42,12 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
 
     @Override
     @NotNull
-    public net.minecraft.nbt.CompoundTag capture(@NotNull Player player) {
+    public net.minecraft.nbt.CompoundTag capture(@NotNull Player player, @NotNull CaptureMode mode) {
         Map<String, net.minecraft.nbt.Tag> raw = ((CraftPlayer) player).getPersistentDataContainer().getRaw();
         net.minecraft.nbt.CompoundTag captured = new net.minecraft.nbt.CompoundTag();
         for (Map.Entry<String, net.minecraft.nbt.Tag> entry : raw.entrySet()) {
-            captured.put(entry.getKey(), entry.getValue().copy());
+            // 离线只复制根结构, 子 Tag 在同一最终保存任务编码完以前保持静止.
+            captured.put(entry.getKey(), mode == CaptureMode.OFFLINE ? entry.getValue() : entry.getValue().copy());
         }
         return captured;
     }

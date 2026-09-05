@@ -3,35 +3,42 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.NbtOps;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.ai.attributes.AttributeInstanceProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.attribute.AttributeModifier.Operation;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -41,6 +48,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     public static final DataKey ATTRIBUTES = DataKey.sparrow("attributes");
 
     private static final ModifierValue[] NO_MODIFIERS = new ModifierValue[0];
+    private static final Operation[] OPERATIONS = Operation.values();
     private static final Codec<NamespacedKey> KEY_CODEC = IdentifierProxy.INSTANCE.getCodec().xmap(
             identifier -> new NamespacedKey(IdentifierProxy.INSTANCE.getNamespace(identifier), IdentifierProxy.INSTANCE.getPath(identifier)),
             key -> IdentifierProxy.INSTANCE.newInstance(key.getNamespace(), key.getKey())
@@ -77,26 +85,32 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
     @Override
     @NotNull
-    protected Attributes captureValue(@NotNull Player player) {
+    protected Attributes captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         AttributeOptions options = PluginConfig.synchronization$attributes();
-        Attribute[] targets = this.captureTargets(options).attributes();
+        CaptureTarget[] targets = this.captureTargets(options).attributes();
         AttributeValue[] values = new AttributeValue[targets.length];
+        if (targets.length == 0) return new Attributes(values);
+        net.minecraft.world.entity.ai.attributes.AttributeMap attributes = ((CraftPlayer) player).getHandle().getAttributes();
+        boolean filterModifiers = !options.modifierBlacklist().isEmpty();
         int count = 0;
         for (int i = 0; i < targets.length; i++) {
-            Attribute attribute = targets[i];
-            NamespacedKey key = attribute.getKey();
-            AttributeInstance instance = player.getAttribute(attribute);
+            CaptureTarget target = targets[i];
+            net.minecraft.world.entity.ai.attributes.AttributeInstance instance = attributes.getInstance(target.holder());
             if (instance == null) continue;
 
-            Collection<AttributeModifier> currentModifiers = instance.getModifiers();
+            Map<Object, net.minecraft.world.entity.ai.attributes.AttributeModifier> currentModifiers = AttributeInstanceProxy.INSTANCE.getModifierById(instance);
             ModifierValue[] modifiers = currentModifiers.isEmpty() ? NO_MODIFIERS : new ModifierValue[currentModifiers.size()];
             int modifierCount = 0;
-            for (AttributeModifier modifier : currentModifiers) {
-                if (options.modifierBlacklisted(modifier.getKey().toString())) continue;
-                modifiers[modifierCount++] = new ModifierValue(modifier.getKey(), modifier.getAmount(), modifier.getOperation(), modifier.getSlotGroup());
+            for (Map.Entry<Object, net.minecraft.world.entity.ai.attributes.AttributeModifier> entry : currentModifiers.entrySet()) {
+                Object id = entry.getKey();
+                if (filterModifiers && options.modifierBlacklisted(id.toString())) continue;
+                NamespacedKey key = new NamespacedKey(IdentifierProxy.INSTANCE.getNamespace(id), IdentifierProxy.INSTANCE.getPath(id));
+                net.minecraft.world.entity.ai.attributes.AttributeModifier modifier = entry.getValue();
+                // NMS 实例上的 modifier 没有装备槽位; Craft 的转换同样固定为 ANY.
+                modifiers[modifierCount++] = new ModifierValue(key, modifier.amount(), OPERATIONS[modifier.operation().id()], EquipmentSlotGroup.ANY);
             }
             if (modifierCount < modifiers.length) modifiers = Arrays.copyOf(modifiers, modifierCount);
-            values[count++] = new AttributeValue(key, instance.getBaseValue(), modifiers);
+            values[count++] = new AttributeValue(target.key(), instance.getBaseValue(), modifiers);
         }
         return new Attributes(count == values.length ? values : Arrays.copyOf(values, count));
     }
@@ -105,11 +119,17 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
         CaptureTargets targets = this.captureTargets;
         if (targets != null && targets.options() == options) return targets;
         // 配置在 bootstrap 阶段加载, 属性注册表在首次采集时解析. reload 发布的新配置会重建目标数组.
-        List<Attribute> attributes = new ArrayList<>();
-        for (Attribute attribute : Registry.ATTRIBUTE) {
-            if (options.attributeAllowed(attribute.getKey().toString())) attributes.add(attribute);
+        List<CaptureTarget> attributes = new ArrayList<>();
+        Iterator<Holder.Reference<net.minecraft.world.entity.ai.attributes.Attribute>> holders = BuiltInRegistries.ATTRIBUTE.listElements().iterator();
+        while (holders.hasNext()) {
+            Holder<net.minecraft.world.entity.ai.attributes.Attribute> holder = holders.next();
+            Object id = RegistryProxy.INSTANCE.getKey(BuiltInRegistries.ATTRIBUTE, holder.value());
+            if (options.attributeAllowed(id.toString())) {
+                NamespacedKey key = new NamespacedKey(IdentifierProxy.INSTANCE.getNamespace(id), IdentifierProxy.INSTANCE.getPath(id));
+                attributes.add(new CaptureTarget(key, holder));
+            }
         }
-        targets = new CaptureTargets(options, attributes.toArray(Attribute[]::new));
+        targets = new CaptureTargets(options, attributes.toArray(CaptureTarget[]::new));
         this.captureTargets = targets;
         return targets;
     }
@@ -275,6 +295,9 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     private record StoredAttribute(@NotNull NamespacedKey key, double base, @NotNull List<ModifierValue> modifiers) {
     }
 
-    private record CaptureTargets(AttributeOptions options, Attribute[] attributes) {
+    private record CaptureTarget(NamespacedKey key, Holder<net.minecraft.world.entity.ai.attributes.Attribute> holder) {
+    }
+
+    private record CaptureTargets(AttributeOptions options, CaptureTarget[] attributes) {
     }
 }

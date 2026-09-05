@@ -14,6 +14,7 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -48,30 +49,78 @@ public final class PlayerDataPipeline {
         return this.dataRegistry.applyOrder();
     }
 
-    /** 采集玩家全部已装配类型的脱离值. */
+    /**
+     * 开始一次采集, 创建本次请求独占的槽位缓冲.
+     * SYNC 在玩家拥有线程读取全部类型; OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
+     * ASYNC 表示宽松保存的第一阶段, 本方法仍在玩家线程执行, 只读取不支持在线异步的类型.
+     *
+     * @param player 本次保存绑定的玩家对象, 第二阶段继续使用同一个对象
+     * @param mode 保存场景; ASYNC 不代表本方法已经处于异步线程
+     * @return Ready 可直接编码; Pending 必须先交给串行线程调用 {@link #captureAsync}; Failed 中止整次采集
+     */
     @NotNull
-    public CaptureResult capture(@NotNull Player player) {
-        // 采集值沿冻结槽位存放, 编码阶段可以直接复用同一布局
-        int size = this.dataRegistry.size();
-        Object[] values = new Object[size];
-        List<DataKey> skipped = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            DataKey key = this.dataRegistry.keyAt(i);
-            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
-            try {
-                values[i] = type.capture(player);
-            } catch (Throwable throwable) {
-                // 关键类型采集失败则丢弃整份快照.
-                if (type.critical()) {
-                    this.logger.error(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_FAILED, key.asString(), player.getName());
-                    return new CaptureResult.Failed(key, String.valueOf(throwable.getMessage()));
+    public CaptureResult capture(@NotNull Player player, @NotNull CaptureMode mode) {
+        CaptureBuffer buffer = new CaptureBuffer(player, this.dataRegistry.size());
+        // null 槽位表代表全类型. 宽松保存先按冻结时编译的同步组读取, 不在热路径重新筛选类型.
+        int[] slots = mode == CaptureMode.ASYNC ? this.dataRegistry.syncCaptureSlots() : null;
+        // 同步组实际运行在玩家拥有线程, 类型收到 SYNC 后必须复制出可跨线程持有的值.
+        CaptureResult.Failed failure = this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
+        if (failure != null) return failure;
+        if (mode == CaptureMode.ASYNC) return new CaptureResult.Pending(buffer);
+        return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
+    }
+
+    /**
+     * 在玩家串行线程执行, 补齐宽松保存的异步组.
+     * 调用方须等第一阶段返回后再投递此方法; 投递后第一阶段不再访问缓冲.
+     * 两个阶段顺序写同一数组, 不需要逐类型 Future、缓冲锁或合并另一份采集结果.
+     *
+     * @param player 第一阶段使用的玩家对象
+     * @param pending 第一阶段转交的未完成采集, 只消费一次
+     * @return 补齐后的 Ready, 或关键类型采集失败时的 Failed
+     */
+    @NotNull
+    public CaptureResult captureAsync(@NotNull Player player, @NotNull CaptureResult.Pending pending) {
+        CaptureBuffer buffer = pending.buffer;
+        // 这些槽位和同步组互斥. 即使期间发生新的同步保存, 它使用的也是另一份 CaptureBuffer.
+        CaptureResult.Failed failure = this.captureSlots(player, CaptureMode.ASYNC, this.dataRegistry.asyncCaptureSlots(), buffer);
+        if (failure != null) return failure;
+        return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
+    }
+
+    /**
+     * 按指定槽位读取玩家状态, 把结果写到注册表对应的原始下标.
+     * 非关键类型失败时该槽位留空并记录 skipped, 其余类型继续; 关键类型失败则立即停止本次采集.
+     *
+     * @param slots 冻结的同步组或异步组, null 表示读取全部槽位
+     * @return 关键类型的失败信息, 没有关键失败时返回 null
+     */
+    @Nullable
+    private CaptureResult.Failed captureSlots(Player player, CaptureMode mode, @Nullable int[] slots, CaptureBuffer buffer) {
+        long started = System.nanoTime();
+        try {
+            int size = slots == null ? this.dataRegistry.size() : slots.length;
+            for (int i = 0; i < size; i++) {
+                int slot = slots == null ? i : slots[i];
+                // 始终使用注册表槽位, 不能把组内下标 i 当成最终下标.
+                DataKey key = this.dataRegistry.keyAt(slot);
+                PlayerDataType<?> type = this.dataRegistry.typeAt(slot);
+                try {
+                    buffer.values[slot] = type.capture(player, mode);
+                } catch (Throwable throwable) {
+                    if (type.critical()) {
+                        this.logger.error(LogCategory.DATA, buffer.player, buffer.playerName, throwable, LogConstants.DATA_CAPTURE_FAILED, key.asString(), buffer.playerName);
+                        return new CaptureResult.Failed(key, String.valueOf(throwable.getMessage()));
+                    }
+                    buffer.skipped.add(key);
+                    this.logger.warn(LogCategory.DATA, buffer.player, buffer.playerName, throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), buffer.playerName);
                 }
-                // 非关键类型采集失败则跳过.
-                skipped.add(key);
-                this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), player.getName());
             }
+            return null;
+        } finally {
+            // 只累加实际执行采集的两个时间段. Pending 在队列里等待多久、后续 encode 多久都不计入.
+            buffer.captureNanos += System.nanoTime() - started;
         }
-        return new CaptureResult.Ready(player.getUniqueId(), player.getName(), this.dataRegistry, values, skipped);
     }
 
     /** 把一次采集的全部值编码为快照 NBT, 可在任意线程调用. */
@@ -230,8 +279,30 @@ public final class PlayerDataPipeline {
         return type.applyNative(session, playerData, (T) value);
     }
 
-    /** 采集结果, Failed 表示关键类型采集失败, 这次不应产出快照. */
+    private static final class CaptureBuffer {
+        private final UUID player;
+        private final String playerName;
+        private final Object[] values;
+        private final List<DataKey> skipped = new ArrayList<>();
+        private long captureNanos; // 两段采集执行时间之和, 不含线程间排队
+
+        private CaptureBuffer(Player player, int size) {
+            this.player = player.getUniqueId();
+            this.playerName = player.getName();
+            this.values = new Object[size];
+        }
+    }
+
+    /** Pending 尚待异步组采集, Ready 才可交给编码器. */
     public sealed interface CaptureResult {
+
+        final class Pending implements CaptureResult {
+            private final CaptureBuffer buffer;
+
+            private Pending(CaptureBuffer buffer) {
+                this.buffer = buffer;
+            }
+        }
 
         final class Ready implements CaptureResult {
             private final UUID player;
@@ -239,13 +310,19 @@ public final class PlayerDataPipeline {
             private final DataRegistry dataRegistry;
             private final Object[] values;
             private final List<DataKey> skipped;
+            private final long captureNanos;
 
-            private Ready(UUID player, String playerName, DataRegistry dataRegistry, Object[] values, List<DataKey> skipped) {
+            private Ready(UUID player, String playerName, DataRegistry dataRegistry, Object[] values, List<DataKey> skipped, long captureNanos) {
                 this.player = player;
                 this.playerName = playerName;
                 this.dataRegistry = dataRegistry;
                 this.values = values;
                 this.skipped = List.copyOf(skipped);
+                this.captureNanos = captureNanos;
+            }
+
+            public long captureNanos() {
+                return this.captureNanos;
             }
 
             @NotNull

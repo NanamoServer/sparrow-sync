@@ -5,10 +5,11 @@ import com.mojang.serialization.DataResult;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -23,8 +24,13 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected GameMode captureValue(@NotNull Player player) {
+    protected GameMode captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         return player.getGameMode();
     }
 

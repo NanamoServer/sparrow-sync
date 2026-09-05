@@ -57,7 +57,7 @@ class SnapshotApplyContextTest {
 
         @Override
         @NotNull
-        public String capture(@NotNull Player player) {
+        public String capture(@NotNull Player player, @NotNull CaptureMode mode) {
             return this.key.asString();
         }
 

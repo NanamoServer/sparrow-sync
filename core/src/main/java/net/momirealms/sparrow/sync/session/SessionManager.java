@@ -208,7 +208,7 @@ public final class SessionManager {
     }
 
     /**
-     * 把 ACTIVE 会话的采集和后续阶段一起提交到玩家串行线程.
+     * 在玩家线程接纳宽松保存, 同步组采完后提交串行任务.
      * 会话已经封口或失效时不接纳并返回 null.
      */
     @Nullable
@@ -291,7 +291,7 @@ public final class SessionManager {
         Location location = player.getLocation();
         this.plugin.scheduler().sync().runLater(() -> {
             if (action == CloseAction.SAVE_ACCEPTED) {
-                this.closeAfterSave(session, this.snapshotService.captureLaterAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
+                this.closeAfterSave(session, this.snapshotService.captureOfflineAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
             } else {
                 this.releaseSession(session);
             }

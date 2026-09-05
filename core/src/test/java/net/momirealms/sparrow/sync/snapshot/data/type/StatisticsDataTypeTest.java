@@ -24,8 +24,9 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.stats.ServerStatsCounterProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.type.StatisticsDataType.Statistics;
 import org.bukkit.craftbukkit.entity.CraftEntity;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -93,24 +94,24 @@ class StatisticsDataTypeTest {
         fixture.current.put(pickaxe, 0);
         StatisticsDataType type = new StatisticsDataType();
 
-        Statistics captured = type.capture(fixture.player);
+        Statistics captured = type.capture(fixture.player, CaptureMode.SYNC);
         fixture.current.put(playTime, 2400);
         fixture.current.removeInt(stone);
         fixture.current.put(pickaxe, 3);
 
         assertEquals(Map.of(playTime, 1200, stone, 64), values(captured));
-        assertEquals(Map.of(playTime, 2400, pickaxe, 3), values(type.capture(fixture.player)));
+        assertEquals(Map.of(playTime, 2400, pickaxe, 3), values(type.capture(fixture.player, CaptureMode.SYNC)));
     }
 
     @Test
     void captureHandlesEmptyAndAllZeroCounters() throws Exception {
         PlayerFixture fixture = playerFixture();
         StatisticsDataType type = new StatisticsDataType();
-        assertTrue(values(type.capture(fixture.player)).isEmpty());
+        assertTrue(values(type.capture(fixture.player, CaptureMode.SYNC)).isEmpty());
 
         fixture.current.put(Stats.CUSTOM.get(Stats.PLAY_TIME), 0);
         fixture.current.put(Stats.BLOCK_MINED.get(Blocks.STONE), 0);
-        Statistics captured = type.capture(fixture.player);
+        Statistics captured = type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(0, captured.statistics().length);
         assertEquals(0, captured.amounts().length);

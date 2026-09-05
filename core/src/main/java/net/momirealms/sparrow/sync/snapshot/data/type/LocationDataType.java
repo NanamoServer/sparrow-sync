@@ -2,16 +2,13 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.DoubleTag;
-import net.minecraft.nbt.FloatTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.*;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.Location;
@@ -37,7 +34,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
 
     @Override
     @NotNull
-    protected PlayerLocation captureValue(@NotNull Player player) {
+    protected PlayerLocation captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         Location location = player.getLocation();
         return new PlayerLocation(location.getWorld().getName(), location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
     }

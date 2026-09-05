@@ -52,8 +52,8 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
 
     @Override
     @NotNull
-    public final T capture(@NotNull Player player) {
-        return this.captureValue(player);
+    public final T capture(@NotNull Player player, @NotNull CaptureMode mode) {
+        return this.captureValue(player, mode);
     }
 
     @Override
@@ -76,10 +76,10 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
     }
 
     /**
-     * 从玩家身上读出脱离值, 线程契约与 {@link PlayerDataType#capture(Player)} 相同.
+     * 按 {@link PlayerDataType#capture(Player, CaptureMode)} 的线程与借用契约读取玩家数据.
      */
     @NotNull
-    protected abstract T captureValue(@NotNull Player player);
+    protected abstract T captureValue(@NotNull Player player, @NotNull CaptureMode mode);
 
     /**
      * 把值对象写回玩家.

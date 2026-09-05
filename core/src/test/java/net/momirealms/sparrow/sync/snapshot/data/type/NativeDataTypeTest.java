@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.food.FoodData;
+import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -30,7 +31,6 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.AttributeModifier.Operation;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlotGroup;
-import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -181,6 +181,25 @@ class NativeDataTypeTest {
         Inventory decoded = type.decode(encoded, 0);
         assertEquals(41, decoded.contents().length);
         assertEquals(3, decoded.heldSlot());
+    }
+
+    @Test
+    void invalidHeldSlotBecomesZeroBeforeEncodingDecodingAndNativeApply() throws IOException {
+        InventoryDataType type = allocateWithoutConstructor(InventoryDataType.class);
+        int nativeSize = VersionHelper.isOrAbove1_21_5() ? 43 : 41;
+        for (int heldSlot : new int[]{Integer.MIN_VALUE, -1, 0, 1, 8, 9, Integer.MAX_VALUE}) {
+            int expected = heldSlot >= 0 && heldSlot <= 8 ? heldSlot : 0;
+            Inventory value = new Inventory(new ItemStack[nativeSize], heldSlot, 0);
+            assertEquals(expected, value.heldSlot());
+            CompoundTag encoded = assertInstanceOf(CompoundTag.class, type.encode(value));
+            assertEquals(expected, encoded.getInt("heldSlot"));
+            encoded.putInt("heldSlot", heldSlot);
+            assertEquals(expected, type.decode(encoded, 0).heldSlot());
+
+            net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+            assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, value));
+            assertEquals(expected, compound(playerData).getInt("SelectedItemSlot"));
+        }
     }
 
     @Test

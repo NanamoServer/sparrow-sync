@@ -8,29 +8,30 @@ import net.momirealms.sparrow.nbt.FloatTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NumericTag;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
-import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.session.SnapshotSaveResult;
-import net.momirealms.sparrow.sync.storage.StorageProvider;
-import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.command.CommandSender;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
@@ -137,7 +138,7 @@ public final class TestCommand extends BukkitCommandFeature {
 
         try {
             // 采集原始快照
-            if (!(pipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
+            if (!(pipeline.capture(player, CaptureMode.SYNC) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 check(report, "capture", false, "critical data could not be captured");
                 return summarize(report);
             }
@@ -190,7 +191,7 @@ public final class TestCommand extends BukkitCommandFeature {
             player.getPersistentDataContainer().remove(SMOKE_MARKER);
 
             // 复采集并逐类型比对
-            if (!(pipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready recaptured)) {
+            if (!(pipeline.capture(player, CaptureMode.SYNC) instanceof PlayerDataPipeline.CaptureResult.Ready recaptured)) {
                 check(report, "re-capture", false, "critical data could not be captured");
                 return summarize(report);
             }

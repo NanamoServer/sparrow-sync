@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,6 +28,8 @@ public final class DataRegistry {
     private DataKey[] orderedKeys = new DataKey[0];
     private PlayerDataType<?>[] orderedTypes = new PlayerDataType<?>[0];
     private NativePlayerDataType<?>[] orderedNativeTypes = new NativePlayerDataType<?>[0];
+    private int[] syncCaptureSlots = new int[0];
+    private int[] asyncCaptureSlots = new int[0];
     private Map<DataKey, Integer> slots = Map.of();
     private List<DataKey> applyOrder = List.of();
     private volatile boolean frozen;
@@ -54,17 +57,28 @@ public final class DataRegistry {
         DataKey[] keys = new DataKey[size];
         PlayerDataType<?>[] types = new PlayerDataType<?>[size];
         NativePlayerDataType<?>[] nativeTypes = new NativePlayerDataType<?>[size];
+        int[] syncSlots = new int[size];
+        int[] asyncSlots = new int[size];
+        int syncCount = 0;
+        int asyncCount = 0;
         Map<DataKey, Integer> slots = new HashMap<>(size);
         for (int i = 0; i < size; i++) {
             DataKey key = order.get(i);
             keys[i] = key;
             types[i] = this.types.get(key);
+            if (types[i].supportsAsyncCapture()) {
+                asyncSlots[asyncCount++] = i;
+            } else {
+                syncSlots[syncCount++] = i;
+            }
             if (types[i] instanceof NativePlayerDataType<?> nativeType) nativeTypes[i] = nativeType;
             slots.put(key, i);
         }
         this.orderedKeys = keys;
         this.orderedTypes = types;
         this.orderedNativeTypes = nativeTypes;
+        this.syncCaptureSlots = Arrays.copyOf(syncSlots, syncCount);
+        this.asyncCaptureSlots = Arrays.copyOf(asyncSlots, asyncCount);
         this.slots = Map.copyOf(slots);
         this.applyOrder = List.copyOf(order);
         this.frozen = true;
@@ -72,6 +86,18 @@ public final class DataRegistry {
 
     public boolean frozen() {
         return this.frozen;
+    }
+
+    /** 在线宽松保存中的玩家线程槽位, <strong>返回数组只读</strong>. */
+    @NotNull
+    public int[] syncCaptureSlots() {
+        return this.syncCaptureSlots;
+    }
+
+    /** 在线宽松保存中的串行线程槽位, <strong>返回数组只读</strong>. */
+    @NotNull
+    public int[] asyncCaptureSlots() {
+        return this.asyncCaptureSlots;
     }
 
     @Nullable

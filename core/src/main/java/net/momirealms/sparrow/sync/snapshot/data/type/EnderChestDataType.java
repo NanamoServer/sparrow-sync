@@ -1,21 +1,24 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.PlayerEnderChestContainer;
+import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
-import net.momirealms.sparrow.sync.util.ItemCodec;
-import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.util.ItemCodec;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -55,9 +58,8 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
 
     @Override
     @NotNull
-    public ItemCodec.LoadedItems capture(@NotNull Player player) {
-        ItemStack[] contents = player.getEnderChest().getContents();
-        return new ItemCodec.LoadedItems(contents, 0);
+    public ItemCodec.LoadedItems capture(@NotNull Player player, @NotNull CaptureMode mode) {
+        return new ItemCodec.LoadedItems(ItemCodec.captureItems(((CraftPlayer) player).getHandle().getEnderChestInventory(), mode), 0);
     }
 
     @Override
@@ -79,17 +81,19 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
         return ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, mcDataVersion);
     }
 
-    // todo 这块需要改善一下处理, 不能直接drop. 扩容肯定没事, 缩小才要警告.
     @Override
     public void apply(@NotNull Player player, @NotNull ItemCodec.LoadedItems value) {
-        Inventory enderChest = player.getEnderChest();
-        // 快照容器大小与本服不同时 (扩容插件, 魔改核心) 适配并重排, 放不下的连同解码期的丢弃一起告警
-        ItemCodec.LoadedItems fitted = ItemCodec.fit(value.items(), enderChest.getSize());
+        ServerPlayer handle = ((CraftPlayer) player).getHandle();
+        PlayerEnderChestContainer enderChest = handle.getEnderChestInventory();
+        ItemCodec.LoadedItems fitted = ItemCodec.fit(value.items(), enderChest.getContainerSize());
+        ItemStack[] items = fitted.items();
+        for (int slot = 0; slot < items.length; slot++) {
+            enderChest.setItem(slot, items[slot] == null ? ItemStack.EMPTY : items[slot].copy());
+        }
         int dropped = value.dropped() + fitted.dropped();
         if (dropped > 0) {
             this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), LogConstants.DATA_ENDER_CHEST_DROPPED, String.valueOf(dropped), player.getName());
         }
-        enderChest.setContents(fitted.items());
     }
 
     @Override

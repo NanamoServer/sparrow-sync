@@ -4,14 +4,15 @@ import com.mojang.serialization.Dynamic;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.fixes.References;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
-import org.bukkit.inventory.ItemStack;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +26,19 @@ public final class ItemCodec {
     private static final int MAX_CODEC_COUNT = 99;   // vanilla 物品 CODEC 的 count 值域上限
 
     private ItemCodec() {
+    }
+
+    /** 在线固定数量与组件; 离线只借用到同一最终保存任务的 encode 结束. */
+    @NotNull
+    public static ItemStack[] captureItems(@NotNull Container container, @NotNull CaptureMode mode) {
+        ItemStack[] items = new ItemStack[container.getContainerSize()];
+        for (int slot = 0; slot < items.length; slot++) {
+            ItemStack item = container.getItem(slot);
+            if (!item.isEmpty()) {
+                items[slot] = mode == CaptureMode.OFFLINE ? item : item.copy();
+            }
+        }
+        return items;
     }
 
     /**
@@ -43,14 +57,12 @@ public final class ItemCodec {
      */
     @NotNull
     public static CompoundTag saveItem(@NotNull ItemStack item) {
-        net.minecraft.world.item.ItemStack nms = CraftItemStack.asNMSCopy(item);
-        if (nms.getCount() > MAX_CODEC_COUNT) {
-            nms.setCount(MAX_CODEC_COUNT);
-        }
-        Tag tag = net.minecraft.world.item.ItemStack.CODEC.encodeStart(MinecraftRegistryOps.sparrowNbt(), nms)
-                .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getType() + ": " + message));
+        // OFFLINE 可能借用原物品, 钳制只允许修改临时副本.
+        ItemStack encoded = item.getCount() > MAX_CODEC_COUNT ? item.copyWithCount(MAX_CODEC_COUNT) : item;
+        Tag tag = ItemStack.CODEC.encodeStart(MinecraftRegistryOps.sparrowNbt(), encoded)
+                .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getItem() + ": " + message));
         if (!(tag instanceof CompoundTag compound)) {
-            throw new IllegalStateException("item " + item.getType() + " encoded to non-compound tag");
+            throw new IllegalStateException("item " + item.getItem() + " encoded to non-compound tag");
         }
         return compound;
     }
@@ -69,12 +81,12 @@ public final class ItemCodec {
         return list;
     }
 
-    /** 把单个 Bukkit 物品编码为当前服务端原生玩家文件使用的 NMS compound. */
+    /** 把单个物品编码为当前服务端原生玩家文件使用的 NMS compound. */
     @NotNull
     public static net.minecraft.nbt.CompoundTag saveNativeItem(@NotNull ItemStack item) {
         net.minecraft.nbt.Tag tag = NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, saveItem(item));
         if (!(tag instanceof net.minecraft.nbt.CompoundTag compound)) {
-            throw new IllegalStateException("item " + item.getType() + " encoded to non-compound native tag");
+            throw new IllegalStateException("item " + item.getItem() + " encoded to non-compound native tag");
         }
         return compound;
     }
@@ -111,9 +123,8 @@ public final class ItemCodec {
         if (dataVersion > 0 && dataVersion < current) {
             itemTag = DataFixers.getDataFixer().update(References.ITEM_STACK, new Dynamic<>(NBTOps.INSTANCE, itemTag), dataVersion, current).getValue();
         }
-        net.minecraft.world.item.ItemStack nms = net.minecraft.world.item.ItemStack.CODEC.parse(MinecraftRegistryOps.sparrowNbt(), itemTag)
+        return ItemStack.CODEC.parse(MinecraftRegistryOps.sparrowNbt(), itemTag)
                 .getOrThrow(message -> new IOException("failed to parse item: " + message));
-        return CraftItemStack.asBukkitCopy(nms);
     }
 
     /**
@@ -163,7 +174,7 @@ public final class ItemCodec {
         return place(fitted, overflow);
     }
 
-    // 溢出重排: 依序塞进空槽, 版本降级或容量缩小时不丢物品, 仍放不下的计数上报
+    // 溢出物品依序填入空槽, 仍放不下的数量由应用侧告警.
     private static LoadedItems place(@Nullable ItemStack[] items, List<ItemStack> overflow) {
         int dropped = 0;
         int cursor = 0;
@@ -185,7 +196,7 @@ public final class ItemCodec {
      * 物品列表的解析结果.
      *
      * @param items   按槽位排列的物品, 空槽为 null
-     * @param dropped 重排后仍放不下而被丢弃的物品数, 大于 0 时调用方应告警
+     * @param dropped 重排后仍放不下而被丢弃的物品数
      */
     public record LoadedItems(@Nullable ItemStack @NotNull [] items, int dropped) {
     }

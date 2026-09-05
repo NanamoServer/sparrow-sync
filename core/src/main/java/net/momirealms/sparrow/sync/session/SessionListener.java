@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -102,7 +103,15 @@ public final class SessionListener implements Listener {
         for (int i = 0; i < size; i++) {
             Player player = players.get(i);
             PlayerSession session = this.sessions.find(player.getUniqueId());
-            if (session != null) this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE);
+            if (session == null) continue;
+            if (VersionHelper.isFolia()) {
+                // Folia 仅在 global tick 的 saveIncrementally(true) 派发定时世界保存事件, 不拥有任何玩家.
+                // 到玩家的 Region 后才接纳保存, SessionManager 会检查通知是否已经过期.
+                this.plugin.scheduler().entity().run(player, () -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {});
+            } else {
+                // Paper/Spigot 在主线程派发, 同步组当场采完并入队, 不再延后一 tick.
+                this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE);
+            }
         }
     }
 

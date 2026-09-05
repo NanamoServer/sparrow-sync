@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJso
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.GsonUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
@@ -88,7 +89,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      */
     @Override
     @NotNull
-    public Advancements capture(@NotNull Player player) {
+    public Advancements capture(@NotNull Player player, @NotNull CaptureMode mode) {
         ServerPlayer handle = handle(player);
         PlayerAdvancements advancements = handle.getAdvancements();
         Map<Object, Object> progress = PlayerAdvancementsProxy.INSTANCE.getProgress(advancements);

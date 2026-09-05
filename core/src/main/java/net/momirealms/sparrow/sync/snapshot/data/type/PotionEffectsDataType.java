@@ -6,11 +6,12 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -28,11 +29,11 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
     @Override
     @NotNull
-    protected List<MobEffectInstance> captureValue(@NotNull Player player) {
+    protected List<MobEffectInstance> captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         List<MobEffectInstance> effects = new ArrayList<>();
         for (MobEffectInstance instance : handle(player).getActiveEffects()) {
             if (instance.isAmbient()) continue;
-            effects.add(copyOf(instance));
+            effects.add(mode == CaptureMode.OFFLINE ? instance : copyOf(instance));
         }
         return effects;
     }

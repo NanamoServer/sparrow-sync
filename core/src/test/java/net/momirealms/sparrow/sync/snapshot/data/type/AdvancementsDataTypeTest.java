@@ -10,11 +10,11 @@ import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.AdvancementRequirements;
 import net.minecraft.advancements.CriterionProgress;
-import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.DataFixTypes;
+import net.minecraft.util.datafix.DataFixers;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -26,6 +26,7 @@ import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgr
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.AdvancementValue;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advancements;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -59,8 +60,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -147,7 +148,7 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
         Map<Object, Object> registry = Map.of(id, holder);
         PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         fixture.tracking.clear();
         AdvancementValue target = new AdvancementValue(id, new String[]{"done"}, new Instant[]{original.plusMillis(500)}, true);
 
@@ -155,7 +156,7 @@ class AdvancementsDataTypeTest {
 
         assertSame(original, progress.getCriterion("done").getObtained());
         assertTrue(fixture.tracking.isEmpty());
-        assertSame(before, fixture.type.capture(fixture.player));
+        assertSame(before, fixture.type.capture(fixture.player, CaptureMode.SYNC));
     }
 
     @Test
@@ -167,12 +168,12 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
         Map<Object, Object> registry = Map.of(id, holder);
         PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         Instant expected = original.plusSeconds(5).plusNanos(123456789);
         AdvancementValue target = new AdvancementValue(id, new String[]{"done"}, new Instant[]{expected}, true);
 
         fixture.type.apply(fixture.player, new Advancements(new AdvancementValue[]{target}));
-        Advancements after = fixture.type.capture(fixture.player);
+        Advancements after = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(expected.truncatedTo(ChronoUnit.SECONDS), progress.getCriterion("done").getObtained());
         assertArrayEquals(new Instant[]{expected.truncatedTo(ChronoUnit.SECONDS)}, after.values()[0].obtained());
@@ -332,7 +333,7 @@ class AdvancementsDataTypeTest {
         CriterionProgress localCriterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(localProgress).get("done");
         CriterionProgressProxy.INSTANCE.setObtained(localCriterion, obtained);
         tracking.add(localHolder);
-        Advancements captured = type.capture(player);
+        Advancements captured = type.capture(player, CaptureMode.SYNC);
         Advancements forwarded = type.decode(type.encode(captured), 0);
 
         Set<Object> ids = new HashSet<>();
@@ -356,7 +357,7 @@ class AdvancementsDataTypeTest {
 
         try {
             fixture.type.apply(fixture.player, new Advancements(new AdvancementValue[]{unknown}));
-            assertEquals(0, fixture.type.capture(fixture.player).values().length);
+            assertEquals(0, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
         } finally {
             setKeepUnknownAdvancements(true);
         }
@@ -382,7 +383,7 @@ class AdvancementsDataTypeTest {
         nativeHandoff(fixture.type, layout, snapshot, new AdvancementValue[]{unknown}).accept(fixture.player);
 
         assertArrayEquals(new AdvancementValue[]{unknown}, fixture.tracking.retainedUnknown());
-        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+        assertSame(unknown, fixture.type.capture(fixture.player, CaptureMode.SYNC).values()[0]);
     }
 
     /** 验证 Gate 与 Join 之间的布局换代会恢复完整 Player apply. */
@@ -455,17 +456,17 @@ class AdvancementsDataTypeTest {
         AdvancementValue unknown = new AdvancementValue(id, new String[]{"done"}, new Instant[]{remoteTime}, true);
         AdvancementValue[] retained = new AdvancementValue[]{unknown};
         fixture.tracking.retainedUnknown(retained);
-        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+        assertSame(unknown, fixture.type.capture(fixture.player, CaptureMode.SYNC).values()[0]);
 
         source.set(Map.of(id, holder));
         AdvancementProgress local = progress("done", null);
         progress.put(holder, local);
-        assertSame(unknown, fixture.type.capture(fixture.player).values()[0]);
+        assertSame(unknown, fixture.type.capture(fixture.player, CaptureMode.SYNC).values()[0]);
         CriterionProgress criterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(local).get("done");
         CriterionProgressProxy.INSTANCE.setObtained(criterion, localTime);
         fixture.tracking.add(holder);
 
-        Advancements captured = fixture.type.capture(fixture.player);
+        Advancements captured = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(1, captured.values().length);
         assertArrayEquals(new Instant[]{localTime.truncatedTo(ChronoUnit.SECONDS)}, captured.values()[0].obtained());
@@ -473,7 +474,7 @@ class AdvancementsDataTypeTest {
 
         CriterionProgressProxy.INSTANCE.setObtained(criterion, null);
         fixture.tracking.add(holder);
-        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertEquals(0, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
         assertSame(retained, fixture.tracking.retainedUnknown());
     }
 
@@ -490,15 +491,15 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> registry = Map.of(firstId, firstHolder, secondId, secondHolder);
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
 
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         fixture.tracking.clear();
-        assertSame(before, fixture.type.capture(fixture.player));
+        assertSame(before, fixture.type.capture(fixture.player, CaptureMode.SYNC));
         assertEquals(1, first.captures);
         assertEquals(1, second.captures);
 
         CriterionProgressProxy.INSTANCE.setObtained(first.getCriterion("done"), original.plusSeconds(5));
         fixture.tracking.add(firstHolder);
-        Advancements after = fixture.type.capture(fixture.player);
+        Advancements after = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(2, first.captures);
         assertEquals(1, second.captures);
@@ -517,18 +518,18 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
         Map<Object, Object> registry = Map.of(id, holder);
         PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), null);
         fixture.tracking.add(holder);
         fixture.tracking.clear();
 
-        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertEquals(0, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
         assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
 
         CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), original.plusSeconds(1));
         fixture.tracking.add(holder);
-        assertArrayEquals(new Instant[]{original.plusSeconds(1)}, fixture.type.capture(fixture.player).values()[0].obtained());
+        assertArrayEquals(new Instant[]{original.plusSeconds(1)}, fixture.type.capture(fixture.player, CaptureMode.SYNC).values()[0].obtained());
     }
 
     @Test
@@ -542,7 +543,7 @@ class AdvancementsDataTypeTest {
         AtomicReference<Map<?, ?>> registry = new AtomicReference<>(Map.of(firstId, first));
         Map<Object, Object> progress = new LinkedHashMap<>(Map.of(first, progress("done", original)));
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(registry::get));
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         registry.set(Map.of(firstId, replacement, secondId, second));
         progress.clear();
@@ -551,7 +552,7 @@ class AdvancementsDataTypeTest {
         progress.put(second, progress("done", original.plusSeconds(2)));
         fixture.tracking.add(replacement);
         fixture.tracking.add(second);
-        Advancements reloaded = fixture.type.capture(fixture.player);
+        Advancements reloaded = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertEquals(2, reloaded.values().length);
         assertArrayEquals(new Instant[]{original.plusSeconds(1)}, findValue(reloaded, firstId).obtained());
@@ -559,7 +560,7 @@ class AdvancementsDataTypeTest {
 
         registry.set(Map.of(secondId, second));
         progress.remove(replacement);
-        Advancements removed = fixture.type.capture(fixture.player);
+        Advancements removed = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         assertEquals(1, removed.values().length);
         assertEquals(secondId, removed.values()[0].id());
     }
@@ -571,14 +572,14 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> progress = new LinkedHashMap<>(Map.of(holder, progress("done", Instant.now())));
         Map<Object, Object> registry = Map.of(id, holder);
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
-        assertEquals(1, fixture.type.capture(fixture.player).values().length);
+        assertEquals(1, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
 
         // 对照 PlayerAdvancements.reload 的顺序, progress 在 dirty Set 之前清空
         progress.clear();
         fixture.tracking.clear();
         progress.put(holder, progress("done", null));
 
-        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertEquals(0, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
     }
 
     @Test
@@ -590,14 +591,14 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> values = new LinkedHashMap<>(Map.of(holder, progress));
         Map<Object, Object> registry = Map.of(id, holder);
         PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
-        Advancements before = fixture.type.capture(fixture.player);
+        Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         CriterionProgressProxy.INSTANCE.setObtained(progress.getCriterion("done"), original.plusSeconds(1));
         fixture.tracking.add(holder);
         progress.onCapture = () -> { throw new IllegalStateException("capture failed"); };
 
-        assertThrows(IllegalStateException.class, () -> fixture.type.capture(fixture.player));
+        assertThrows(IllegalStateException.class, () -> fixture.type.capture(fixture.player, CaptureMode.SYNC));
         progress.onCapture = null;
-        Advancements recovered = fixture.type.capture(fixture.player);
+        Advancements recovered = fixture.type.capture(fixture.player, CaptureMode.SYNC);
 
         assertArrayEquals(new Instant[]{original.plusSeconds(1)}, recovered.values()[0].obtained());
         assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
@@ -615,7 +616,7 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> values = new LinkedHashMap<>(Map.of(firstHolder, first, secondHolder, second));
         Map<Object, Object> registry = Map.of(firstId, firstHolder, secondId, secondHolder);
         PlayerFixture fixture = playerFixture(values, new AdvancementSlots(() -> registry));
-        fixture.type.capture(fixture.player);
+        fixture.type.capture(fixture.player, CaptureMode.SYNC);
         CriterionProgressProxy.INSTANCE.setObtained(first.getCriterion("done"), original.plusSeconds(1));
         fixture.tracking.add(firstHolder);
         CountDownLatch reading = new CountDownLatch(1);
@@ -636,13 +637,13 @@ class AdvancementsDataTypeTest {
         };
 
         try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
-            var refreshing = workers.submit(() -> fixture.type.capture(fixture.player));
+            var refreshing = workers.submit(() -> fixture.type.capture(fixture.player, CaptureMode.SYNC));
             try {
                 assertTrue(reading.await(5, TimeUnit.SECONDS));
                 CriterionProgressProxy.INSTANCE.setObtained(second.getCriterion("done"), original.plusSeconds(2));
                 fixture.tracking.add(secondHolder);
                 fixture.tracking.clear();
-                Advancements overlapping = workers.submit(() -> fixture.type.capture(fixture.player)).get(2, TimeUnit.SECONDS);
+                Advancements overlapping = workers.submit(() -> fixture.type.capture(fixture.player, CaptureMode.SYNC)).get(2, TimeUnit.SECONDS);
                 assertEquals(2, overlapping.values().length);
             } finally {
                 release.countDown();
@@ -650,7 +651,7 @@ class AdvancementsDataTypeTest {
             refreshing.get(5, TimeUnit.SECONDS);
         }
 
-        Advancements after = fixture.type.capture(fixture.player);
+        Advancements after = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         assertEquals(2, after.values().length);
         assertArrayEquals(new Instant[]{original.plusSeconds(2)}, findValue(after, secondId).obtained());
     }
@@ -671,7 +672,7 @@ class AdvancementsDataTypeTest {
             registry.put(id, holders[i]);
         }
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
-        assertEquals(0, fixture.type.capture(fixture.player).values().length);
+        assertEquals(0, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
         Random random = new Random(12345);
         Instant start = Instant.parse("2026-09-05T00:00:00Z");
         for (int step = 0; step < 400; step++) {
@@ -683,7 +684,7 @@ class AdvancementsDataTypeTest {
             fixture.tracking.clear();
 
             Advancements expected = AdvancementsDataType.captureDense(progress);
-            Advancements captured = fixture.type.capture(fixture.player);
+            Advancements captured = fixture.type.capture(fixture.player, CaptureMode.SYNC);
             assertEquals(expected.values().length, captured.values().length);
             for (int i = 0; i < expected.values().length; i++) {
                 AdvancementValue reference = expected.values()[i];
@@ -705,20 +706,20 @@ class AdvancementsDataTypeTest {
         Map<Object, Object> progress = new LinkedHashMap<>(Map.of(holder, progress("done", obtained)));
         Map<Object, Object> registry = Map.of(localId, holder);
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
-        Advancements known = fixture.type.capture(fixture.player);
+        Advancements known = fixture.type.capture(fixture.player, CaptureMode.SYNC);
         AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{obtained}, true);
         fixture.tracking.retainedUnknown(new AdvancementValue[]{unknown});
 
-        assertEquals(2, fixture.type.capture(fixture.player).values().length);
+        assertEquals(2, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
         setKeepUnknownAdvancements(false);
         try {
-            assertSame(known, fixture.type.capture(fixture.player));
+            assertSame(known, fixture.type.capture(fixture.player, CaptureMode.SYNC));
         } finally {
             setKeepUnknownAdvancements(true);
         }
-        assertSame(unknown, findValue(fixture.type.capture(fixture.player), unknownId));
+        assertSame(unknown, findValue(fixture.type.capture(fixture.player, CaptureMode.SYNC), unknownId));
         fixture.tracking.retainedUnknown(new AdvancementValue[0]);
-        assertSame(known, fixture.type.capture(fixture.player));
+        assertSame(known, fixture.type.capture(fixture.player, CaptureMode.SYNC));
     }
 
     /** 验证玩家线程扩展候选位图时, 并发 capture 副本不会破坏或永久丢失已写入槽位. */

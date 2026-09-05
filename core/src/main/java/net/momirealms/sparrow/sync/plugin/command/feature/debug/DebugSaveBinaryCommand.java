@@ -1,10 +1,11 @@
 package net.momirealms.sparrow.sync.plugin.command.feature.debug;
 
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
-import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;
@@ -40,7 +41,7 @@ public final class DebugSaveBinaryCommand extends BukkitCommandFeature {
             SnapshotUtils.send(player, "[FAIL] data registry is not assembled yet", false);
             return;
         }
-        if (!(pipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready ready)) {
+        if (!(pipeline.capture(player, CaptureMode.SYNC) instanceof PlayerDataPipeline.CaptureResult.Ready ready)) {
             SnapshotUtils.send(player, "[FAIL] critical data could not be captured", false);
             return;
         }

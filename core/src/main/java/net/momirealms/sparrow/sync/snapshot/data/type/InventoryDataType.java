@@ -1,5 +1,10 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -9,15 +14,16 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.util.VersionHelper;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,10 +71,9 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
 
     @Override
     @NotNull
-    public Inventory capture(@NotNull Player player) {
-        PlayerInventory inventory = player.getInventory();
-        ItemStack[] contents = inventory.getContents();
-        return new Inventory(contents, inventory.getHeldItemSlot(), 0);
+    public Inventory capture(@NotNull Player player, @NotNull CaptureMode mode) {
+        net.minecraft.world.entity.player.Inventory inventory = ((CraftPlayer) player).getHandle().getInventory();
+        return new Inventory(ItemCodec.captureItems(inventory, mode), InventoryProxy.INSTANCE.getSelected(inventory), 0);
     }
 
     @Override
@@ -89,21 +94,41 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
         }
         int size = Math.max(1, root.getInt(SIZE_KEY, FALLBACK_SIZE));
         ItemCodec.LoadedItems loaded = ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, mcDataVersion);
-        int heldSlot = Math.clamp(root.getInt(HELD_SLOT_KEY), 0, 8);
-        return new Inventory(loaded.items(), heldSlot, loaded.dropped());
+        return new Inventory(loaded.items(), root.getInt(HELD_SLOT_KEY), loaded.dropped());
     }
 
     @Override
     public void apply(@NotNull Player player, @NotNull Inventory value) {
-        PlayerInventory inventory = player.getInventory();
-        // 快照容器大小与本服不同时 (跨版本) 适配并重排, 放不下的连同解码期的丢弃一起告警
-        ItemCodec.LoadedItems fitted = ItemCodec.fit(value.contents(), inventory.getSize());
+        ServerPlayer handle = ((CraftPlayer) player).getHandle();
+        net.minecraft.world.entity.player.Inventory inventory = handle.getInventory();
+        ItemCodec.LoadedItems fitted = ItemCodec.fit(value.contents(), inventory.getContainerSize());
+        ItemStack[] items = fitted.items();
+        for (int slot = 0; slot < items.length; slot++) {
+            // 玩家持有独立物品, 后续游玩不能修改本次解码值. 空槽也必须写入, 清掉本服旧物品.
+            ItemStack item = items[slot] == null ? ItemStack.EMPTY : items[slot].copy();
+            inventory.setItem(slot, item);
+            if (slot > 40) {
+                // body/saddle 不属于 inventoryMenu, 沿用 Craft 的玩家背包包.
+                handle.connection.send(new ClientboundSetPlayerInventoryPacket(slot, item.copy()));
+            } else {
+                // 容器槽位与背包槽位不同: 热键栏 0..8 -> 36..44, 盔甲倒序, 副手 -> 45.
+                int menuSlot = slot;
+                if (slot < 9) {
+                    menuSlot += 36;
+                } else if (slot > 39) {
+                    menuSlot += 5;
+                } else if (slot > 35) {
+                    menuSlot = 44 - slot;
+                }
+                handle.connection.send(new ClientboundContainerSetSlotPacket(handle.inventoryMenu.containerId, handle.inventoryMenu.incrementStateId(), menuSlot, item));
+            }
+        }
+        InventoryProxy.INSTANCE.setSelected(inventory, value.heldSlot());
+        handle.connection.send(new ClientboundSetHeldSlotPacket(value.heldSlot()));
         int dropped = value.dropped() + fitted.dropped();
         if (dropped > 0) {
             this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), LogConstants.DATA_INVENTORY_DROPPED, String.valueOf(dropped), player.getName());
         }
-        inventory.setContents(fitted.items());
-        inventory.setHeldItemSlot(value.heldSlot());
     }
 
     @Override
@@ -156,8 +181,14 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     /**
      * 解码后的背包.
      *
-     * @param dropped 溢出重排后仍被丢弃的物品数
+     * @param heldSlot 手持槽位, 越界时静默归零
+     * @param dropped 解码时放不下而被丢弃的物品数
      */
     public record Inventory(@Nullable ItemStack @NotNull [] contents, int heldSlot, int dropped) {
+        public Inventory {
+            if (heldSlot < 0 || heldSlot > 8) {
+                heldSlot = 0;
+            }
+        }
     }
 }

@@ -2,9 +2,12 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.world.entity.player.Abilities;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -25,8 +28,9 @@ public final class FlightStatusDataType extends CodecDataType<FlightStatusDataTy
 
     @Override
     @NotNull
-    protected FlightStatus captureValue(@NotNull Player player) {
-        return new FlightStatus(player.getAllowFlight(), player.isFlying());
+    protected FlightStatus captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
+        Abilities abilities = ((CraftPlayer) player).getHandle().getAbilities();
+        return new FlightStatus(abilities.mayfly, abilities.flying);
     }
 
     @Override

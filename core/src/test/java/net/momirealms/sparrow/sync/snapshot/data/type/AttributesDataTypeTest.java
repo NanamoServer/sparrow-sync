@@ -8,17 +8,19 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
-import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.Attributes;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.AttributeValue;
+import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.Attributes;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.ModifierValue;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.attribute.AttributeModifier.Operation;
-import org.bukkit.craftbukkit.attribute.CraftAttributeMap;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.junit.jupiter.api.AfterEach;
@@ -32,12 +34,13 @@ import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class AttributesDataTypeTest {
@@ -73,7 +76,7 @@ class AttributesDataTypeTest {
         health.addModifier(modifier("minecraft:effect.health_boost", 4.0));
         AttributesDataType type = new AttributesDataType();
 
-        Attributes first = type.capture(player);
+        Attributes first = type.capture(player, CaptureMode.SYNC);
         Object targets = targets(type);
         AttributeValue capturedHealth = find(first, "max_health");
         assertEquals(6, first.values().length);
@@ -83,7 +86,7 @@ class AttributesDataTypeTest {
         health.setBaseValue(40.0);
         health.removeModifier(modifier("example:bonus", 3.0));
 
-        Attributes second = type.capture(player);
+        Attributes second = type.capture(player, CaptureMode.SYNC);
         assertSame(targets, targets(type));
         assertEquals(40.0, find(second, "max_health").base());
         assertEquals(0, find(second, "max_health").modifiers().length);
@@ -96,13 +99,13 @@ class AttributesDataTypeTest {
         Player player = player(new AttributeMap(net.minecraft.world.entity.player.Player.createAttributes().build()));
         AttributesDataType type = new AttributesDataType();
         configure(List.of("max_health"), List.of());
-        assertEquals(List.of("minecraft:max_health"), keys(type.capture(player)));
+        assertEquals(List.of("minecraft:max_health"), keys(type.capture(player, CaptureMode.SYNC)));
         Object firstTargets = targets(type);
 
         configure(List.of("luck", "minecraft:luck", "minecraft:movement_*"), List.of());
 
-        assertEquals(Set.of("minecraft:luck", "minecraft:movement_speed", "minecraft:movement_efficiency"), Set.copyOf(keys(type.capture(player))));
-        assertEquals(3, type.capture(player).values().length);
+        assertEquals(Set.of("minecraft:luck", "minecraft:movement_speed", "minecraft:movement_efficiency"), Set.copyOf(keys(type.capture(player, CaptureMode.SYNC))));
+        assertEquals(3, type.capture(player, CaptureMode.SYNC).values().length);
         assertNotSame(firstTargets, targets(type));
     }
 
@@ -110,12 +113,13 @@ class AttributesDataTypeTest {
     void captureSkipsMissingInstancesAndHandlesEmptyWhitelist() throws Exception {
         Player empty = player(new AttributeMap(AttributeSupplier.builder().build()));
         AttributesDataType type = new AttributesDataType();
-        assertEquals(0, type.capture(empty).values().length);
+        assertEquals(0, type.capture(empty, CaptureMode.SYNC).values().length);
         configure(List.of(), List.of());
         Player unused = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> {
+            if (method.getName().equals("getUniqueId")) return new UUID(0L, 0L);
             throw new AssertionError("empty whitelist accessed player: " + method.getName());
         });
-        assertEquals(0, type.capture(unused).values().length);
+        assertEquals(0, type.capture(unused, CaptureMode.SYNC).values().length);
     }
 
     @Test
@@ -152,7 +156,7 @@ class AttributesDataTypeTest {
         Player player = player(new AttributeMap(net.minecraft.world.entity.player.Player.createAttributes().build()));
         player.getAttribute(Attribute.MAX_HEALTH).addModifier(modifier("minecraft:effect.health_boost", 4.0));
 
-        AttributeValue health = find(new AttributesDataType().capture(player), "max_health");
+        AttributeValue health = find(new AttributesDataType().capture(player, CaptureMode.SYNC), "max_health");
 
         assertEquals(1, health.modifiers().length);
         assertEquals("minecraft:effect.health_boost", health.modifiers()[0].key().toString());
@@ -195,11 +199,9 @@ class AttributesDataTypeTest {
     }
 
     static Player player(AttributeMap attributes) {
-        CraftAttributeMap map = new CraftAttributeMap(attributes);
-        return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> switch (method.getName()) {
-            case "getAttribute" -> map.getAttribute((Attribute) args[0]);
-            default -> throw new UnsupportedOperationException(method.getName());
-        });
+        CraftPlayer player = NmsPlayerFixture.create();
+        NmsPlayerFixture.attributes(player, attributes);
+        return player;
     }
 
     static void configure(List<String> whitelist, List<String> blacklist) throws Exception {

@@ -71,7 +71,7 @@ class PlayerDataPipelineTest {
                 new FakeType(BRAVO, StorageFormat.STRUCTURED).failingCapture()
         );
 
-        PlayerDataPipeline.CaptureResult.Ready ready = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player));
+        PlayerDataPipeline.CaptureResult.Ready ready = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
 
         assertEquals(Set.of(ALPHA), ready.values().keySet());
         assertEquals(List.of(BRAVO), ready.skipped());
@@ -85,7 +85,7 @@ class PlayerDataPipelineTest {
                 new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingCapture()
         );
 
-        PlayerDataPipeline.CaptureResult result = pipeline.capture(this.player);
+        PlayerDataPipeline.CaptureResult result = pipeline.capture(this.player, CaptureMode.SYNC);
 
         assertEquals(BRAVO, assertInstanceOf(PlayerDataPipeline.CaptureResult.Failed.class, result).key());
     }
@@ -96,7 +96,7 @@ class PlayerDataPipelineTest {
                 new FakeType(ALPHA, StorageFormat.STRUCTURED),
                 new FakeType(BRAVO, StorageFormat.STRUCTURED).failingEncode()
         );
-        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player));
+        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
 
         PlayerDataPipeline.EncodeResult.Ready ready = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured));
 
@@ -111,7 +111,7 @@ class PlayerDataPipelineTest {
                 new FakeType(ALPHA, StorageFormat.STRUCTURED),
                 new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingEncode()
         );
-        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player));
+        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
 
         PlayerDataPipeline.EncodeResult result = pipeline.encode(captured);
 
@@ -533,7 +533,7 @@ class PlayerDataPipelineTest {
 
         @Override
         @NotNull
-        public String capture(@NotNull Player player) {
+        public String capture(@NotNull Player player, @NotNull CaptureMode mode) {
             if (this.captureFails) throw new IllegalStateException("capture of " + this.key + " failed");
             return this.key.asString();
         }

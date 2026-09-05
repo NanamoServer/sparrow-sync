@@ -3,13 +3,15 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.food.FoodData;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -31,10 +33,15 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected Hunger captureValue(@NotNull Player player) {
-        int tickTimer = FoodDataProxy.INSTANCE.getTickTimer(((CraftPlayer) player).getHandle().getFoodData());
-        return new Hunger(player.getFoodLevel(), player.getSaturation(), player.getExhaustion(), tickTimer);
+    protected Hunger captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
+        FoodData food = ((CraftPlayer) player).getHandle().getFoodData();
+        return new Hunger(food.getFoodLevel(), food.getSaturationLevel(), food.exhaustionLevel, FoodDataProxy.INSTANCE.getTickTimer(food));
     }
 
     @Override

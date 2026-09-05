@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -24,8 +25,13 @@ public final class HealthScaleDataType extends CodecDataType<HealthScaleDataType
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected HealthScale captureValue(@NotNull Player player) {
+    protected HealthScale captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         return new HealthScale(player.getHealthScale(), player.isHealthScaled());
     }
 

@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -27,7 +28,7 @@ class LocationDataTypeTest {
         Player player = player(location, server(Map.of("source", sourceWorld, "target", targetWorld)));
         LocationDataType type = new LocationDataType();
 
-        LocationDataType.PlayerLocation captured = type.decode(type.encode(type.capture(player)), 0);
+        LocationDataType.PlayerLocation captured = type.decode(type.encode(type.capture(player, CaptureMode.SYNC)), 0);
 
         assertEquals(new LocationDataType.PlayerLocation("source", 12.5, 64.25, -3.75, 91.5f, -18.25f), captured);
 

@@ -6,8 +6,10 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,9 +22,14 @@ public final class EnchantmentSeedDataType extends CodecDataType<Integer> implem
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected Integer captureValue(@NotNull Player player) {
-        return player.getEnchantmentSeed();
+    protected Integer captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
+        return ((CraftPlayer) player).getHandle().getEnchantmentSeed();
     }
 
     @Override

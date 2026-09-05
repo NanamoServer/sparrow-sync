@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.*;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -134,36 +135,52 @@ public final class SnapshotService {
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
-        long captureStart = System.nanoTime();
-        if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
+        if (!(this.playerDataPipeline.capture(player, CaptureMode.SYNC) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
             request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
             return request.completion;
         }
-        long captureNanos = System.nanoTime() - captureStart;
-        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, captureNanos, request), request);
+        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request), request);
         return request.completion;
     }
 
     /**
-     * 把采集、编码和保存阶段一起提交到玩家串行异步线程.
+     * 玩家线程完成同步组采集, 串行线程补齐异步组并保存.
      */
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
+        if (!(this.playerDataPipeline.capture(player, CaptureMode.ASYNC) instanceof PlayerDataPipeline.CaptureResult.Pending pending)) {
+            request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
+            return request.completion;
+        }
         this.submitSerial(context.meta().player(), () -> {
-            long captureStart = System.nanoTime();
-            if (!(this.playerDataPipeline.capture(player) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
+            if (!(this.playerDataPipeline.captureAsync(player, pending) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, System.nanoTime() - captureStart, request);
+            this.encodeAndSubmit(context, captured, request);
         }, request);
         return request.completion;
     }
 
-    // 进入这里时已经只持有脱离 Player 的采集值.
-    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, long captureNanos, SaveRequest request) {
+    // 调用方已跨过 Quit 后下一 Region tick, 借用值在本次串行任务内完成编码
+    @NotNull
+    CompletableFuture<SnapshotSaveResult> captureOfflineAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+        SaveRequest request = new SaveRequest();
+        SaveContext context = this.newContext(player, cause, retainedData);
+        this.submitSerial(context.meta().player(), () -> {
+            if (!(this.playerDataPipeline.capture(player, CaptureMode.OFFLINE) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
+                request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
+                return;
+            }
+            this.encodeAndSubmit(context, captured, request);
+        }, request);
+        return request.completion;
+    }
+
+    // encode 的结果已经独立, 后续事件和存储只持有快照 Tag
+    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
@@ -176,7 +193,7 @@ public final class SnapshotService {
             return;
         }
         // write 返回时首次存储任务已入队或快照已转交 stash, 最终 settle 继续走 completion
-        this.writer.write(snapshot, context.playerName(), captureNanos, request.completion);
+        this.writer.write(snapshot, context.playerName(), captured.captureNanos(), request.completion);
         request.handedOff();
     }
 

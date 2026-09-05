@@ -1,6 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +21,9 @@ class EnchantmentSeedDataTypeTest {
         EnchantmentSeedDataType type = new EnchantmentSeedDataType();
         player.setEnchantmentSeed(135792468);
 
-        int captured = type.decode(type.encode(type.capture(player)), 0);
+        CraftPlayer source = NmsPlayerFixture.create();
+        source.getHandle().enchantmentSeed = 135792468;
+        int captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)), 0);
 
         assertEquals(135792468, captured);
 

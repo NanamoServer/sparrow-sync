@@ -1,6 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +23,10 @@ class FlightStatusDataTypeTest {
         player.setAllowFlight(true);
         player.setFlying(true);
 
-        FlightStatusDataType.FlightStatus captured = type.decode(type.encode(type.capture(player)), 0);
+        CraftPlayer source = NmsPlayerFixture.create();
+        source.getHandle().getAbilities().mayfly = true;
+        source.getHandle().getAbilities().flying = true;
+        FlightStatusDataType.FlightStatus captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)), 0);
 
         assertEquals(new FlightStatusDataType.FlightStatus(true, true), captured);
 

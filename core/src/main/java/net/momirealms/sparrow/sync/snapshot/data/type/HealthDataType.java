@@ -5,10 +5,11 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
-import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -31,8 +32,13 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     }
 
     @Override
+    public boolean supportsAsyncCapture() {
+        return true;
+    }
+
+    @Override
     @NotNull
-    protected Health captureValue(@NotNull Player player) {
+    protected Health captureValue(@NotNull Player player, @NotNull CaptureMode mode) {
         return new Health(player.getHealth());
     }
 
