@@ -66,12 +66,13 @@ public final class MapPipeline {
     // 等待地图发布获取到全局唯一ID后生成传输快照.
     @NotNull
     public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
+        Map<Integer, CompletableFuture<Boolean>> renewals = new HashMap<>();
         return this.rewriteAsync(snapshot, components -> {
             // 已有模式的中转地图交给其处理器续行
             CompoundTag marker = this.marker(components);
             if (marker != null && marker.containsKey(MAP_TYPE)) {
                 MapOrigin origin = this.origin(marker);
-                return this.handler(origin.type()).forwardAsync(components, origin);
+                return this.handler(origin.type()).forwardAsync(components, origin, renewals);
             }
             Tag mapId = components.get(MAP_ID);
             if (mapId == null) return CompletableFuture.completedFuture(components);

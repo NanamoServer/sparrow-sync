@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
  * 为传输物品和运行时刷新准备本服可用的地图 ID.
  *
  * <p>相同全局 ID 的读取共用一个任务, 顺序查询本地缓存、Redis 和数据库.
- * 数据准备完成后切到原生线程更新副本或恢复原图 ID, 返回 Future 在更新完成后结束.
+ * 数据准备完成后切到主线程更新副本或恢复原图 ID, 返回 Future 在更新完成后结束.
  * 关闭、超时或途中收到失效通知时, 已读取的结果须重新检查后才能应用.
  */
 // 为传输物品和运行时刷新准备本服可用的地图 ID.
@@ -62,7 +62,7 @@ public final class MapReceiver {
         this.worker = worker;
         this.nativeExecutor = nativeExecutor;
         this.logger = logger;
-        this.runtime = new MapRuntime(this, logger);
+        this.runtime = new MapRuntime(this, worker, logger);
     }
 
     /**
@@ -170,7 +170,7 @@ public final class MapReceiver {
                 return Optional.empty();
             }).thenCompose(found -> found.isPresent() ? CompletableFuture.completedFuture(found) : this.storage.find(id));
         }, this.worker);
-        // 共享记录须对应请求的全局 ID, 原生对象在工作线程独立构造.
+        // 共享记录须对应请求的全局 ID, 原生对象在异步线程独立构造.
         read.thenApplyAsync(value -> {
             if (this.closed || flight.result.isDone()) {
                 throw new CancellationException("map read ended");
@@ -232,7 +232,7 @@ public final class MapReceiver {
         });
     }
 
-    // 在原生线程选择回源 ID 或更新负数副本, 原图内容由来源世界继续维护.
+    // 在主线程选择回源 ID 或更新负数副本, 原图内容由来源世界继续维护.
     private int updateLocalMap(StoredMap map, MapItemSavedData prepared) {
         ServerLevel level = this.server.overworld();
         MapIdentity identity = map.identity();

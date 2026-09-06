@@ -18,6 +18,8 @@ import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.dedicated.DedicatedServer;
+import net.minecraft.server.dedicated.DedicatedPlayerList;
+import net.minecraft.server.players.PlayerList;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixers;
@@ -87,6 +89,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Optional;
@@ -130,6 +133,9 @@ class NativeMapAdapterTest {
         DedicatedServer server = NmsPlayerFixture.allocate(DedicatedServer.class);
         this.previousMinecraft = replaceStatic(MinecraftServer.class, "SERVER", server);
         CraftServer craft = NmsPlayerFixture.allocate(CraftServer.class);
+        DedicatedPlayerList players = NmsPlayerFixture.allocate(DedicatedPlayerList.class);
+        NmsPlayerFixture.set(PlayerList.class, players, "playersByName", new HashMap<>());
+        NmsPlayerFixture.set(CraftServer.class, craft, "playerList", players);
         SimplePluginManager manager = NmsPlayerFixture.allocate(SimplePluginManager.class);
         this.pluginManager = NmsPlayerFixture.allocate(TestPluginManager.class);
         manager.paperPluginManager = this.pluginManager;
@@ -536,6 +542,7 @@ class NativeMapAdapterTest {
             ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
             assertNotNull(packet);
             assertTrue(packet.colorPatch().isPresent());
+            assertEquals(1, packet.colorPatch().orElseThrow().mapColors().length);
             RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
             try {
                 ClientboundMapItemDataPacket.STREAM_CODEC.encode(buffer, packet);
@@ -557,6 +564,160 @@ class NativeMapAdapterTest {
         reloaded.getHoldingPlayer(handheldViewer.getHandle());
         assertNotNull(reloaded.getUpdatePacket(new MapId(-1), handheldViewer.getHandle()));
         assertNull(this.level.getMapData(new MapId(1)));
+    }
+
+    @Test
+    void unchangedReplicaDoesNotDirtyTheFileOrResendPixels() throws Exception {
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        CraftPlayer viewer = this.viewer(replica, 1);
+        Object view = replica.mapView;
+        byte[] pixels = replica.colors;
+        replica.setDirty(false);
+        this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        assertSame(view, replica.mapView);
+        assertSame(pixels, replica.colors);
+        assertFalse(replica.isDirty());
+        for (int i = 0; i < 6; i++) {
+            assertNull(replica.getUpdatePacket(new MapId(-1), viewer.getHandle()));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"single", "rectangle", "last-pixel", "full"})
+    void pixelUpdatesUseTheSmallestBoundingRectangleForEachViewer(String shape) throws Exception {
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        CraftPlayer first = this.viewer(replica, 1);
+        CraftPlayer second = this.viewer(replica, 2);
+        MapItemSavedData next = this.adapter.prepareReplica(this.identity, data);
+        int x = shape.equals("last-pixel") ? 127 : shape.equals("full") ? 0 : 3;
+        int y = shape.equals("last-pixel") ? 127 : shape.equals("full") ? 0 : 4;
+        int width = shape.equals("full") ? 128 : shape.equals("rectangle") ? 6 : 1;
+        int height = shape.equals("full") ? 128 : shape.equals("rectangle") ? 7 : 1;
+        if (shape.equals("full")) {
+            Arrays.fill(next.colors, (byte) 29);
+        } else {
+            next.colors[x + y * 128] = 29;
+            next.colors[x + width - 1 + (y + height - 1) * 128] = 29;
+        }
+        replica.setDirty(false);
+        this.adapter.updateReplica(this.level, this.identity, next);
+        assertTrue(replica.isDirty());
+        for (CraftPlayer viewer : List.of(first, second)) {
+            ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
+            MapItemSavedData.MapPatch patch = packet.colorPatch().orElseThrow();
+            assertEquals(x, patch.startX());
+            assertEquals(y, patch.startY());
+            assertEquals(width, patch.width());
+            assertEquals(height, patch.height());
+            assertEquals(width * height, patch.mapColors().length);
+        }
+        assertArrayEquals(next.colors, replica.colors);
+    }
+
+    @Test
+    void pixelRectangleIncludesChangesStillWaitingToBeSent() throws Exception {
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        CraftPlayer viewer = this.viewer(replica, 1);
+        replica.setColor(1, 2, (byte) 17);
+        MapItemSavedData next = this.adapter.prepareReplica(this.identity, data);
+        next.colors[1 + 2 * 128] = 17;
+        next.colors[10 + 20 * 128] = 29;
+        this.adapter.updateReplica(this.level, this.identity, next);
+        ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
+        MapItemSavedData.MapPatch patch = packet.colorPatch().orElseThrow();
+        assertEquals(1, patch.startX());
+        assertEquals(2, patch.startY());
+        assertEquals(10, patch.width());
+        assertEquals(19, patch.height());
+    }
+
+    @Test
+    void metadataOnlyUpdatesPersistAndSendHeadersWithoutPixelPatches() throws Exception {
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        CraftPlayer viewer = this.viewer(replica, 1);
+        replica.setDirty(false);
+        MapItemSavedData next = this.adapter.prepareReplica(this.identity, data);
+        next.scale = 3;
+        next.locked = true;
+        next.centerX = 128;
+        next.centerZ = -256;
+        next.trackingPosition = false;
+        next.unlimitedTracking = true;
+        this.adapter.updateReplica(this.level, this.identity, next);
+        assertTrue(replica.isDirty());
+        ClientboundMapItemDataPacket packet = this.decorationPacket(replica, viewer);
+        assertEquals(3, packet.scale());
+        assertTrue(packet.locked());
+        assertTrue(packet.colorPatch().isEmpty());
+        this.storage.saveAndJoin();
+        this.storage.cache.clear();
+        MapItemSavedData reloaded = this.level.getMapData(new MapId(-1));
+        assertEquals(3, reloaded.scale);
+        assertTrue(reloaded.locked);
+        assertEquals(128, reloaded.centerX);
+        assertEquals(-256, reloaded.centerZ);
+        assertFalse(reloaded.trackingPosition);
+        assertTrue(reloaded.unlimitedTracking);
+        assertArrayEquals(next.colors, reloaded.colors);
+    }
+
+    @Test
+    void bannerOnlyUpdatesPreserveLocalDecorationsAndRepairBannerIcons() throws Exception {
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        CraftPlayer viewer = this.viewer(replica, 1);
+        MapDecoration frame = new MapDecoration(MapDecorationTypes.FRAME, (byte) 1, (byte) 2, (byte) 0, Optional.empty());
+        replica.decorations.put("frame-42", frame);
+        CompoundTag tag = data.getTag();
+        CompoundTag banner = NBT.createCompound();
+        banner.putIntArray("pos", new int[]{64, 64, -128});
+        banner.putString("color", "red");
+        ListTag banners = NBT.createList();
+        banners.add(banner);
+        tag.put("banners", banners);
+        MapData withBanner = new MapData(VersionHelper.WORLD_VERSION, tag);
+        replica.setDirty(false);
+        MapItemSavedData next = this.adapter.prepareReplica(this.identity, withBanner);
+        this.adapter.updateReplica(this.level, this.identity, next);
+        assertTrue(replica.isDirty());
+        assertEquals(1, MapItemSavedDataProxy.INSTANCE.getBannerMarkers(replica).size());
+        assertSame(frame, replica.decorations.get("frame-42"));
+        assertTrue(this.decorationPacket(replica, viewer).colorPatch().isEmpty());
+        String key = next.decorations.keySet().iterator().next();
+        replica.decorations.put(key, frame);
+        this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, withBanner));
+        assertEquals(next.decorations.get(key), replica.decorations.get(key));
+        assertTrue(this.decorationPacket(replica, viewer).colorPatch().isEmpty());
+        replica.setDirty(false);
+        this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
+        assertTrue(replica.isDirty());
+        assertTrue(MapItemSavedDataProxy.INSTANCE.getBannerMarkers(replica).isEmpty());
+        assertFalse(replica.decorations.containsKey(key));
+        assertSame(frame, replica.decorations.get("frame-42"));
+        assertTrue(this.decorationPacket(replica, viewer).colorPatch().isEmpty());
+        this.storage.saveAndJoin();
+        this.storage.cache.clear();
+        assertTrue(MapItemSavedDataProxy.INSTANCE.getBannerMarkers(this.level.getMapData(new MapId(-1))).isEmpty());
+    }
+
+    private CraftPlayer viewer(MapItemSavedData replica, int entityId) {
+        CraftPlayer viewer = NmsPlayerFixture.create();
+        viewer.getHandle().setId(entityId);
+        replica.getHoldingPlayer(viewer.getHandle());
+        assertNotNull(replica.getUpdatePacket(new MapId(-1), viewer.getHandle()));
+        return viewer;
+    }
+
+    private ClientboundMapItemDataPacket decorationPacket(MapItemSavedData replica, CraftPlayer viewer) {
+        for (int i = 0; i < 6; i++) {
+            ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
+            if (packet != null) return packet;
+        }
+        throw new AssertionError("native decoration update was not sent");
     }
 
     @Test

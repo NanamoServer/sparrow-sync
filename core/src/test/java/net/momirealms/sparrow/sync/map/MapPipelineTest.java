@@ -27,6 +27,8 @@ import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.Field;
@@ -91,6 +93,65 @@ class MapPipelineTest {
         assertEquals(1, shared.touches);
         assertEquals(0, storage.registrations);
         assertTrue(shared.writes.isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"success", "missing", "failed-future", "throw"})
+    void transitCopiesShareRenewalWithinOneCompilationAndKeepTheirOwnComponents(String outcome) {
+        List<Integer> renewed = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<CompletableFuture<Boolean>> pending = new ArrayList<>();
+        MapFlowTestSupport.Shared shared = new MapFlowTestSupport.Shared() {
+            @Override
+            @NotNull
+            public CompletableFuture<Boolean> touch(int globalId) {
+                renewed.add(globalId);
+                if (globalId == -2) return CompletableFuture.completedFuture(true);
+                if (outcome.equals("throw")) throw new IllegalStateException("Redis rejected command");
+                if (outcome.equals("failed-future")) return CompletableFuture.failedFuture(new IllegalStateException("Redis unavailable"));
+                CompletableFuture<Boolean> future = new CompletableFuture<>();
+                pending.add(future);
+                return future;
+            }
+        };
+        MapReceiver receiver = this.nativeMaps.receiver(new MapFlowTestSupport.Storage(), shared, "B-world", Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), MapFlowTestSupport.logger(warnings));
+        CompoundTag first = this.transitMap(-1, 7, "first");
+        CompoundTag second = this.transitMap(-1, 7, "second");
+        CompoundTag third = this.transitMap(-2, 8, "third");
+        CompoundTag bundle = item("minecraft:bundle");
+        bundle.getCompound("components").put("minecraft:bundle_contents", list(second, third));
+        CompoundTag inventory = NBT.createCompound();
+        inventory.put("items", list(first, bundle));
+        Snapshot original = new Snapshot(meta("B"), Map.of(InventoryDataType.INVENTORY, inventory));
+        CompletableFuture<Snapshot> result = pipeline.compileAsync(original, MapType.HIDE, "B-world", Map.of());
+        assertEquals(List.of(-1, -2), renewed);
+        if (!pending.isEmpty()) {
+            assertFalse(result.isDone());
+            pending.getFirst().complete(outcome.equals("success"));
+        }
+        assertSame(original, result.join());
+        assertEquals("first", first.getCompound("components").getString("minecraft:custom_name"));
+        assertEquals("second", second.getCompound("components").getString("minecraft:custom_name"));
+        assertEquals(outcome.startsWith("failed") || outcome.equals("throw") ? 2 : 0, warnings.size());
+        CompletableFuture<Snapshot> next = pipeline.compileAsync(original, MapType.HIDE, "B-world", Map.of());
+        assertEquals(List.of(-1, -2, -1, -2), renewed);
+        if (pending.size() == 2) pending.getLast().complete(true);
+        assertSame(original, next.join());
+    }
+
+    private CompoundTag transitMap(int globalId, int sourceId, String name) {
+        CompoundTag item = map(globalId);
+        CompoundTag components = item.getCompound("components");
+        components.putString("minecraft:custom_name", name);
+        CompoundTag origin = NBT.createCompound();
+        origin.putString("map-type", "SYNC");
+        origin.putString("origin-server", OWNER);
+        origin.putInt("origin-id", sourceId);
+        CompoundTag custom = NBT.createCompound();
+        custom.put("sparrow-sync", origin);
+        components.put("minecraft:custom_data", custom);
+        return item;
     }
 
     @Test

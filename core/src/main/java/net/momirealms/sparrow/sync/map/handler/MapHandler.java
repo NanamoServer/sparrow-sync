@@ -22,9 +22,9 @@ public interface MapHandler {
     @NotNull
     CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId);
 
-    /** 处理已经带有模式的中转地图, 默认保留组件. SYNC 可在此续期共享缓存, 来源身份继续沿用物品标记. */
+    /** 处理已有模式的中转地图. renewals 由本次编译独占, 同一全局 ID 共享续期结果, 各物品组件仍独立处理. */
     @NotNull
-    default CompletableFuture<CompoundTag> forwardAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
+    default CompletableFuture<CompoundTag> forwardAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<Boolean>> renewals) {
         return CompletableFuture.completedFuture(components);
     }
 }

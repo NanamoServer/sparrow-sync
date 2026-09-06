@@ -17,6 +17,7 @@ import java.util.Map;
  */
 public record Snapshot(@NotNull SnapshotMeta meta, @NotNull Map<DataKey, Tag> data) {
 
+    // todo 复制是否过度防御? 我们目前代码是不暴露API的. API环节会专门复制, 如果我们内部没有发生修改, 我觉得这里不用兜底.
     public Snapshot {
         data = Collections.unmodifiableMap(new LinkedHashMap<>(data));
     }

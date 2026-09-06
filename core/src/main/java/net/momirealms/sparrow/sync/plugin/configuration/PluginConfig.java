@@ -157,12 +157,10 @@ public final class PluginConfig {
         @Comment(lang = "zh-CN", value = "玩家数据快照所使用的存储方式, 可选值: MONGODB、MYSQL")
         StorageType type = StorageType.MONGODB;
 
-        @BlankLineBefore
         @Comment("MYSQL database settings")
         @Comment(lang = "zh-CN", value = "MYSQL 数据库设置")
         MysqlOptions mysql = new MysqlOptions();
 
-        @BlankLineBefore
         @Comment("MONGODB database settings")
         @Comment(lang = "zh-CN", value = "MONGODB 数据库设置")
         MongoOptions mongodb = new MongoOptions();
@@ -245,14 +243,14 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SynchronizationOptions {
         @Comment({
-                "Number of worker threads handling asynchronous player tasks, rounded up to a power of two",
+                "Number of serial executor threads for player data tasks, rounded up to a power of two",
                 "Recommended values based on basic testing:",
                 "For <= 200 players online on this server, set this to 2.",
                 "For >= 200 players online on this server, set this to 4.",
                 "For >= 600 players online on this server, set this to 8."
         })
         @Comment(lang = "zh-CN", value = {
-                "处理玩家异步任务的工作线程数, 向上取整到 2 的幂",
+                "处理玩家数据任务的串行线程数, 向上取整到 2 的幂",
                 "经过一些简单测试的推荐值: ",
                 "当前单服务器在线玩家数 <= 200 人时, 推荐设置为 2.",
                 "当前单服务器在线玩家数 >= 200 人时, 推荐设置为 4.",
@@ -389,7 +387,6 @@ public final class PluginConfig {
         })
         boolean enabled = true;
 
-        @BlankLineBefore
         @Comment({
                 "Map data synchronization mode, available values: HIDE, SYNC",
                 "HIDE does not synchronize map data between servers; when a player switches servers, it removes map-id and records custom_data, making the map unusable on the destination server to prevent players from using maps to steal other servers' map data",
@@ -404,7 +401,6 @@ public final class PluginConfig {
         })
         MapType type = MapType.SYNC;
 
-        @BlankLineBefore
         @Comment({
                 "Ownership identifier for this server's map data; supports ${server-id} and ${world-uuid}; changes require a server restart",
                 "server-id is the server ID configured in server.yml",
@@ -721,17 +717,14 @@ public final class PluginConfig {
         @Comment(lang = "zh-CN", value = "切换世界时的快照保存策略")
         WorldChangeTriggerOptions worldChange = new WorldChangeTriggerOptions();
 
-        @BlankLineBefore
         @Comment("Snapshot save policy for world saves")
         @Comment(lang = "zh-CN", value = "世界保存时的快照保存策略")
         WorldSaveTriggerOptions worldSave = new WorldSaveTriggerOptions();
 
-        @BlankLineBefore
         @Comment("Snapshot save policy for game mode changes")
         @Comment(lang = "zh-CN", value = "切换游戏模式时的快照保存策略")
         GameModeChangeTriggerOptions gameModeChange = new GameModeChangeTriggerOptions();
 
-        @BlankLineBefore
         @Comment("Snapshot save policy for player deaths")
         @Comment(lang = "zh-CN", value = "玩家死亡时的快照保存策略")
         DeathTriggerOptions death = new DeathTriggerOptions();

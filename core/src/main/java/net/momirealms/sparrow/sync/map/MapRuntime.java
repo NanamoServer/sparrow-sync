@@ -7,17 +7,21 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 // 维护已经更新或正在展示的负数副本, 让后续来源更新能进入原生地图对象.
 @ApiStatus.Internal
 public final class MapRuntime {
     private final MapReceiver receiver;
+    private final Executor worker;
     private final SyncLogger logger;
     private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 本服务已发现的负数 ID, 静止地图仍保留条目
     private volatile boolean closed;
 
-    public MapRuntime(@NotNull MapReceiver receiver, @NotNull SyncLogger logger) {
+    public MapRuntime(@NotNull MapReceiver receiver, @NotNull Executor worker, @NotNull SyncLogger logger) {
         this.receiver = receiver;
+        this.worker = worker;
         this.logger = logger;
     }
 
@@ -26,7 +30,12 @@ public final class MapRuntime {
         if (this.closed || globalId >= 0 || this.tracked.containsKey(globalId)) return;
         Tracked entry = new Tracked();
         if (this.tracked.putIfAbsent(globalId, entry) != null) return;
-        this.refresh(globalId, entry, true);
+        // 在发包回调中登记首见 ID, 接收流程交给异步线程发起.
+        try {
+            this.worker.execute(() -> this.refresh(globalId, entry, true));
+        } catch (RejectedExecutionException exception) {
+            if (!this.closed) this.failed(globalId, entry, exception);
+        }
     }
 
     // 登记已完成更新的地图, 使静止副本也能接收后续更新.

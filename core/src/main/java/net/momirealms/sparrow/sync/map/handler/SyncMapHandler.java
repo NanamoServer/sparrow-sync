@@ -51,10 +51,17 @@ public final class SyncMapHandler implements MapHandler {
 
     @Override
     @NotNull
-    public CompletableFuture<CompoundTag> forwardAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
+    public CompletableFuture<CompoundTag> forwardAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<Boolean>> renewals) {
         if (!(components.get("minecraft:map_id") instanceof IntTag id)) return CompletableFuture.failedFuture(new IllegalArgumentException("SYNC map has no integer global id"));
         MapIdentity identity = new MapIdentity(new MapSource(origin.ownerId(), origin.id()), id.getAsInt());
-        return this.receiver.touch(identity.globalId()).thenApply(ignored -> components);
+        return renewals.computeIfAbsent(identity.globalId(), idToRenew -> {
+            try {
+                return this.receiver.touch(idToRenew);
+            } catch (RuntimeException exception) {
+                // Redis 提交阶段的失败也归入本次共享结果, 每件物品各自告警并原样回退.
+                return CompletableFuture.failedFuture(exception);
+            }
+        }).thenApply(ignored -> components);
     }
 
     // 替换地图 ID 并保留其他组件的共享引用.

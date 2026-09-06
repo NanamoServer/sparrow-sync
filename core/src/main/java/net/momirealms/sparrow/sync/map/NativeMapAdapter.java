@@ -25,9 +25,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 
-// 在原生地图对象与可跨服保存的内容之间转换, 并维护本服负数副本.
+// 在NMS地图对象与可跨服保存的内容之间转换, 并维护本服负数副本.
 @ApiStatus.Internal
 public final class NativeMapAdapter {
     private final HolderLookup.Provider registries;
@@ -73,7 +75,7 @@ public final class NativeMapAdapter {
         return new MapData(this.dataVersion, (CompoundTag) tag);
     }
 
-    // 将来源内容准备为独立的原生副本, 此阶段可由异步工作线程调用.
+    // 将来源内容准备为独立的原生副本, 此阶段可由异步线程调用.
     @NotNull
     public MapItemSavedData prepareReplica(@NotNull MapIdentity identity, @NotNull MapData data) throws IOException {
         if (data.dataVersion() > this.dataVersion) {
@@ -117,6 +119,10 @@ public final class NativeMapAdapter {
 
     private void updateReplica(MapItemSavedData target, MapItemSavedData prepared) {
         synchronized (target) {
+            boolean headerChanged = target.scale != prepared.scale || target.locked != prepared.locked;
+            boolean metadataChanged = headerChanged || !target.dimension.equals(prepared.dimension)
+                    || !Objects.equals(target.uniqueId, prepared.uniqueId) || target.centerX != prepared.centerX || target.centerZ != prepared.centerZ
+                    || target.trackingPosition != prepared.trackingPosition || target.unlimitedTracking != prepared.unlimitedTracking;
             target.dimension = prepared.dimension;
             target.uniqueId = prepared.uniqueId;
             target.centerX = prepared.centerX;
@@ -125,29 +131,56 @@ public final class NativeMapAdapter {
             target.locked = prepared.locked;
             target.trackingPosition = prepared.trackingPosition;
             target.unlimitedTracking = prepared.unlimitedTracking;
-            // 保留 MapView、渲染缓冲与持有者身份, 原生保存和发包继续观察同一对象.
-            System.arraycopy(prepared.colors, 0, target.colors, 0, MapData.PIXEL_COUNT);
             MapItemSavedDataProxy proxy = MapItemSavedDataProxy.INSTANCE;
-            // 来源旗帜用新内容替换, 本服玩家和展示框装饰继续留在目标对象中
-            Map<String, MapBanner> banners = proxy.getBannerMarkers(target);
-            for (String key : banners.keySet()) {
-                target.decorations.remove(key);
+            // 相同画面只比较数组; 变化像素原地写入, 保留 MapView 和渲染缓冲的身份.
+            int firstDifference = Arrays.mismatch(target.colors, prepared.colors);
+            if (firstDifference >= 0) {
+                int minX = 127;
+                int maxX = 0;
+                int minY = firstDifference >> 7;
+                int maxY = minY;
+                for (int i = firstDifference; i < MapData.PIXEL_COUNT; i++) {
+                    if (target.colors[i] == prepared.colors[i]) continue;
+                    target.colors[i] = prepared.colors[i];
+                    int x = i & 127;
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    maxY = i >> 7;
+                }
+                // 原生持有者会将本次矩形与尚未发送的变化合并, 文件脏标记也由此设置.
+                proxy.setColorsDirty(target, minX, minY);
+                proxy.setColorsDirty(target, maxX, maxY);
             }
-            banners.clear();
-            banners.putAll(proxy.getBannerMarkers(prepared));
-            target.decorations.putAll(prepared.decorations);
-            // 装饰合并后按原版规则重算计数, 供标记数量限制继续使用
-            int tracked = 0;
-            for (MapDecoration decoration : target.decorations.values()) {
-                if (decoration.type().value().trackCount()) {
-                    tracked++;
+            // 来源旗帜负责自己的装饰键, 本服玩家与展示框的其他装饰继续保留.
+            Map<String, MapBanner> banners = proxy.getBannerMarkers(target);
+            Map<String, MapBanner> incomingBanners = proxy.getBannerMarkers(prepared);
+            boolean bannersChanged = !banners.equals(incomingBanners);
+            boolean decorationsChanged = false;
+            for (String key : banners.keySet()) {
+                if (!prepared.decorations.containsKey(key) && target.decorations.remove(key) != null) {
+                    decorationsChanged = true;
                 }
             }
-            proxy.setTrackedDecorationCount(target, tracked);
-            // 标记像素矩形两个端点及装饰变更, 所有原生查看者随后生成各自更新包
-            proxy.setColorsDirty(target, 0, 0);
-            proxy.setColorsDirty(target, 127, 127);
-            proxy.setDecorationsDirty(target);
+            if (bannersChanged) {
+                banners.clear();
+                banners.putAll(incomingBanners);
+            }
+            for (Map.Entry<String, MapDecoration> entry : prepared.decorations.entrySet()) {
+                if (!entry.getValue().equals(target.decorations.get(entry.getKey()))) {
+                    target.decorations.put(entry.getKey(), entry.getValue());
+                    decorationsChanged = true;
+                }
+            }
+            if (decorationsChanged) {
+                int tracked = 0;
+                for (MapDecoration decoration : target.decorations.values()) {
+                    if (decoration.type().value().trackCount()) tracked++;
+                }
+                proxy.setTrackedDecorationCount(target, tracked);
+            }
+            // 元数据和旗帜可在像素不变时修改, 仍须保存; 包头随原生装饰更新一并发送.
+            if (metadataChanged || bannersChanged) target.setDirty();
+            if (headerChanged || decorationsChanged) proxy.setDecorationsDirty(target);
         }
     }
 }
