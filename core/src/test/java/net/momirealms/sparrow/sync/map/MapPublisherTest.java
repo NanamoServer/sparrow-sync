@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 

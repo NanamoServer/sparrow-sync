@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.map;
+package net.momirealms.sparrow.sync.map.data;
 
 import net.momirealms.sparrow.nbt.ByteArrayTag;
 import net.momirealms.sparrow.nbt.CompoundTag;

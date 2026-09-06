@@ -2,11 +2,11 @@ package net.momirealms.sparrow.sync.map.handler;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.IntTag;
-import net.momirealms.sparrow.sync.map.MapIdentity;
-import net.momirealms.sparrow.sync.map.MapOrigin;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapOrigin;
 import net.momirealms.sparrow.sync.map.MapReceiver;
-import net.momirealms.sparrow.sync.map.MapSource;
-import net.momirealms.sparrow.sync.map.StoredMap;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;

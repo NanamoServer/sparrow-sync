@@ -15,6 +15,11 @@ import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.item.component.UseRemainder;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.cache.MapCache;
+import net.momirealms.sparrow.sync.map.cache.RedisMapCache;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.map.handler.SyncMapHandler;
@@ -27,6 +32,8 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.ItemStackTemplateProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.ChargedProjectilesProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.CustomDataProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.ItemContainerContentsProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.UseRemainderProxy;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
@@ -39,6 +46,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -135,8 +143,20 @@ public final class MapSyncService {
         // 递归范围与快照管线一致, 容器、收纳袋、装填物和使用余留物中的地图也参与保存
         ItemContainerContents container = this.component(item, DataComponents.CONTAINER);
         if (container != null) {
-            for (Object nested : container.nonEmptyItems()) {
-                this.scan(nested, publications);
+            List<?> items = ItemContainerContentsProxy.INSTANCE.getItems(container);
+            int size = items.size();
+            // 原生列表按只读访问, 26.1 起空槽由 Optional 表示.
+            if (VersionHelper.isOrAbove26_1()) {
+                for (int i = 0; i < size; i++) {
+                    Object nested = ((Optional<?>) items.get(i)).orElse(null);
+                    if (nested != null) {
+                        this.scan(nested, publications);
+                    }
+                }
+            } else {
+                for (int i = 0; i < size; i++) {
+                    this.scan(items.get(i), publications);
+                }
             }
         }
         BundleContents bundle = this.component(item, DataComponents.BUNDLE_CONTENTS);
@@ -171,7 +191,8 @@ public final class MapSyncService {
     private boolean marked(Object item) {
         CustomData custom = this.component(item, DataComponents.CUSTOM_DATA);
         if (custom == null) return false;
-        net.minecraft.nbt.Tag marker = CompoundTagProxy.INSTANCE.getTags(custom.copyTag()).get("sparrow-sync");
+        // 只读检查原生来源字段.
+        net.minecraft.nbt.Tag marker = CompoundTagProxy.INSTANCE.getTags(CustomDataProxy.INSTANCE.getTag(custom)).get("sparrow-sync");
         // 损坏的来源标记也不能被当成本服原图上传, 最终由组件管线统一告警回退.
         return marker != null && (!(marker instanceof net.minecraft.nbt.CompoundTag compound) || CompoundTagProxy.INSTANCE.getTags(compound).containsKey("map-type"));
     }

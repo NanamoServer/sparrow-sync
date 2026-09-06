@@ -7,6 +7,8 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.StringTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.data.MapOrigin;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;

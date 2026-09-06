@@ -17,6 +17,8 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.saveddata.maps.MapItemSavedDataProxy;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

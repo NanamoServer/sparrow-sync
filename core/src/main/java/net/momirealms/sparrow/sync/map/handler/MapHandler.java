@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.map.handler;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.sync.map.MapOrigin;
-import net.momirealms.sparrow.sync.map.StoredMap;
+import net.momirealms.sparrow.sync.map.data.MapOrigin;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 

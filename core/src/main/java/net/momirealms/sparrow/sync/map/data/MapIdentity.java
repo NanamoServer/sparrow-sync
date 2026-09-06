@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.map;
+package net.momirealms.sparrow.sync.map.data;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

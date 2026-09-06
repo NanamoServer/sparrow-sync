@@ -2,6 +2,10 @@ package net.momirealms.sparrow.sync.map;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import net.momirealms.sparrow.sync.map.cache.MapCache;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;

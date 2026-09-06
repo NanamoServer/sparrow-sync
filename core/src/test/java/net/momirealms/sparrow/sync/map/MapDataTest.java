@@ -2,6 +2,9 @@ package net.momirealms.sparrow.sync.map;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapSource;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

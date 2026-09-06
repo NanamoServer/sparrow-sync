@@ -1,5 +1,9 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 

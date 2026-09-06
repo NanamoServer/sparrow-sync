@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.map;
 import io.papermc.paper.plugin.manager.PaperPluginManagerImpl;
 
 import net.minecraft.SharedConstants;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.RegistryAccess;
@@ -19,7 +18,6 @@ import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixers;
-import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.entity.EntityEquipment;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.PlayerEnderChestContainer;
@@ -38,6 +36,10 @@ import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -72,6 +74,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -80,7 +83,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -259,7 +261,7 @@ class NativeMapAdapterTest {
         ItemStack bundle = new ItemStack(Items.BUNDLE);
         bundle.set(DataComponents.BUNDLE_CONTENTS, new BundleContents(List.of(map.copy(), map.copy())));
         ItemStack box = new ItemStack(Items.SHULKER_BOX);
-        box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(bundle)));
+        box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(ItemStack.EMPTY, bundle, ItemStack.EMPTY, map.copy())));
         inventory.setItem(0, map);
         inventory.setItem(1, box);
         ItemStack other = map.copy();
@@ -304,6 +306,34 @@ class NativeMapAdapterTest {
         inventory.setItem(0, map);
         assertTrue(service.captureAndPublish(player).publications().isEmpty());
         assertEquals(1, database.registrations);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"foreign", "malformed", "empty-namespace", "unrelated"})
+    void sourceMarkerReadPreservesCustomData(String kind) throws Exception {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putByteArray("payload", new byte[65536]);
+        tag.putString("other-plugin", "retained");
+        if (kind.equals("malformed")) {
+            tag.putString("sparrow-sync", "broken");
+        } else if (!kind.equals("unrelated")) {
+            net.minecraft.nbt.CompoundTag origin = new net.minecraft.nbt.CompoundTag();
+            if (kind.equals("foreign")) {
+                origin.putString("map-type", "SYNC");
+                origin.putString("origin-server", "other");
+                origin.putInt("origin-id", 1);
+            }
+            tag.put("sparrow-sync", origin);
+        }
+        CustomData custom = CustomData.of(tag);
+        ItemStack map = new ItemStack(Items.FILLED_MAP);
+        map.set(DataComponents.CUSTOM_DATA, custom);
+        MapSyncService service = this.service("A-world", new DataRegistry(), null);
+        Method marked = MapSyncService.class.getDeclaredMethod("marked", Object.class);
+        marked.setAccessible(true);
+        assertEquals(kind.equals("foreign") || kind.equals("malformed"), marked.invoke(service, map));
+        assertSame(custom, map.get(DataComponents.CUSTOM_DATA));
+        assertEquals(tag, custom.copyTag());
     }
 
     private MapSyncService service(String owner, DataRegistry registry, MapPublisher publisher) {
