@@ -21,7 +21,10 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.map.MapItemSync;
+import net.momirealms.sparrow.sync.map.MapPipeline;
+import net.momirealms.sparrow.sync.map.MapType;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
@@ -41,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -213,7 +217,12 @@ class ItemCodecNativeTest {
                 InventoryDataType.INVENTORY, inventoryType.encode(new InventoryDataType.Inventory(inventory, 0, 0)),
                 EnderChestDataType.ENDER_CHEST, enderChestType.encode(new ItemCodec.LoadedItems(enderChest, 0))));
 
-        Snapshot hidden = MapItemSync.prepare(original, registry, MapItemSync.Mode.HIDE, "B");
+        PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> {
+            throw new AssertionError("unexpected log: " + args[0]);
+        });
+        MapPipeline pipeline = new MapPipeline(registry, List.of(MapType.values()), new SyncLogger(console));
+        Snapshot compiled = pipeline.compile(original, MapType.HIDE, "A-world");
+        Snapshot hidden = pipeline.decode(compiled, "B-world");
         InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
         ItemCodec.LoadedItems decodedEnder = enderChestType.decode(hidden.data(EnderChestDataType.ENDER_CHEST), meta.mcDataVersion());
         assertNull(decodedInventory.contents()[0].get(DataComponents.MAP_ID));
@@ -228,13 +237,14 @@ class ItemCodecNativeTest {
         CompoundTag nativeMap = playerData.getListOrEmpty("Inventory").getCompoundOrEmpty(0);
         ItemStack loadedMap = ItemStack.CODEC.parse(MinecraftRegistryOps.nativeNbt(), nativeMap).getOrThrow();
         assertNull(loadedMap.get(DataComponents.MAP_ID));
-        assertTrue(loadedMap.get(DataComponents.CUSTOM_DATA).copyTag().contains("sparrow-sync:hidden_map"));
+        assertEquals("HIDE", loadedMap.get(DataComponents.CUSTOM_DATA).copyTag().getCompoundOrEmpty("sparrow-sync").getString("map-type").orElseThrow());
 
         SnapshotMeta savedMeta = new SnapshotMeta(UUID.randomUUID(), meta.player(), 2L, SaveCause.DISCONNECT, false, "B", meta.mcDataVersion());
         Snapshot saved = new Snapshot(savedMeta, Map.of(
                 InventoryDataType.INVENTORY, inventoryType.encode(decodedInventory),
                 EnderChestDataType.ENDER_CHEST, enderChestType.encode(decodedEnder)));
-        Snapshot restored = MapItemSync.prepare(saved, registry, MapItemSync.Mode.HIDE, "A");
+        Snapshot forwarded = pipeline.compile(saved, MapType.HIDE, "B-world");
+        Snapshot restored = pipeline.decode(forwarded, "A-world");
         assertEquals(original.data(), restored.data());
         InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
         assertTrue(ItemStack.matches(map, decodedRestored.contents()[0]));

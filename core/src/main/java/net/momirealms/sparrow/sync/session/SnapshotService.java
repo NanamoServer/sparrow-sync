@@ -1,12 +1,16 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
+import net.momirealms.sparrow.sync.map.MapPipeline;
+import net.momirealms.sparrow.sync.map.MapType;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -32,6 +36,8 @@ public final class SnapshotService {
     private SyncLogger logger;
     private DataRegistry dataRegistry;
     private PlayerDataPipeline playerDataPipeline;
+    private MapPipeline mapPipeline;
+    private UUID mapWorldUuid;
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
     private SnapshotWriter writer;
@@ -46,12 +52,15 @@ public final class SnapshotService {
         this.logger = this.plugin.logger();
         this.dataRegistry = this.plugin.dataRegistry();
         this.playerDataPipeline = this.plugin.playerDataPipeline();
+        this.mapPipeline = new MapPipeline(this.dataRegistry, List.of(MapType.values()), this.logger);
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);
     }
 
     public void onDelayedEnable() {
+        // 来源绑定地图存储所属的主世界, 在登录入口开放前固定其 UUID.
+        this.mapWorldUuid = MinecraftServer.getServer().overworld().getWorld().getUID();
         // 冻结数据类型注册表并记录最终装配顺序.
         this.dataRegistry.freeze();
         StringJoiner activeTypes = new StringJoiner(", ");
@@ -91,7 +100,14 @@ public final class SnapshotService {
     }
 
     private SnapshotLoadResult prepare(Snapshot snapshot, UUID player, String playerName, long loadStart) {
-        return switch (this.playerDataPipeline.prepare(snapshot)) {
+        Snapshot prepared = snapshot;
+        // // 单独处理地图数据
+        PluginConfig.MapOptions mapOptions = PluginConfig.synchronization$map();
+        if (mapOptions.enabled()) {
+            String ownerId = mapOptions.resolveOwnerId(ServerConfig.serverId(), this.mapWorldUuid);
+            prepared = this.mapPipeline.decode(snapshot, ownerId);
+        }
+        return switch (this.playerDataPipeline.prepare(prepared)) {
             case PlayerDataPipeline.PrepareResult.Ready ready -> {
                 long loadNanos = System.nanoTime() - loadStart;
                 this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_READY, playerName, snapshot.meta().id().toString(), millis(0, loadNanos));
@@ -186,6 +202,11 @@ public final class SnapshotService {
             return;
         }
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
+        // 单独处理地图数据
+        PluginConfig.MapOptions mapOptions = PluginConfig.synchronization$map();
+        if (mapOptions.enabled()) {
+            snapshot = this.mapPipeline.compile(snapshot, mapOptions.type(), mapOptions.resolveOwnerId(context.meta().server(), this.mapWorldUuid));
+        }
         SnapshotSaveEvent event = new SnapshotSaveEvent(context.playerName(), snapshot, request.completion.minimalCompletionStage());
         if (EventUtils.fireAndCheckCancel(event)) {
             this.logger.file(LogCategory.SAVE, context.meta().player(), context.playerName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, context.playerName(), context.meta().cause().name(), context.meta().id().toString());

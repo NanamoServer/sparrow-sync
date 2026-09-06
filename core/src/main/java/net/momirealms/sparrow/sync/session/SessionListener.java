@@ -142,7 +142,7 @@ public final class SessionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDeath(PlayerDeathEvent event) {
-        PluginConfig.DeathTrigger settings = PluginConfig.synchronization$death();
+        PluginConfig.DeathTrigger settings = PluginConfig.synchronization$saveTriggers().deathTrigger();
         Player player = event.getPlayer();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());

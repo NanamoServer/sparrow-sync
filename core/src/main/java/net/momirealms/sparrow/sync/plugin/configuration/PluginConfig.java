@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.configuration;
 
+import net.momirealms.sparrow.sync.map.MapType;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -9,6 +10,7 @@ import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
+import net.momirealms.sparrow.yaml.route.Route;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.AfterComment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public final class PluginConfig {
     private static final String CONFIG_FILE = "config.yml";
@@ -40,6 +43,18 @@ public final class PluginConfig {
         this.configFilePath = plugin.dataFolderPath().resolve(CONFIG_FILE);
         YamlUpgradePipeline upgradePipeline = YamlUpgradePipeline.builder()
                 .versionExtractor(new FieldVersionExtractor("config-version"))
+                .addPatch("14"::equals, patch -> patch.patch((defaults, local, context) -> {
+                    Route type = Route.from("synchronization", "map", "type");
+                    Route enabled = Route.from("synchronization", "map", "enabled");
+                    String previous = local.getString(type);
+                    if ("NONE".equals(previous) || "HIDE".equals(previous)) {
+                        if (local.getNodeOrNull(enabled) == null) {
+                            local.setAndGet(enabled, "HIDE".equals(previous));
+                        }
+                        local.setAndGet(type, "HIDE");
+                    }
+                    return local;
+                }))
                 .build();
         YamlMapperFactory mapperFactory = YamlMapperFactory.builder()
                 .backupOnUpgrade(true)
@@ -52,10 +67,10 @@ public final class PluginConfig {
     void reload() {
         try {
             ConfigDefinition loadedConfig = this.configMapper.load(this.configFilePath).value();
+            loadedConfig.synchronization.map.validate();
             loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
             loadedConfig.synchronization.attributes.freeze();
             loadedConfig.synchronization.compiledSaveTriggers = SaveTriggers.of(loadedConfig.synchronization.saveTriggers);
-            loadedConfig.synchronization.compiledDeath = DeathTrigger.of(loadedConfig.synchronization.death);
             config = loadedConfig;
         } catch (Exception e) {
             this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
@@ -221,6 +236,10 @@ public final class PluginConfig {
         DataTypes dataTypes = new DataTypes();
 
         @BlankLineBefore
+        @Comment("Map compilation and origin settings")
+        MapOptions map = new MapOptions();
+
+        @BlankLineBefore
         @Comment({
                 "Writes compatible snapshot data into vanilla player data during the login gate",
                 "Disable this on non-standard servers to apply every type during PlayerJoinEvent",
@@ -266,9 +285,61 @@ public final class PluginConfig {
 
         @YamlIgnore
         SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+    }
 
-        @YamlIgnore
-        DeathTrigger compiledDeath = DeathTrigger.of(this.death);
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class MapOptions {
+        @Comment({
+                "Enables map compilation and decoding",
+                "When disabled, snapshots pass through with every map item unchanged"
+        })
+        boolean enabled = false;
+
+        @BlankLineBefore
+        @Comment({
+                "Mode assigned to maps when compiling snapshots on this server",
+                "HIDE removes IDs until the map returns to its owner",
+                "Maps already carrying a mode keep that mode when passing through another server",
+                "Available: HIDE; reloading affects later compilation and decoding"
+        })
+        MapType type = MapType.HIDE;
+
+        @BlankLineBefore
+        @Comment({
+                "Identifies the map data owned by this server",
+                "Supported placeholders: ${server-id}, ${world-uuid}",
+                "world-uuid is the UUID of the overworld, where the map data belongs",
+                "Changing this ID leaves maps compiled under the previous ID unrestored"
+        })
+        String mapOwnerId = "${server-id}-${world-uuid}";
+
+        public boolean enabled() {
+            return this.enabled;
+        }
+
+        @NotNull
+        public MapType type() {
+            return this.type;
+        }
+
+        @NotNull
+        public String mapOwnerId() {
+            return this.mapOwnerId;
+        }
+
+        /** 将来源模板中的服务器标识和主世界 UUID 替换为本服值. */
+        @NotNull
+        public String resolveOwnerId(@NotNull String serverId, @NotNull UUID worldUuid) {
+            return this.mapOwnerId.replace("${server-id}", serverId).replace("${world-uuid}", worldUuid.toString());
+        }
+
+        private void validate() {
+            if (!this.enabled) return;
+            String literals = this.mapOwnerId.replace("${server-id}", "").replace("${world-uuid}", "");
+            if (this.mapOwnerId.isBlank() || literals.contains("${")) {
+                throw new IllegalArgumentException("map-owner-id must be non-blank and may only use ${server-id} and ${world-uuid}");
+            }
+        }
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -528,6 +599,10 @@ public final class PluginConfig {
         @BlankLineBefore
         @Comment("Save after a player's game mode changes")
         GameModeChangeTriggerOptions gameModeChange = new GameModeChangeTriggerOptions();
+
+        @BlankLineBefore
+        @Comment("Save on player death")
+        DeathTriggerOptions death = new DeathTriggerOptions();
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -580,14 +655,16 @@ public final class PluginConfig {
 
     public record SaveTriggers(@NotNull WorldChangeTrigger worldChange,
                                @NotNull WorldSaveTrigger worldSave,
-                               @NotNull GameModeChangeTrigger gameModeChange) {
+                               @NotNull GameModeChangeTrigger gameModeChange,
+                               @NotNull DeathTrigger deathTrigger) {
 
         @NotNull
         private static SaveTriggers of(@NotNull SaveTriggerOptions options) {
             return new SaveTriggers(
                     new WorldChangeTrigger(options.worldChange.enabled, Set.copyOf(options.worldChange.ignoredFromWorlds), Set.copyOf(options.worldChange.ignoredToWorlds)),
                     new WorldSaveTrigger(options.worldSave.enabled),
-                    new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes))
+                    new GameModeChangeTrigger(options.gameModeChange.enabled, Set.copyOf(options.gameModeChange.ignoredTargetModes)),
+                    new DeathTrigger(options.death.saveBeforeDeath, options.death.saveAfterDeath, Set.copyOf(options.death.ignoredWorlds))
             );
         }
     }
@@ -602,11 +679,6 @@ public final class PluginConfig {
     }
 
     public record DeathTrigger(boolean saveBeforeDeath, boolean saveAfterDeath, @NotNull Set<String> ignoredWorlds) {
-
-        @NotNull
-        private static DeathTrigger of(@NotNull DeathTriggerOptions options) {
-            return new DeathTrigger(options.saveBeforeDeath, options.saveAfterDeath, Set.copyOf(options.ignoredWorlds));
-        }
     }
 
     /**
@@ -899,6 +971,11 @@ public final class PluginConfig {
     }
 
     @NotNull
+    public static MapOptions synchronization$map() {
+        return config.synchronization.map;
+    }
+
+    @NotNull
     public static AdvancementsOptions synchronization$advancements() {
         return config.synchronization.advancements;
     }
@@ -906,11 +983,6 @@ public final class PluginConfig {
     @NotNull
     public static SaveTriggers synchronization$saveTriggers() {
         return config.synchronization.compiledSaveTriggers;
-    }
-
-    @NotNull
-    public static DeathTrigger synchronization$death() {
-        return config.synchronization.compiledDeath;
     }
 
     public static int synchronization$maxSaveRetries() {

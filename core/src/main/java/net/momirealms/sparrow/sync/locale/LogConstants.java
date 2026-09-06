@@ -92,6 +92,8 @@ public interface LogConstants {
     String DATA_ENCODE_SKIPPED = "log.data.encode_skipped";
     String DATA_ENCODE_FAILED = "log.data.encode_failed";
     String DATA_DECODE_SKIPPED = "log.data.decode_skipped";
+    String DATA_MAP_COMPILE_FAILED = "log.data.map_compile_failed";
+    String DATA_MAP_DECODE_FAILED = "log.data.map_decode_failed";
     String DATA_ADVANCEMENT_TRACKER_INSTALL_FAILED = "log.data.advancement_tracker_install_failed";
     String DATA_NATIVE_APPLY_FALLBACK = "log.data.native_apply_fallback";
     String DATA_APPLY_FAILED = "log.data.apply_failed";

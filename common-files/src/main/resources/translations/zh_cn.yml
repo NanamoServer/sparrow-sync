@@ -124,6 +124,8 @@ log.data.capture_failed: '采集 <arg:1> 的关键数据 <arg:0> 时出错，这
 log.data.encode_skipped: '编码 <arg:1> 的非关键数据 <arg:0> 时出错，这次的快照不含这一项'
 log.data.encode_failed: '编码 <arg:1> 的关键数据 <arg:0> 时出错，这次不产出快照'
 log.data.decode_skipped: '跳过了快照 <arg:1> 里的非关键数据 <arg:0>'
+log.data.map_compile_failed: '玩家 <arg:0> 的地图编译失败，将原样同步该地图（快照 <arg:1>）：<arg:2>'
+log.data.map_decode_failed: '玩家 <arg:0> 的地图解码失败，将原样同步该地图（快照 <arg:1>）：<arg:2>'
 log.data.advancement_tracker_install_failed: '为 <arg:0> 安装成就进度跟踪器时发生错误，已拒绝本次登录'
 log.data.native_apply_fallback: '向 <arg:1> 的原生玩家数据写入 <arg:0> 时出错，回退到 join 应用'
 log.data.apply_failed: '向 <arg:1> 应用关键数据 <arg:0> 时出错'
