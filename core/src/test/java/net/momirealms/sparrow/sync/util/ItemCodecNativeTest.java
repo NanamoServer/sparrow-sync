@@ -14,15 +14,22 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.BundleContents;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.level.saveddata.maps.MapId;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.map.MapItemSync;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
@@ -35,6 +42,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -178,6 +186,59 @@ class ItemCodecNativeTest {
         expectedEnderChest.add(enderItem);
         assertEquals(expectedEnderChest, playerData.get("EnderItems"));
         assertEquals(7, playerData.getInt("SelectedItemSlot").orElseThrow());
+    }
+
+    @Test
+    void hiddenMapsSurviveItemCodecsNativeWritesAndReturnToOrigin() throws Exception {
+        InventoryDataType inventoryType = NmsPlayerFixture.allocate(InventoryDataType.class);
+        EnderChestDataType enderChestType = NmsPlayerFixture.allocate(EnderChestDataType.class);
+        DataRegistry registry = new DataRegistry();
+        registry.register(inventoryType);
+        registry.register(enderChestType);
+        registry.freeze();
+        ItemStack map = new ItemStack(Items.FILLED_MAP);
+        map.set(DataComponents.MAP_ID, new MapId(0));
+        map.set(DataComponents.CUSTOM_NAME, Component.literal("Map from A"));
+        ItemStack bundle = new ItemStack(Items.BUNDLE);
+        bundle.set(DataComponents.BUNDLE_CONTENTS, new BundleContents(List.of(map.copy())));
+        ItemStack box = new ItemStack(Items.SHULKER_BOX);
+        box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(bundle)));
+        ItemStack[] inventory = new ItemStack[43];
+        inventory[0] = map;
+        inventory[40] = box;
+        ItemStack[] enderChest = new ItemStack[27];
+        enderChest[26] = box.copy();
+        SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1L, SaveCause.DISCONNECT, false, "A", VersionHelper.WORLD_VERSION);
+        Snapshot original = new Snapshot(meta, Map.of(
+                InventoryDataType.INVENTORY, inventoryType.encode(new InventoryDataType.Inventory(inventory, 0, 0)),
+                EnderChestDataType.ENDER_CHEST, enderChestType.encode(new ItemCodec.LoadedItems(enderChest, 0))));
+
+        Snapshot hidden = MapItemSync.prepare(original, registry, MapItemSync.Mode.HIDE, "B");
+        InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
+        ItemCodec.LoadedItems decodedEnder = enderChestType.decode(hidden.data(EnderChestDataType.ENDER_CHEST), meta.mcDataVersion());
+        assertNull(decodedInventory.contents()[0].get(DataComponents.MAP_ID));
+        assertEquals(map.get(DataComponents.CUSTOM_NAME), decodedInventory.contents()[0].get(DataComponents.CUSTOM_NAME));
+        assertEquals(hidden.data(InventoryDataType.INVENTORY), inventoryType.encode(decodedInventory));
+        assertEquals(hidden.data(EnderChestDataType.ENDER_CHEST), enderChestType.encode(decodedEnder));
+
+        PlayerSession session = new SessionManager(null).tryOpen(meta.player(), "Steve", ConnectionFixture.create());
+        CompoundTag playerData = new CompoundTag();
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, inventoryType.applyNative(session, playerData, decodedInventory));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, enderChestType.applyNative(session, playerData, decodedEnder));
+        CompoundTag nativeMap = playerData.getListOrEmpty("Inventory").getCompoundOrEmpty(0);
+        ItemStack loadedMap = ItemStack.CODEC.parse(MinecraftRegistryOps.nativeNbt(), nativeMap).getOrThrow();
+        assertNull(loadedMap.get(DataComponents.MAP_ID));
+        assertTrue(loadedMap.get(DataComponents.CUSTOM_DATA).copyTag().contains("sparrow-sync:hidden_map"));
+
+        SnapshotMeta savedMeta = new SnapshotMeta(UUID.randomUUID(), meta.player(), 2L, SaveCause.DISCONNECT, false, "B", meta.mcDataVersion());
+        Snapshot saved = new Snapshot(savedMeta, Map.of(
+                InventoryDataType.INVENTORY, inventoryType.encode(decodedInventory),
+                EnderChestDataType.ENDER_CHEST, enderChestType.encode(decodedEnder)));
+        Snapshot restored = MapItemSync.prepare(saved, registry, MapItemSync.Mode.HIDE, "A");
+        assertEquals(original.data(), restored.data());
+        InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
+        assertTrue(ItemStack.matches(map, decodedRestored.contents()[0]));
+        assertTrue(ItemStack.matches(box, decodedRestored.contents()[40]));
     }
 
     private ItemStack complexItem() {

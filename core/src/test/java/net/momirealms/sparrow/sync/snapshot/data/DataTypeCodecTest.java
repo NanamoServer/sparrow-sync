@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import com.mojang.serialization.Codec;
-import net.minecraft.world.level.GameType;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
@@ -11,7 +10,6 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthScaleDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import org.bukkit.GameMode;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -60,13 +58,18 @@ class DataTypeCodecTest {
     // 药水效果改走 NMS MobEffectInstance CODEC (保留隐藏效果链), 依赖注册表, 由 3.8 真机手测覆盖
 
     @Test
-    @Disabled
     void gameModeDecodesKnownNameAndRejectsUnknown() throws IOException {
         GameModeDataType type = new GameModeDataType();
         CompoundTag ignored = NBT.createCompound();
 
-        assertEquals(GameMode.SURVIVAL, type.decode(NBT.createString("survival"), 0));
-        assertThrows(IOException.class, () -> type.decode(NBT.createString("SURVIVAL"), 0));
+        GameMode[] modes = GameMode.values();
+        for (int i = 0; i < modes.length; i++) {
+            GameMode mode = modes[i];
+            assertEquals(mode, type.decode(NBT.createString(mode.name()), 0));
+            assertEquals(mode.name(), type.encode(mode).getAsString());
+            assertEquals(mode, type.decode(type.encode(mode), 0));
+        }
+        assertThrows(IOException.class, () -> type.decode(NBT.createString("survival"), 0));
         assertThrows(IOException.class, () -> type.decode(NBT.createString("NOT_A_MODE"), 0));
         assertThrows(IOException.class, () -> type.decode(ignored, 0));
     }

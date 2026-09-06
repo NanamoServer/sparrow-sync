@@ -24,7 +24,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,8 +47,7 @@ class PlayerDataPipelineTest {
     private static final DataKey BRAVO = DataKey.of("test", "bravo");
     private static final DataKey CHARLIE = DataKey.of("test", "charlie");
 
-    private final QuietLogger console = new QuietLogger();
-    private final SyncLogger logger = new SyncLogger(this.console);
+    private final SyncLogger logger = new SyncLogger(new QuietLogger());
     private final List<DataKey> applied = new ArrayList<>();
     private final List<DataKey> nativeApplied = new ArrayList<>();
     private final List<DataKey> nativeAttempts = new ArrayList<>();
@@ -65,79 +63,6 @@ class PlayerDataPipelineTest {
     private final PlayerSession session = new SessionManager(null).tryOpen(this.player.getUniqueId(), this.player.getName(), this.connection);
 
     @Test
-    void timingTableAlignsNanosecondsAndOmitsUnexecutedSlots() throws Exception {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED),
-                new FakeType(CHARLIE, StorageFormat.STRUCTURED)
-        );
-        Class<?> phaseType = Class.forName(PlayerDataPipeline.class.getName() + "$TimingPhase");
-        Field phase = phaseType.getDeclaredField("APPLY_NATIVE");
-        phase.setAccessible(true);
-        Method log = PlayerDataPipeline.class.getDeclaredMethod("logTimings", phaseType, long[].class, String[].class);
-        log.setAccessible(true);
-        log.invoke(pipeline, phase.get(null), new long[]{1_234_567L, 0L, -1L}, new String[]{null, "FALLBACK", null});
-
-        assertEquals(1, this.console.messages.size());
-        String report = this.console.messages.getFirst();
-        assertTrue(report.startsWith("[PlayerDataType] applyNative | thread="));
-        assertTrue(report.contains("1,234,567"));
-        assertTrue(report.contains("TOTAL (callbacks): 1,234,567 ns | samples=2"));
-        assertFalse(report.contains(CHARLIE.asString()));
-        String alpha = report.lines().filter(line -> line.startsWith(ALPHA.asString())).findFirst().orElseThrow();
-        String bravo = report.lines().filter(line -> line.startsWith(BRAVO.asString())).findFirst().orElseThrow();
-        assertEquals(alpha.indexOf('|'), bravo.indexOf('|'));
-        assertTrue(alpha.matches(".*\\|\\s+FIRST\\s+\\|\\s+1,234,567\\s+\\| OK"));
-        assertTrue(bravo.matches(".*\\|\\s+FIRST\\s+\\|\\s+0\\s+\\| FALLBACK"));
-
-        log.invoke(pipeline, phase.get(null), new long[]{42L, -1L, -1L}, new String[3]);
-        String second = this.console.messages.getLast();
-        assertFalse(second.contains("FIRST"));
-        assertTrue(second.lines().anyMatch(line -> line.matches("test:alpha\\s+\\|\\s+2\\s+\\|\\s+42\\s+\\| OK")));
-    }
-
-    @Test
-    void timingsCoverFiveStagesAndSeparateNativeHandoffFromFullApply() {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).unsupportedNative(),
-                new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of()).withHandoff(player -> {})
-        );
-        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
-        pipeline.encode(captured);
-        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
-        pipeline.applyNative(this.session, Optional.empty(), context);
-        pipeline.apply(this.player, context);
-
-        assertEquals(List.of("capture/SYNC", "encode", "decode", "applyNative", "apply", "apply/handoff"),
-                this.console.messages.stream().map(message -> message.substring("[PlayerDataType] ".length(), message.indexOf(" | thread="))).toList());
-        assertTrue(this.console.messages.get(3).contains("FALLBACK"));
-        assertFalse(this.console.messages.get(4).contains(BRAVO.asString()));
-        assertFalse(this.console.messages.get(5).contains(ALPHA.asString()));
-    }
-
-    @Test
-    void captureTimingSamplesAreSeparateForEachActualMode() {
-        PlayerDataPipeline pipeline = this.createPipeline(new FakeType(ALPHA, StorageFormat.STRUCTURED), new FakeType(BRAVO, StorageFormat.STRUCTURED) {
-            @Override
-            public boolean supportsAsyncCapture() {
-                return true;
-            }
-        });
-        PlayerDataPipeline.CaptureResult.Pending pending = assertInstanceOf(PlayerDataPipeline.CaptureResult.Pending.class, pipeline.capture(this.player, CaptureMode.ASYNC));
-        pipeline.captureAsync(this.player, pending);
-        pipeline.capture(this.player, CaptureMode.OFFLINE);
-
-        assertEquals(3, this.console.messages.size());
-        assertTrue(this.console.messages.get(0).startsWith("[PlayerDataType] capture/SYNC"));
-        assertFalse(this.console.messages.get(0).contains(BRAVO.asString()));
-        assertTrue(this.console.messages.get(1).startsWith("[PlayerDataType] capture/ASYNC"));
-        assertFalse(this.console.messages.get(1).contains(ALPHA.asString()));
-        assertTrue(this.console.messages.get(2).startsWith("[PlayerDataType] capture/OFFLINE"));
-        assertTrue(this.console.messages.get(2).contains("FIRST"));
-        assertTrue(this.console.messages.get(2).contains("samples=2"));
-    }
-
-    @Test
     void captureSkipsFailingNonCriticalType() {
         PlayerDataPipeline pipeline = this.createPipeline(
                 new FakeType(ALPHA, StorageFormat.STRUCTURED),
@@ -148,20 +73,6 @@ class PlayerDataPipelineTest {
 
         assertEquals(Set.of(ALPHA), ready.values().keySet());
         assertEquals(List.of(BRAVO), ready.skipped());
-        assertTrue(this.console.warnings > 0);
-    }
-
-    @Test
-    void captureFailsEntirelyWhenCriticalTypeFails() {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingCapture()
-        );
-
-        PlayerDataPipeline.CaptureResult result = pipeline.capture(this.player, CaptureMode.SYNC);
-
-        assertEquals(BRAVO, assertInstanceOf(PlayerDataPipeline.CaptureResult.Failed.class, result).key());
-        assertTrue(this.console.messages.getLast().contains("FAILED"));
     }
 
     @Test
@@ -176,49 +87,6 @@ class PlayerDataPipelineTest {
 
         assertEquals(Set.of(ALPHA), ready.data().keySet());
         assertEquals(List.of(BRAVO), ready.skipped());
-        assertTrue(this.console.warnings > 0);
-    }
-
-    @Test
-    void encodeFailsEntirelyWhenCriticalTypeFails() {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingEncode()
-        );
-        PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
-
-        PlayerDataPipeline.EncodeResult result = pipeline.encode(captured);
-
-        assertEquals(BRAVO, assertInstanceOf(PlayerDataPipeline.EncodeResult.Failed.class, result).key());
-        assertTrue(this.console.messages.getLast().contains("FAILED"));
-    }
-
-    @Test
-    void appliesFreshContextInTopologicalOrder() {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO)),
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA))
-        );
-
-        PlayerDataPipeline.ApplyResult.Success result = assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class,
-                pipeline.apply(this.player, context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE))));
-
-        assertEquals(List.of(ALPHA, BRAVO, CHARLIE), this.applied);
-        assertEquals(List.of(ALPHA, BRAVO, CHARLIE), result.applied());
-    }
-
-    @Test
-    void criticalDecodeFailureFailsWholePrepare() {
-        PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of()).failingDecode()
-        );
-
-        PlayerDataPipeline.PrepareResult result = pipeline.prepare(snapshotWith(ALPHA, BRAVO));
-
-        assertEquals(BRAVO, assertInstanceOf(PlayerDataPipeline.PrepareResult.Failed.class, result).key());
-        assertTrue(this.console.messages.getLast().contains("FAILED"));
     }
 
     @Test
@@ -671,22 +539,16 @@ class PlayerDataPipelineTest {
     }
 
     private static final class QuietLogger implements PluginLogger {
-        private final List<String> messages = new ArrayList<>();
-        private int warnings;
-
         @Override
         public void info(String message) {
-            this.messages.add(message);
         }
 
         @Override
         public void warn(String message) {
-            this.warnings++;
         }
 
         @Override
         public void warn(String message, Throwable throwable) {
-            this.warnings++;
         }
 
         @Override

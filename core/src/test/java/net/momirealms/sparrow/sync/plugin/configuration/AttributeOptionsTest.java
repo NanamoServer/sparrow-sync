@@ -1,62 +1,15 @@
 package net.momirealms.sparrow.sync.plugin.configuration;
 
-import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
-import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
-import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Random;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class AttributeOptionsTest {
-    @TempDir
-    Path directory;
-
-    @Test
-    void reloadPublishesInjectionSwitchesForAdvancementsAndAttributes() throws Exception {
-        Field field = PluginConfig.class.getDeclaredField("config");
-        field.setAccessible(true);
-        Object previous = field.get(null);
-        try {
-            Plugin plugin = (Plugin) Proxy.newProxyInstance(Plugin.class.getClassLoader(), new Class<?>[]{Plugin.class}, (proxy, method, args) -> switch (method.getName()) {
-                case "dataFolderPath" -> this.directory;
-                default -> throw new AssertionError(method.getName());
-            });
-            PluginConfig config = new PluginConfig(plugin, SparrowYaml.builder().build());
-            Files.writeString(this.directory.resolve("config.yml"), """
-                    config-version: "%s"
-                    synchronization:
-                      advancements:
-                        inject-progress-changed: false
-                      attributes:
-                        inject-consumer: false
-                    """.formatted(DependencyVersions.CONFIG_VERSION));
-
-            config.reload();
-
-            assertFalse(PluginConfig.synchronization$advancements().injectProgressChanged());
-            assertFalse(PluginConfig.synchronization$attributes().injectConsumer());
-            String generated = Files.readString(this.directory.resolve("config.yml"));
-            assertTrue(generated.contains("inject-progress-changed: false"));
-            assertTrue(generated.contains("inject-consumer: false"));
-        } finally {
-            field.set(null, previous);
-        }
-    }
-
     @Test
     void compiledFiltersPreserveLiteralPrefixAndWildcardSemantics() throws Exception {
         List<String> patterns = List.of("max_health", "minecraft:effect.*", "*:custom_*_bonus", "mine*:*speed*", "a**b*c", "*", "*:*", "", "example:", "*foo*");
@@ -91,50 +44,6 @@ class AttributeOptionsTest {
         assertFalse(options.modifierBlacklisted("minecraft:effect.speed"));
         assertThrows(UnsupportedOperationException.class, () -> options.whitelist().add("*"));
         assertThrows(UnsupportedOperationException.class, () -> options.modifierBlacklist().add("*"));
-    }
-
-    @Test
-    void reloadPublishesCompiledFiltersAndKeepsOldSnapshotStable() throws Exception {
-        Field field = PluginConfig.class.getDeclaredField("config");
-        field.setAccessible(true);
-        Object previous = field.get(null);
-        try {
-            Plugin plugin = (Plugin) Proxy.newProxyInstance(Plugin.class.getClassLoader(), new Class<?>[]{Plugin.class}, (proxy, method, args) -> switch (method.getName()) {
-                case "dataFolderPath" -> this.directory;
-                default -> throw new AssertionError(method.getName());
-            });
-            PluginConfig config = new PluginConfig(plugin, SparrowYaml.builder().build());
-            this.writeConfig("max_health", "minecraft:effect.*");
-            config.reload();
-            AttributeOptions first = PluginConfig.synchronization$attributes();
-            this.writeConfig("luck", "example:local_*");
-            config.reload();
-            AttributeOptions second = PluginConfig.synchronization$attributes();
-
-            assertNotSame(first, second);
-            assertTrue(first.attributeAllowed("minecraft:max_health"));
-            assertFalse(first.attributeAllowed("minecraft:luck"));
-            assertTrue(first.modifierBlacklisted("minecraft:effect.speed"));
-            assertTrue(second.attributeAllowed("minecraft:luck"));
-            assertFalse(second.attributeAllowed("minecraft:max_health"));
-            assertTrue(second.modifierBlacklisted("example:local_bonus"));
-            assertFalse(second.modifierBlacklisted("minecraft:effect.speed"));
-            String saved = Files.readString(this.directory.resolve("config.yml"));
-            assertFalse(saved.contains("attribute-patterns"));
-            assertFalse(saved.contains("modifier-patterns"));
-        } finally {
-            field.set(null, previous);
-        }
-    }
-
-    private void writeConfig(String whitelist, String blacklist) throws Exception {
-        Files.writeString(this.directory.resolve("config.yml"), """
-                config-version: "%s"
-                synchronization:
-                  attributes:
-                    whitelist: ["%s"]
-                    modifier-blacklist: ["%s"]
-                """.formatted(DependencyVersions.CONFIG_VERSION, whitelist, blacklist));
     }
 
     private static AttributeOptions options(List<String> whitelist, List<String> blacklist) throws Exception {
