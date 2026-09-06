@@ -7,6 +7,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -146,20 +147,20 @@ public final class SnapshotService {
                 });
     }
 
-    // 在当前玩家线程采集地图并启动发布, 保存本次操作使用的模式.
+    // 与物品编码在同一玩家串行任务中执行, 不重新读取玩家或回到玩家线程.
     @Nullable
-    private MapSyncService.Capture captureAndPublishMaps(Player player, SaveContext context) {
+    private MapSyncService.Capture captureAndPublishMaps(PlayerDataPipeline.CaptureResult.Ready captured, SaveContext context) {
         MapSyncService maps = this.mapSync;
-        if (maps == null) return null;
+        if (maps == null || context.mapType() == null) return null;
         try {
-            return maps.captureAndPublish(player);
+            return maps.captureAndPublish(captured, context.mapType());
         } catch (RuntimeException exception) {
             this.logger.warnWithFileCause(LogCategory.DATA, context.meta().player(), context.playerName(), exception, LogConstants.DATA_MAP_COMPILE_FAILED, context.playerName(), context.meta().id().toString(), String.valueOf(exception.getMessage()));
             return null;
         }
     }
 
-    // 在当前玩家线程立即采集玩家状态和地图, 编码与保存进入玩家串行线程.
+    // 在当前玩家线程立即采集玩家状态, 地图处理、编码与保存进入玩家串行线程.
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
@@ -168,12 +169,11 @@ public final class SnapshotService {
             request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
             return request.completion;
         }
-        MapSyncService.Capture maps = this.captureAndPublishMaps(player, context);
-        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request, maps), request);
+        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request), request);
         return request.completion;
     }
 
-    // 在玩家线程采集同步组与地图, 再由玩家串行线程补齐异步组并编码保存.
+    // 在玩家线程采集同步组, 再由玩家串行线程补齐异步组并处理地图、编码保存.
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
@@ -182,30 +182,27 @@ public final class SnapshotService {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
             return request.completion;
         }
-        MapSyncService.Capture maps = this.captureAndPublishMaps(player, context);
         this.submitSerial(context.meta().player(), () -> {
             if (!(this.playerDataPipeline.captureAsync(player, pending) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, request, maps);
+            this.encodeAndSubmit(context, captured, request);
         }, request);
         return request.completion;
     }
 
-    // 在退出后的玩家线程采集地图, 再将已退出玩家交给离线异步编码.
+    // 将已退出玩家交给离线串行任务, 物品采集与地图处理都在该任务内完成.
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureOfflineAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
-        // 玩家已退出但世界地图仍在更新, 地图候选必须在当前 Region tick 采集后再交给离线编码.
-        MapSyncService.Capture maps = this.captureAndPublishMaps(player, context);
         this.submitSerial(context.meta().player(), () -> {
             if (!(this.playerDataPipeline.capture(player, CaptureMode.OFFLINE) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, request, maps);
+            this.encodeAndSubmit(context, captured, request);
         }, request);
         return request.completion;
     }
@@ -237,11 +234,14 @@ public final class SnapshotService {
                 .server(ServerConfig.serverId())
                 .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
-        return new SaveContext(snapshotMeta, player.getName(), retainedData);
+        // 重载只影响随后开始的保存, 排队中的任务继续使用接纳时的地图模式.
+        MapType mapType = this.mapSync == null ? null : PluginConfig.synchronization$map().type();
+        return new SaveContext(snapshotMeta, player.getName(), retainedData, mapType);
     }
 
     // 编码独立玩家数据, 等待地图编译后按同一玩家的保存顺序提交快照.
-    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request, @Nullable MapSyncService.Capture maps) {
+    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
+        MapSyncService.Capture maps = this.captureAndPublishMaps(captured, context);
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
@@ -365,7 +365,7 @@ public final class SnapshotService {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
-    private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData) {
+    private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData, @Nullable MapType mapType) {
     }
 
     private record PendingMapSnapshot(Snapshot snapshot, String playerName) {

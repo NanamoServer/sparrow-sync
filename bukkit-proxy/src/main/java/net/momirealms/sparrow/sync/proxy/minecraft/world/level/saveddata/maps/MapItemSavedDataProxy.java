@@ -4,6 +4,8 @@ import com.mojang.serialization.Codec;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.saveddata.maps.MapBanner;
+import net.minecraft.world.level.saveddata.maps.MapFrame;
+import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
@@ -34,6 +36,18 @@ public interface MapItemSavedDataProxy {
 
     @FieldGetter(name = "bannerMarkers")
     Map<String, MapBanner> getBannerMarkers(Object target);
+
+    @FieldSetter(name = "bannerMarkers")
+    void setBannerMarkers(Object target, Map<String, MapBanner> markers);
+
+    @FieldGetter(name = "frameMarkers")
+    Map<String, MapFrame> getFrameMarkers(Object target);
+
+    @FieldSetter(name = "frameMarkers")
+    void setFrameMarkers(Object target, Map<String, MapFrame> markers);
+
+    @MethodInvoker(name = "type", isStatic = true)
+    Object type(MapId id);
 
     @FieldSetter(name = "trackedDecorationCount")
     void setTrackedDecorationCount(Object target, int count);

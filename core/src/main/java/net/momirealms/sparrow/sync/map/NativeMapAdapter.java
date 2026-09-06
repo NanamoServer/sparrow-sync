@@ -19,6 +19,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.saveddata.maps.MapItemSavedDataProxy;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -41,17 +42,36 @@ public final class NativeMapAdapter {
         this.dataVersion = dataVersion;
     }
 
-    // 按原生 ID 复制世界中现存的地图内容.
+    // 只读已准备的缓存; 未加载的嵌套地图直接读文件, 不异步触发原生加载事件.
     @Nullable
-    public MapData capture(@NotNull ServerLevel level, int mapId) {
-        MapItemSavedData data = level.getMapData(new MapId(mapId));
-        if (data == null) return null;
-        synchronized (data) {
-            Tag tag = this.codec == null
-                    ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
-                    : this.codec.encodeStart(this.ops, data).getOrThrow();
-            return new MapData(this.dataVersion, (CompoundTag) tag);
+    public MapData capture(@NotNull NativeMapStorage storage, int mapId) throws IOException {
+        MapItemSavedData data = storage.cached(mapId);
+        if (data != null) return this.capture(data);
+        net.minecraft.nbt.CompoundTag root;
+        try {
+            root = storage.read(mapId);
+        } catch (IOException exception) {
+            // 文件读取可能与原生加载后的保存重叠. 已出现内存原图时优先采集它, 不重试文件.
+            data = storage.cached(mapId);
+            if (data != null) return this.capture(data);
+            throw exception;
         }
+        data = storage.cached(mapId);
+        if (data != null) return this.capture(data);
+        if (root == null) return null;
+        net.minecraft.nbt.Tag content = CompoundTagProxy.INSTANCE.getTags(root).get("data");
+        if (!(content instanceof net.minecraft.nbt.CompoundTag)) {
+            throw new IOException("map file contains no map data: " + mapId);
+        }
+        return new MapData(this.dataVersion, (CompoundTag) NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, content));
+    }
+
+    private MapData capture(MapItemSavedData data) {
+        // 原生写入不获取 data 的监视器. 并发集合保证可遍历, 像素允许采到一次更新中的画面.
+        Tag tag = this.codec == null
+                ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
+                : this.codec.encodeStart(this.ops, data).getOrThrow();
+        return new MapData(this.dataVersion, (CompoundTag) tag);
     }
 
     // 从已保存副本的隔离维度恢复完整身份.

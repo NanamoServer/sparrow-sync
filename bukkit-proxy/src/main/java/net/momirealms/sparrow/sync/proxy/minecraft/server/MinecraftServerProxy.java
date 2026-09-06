@@ -21,4 +21,9 @@ public interface MinecraftServerProxy {
 
     @MethodInvoker(name = "getFixerUpper")
     DataFixer getFixerUpper(Object target);
+
+    @MethodInvoker(name = "getDataStorage", activeIf = "min_version=26.1")
+    default Object getDataStorage(Object target) {
+        throw new UnsupportedOperationException();
+    }
 }

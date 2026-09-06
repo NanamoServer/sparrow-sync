@@ -3,8 +3,6 @@ package net.momirealms.sparrow.sync.map;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -24,7 +22,6 @@ import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.map.handler.SyncMapHandler;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
@@ -37,12 +34,13 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.ItemCont
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.UseRemainderProxy;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.util.VersionHelper;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
@@ -55,6 +53,7 @@ public final class MapSyncService {
     private final String ownerId;
     private final MinecraftServer server;
     private final NativeMapAdapter nativeMaps;
+    private final NativeMapStorage nativeStorage;
     private final MapPublisher publisher;
     private final MapReceiver receiver;
     private final MapPipeline pipeline;
@@ -65,6 +64,7 @@ public final class MapSyncService {
         this.ownerId = ownerId;
         this.server = MinecraftServer.getServer();
         this.nativeMaps = new NativeMapAdapter(this.server.registryAccess(), VersionHelper.WORLD_VERSION);
+        this.nativeStorage = new NativeMapStorage(this.server, VersionHelper.WORLD_VERSION);
         MapStorage storage = plugin.storageProvider().maps(ownerId);
         MapCache shared = new RedisMapCache(plugin.redisConnector().connection().async(), plugin.messageBrokerManager().broker(), ownerId, plugin.scheduler().async());
         this.publisher = new MapPublisher(storage, shared, plugin.scheduler().async());
@@ -73,23 +73,19 @@ public final class MapSyncService {
     }
 
     /**
-     * 采集玩家携带的来源地图并启动异步发布, 固定本次保存使用的模式.
-     * <p><strong>须在允许读取玩家和原生地图的线程调用</strong>.
+     * 在玩家串行线程扫描本次物品副本并采集来源地图, 物品范围固定于本次玩家采集.
+     * 地图模式由保存入口固定; 原图像素以本次异步采集时的内容为准.
      */
     @NotNull
-    public Capture captureAndPublish(@NotNull Player player) {
-        long start = System.nanoTime();
-        MapType mode = PluginConfig.synchronization$map().type();
+    public Capture captureAndPublish(@NotNull PlayerDataPipeline.CaptureResult.Ready captured, @NotNull MapType mode) {
         if (mode != MapType.SYNC) return new Capture(mode, Map.of());
         Map<Integer, CompletableFuture<StoredMap>> publications = new HashMap<>();
-        ServerPlayer handle = ((CraftPlayer) player).getHandle();
-        if (this.plugin.dataRegistry().registered(InventoryDataType.INVENTORY)) {
-            this.scan(handle.getInventory(), publications);
+        if (captured.value(InventoryDataType.INVENTORY) instanceof InventoryDataType.Inventory inventory) {
+            this.scan(inventory.contents(), publications);
         }
-        if (this.plugin.dataRegistry().registered(EnderChestDataType.ENDER_CHEST)) {
-            this.scan(handle.getEnderChestInventory(), publications);
+        if (captured.value(EnderChestDataType.ENDER_CHEST) instanceof ItemCodec.LoadedItems enderChest) {
+            this.scan(enderChest.items(), publications);
         }
-        System.out.println("采集使用: " + (System.nanoTime() - start));
         return new Capture(mode, publications);
     }
 
@@ -105,11 +101,11 @@ public final class MapSyncService {
         return this.pipeline.decodeAsync(snapshot, this.ownerId);
     }
 
-    // 扫描一个原生物品栏, 将其中嵌套地图加入本次采集结果.
-    private void scan(Container container, Map<Integer, CompletableFuture<StoredMap>> publications) {
-        int size = container.getContainerSize();
-        for (int slot = 0; slot < size; slot++) {
-            this.scan(container.getItem(slot), publications);
+    // 采集缓冲中的空槽为 null, 嵌套组件继续沿只读原生对象递归.
+    private void scan(ItemStack[] items, Map<Integer, CompletableFuture<StoredMap>> publications) {
+        for (int slot = 0; slot < items.length; slot++) {
+            ItemStack item = items[slot];
+            if (item != null) this.scan(item, publications);
         }
     }
 
@@ -129,12 +125,12 @@ public final class MapSyncService {
                 publications.computeIfAbsent(id.id(), nativeId -> {
                     try {
                         MapSource source = new MapSource(this.ownerId, nativeId);
-                        MapData data = this.nativeMaps.capture(this.server.overworld(), nativeId);
+                        MapData data = this.nativeMaps.capture(this.nativeStorage, nativeId);
                         if (data == null) {
                             throw new IllegalStateException("source map does not exist: " + source);
                         }
                         return this.publisher.publish(source, data);
-                    } catch (RuntimeException exception) {
+                    } catch (IOException | RuntimeException exception) {
                         return CompletableFuture.failedFuture(exception);
                     }
                 });

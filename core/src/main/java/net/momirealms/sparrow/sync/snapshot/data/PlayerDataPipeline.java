@@ -335,6 +335,12 @@ public final class PlayerDataPipeline {
                 return this.playerName;
             }
 
+            @Nullable
+            public Object value(@NotNull DataKey key) {
+                int slot = this.dataRegistry.slot(key);
+                return slot < 0 ? null : this.values[slot];
+            }
+
             @NotNull
             public Map<DataKey, Object> values() {
                 // Map 只在事件和调试边界创建, 内部继续使用槽位数组

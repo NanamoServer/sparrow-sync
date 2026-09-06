@@ -1,5 +1,11 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.minecraft.core.NonNullList;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemContainerContents;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -218,28 +224,24 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "pipeline", maps);
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "ownerId", "A-world");
         NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", mapSync);
-        Class<?> mapSaveType = MapSyncService.Capture.class;
-        Constructor<?> mapSave = mapSaveType.getDeclaredConstructors()[0];
-        mapSave.setAccessible(true);
-        Object preparation = mapSave.newInstance(MapType.SYNC, Map.of());
         Class<?> contextType = Class.forName(SnapshotService.class.getName() + "$SaveContext");
         Constructor<?> context = contextType.getDeclaredConstructors()[0];
         context.setAccessible(true);
         Class<?> requestType = Class.forName(SnapshotService.class.getName() + "$SaveRequest");
         Constructor<?> request = requestType.getDeclaredConstructors()[0];
         request.setAccessible(true);
-        Method encode = SnapshotService.class.getDeclaredMethod("encodeAndSubmit", contextType, PlayerDataPipeline.CaptureResult.Ready.class, requestType, mapSaveType);
+        Method encode = SnapshotService.class.getDeclaredMethod("encodeAndSubmit", contextType, PlayerDataPipeline.CaptureResult.Ready.class, requestType);
         encode.setAccessible(true);
         CountDownLatch encoded = new CountDownLatch(2);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         for (int i = 1; i <= 2; i++) {
             SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), i, SaveCause.WORLD_SAVE, false, "A", 4440);
-            Object saveContext = context.newInstance(meta, this.player.getName(), Map.of());
+            Object saveContext = context.newInstance(meta, this.player.getName(), Map.of(), MapType.SYNC);
             Object saveRequest = request.newInstance(this.service);
             PlayerDataPipeline.CaptureResult.Ready captured = (PlayerDataPipeline.CaptureResult.Ready) data.capture(this.player, CaptureMode.SYNC);
             this.executor.submit(this.player.getUniqueId(), () -> {
                 try {
-                    encode.invoke(this.service, saveContext, captured, saveRequest, preparation);
+                    encode.invoke(this.service, saveContext, captured, saveRequest);
                 } catch (ReflectiveOperationException exception) {
                     failure.set(exception);
                 } finally {
@@ -317,6 +319,87 @@ class CaptureSchedulingTest {
         assertSame(this.worker.get(), this.async.threads.getLast());
         assertFalse(world.isDone());
         assertFalse(death.isDone());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SYNC", "ASYNC", "OFFLINE"})
+    void mapsScanOnExistingWorkerBeforeEncodingAndKeepRequestMode(String mode) throws Exception {
+        SyncLogger logger = NmsPlayerFixture.allocate(SyncLogger.class);
+        AtomicReference<Thread> scannedOn = new AtomicReference<>();
+        AtomicReference<Thread> capturedOn = new AtomicReference<>();
+        BukkitProxy.init("1.21.8", List.of("paper"));
+        ItemStack item = new ItemStack(Items.STONE);
+        ItemContainerContents contents = ItemContainerContents.fromItems(List.of(new ItemStack(Items.STONE)));
+        NonNullList<ItemStack> nested = new NonNullList<>(List.of(new ItemStack(Items.STONE)), ItemStack.EMPTY) {
+            @Override
+            public ItemStack get(int index) {
+                scannedOn.set(Thread.currentThread());
+                return super.get(index);
+            }
+        };
+        NmsPlayerFixture.set(ItemContainerContents.class, contents, "items", nested);
+        item.set(DataComponents.CONTAINER, contents);
+        scannedOn.set(null);
+        DataRegistry registry = new DataRegistry();
+        registry.register(new PlayerDataType<InventoryDataType.Inventory>() {
+            @Override
+            @NotNull
+            public DataKey key() { return InventoryDataType.INVENTORY; }
+
+            @Override
+            @NotNull
+            public StorageFormat storage() { return StorageFormat.BINARY; }
+
+            @Override
+            @NotNull
+            public InventoryDataType.Inventory capture(@NotNull Player player, @NotNull CaptureMode captureMode) {
+                capturedOn.set(Thread.currentThread());
+                return new InventoryDataType.Inventory(new ItemStack[]{item}, 0, 0);
+            }
+
+            @Override
+            @NotNull
+            public Tag encode(@NotNull InventoryDataType.Inventory value) {
+                assertSame(CaptureSchedulingTest.this.worker.get(), scannedOn.get());
+                CompoundTag tag = NBT.createCompound();
+                tag.put("items", NBT.createList());
+                return tag;
+            }
+
+            @Override
+            @NotNull
+            public InventoryDataType.Inventory decode(@NotNull Tag tag, int version) { throw new AssertionError(); }
+
+            @Override
+            public void apply(@NotNull Player player, @NotNull InventoryDataType.Inventory value) { throw new AssertionError(); }
+        });
+        registry.freeze();
+        PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
+        NmsPlayerFixture.set(SnapshotService.class, this.service, "playerDataPipeline", pipeline);
+        MapSyncService maps = NmsPlayerFixture.allocate(MapSyncService.class);
+        NmsPlayerFixture.set(MapSyncService.class, maps, "ownerId", "A-world");
+        NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", new MapPipeline(registry, List.of(), logger));
+        NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", maps);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
+        switch (CaptureMode.valueOf(mode)) {
+            case SYNC -> this.service.captureNowAndSave(this.player, SaveCause.DEATH, Map.of());
+            case ASYNC -> this.service.captureLaterAndSave(this.player, SaveCause.WORLD_SAVE, Map.of());
+            case OFFLINE -> this.service.captureOfflineAndSave(this.player, SaveCause.DISCONNECT, Map.of());
+        }
+        assertNull(scannedOn.get());
+        if (mode.equals("OFFLINE")) {
+            assertNull(capturedOn.get());
+        } else {
+            assertSame(Thread.currentThread(), capturedOn.get());
+        }
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
+        this.releaseWorker.countDown();
+        assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
+        assertSame(this.worker.get(), scannedOn.get());
+        assertEquals(1, this.written.size());
+        if (mode.equals("OFFLINE")) assertSame(this.worker.get(), capturedOn.get());
     }
 
     @Test
