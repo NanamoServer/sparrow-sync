@@ -90,7 +90,7 @@ public final class NativeMapAdapter {
                 .getOrThrow(message -> new IOException("failed to decode map: " + message));
     }
 
-    // 将同一 identity 经 prepareReplica 得到的副本写入世界, 已有同身份副本则原地更新.
+    // 将经 prepareReplica 得到的共享内容写入负数副本, 已有对象的身份与内容一起更新.
     @NotNull
     public MapItemSavedData updateReplica(@NotNull ServerLevel level, @NotNull MapIdentity identity, @NotNull MapItemSavedData prepared) {
         MapId id = new MapId(identity.globalId());
@@ -99,15 +99,14 @@ public final class NativeMapAdapter {
             level.setMapData(id, prepared);
             return prepared;
         }
-        if (!existing.dimension.equals(prepared.dimension)) {
-            throw new IllegalStateException("global map id " + identity.globalId() + " is occupied by another native map");
-        }
         this.updateReplica(existing, prepared);
         return existing;
     }
 
     private void updateReplica(MapItemSavedData target, MapItemSavedData prepared) {
         synchronized (target) {
+            target.dimension = prepared.dimension;
+            target.uniqueId = prepared.uniqueId;
             target.centerX = prepared.centerX;
             target.centerZ = prepared.centerZ;
             target.scale = prepared.scale;

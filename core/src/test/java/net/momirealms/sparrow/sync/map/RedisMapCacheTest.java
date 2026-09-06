@@ -1,5 +1,9 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.test.RedisTestSupport;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
@@ -75,6 +79,40 @@ class RedisMapCacheTest {
         this.connector.connection().sync().del(this.key(-1));
         assertFalse(this.foreign.touch(-1).join());
         assertEquals(0L, this.connector.connection().sync().exists(this.key(-1)));
+    }
+
+    @Test
+    void sourcePublicationRepairsLocalIdentityThroughRedisNotification() throws Exception {
+        MapFlowTestSupport.NativeMaps nativeMaps = new MapFlowTestSupport.NativeMaps();
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        storage.current = MapFlowTestSupport.map(7);
+        SyncLogger logger = MapFlowTestSupport.logger(new ArrayList<>());
+        CountDownLatch refreshed = new CountDownLatch(1);
+        MapReceiver receiver = new MapReceiver(storage, this.foreign, nativeMaps.adapter, nativeMaps.server, "B-world", ForkJoinPool.commonPool(), task -> {
+            task.run();
+            if (nativeMaps.replica.colors[0] == 8) {
+                refreshed.countDown();
+            }
+        }, logger);
+        MapPublisher publisher = new MapPublisher(storage, this.source, ForkJoinPool.commonPool());
+        try {
+            receiver.invalidate(-1, true);
+            receiver.receive(MapFlowTestSupport.IDENTITY).get(3, TimeUnit.SECONDS);
+            NmsPlayerFixture.set(MapItemSavedData.class, nativeMaps.replica, "dimension", Level.OVERWORLD);
+            nativeMaps.replica.setDirty(false);
+            MapInvalidationMessage.listener(receiver::refresh);
+            // 来源发布经过真实 Redis 通知, 接收侧修正身份、更新像素并标脏.
+            publisher.publish(MapFlowTestSupport.SOURCE, MapFlowTestSupport.map(8).data()).get(5, TimeUnit.SECONDS);
+            assertTrue(refreshed.await(3, TimeUnit.SECONDS));
+            assertSame(nativeMaps.replica, nativeMaps.level.getMapData(new MapId(-1)));
+            assertEquals(MapFlowTestSupport.IDENTITY, nativeMaps.adapter.replicaIdentity(nativeMaps.level, -1));
+            assertEquals(8, nativeMaps.replica.colors[0]);
+            assertTrue(nativeMaps.replica.isDirty());
+        } finally {
+            MapInvalidationMessage.listener(null);
+            receiver.close();
+            publisher.close();
+        }
     }
 
     @Test

@@ -66,6 +66,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -195,36 +197,44 @@ class NativeMapAdapterTest {
         assertTrue(Files.exists(this.directory.resolve("map_-1.dat")));
     }
 
-    @Test
-    void legacyClusterReplicaBlocksRefreshUntilTheOldLocalEntryIsRemoved() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"legacy", "different-source", "vanilla"})
+    void observedReplicaUsesSharedIdentityAndPreservesNativeObject(String localIdentity) throws Exception {
         MapData oldContent = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(10));
         MapItemSavedData old = this.adapter.prepareReplica(this.identity, oldContent);
-        String legacyDimension = this.identity.replicaDimension().replace("sparrow-sync:map/", "sparrow-sync:map/6d61696e/");
-        NmsPlayerFixture.set(MapItemSavedData.class, old, "dimension", Level.RESOURCE_KEY_CODEC.parse(NbtOps.INSTANCE, StringTag.valueOf(legacyDimension)).getOrThrow());
+        String dimension = switch (localIdentity) {
+            case "legacy" -> this.identity.replicaDimension().replace("sparrow-sync:map/", "sparrow-sync:map/6d61696e/");
+            case "different-source" -> new MapIdentity(new MapSource("retired-world", 9), -1).replicaDimension();
+            default -> "minecraft:overworld";
+        };
+        NmsPlayerFixture.set(MapItemSavedData.class, old, "dimension", Level.RESOURCE_KEY_CODEC.parse(NbtOps.INSTANCE, StringTag.valueOf(dimension)).getOrThrow());
+        old.uniqueId = UUID.randomUUID();
         this.level.setMapData(new MapId(-1), old);
+        Object view = old.mapView;
+        byte[] colors = old.colors;
         MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
         database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
         MapReceiver receiver = new MapReceiver(database, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), "B-world", Runnable::run, Runnable::run, MapFlowTestSupport.logger(new ArrayList<>()));
-        // 旧集群格式无法识别来源, 观察和通知都不会触发内容读取.
-        assertNull(this.adapter.replicaIdentity(this.level, -1));
+        // 首次观察按全局 ID 查库, 原地修正本地副本的身份与内容.
         receiver.observe(-1);
-        receiver.refresh(-1);
-        assertEquals(0, database.reads);
-        // 携图加载能取得新记录, 本地占用检查仍保留旧地图.
-        CompletionException failure = assertThrows(CompletionException.class, () -> receiver.receive(this.identity).join());
-        assertTrue(failure.getCause().getMessage().contains("occupied by another native map"));
+        assertEquals(1, database.reads);
         assertSame(old, this.level.getMapData(new MapId(-1)));
-        assertEquals(10, old.colors[0]);
-        // 清理测试存储中的旧条目后, 接收和后续通知更新恢复正常.
-        this.storage.cache.put(MapItemSavedData.type(new MapId(-1)), Optional.empty());
+        assertSame(view, old.mapView);
+        assertSame(colors, old.colors);
+        assertNull(old.uniqueId);
+        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(20, old.colors[0]);
         assertEquals(-1, receiver.receive(this.identity).join());
         MapItemSavedData current = this.level.getMapData(new MapId(-1));
-        assertEquals(20, current.colors[0]);
         current.setDirty(false);
         database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(30)));
         receiver.refresh(-1);
         assertEquals(30, current.colors[0]);
         assertTrue(current.isDirty());
+        this.storage.saveAndJoin();
+        this.storage.cache.clear();
+        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(30, this.level.getMapData(new MapId(-1)).colors[0]);
         receiver.close();
     }
 
@@ -414,13 +424,32 @@ class NativeMapAdapterTest {
     }
 
     @Test
-    void refusesForeignNativeCollisionAndFutureData() throws Exception {
+    void replacesLocalReplicaIdentityButRejectsFutureData() throws Exception {
         MapItemSavedData original = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD);
         this.level.setMapData(new MapId(-1), original);
         MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(6)));
-        assertThrows(IllegalStateException.class, () -> this.adapter.updateReplica(this.level, this.identity, prepared));
+        assertSame(original, this.adapter.updateReplica(this.level, this.identity, prepared));
         assertSame(original, this.level.getMapData(new MapId(-1)));
+        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(6, original.colors[0]);
         assertThrows(IOException.class, () -> this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION + 1, MapDataTest.content(6))));
+    }
+
+    @Test
+    void sourceReturnRepairsNegativeReplicaAndPreservesPositiveOriginal() {
+        MapItemSavedData source = MapItemSavedData.createFresh(0, 0, (byte) 0, true, false, Level.OVERWORLD);
+        source.colors[0] = 90;
+        this.level.setMapData(new MapId(1), source);
+        MapItemSavedData replica = MapItemSavedData.createForClient((byte) 0, false, Level.OVERWORLD);
+        replica.colors[0] = 10;
+        this.level.setMapData(new MapId(-1), replica);
+        StoredMap published = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
+        assertEquals(1, this.receive(this.identity.source().ownerId(), published).join());
+        assertSame(source, this.level.getMapData(new MapId(1)));
+        assertEquals(90, source.colors[0]);
+        assertSame(replica, this.level.getMapData(new MapId(-1)));
+        assertEquals(20, replica.colors[0]);
+        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
     }
 
     @Test

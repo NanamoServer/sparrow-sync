@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.map;
 
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +15,31 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MapReceiverTest {
     private final NativeMaps nativeMaps = new NativeMaps();
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void itemJoiningRuntimeReadIsCheckedBeforeNativeUpdate(boolean matches) {
+        Storage storage = new Storage();
+        storage.current = map(8);
+        Tasks worker = new Tasks();
+        Tasks nativeThread = new Tasks();
+        MapReceiver receiver = this.nativeMaps.receiver(storage, new Shared(), "B-world", worker, nativeThread, logger(new ArrayList<>()));
+        CompletableFuture<Integer> runtime = receiver.receive(-1);
+        worker.runAll();
+        // 物品在地图已准备、尚未写入世界时加入, 来源约束仍须生效.
+        MapIdentity item = matches ? IDENTITY : new MapIdentity(new MapSource("wrong", 1), -1);
+        assertSame(runtime, receiver.receive(item));
+        nativeThread.runAll();
+        assertEquals(1, storage.reads);
+        if (matches) {
+            assertEquals(-1, runtime.join());
+            assertEquals(8, this.nativeMaps.replica.colors[0]);
+        } else {
+            assertTrue(runtime.isCompletedExceptionally());
+            assertTrue(this.nativeMaps.updates.isEmpty());
+        }
+        receiver.close();
+    }
 
     @Test
     void receivedReplicaTracksNotificationsUntilReceiverCloses() {

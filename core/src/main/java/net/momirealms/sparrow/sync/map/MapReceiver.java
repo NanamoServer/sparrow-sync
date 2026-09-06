@@ -10,6 +10,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -57,34 +58,48 @@ public final class MapReceiver {
         this.worker = worker;
         this.nativeExecutor = nativeExecutor;
         this.logger = logger;
-        this.runtime = new MapRuntime(this, nativeMaps, server, nativeExecutor, logger);
+        this.runtime = new MapRuntime(this, logger);
     }
 
     /**
      * 等待指定地图在本服就绪, 同图并发请求共享结果.
      * <p>任务最多等待 5 秒. <strong>同一全局 ID 必须对应同一完整来源身份</strong>.
      *
-     * @param identity 物品或已保存副本携带的完整身份
+     * @param identity 物品明确携带的完整身份, 须与共享记录一致
      * @return 更新后的负数 ID, 或回源找到的非负原始 ID; 失败时异常完成
      */
     @NotNull
     public CompletableFuture<Integer> receive(@NotNull MapIdentity identity) {
+        return this.receive(identity.globalId(), identity);
+    }
+
+    // 运行时按全局 ID 获取共享身份, 本地副本内容由读取结果更新.
+    @NotNull
+    CompletableFuture<Integer> receive(int globalId) {
+        return this.receive(globalId, null);
+    }
+
+    @NotNull
+    private CompletableFuture<Integer> receive(int globalId, @Nullable MapIdentity expectedIdentity) {
         synchronized (this.flights) {
             if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map receiver is closed"));
-            Flight flight = this.flights.get(identity.globalId());
+            Flight flight = this.flights.get(globalId);
             if (flight == null) {
-                flight = new Flight(identity);
-                this.flights.put(identity.globalId(), flight);
+                flight = new Flight(globalId, expectedIdentity);
+                this.flights.put(globalId, flight);
                 Flight admitted = flight;
                 // 任务超时后从登记表移除, 后续原生回调通过任务身份核对放弃迟到结果
                 flight.result.orTimeout(5, TimeUnit.SECONDS).whenComplete((result, failure) -> {
                     synchronized (this.flights) {
-                        this.flights.remove(identity.globalId(), admitted);
+                        this.flights.remove(globalId, admitted);
                     }
                 });
                 this.read(flight);
+            } else if (expectedIdentity != null) {
+                if (flight.expectedIdentity != null && !flight.expectedIdentity.equals(expectedIdentity)) return CompletableFuture.failedFuture(new IllegalArgumentException("conflicting map origin for " + globalId));
+                // 玩家可以加入运行时先发起的读取, 物品来源在原生更新前一并核对.
+                flight.expectedIdentity = expectedIdentity;
             }
-            if (!flight.identity.equals(identity)) return CompletableFuture.failedFuture(new IllegalArgumentException("conflicting map origin for " + identity.globalId()));
             return flight.result;
         }
     }
@@ -139,7 +154,7 @@ public final class MapReceiver {
      * @param flight 仍登记在 flights 中的共享任务
      */
     private void read(Flight flight) {
-        int id = flight.identity.globalId();
+        int id = flight.globalId;
         boolean database = this.databaseReads.remove(id);
         StoredMap cached = this.cache.getIfPresent(id);
         CompletableFuture<Optional<StoredMap>> read = CompletableFuture.completedFuture(cached).thenComposeAsync(value -> {
@@ -151,14 +166,14 @@ public final class MapReceiver {
                 return Optional.empty();
             }).thenCompose(found -> found.isPresent() ? CompletableFuture.completedFuture(found) : this.storage.find(id));
         }, this.worker);
-        // 取得持久记录后先核对完整身份, 再在工作线程构造独立原生副本
+        // 共享记录须对应请求的全局 ID, 原生对象在工作线程独立构造.
         read.thenApplyAsync(value -> {
             if (this.closed || flight.result.isDone()) {
                 throw new CancellationException("map read ended");
             }
             StoredMap map = value.orElseThrow(() -> new IllegalStateException("global map does not exist: " + id));
-            if (!map.identity().equals(flight.identity)) {
-                throw new IllegalArgumentException("global map origin mismatch: " + id);
+            if (map.identity().globalId() != id) {
+                throw new IllegalArgumentException("global map id mismatch: " + id);
             }
             try {
                 return new Prepared(map, this.nativeMaps.prepareReplica(map.identity(), map.data()));
@@ -174,6 +189,10 @@ public final class MapReceiver {
                     flight.invalidated = false;
                     this.read(flight);
                     return;
+                }
+                // 物品带来的来源约束在这里核对, 包含准备期间新加入的玩家请求.
+                if (flight.expectedIdentity != null && !prepared.map.identity().equals(flight.expectedIdentity)) {
+                    throw new IllegalArgumentException("global map origin mismatch: " + id);
                 }
                 // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能回填缓存或原生对象.
                 localId = this.updateLocalMap(prepared.map, prepared.nativeData);
@@ -217,9 +236,9 @@ public final class MapReceiver {
         if (this.ownerId.equals(source.ownerId())) {
             if (level.getMapData(new MapId(source.id())) != null) {
                 // 已有负数副本仍可能被展示框引用, 更新后登记运行时追踪.
-                if (identity.equals(this.nativeMaps.replicaIdentity(level, identity.globalId()))) {
+                if (level.getMapData(new MapId(identity.globalId())) != null) {
                     this.nativeMaps.updateReplica(level, identity, prepared);
-                    this.runtime.updated(identity);
+                    this.runtime.updated(identity.globalId());
                 }
                 return source.id();
             }
@@ -227,7 +246,7 @@ public final class MapReceiver {
         }
         // 外服或回源缺图时保留负数副本, 交给原版保存和显示.
         this.nativeMaps.updateReplica(level, identity, prepared);
-        this.runtime.updated(identity);
+        this.runtime.updated(identity.globalId());
         return identity.globalId();
     }
 
@@ -246,17 +265,20 @@ public final class MapReceiver {
      * 合并同一全局 ID 的等待者, 保存当前读取是否需要补拉的状态.
      */
     private static final class Flight {
-        private final MapIdentity identity; // 本次任务固定的完整身份, 后加入请求须一致
+        private final int globalId;
+        private @Nullable MapIdentity expectedIdentity; // 物品请求附带的来源, 运行时单独读取时为空, 由 flights 监视器保护
         private final CompletableFuture<Integer> result = new CompletableFuture<>(); // 等待者共用的最终本服 ID, 包含 5 秒超时
         private boolean invalidated; // 本轮读取开始后收到过通知, 由 flights 监视器保护
 
         /**
          * 为一张地图建立可共享的接收任务.
          *
-         * @param identity 本次请求核对的完整身份
+         * @param globalId 共享读取的全局 ID
+         * @param expectedIdentity 物品来源约束, 运行时读取为空
          */
-        private Flight(MapIdentity identity) {
-            this.identity = identity;
+        private Flight(int globalId, @Nullable MapIdentity expectedIdentity) {
+            this.globalId = globalId;
+            this.expectedIdentity = expectedIdentity;
         }
     }
 }

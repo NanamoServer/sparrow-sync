@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.map;
 
-import net.minecraft.server.MinecraftServer;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -17,8 +16,6 @@ class MapRuntimeTest {
     private final Shared shared = new Shared();
     private final Tasks nativeThread = new Tasks();
     private final NativeMaps nativeState = new NativeMaps();
-    private final NativeMapAdapter nativeMaps = this.nativeState.adapter;
-    private final MinecraftServer server = this.nativeState.server;
     private final List<StoredMap> updated = this.nativeState.updates;
     private final List<String> warnings = new ArrayList<>();
     private final MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", Runnable::run, Runnable::run, logger(this.warnings));
@@ -27,18 +24,15 @@ class MapRuntimeTest {
     void observesPersistedReplicaOnceAndWaitsForAnUpdateEvent() {
         this.storage.current = map(2);
         this.shared.contents.put(-1, map(1));
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, logger(this.warnings));
         runtime.observe(1);
         runtime.observe(-1);
         runtime.observe(-1);
-        assertTrue(this.updated.isEmpty());
-        assertEquals(0, this.storage.reads);
-        this.nativeThread.runAll();
         assertEquals(1, this.storage.reads);
         assertEquals(List.of(map(2)), this.updated);
         assertEquals(0, this.shared.reads);
         this.storage.current = map(3);
-        runtime.updated(IDENTITY);
+        runtime.updated(IDENTITY.globalId());
         runtime.observe(-1);
         assertEquals(1, this.storage.reads);
         assertEquals(List.of(map(2)), this.updated);
@@ -53,8 +47,8 @@ class MapRuntimeTest {
     @Test
     void notificationRefreshesKnownReplicaFromSharedCache() {
         this.shared.contents.put(-1, map(1));
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
-        runtime.updated(IDENTITY);
+        MapRuntime runtime = new MapRuntime(this.receiver, logger(this.warnings));
+        runtime.updated(IDENTITY.globalId());
         runtime.invalidate(-1);
         assertEquals(List.of(map(1)), this.updated);
         this.shared.contents.put(-1, map(2));
@@ -68,10 +62,10 @@ class MapRuntimeTest {
     void notificationsDuringUpdateShareOneRefetch() {
         Tasks worker = new Tasks();
         MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", worker, this.nativeThread, logger(this.warnings));
-        MapRuntime runtime = new MapRuntime(receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(receiver, logger(this.warnings));
         this.storage.current = map(9);
         this.shared.contents.put(-1, map(1));
-        runtime.updated(IDENTITY);
+        runtime.updated(IDENTITY.globalId());
         runtime.invalidate(-1);
         worker.runAll();
         // 旧画面已准备, 连续通知先合并到同一更新任务.
@@ -94,12 +88,12 @@ class MapRuntimeTest {
     void firstObservationForcesDatabaseReadInsideAnExistingReceive() {
         Tasks worker = new Tasks();
         MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", worker, this.nativeThread, logger(this.warnings));
-        MapRuntime runtime = new MapRuntime(receiver, this.nativeMaps, this.server, Runnable::run, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(receiver, logger(this.warnings));
         this.storage.current = map(2);
         this.shared.contents.put(-1, map(1));
         CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
         worker.runAll();
-        // 首次识别在旧缓存更新前完成, 已有等待者随后取得数据库中的画面.
+        // 首次观察在旧缓存更新前完成, 已有等待者随后取得数据库中的画面.
         runtime.observe(-1);
         assertSame(waiting, receiver.receive(IDENTITY));
         this.nativeThread.runAll();
@@ -117,7 +111,7 @@ class MapRuntimeTest {
     @Test
     void failedRefreshRetainsPixelsUntilAnotherUpdateEvent() {
         this.storage.current = map(1);
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, logger(this.warnings));
         runtime.observe(-1);
         this.nativeThread.runAll();
         this.storage.current = null;
@@ -127,7 +121,7 @@ class MapRuntimeTest {
         assertEquals(1, this.warnings.size());
         this.storage.current = map(4);
         runtime.observe(-1);
-        runtime.updated(IDENTITY);
+        runtime.updated(IDENTITY.globalId());
         assertEquals(List.of(map(1)), this.updated);
         this.shared.contents.put(-1, map(4));
         runtime.invalidate(-1);
@@ -138,7 +132,7 @@ class MapRuntimeTest {
     @Test
     void closingStopsCallbacks() {
         this.storage.current = map(1);
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, logger(this.warnings));
         runtime.observe(-1);
         this.nativeThread.runAll();
         runtime.observe(-2);
@@ -152,24 +146,27 @@ class MapRuntimeTest {
     }
 
     @Test
-    void unrelatedNegativeMapsNeverReachStorage() {
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+    void missingGlobalMapIsQueriedOnceAndWaitsForAnotherEvent() {
+        MapRuntime runtime = new MapRuntime(this.receiver, logger(this.warnings));
         runtime.observe(-8);
         runtime.observe(-8);
         this.nativeThread.runAll();
-        assertEquals(0, this.storage.reads);
+        assertEquals(1, this.storage.reads);
         assertEquals(0, this.shared.reads);
-        assertTrue(this.warnings.isEmpty());
+        assertEquals(1, this.warnings.size());
     }
 
     @Test
-    void rejectedIdentityTaskCanBeTriggeredByTheNextObservation() {
+    void rejectedReadTaskCanBeTriggeredByTheNextNotification() {
         this.storage.current = map(1);
         AtomicInteger submissions = new AtomicInteger();
-        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, task -> {
-            if (submissions.incrementAndGet() == 1) throw new RejectedExecutionException("native executor rejected task");
+        MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", task -> {
+            if (submissions.incrementAndGet() == 1) {
+                throw new RejectedExecutionException("worker rejected task");
+            }
             this.nativeThread.execute(task);
-        }, logger(this.warnings));
+        }, Runnable::run, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(receiver, logger(this.warnings));
 
         runtime.observe(-1);
         assertEquals(1, submissions.get());
@@ -177,7 +174,8 @@ class MapRuntimeTest {
         assertTrue(this.updated.isEmpty());
         assertEquals(1, this.warnings.size());
         runtime.observe(-1);
-        runtime.observe(-1);
+        assertEquals(1, submissions.get());
+        runtime.invalidate(-1);
         assertEquals(2, submissions.get());
         this.nativeThread.runAll();
         assertEquals(List.of(map(1)), this.updated);
