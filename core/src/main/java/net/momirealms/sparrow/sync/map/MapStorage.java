@@ -9,16 +9,13 @@ import java.util.concurrent.CompletableFuture;
 @ApiStatus.Internal
 public interface MapStorage {
     @NotNull
-    CompletableFuture<Optional<StoredMap>> find(@NotNull MapSource source);
-
-    @NotNull
     CompletableFuture<Optional<StoredMap>> find(int globalId);
 
-    /** 原子登记来源及初始内容, 已登记时返回原记录. <strong>仅本存储绑定的来源服可写入</strong>. */
+    // 登记来源与首份内容, 重复登记返回已经存在的记录.
     @NotNull
     CompletableFuture<StoredMap> register(@NotNull MapSource source, @NotNull MapData initial);
 
-    /** 更新已登记地图的内容. <strong>调用方按地图身份串行等待完成, 包括重试</strong>. */
+    // 更新已经登记的地图画面.
     @NotNull
     CompletableFuture<Void> update(@NotNull MapIdentity identity, @NotNull MapData data);
 }

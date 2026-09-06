@@ -1,7 +1,21 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.minecraft.SharedConstants;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
+import net.minecraft.server.level.ServerChunkCache;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import net.minecraft.world.level.storage.DimensionDataStorage;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayDeque;
@@ -15,7 +29,7 @@ import java.util.concurrent.Executor;
 
 final class MapFlowTestSupport {
     static final MapSource SOURCE = new MapSource("A-world", 1);
-    static final MapIdentity IDENTITY = new MapIdentity("cluster", SOURCE, -1);
+    static final MapIdentity IDENTITY = new MapIdentity(SOURCE, -1);
 
     static StoredMap map(int pixel) {
         return new StoredMap(IDENTITY, new MapData(4440, MapDataTest.content(pixel)));
@@ -36,6 +50,64 @@ final class MapFlowTestSupport {
         });
     }
 
+    // 使用真实原生对象验证线程切换后的更新, 内存存储预置已加载副本.
+    static final class NativeMaps {
+        private static final HolderLookup.Provider REGISTRIES = bootstrap();
+        final MinecraftServer server = NmsPlayerFixture.allocate(DedicatedServer.class);
+        final ServerLevel level = NmsPlayerFixture.allocate(ServerLevel.class);
+        final NativeMapAdapter adapter = new NativeMapAdapter(REGISTRIES, 4440);
+        final DimensionDataStorage storage = NmsPlayerFixture.allocate(DimensionDataStorage.class);
+        final MapIdentity identity;
+        final MapItemSavedData replica;
+        final List<StoredMap> updates = new ArrayList<>();
+
+        NativeMaps() {
+            this(IDENTITY);
+        }
+
+        NativeMaps(MapIdentity identity) {
+            this.identity = identity;
+            NmsPlayerFixture.set(ServerLevel.class, this.level, "server", this.server);
+            NmsPlayerFixture.set(MinecraftServer.class, this.server, "levels", Map.of(Level.OVERWORLD, this.level));
+            NmsPlayerFixture.set(DimensionDataStorage.class, this.storage, "cache", new HashMap<>());
+            ServerChunkCache chunks = NmsPlayerFixture.allocate(ServerChunkCache.class);
+            NmsPlayerFixture.set(ServerChunkCache.class, chunks, "dataStorage", this.storage);
+            NmsPlayerFixture.set(ServerLevel.class, this.level, "chunkSource", chunks);
+            try {
+                this.replica = this.adapter.prepareReplica(identity, new MapData(4440, MapDataTest.content(0)));
+            } catch (java.io.IOException exception) {
+                throw new AssertionError(exception);
+            }
+            this.storage.cache.put(MapItemSavedData.type(new MapId(identity.globalId())), Optional.of(this.replica));
+            this.storage.cache.put(MapItemSavedData.type(new MapId(identity.source().id())), Optional.empty());
+            this.storage.cache.put(MapItemSavedData.type(new MapId(-8)), Optional.empty());
+            this.storage.cache.put(MapItemSavedData.type(new MapId(-2)), Optional.empty());
+        }
+
+        void sourcePresent(boolean present) {
+            this.storage.cache.put(MapItemSavedData.type(new MapId(this.identity.source().id())), present
+                    ? Optional.of(MapItemSavedData.createForClient((byte) 0, false, Level.OVERWORLD)) : Optional.empty());
+        }
+
+        MapReceiver receiver(MapStorage storage, MapCache shared, String ownerId, Executor worker, Executor nativeThread, SyncLogger logger) {
+            Executor recording = task -> nativeThread.execute(() -> {
+                byte before = this.replica.colors[0];
+                task.run();
+                if (before != this.replica.colors[0]) {
+                    this.updates.add(new StoredMap(this.identity, new MapData(4440, MapDataTest.content(this.replica.colors[0] & 255))));
+                }
+            });
+            return new MapReceiver(storage, shared, this.adapter, this.server, ownerId, worker, recording, logger);
+        }
+
+        private static HolderLookup.Provider bootstrap() {
+            SharedConstants.tryDetectVersion();
+            Bootstrap.bootStrap();
+            BukkitProxy.init("1.21.8", List.of("paper"));
+            return VanillaRegistries.createLookup();
+        }
+    }
+
     static final class Tasks implements Executor {
         private final ArrayDeque<Runnable> tasks = new ArrayDeque<>();
 
@@ -54,13 +126,6 @@ final class MapFlowTestSupport {
         int registrations;
         int reads;
         final List<Integer> writes = new ArrayList<>();
-
-        @Override
-        @NotNull
-        public CompletableFuture<Optional<StoredMap>> find(@NotNull MapSource source) {
-            this.reads++;
-            return CompletableFuture.completedFuture(Optional.ofNullable(this.current));
-        }
 
         @Override
         @NotNull

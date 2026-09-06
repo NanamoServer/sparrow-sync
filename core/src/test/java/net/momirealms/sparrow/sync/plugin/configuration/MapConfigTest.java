@@ -10,6 +10,8 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Method;
@@ -45,52 +47,63 @@ class MapConfigTest {
 
         PluginConfig.MapOptions options = PluginConfig.synchronization$map();
         UUID worldUuid = UUID.fromString("12345678-1234-5678-9012-123456789012");
-        assertFalse(options.enabled());
-        assertEquals(MapType.HIDE, options.type());
+        assertTrue(options.enabled());
+        assertEquals(MapType.SYNC, options.type());
         assertEquals("${server-id}-${world-uuid}", options.mapOwnerId());
         assertEquals("A-" + worldUuid, options.resolveOwnerId("A", worldUuid));
         assertNotEquals(options.resolveOwnerId("A", worldUuid), options.resolveOwnerId("A", UUID.randomUUID()));
         String yaml = Files.readString(this.directory.resolve("config.yml"));
         assertTrue(yaml.contains("map:"), yaml);
-        assertTrue(yaml.contains("enabled: false"), yaml);
-        assertTrue(yaml.contains("type: HIDE"), yaml);
+        assertTrue(yaml.contains("enabled: true"), yaml);
+        assertTrue(yaml.contains("type: SYNC"), yaml);
         assertTrue(yaml.contains("map-owner-id:"), yaml);
         assertTrue(yaml.contains("${server-id}-${world-uuid}"), yaml);
     }
 
-    @Test
-    void reloadUsesTheSwitchAndCustomOwnerTemplate() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void reloadKeepsStartupSwitchAndOwnerButUpdatesMode(boolean enabled) throws Exception {
         Path file = this.directory.resolve("config.yml");
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
                   map:
-                    enabled: true
+                    enabled: %s
                     type: HIDE
                     map-owner-id: "maps/${world-uuid}/${server-id}"
-                """.formatted(DependencyVersions.CONFIG_VERSION));
+                """.formatted(DependencyVersions.CONFIG_VERSION, enabled));
         PluginConfig config = this.config();
         config.reload();
         PluginConfig.MapOptions first = PluginConfig.synchronization$map();
         UUID worldUuid = UUID.randomUUID();
         assertEquals(MapType.HIDE, first.type());
-        assertTrue(first.enabled());
+        assertEquals(enabled, first.enabled());
         assertEquals("maps/" + worldUuid + "/A", first.resolveOwnerId("A", worldUuid));
 
         Files.writeString(file, """
                 config-version: "%s"
                 synchronization:
                   map:
-                    enabled: false
-                    type: HIDE
+                    enabled: %s
+                    type: SYNC
                     map-owner-id: "fixed-owner"
-                """.formatted(DependencyVersions.CONFIG_VERSION));
+                """.formatted(DependencyVersions.CONFIG_VERSION, !enabled));
         config.reload();
         PluginConfig.MapOptions second = PluginConfig.synchronization$map();
-        assertFalse(second.enabled());
-        assertEquals(MapType.HIDE, second.type());
-        assertEquals("fixed-owner", second.resolveOwnerId("B", worldUuid));
-        assertTrue(first.enabled());
+        assertEquals(enabled, second.enabled());
+        assertEquals(MapType.SYNC, second.type());
+        assertEquals("maps/" + worldUuid + "/B", second.resolveOwnerId("B", worldUuid));
+        assertEquals(enabled, first.enabled());
+        assertEquals(MapType.HIDE, first.type());
+        String yaml = Files.readString(file);
+        assertTrue(yaml.contains("enabled: " + !enabled), yaml);
+        assertTrue(yaml.contains("fixed-owner"), yaml);
+
+        this.config().reload();
+        PluginConfig.MapOptions restarted = PluginConfig.synchronization$map();
+        assertEquals(!enabled, restarted.enabled());
+        assertEquals(MapType.SYNC, restarted.type());
+        assertEquals("fixed-owner", restarted.resolveOwnerId("B", worldUuid));
     }
 
     @Test
@@ -116,12 +129,18 @@ class MapConfigTest {
 
     @Test
     void disabledSnapshotPreparationDoesNotEnterTheMapPipelineOrResolveTheOwner() throws Exception {
+        Files.writeString(this.directory.resolve("config.yml"), """
+                config-version: "%s"
+                synchronization:
+                  map:
+                    enabled: false
+                """.formatted(DependencyVersions.CONFIG_VERSION));
         this.config().reload();
         SnapshotService service = new SnapshotService(null);
         SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1L, SaveCause.DISCONNECT, false, "A", 0);
         Snapshot snapshot = new Snapshot(meta, Map.of());
-        // 地图服务和主世界 UUID 都未装配, 关闭开关直接返回原快照.
-        Method prepare = SnapshotService.class.getDeclaredMethod("prepareMaps", Snapshot.class);
+        // 启动时未创建地图服务, 保存和加载沿用原始物品快照.
+        Method prepare = SnapshotService.class.getDeclaredMethod("decodeMaps", Snapshot.class);
         prepare.setAccessible(true);
         CompletableFuture<?> result = (CompletableFuture<?>) prepare.invoke(service, snapshot);
         assertSame(snapshot, result.join());

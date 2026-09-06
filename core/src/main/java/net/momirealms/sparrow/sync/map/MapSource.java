@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.map;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+// 代表一个服务器世界中的一份原生地图
 @ApiStatus.Internal
 public record MapSource(@NotNull String ownerId, int id) {
     public MapSource {

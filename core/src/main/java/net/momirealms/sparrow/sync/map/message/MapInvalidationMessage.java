@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.map;
+package net.momirealms.sparrow.sync.map.message;
 
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
@@ -10,12 +10,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.IntConsumer;
 
-/** 内容已提交后的失效通知, 不携带可被接收服重新上传的地图内容. */
 public final class MapInvalidationMessage implements RedisMessage<ByteBuf> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "map_invalidation");
     public static final MessageCodec<ByteBuf, MapInvalidationMessage> CODEC = RedisMessage.codec(MapInvalidationMessage::write, MapInvalidationMessage::new);
-    private static volatile @Nullable IntConsumer listener;
-    private final int globalId;
+    private static volatile @Nullable IntConsumer listener; // 当前服务的通知入口, null 表示尚未启用或正在关闭
+    private final int globalId; // 当前集群需要重新读取的负数地图 ID
 
     public MapInvalidationMessage(int globalId) {
         if (globalId >= 0) {

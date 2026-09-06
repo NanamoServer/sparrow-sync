@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.cluster;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.test.RedisTestSupport;
 import net.momirealms.sparrow.sync.cluster.SessionLock.AcquireOutcome;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -28,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // 集成测试, 依赖本机 6379 端口的 Redis, 不可达时整类跳过
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SessionLockTest {
-    private static final String CLUSTER = "it";
     private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);  // 与 SessionLock.LOCK_TTL_MILLIS 同步
 
     private final SyncLogger logger = new SyncLogger(new QuietLogger());
@@ -43,7 +43,7 @@ class SessionLockTest {
 
     @BeforeAll
     void connect() {
-        PluginConfig.RedisOptions options = new PluginConfig.RedisOptions();
+        PluginConfig.RedisOptions options = RedisTestSupport.options(0);
         // 每台模拟服务器一条自己的连接, 与真实拓扑同构
         this.connectorA = new RedisConnector(options, this.logger);
         try {
@@ -55,9 +55,9 @@ class SessionLockTest {
         this.connectorB.initialize();
         this.connectorC = new RedisConnector(options, this.logger);
         this.connectorC.initialize();
-        this.lockA = new SessionLock(this.connectorA, CLUSTER, "serverA");
-        this.lockB = new SessionLock(this.connectorB, CLUSTER, "serverB");
-        this.lockC = new SessionLock(this.connectorC, CLUSTER, "serverC");
+        this.lockA = new SessionLock(this.connectorA, "serverA");
+        this.lockB = new SessionLock(this.connectorB, "serverB");
+        this.lockC = new SessionLock(this.connectorC, "serverC");
         this.inspector = RedisClient.create(options.url());
         this.inspection = this.inspector.connect();
     }
@@ -66,7 +66,7 @@ class SessionLockTest {
     void disconnect() {
         // 清掉本轮测试写下的锁键
         if (this.inspection != null) {
-            List<String> keys = this.inspection.sync().keys("ss:" + CLUSTER + ":lock:*");
+            List<String> keys = this.inspection.sync().keys("ss:lock:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
             this.inspection.close();
         }
@@ -204,7 +204,7 @@ class SessionLockTest {
     }
 
     private String key(UUID player) {
-        return "ss:" + CLUSTER + ":lock:" + player;
+        return "ss:lock:" + player;
     }
 
     private static final class QuietLogger implements PluginLogger {

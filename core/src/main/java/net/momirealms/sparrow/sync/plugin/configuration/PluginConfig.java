@@ -36,6 +36,7 @@ public final class PluginConfig {
     private final Plugin plugin;
     private final Path configFilePath;
     private final YamlMapper<ConfigDefinition> configMapper;
+    private MapOptions startupMapOptions; // 首次成功加载的地图开关和来源模板, 随本次服务器运行固定
 
     PluginConfig(Plugin plugin, SparrowYaml sparrowYaml) {
         this.plugin = plugin;
@@ -66,10 +67,17 @@ public final class PluginConfig {
     void reload() {
         try {
             ConfigDefinition loadedConfig = this.configMapper.load(this.configFilePath).value();
+            if (this.startupMapOptions != null) {
+                loadedConfig.synchronization.map.enabled = this.startupMapOptions.enabled;
+                loadedConfig.synchronization.map.mapOwnerId = this.startupMapOptions.mapOwnerId;
+            }
             loadedConfig.synchronization.map.validate();
             loadedConfig.synchronization.pdcMergeBlacklist = PDCMergeBlacklist.of(loadedConfig.synchronization.pdcMergeNamespaces);
             loadedConfig.synchronization.attributes.freeze();
             loadedConfig.synchronization.compiledSaveTriggers = SaveTriggers.of(loadedConfig.synchronization.saveTriggers);
+            if (this.startupMapOptions == null) {
+                this.startupMapOptions = loadedConfig.synchronization.map;
+            }
             config = loadedConfig;
         } catch (Exception e) {
             this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
@@ -125,7 +133,7 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class RedisOptions {
-        String url = "redis://localhost:6379";
+        String url = "redis://localhost:6379/0";
         String username = "";
         String password = "";
 
@@ -367,18 +375,19 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MapOptions {
         @Comment({
-                "Enables map compilation and decoding; when disabled, the plugin does not process any map items or synchronize map data",
+                "Enables map compilation and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
                 "Because of how Minecraft stores maps, map synchronization is best-effort; enabling it means",
                 "the plugin modifies map items, including updating and reassigning map-id values and recording required data in custom_data",
                 "Uninstalling the plugin cannot fully restore map data components, but we aim to keep maps viewable and functional; this feature comes with these trade-offs"
         })
         @Comment(lang = "zh-CN", value = {
-                "是否启用地图的编译和解码, 关闭时插件将不再处理任何地图物品, 地图数据将不会同步",
+                "是否启用地图的编译和解码, 修改后需要重启服务器生效; 关闭时插件不处理地图物品和地图数据",
                 "注意: 因为 Minecraft 地图存储的特殊性, 我们仍然只能做到尽可能同步地图数据, 这意味着开启同步后",
-                "地图物品会被本插件进行一定程度的修改, 比如更新和重分配 map-id, 在 custom_data 上记录一些必要的数据等",
-                "我们也无法做到卸载插件后完整复原地图数据组件, 但我们会尽可能保证地图仍然是可看可正常工作的, 这是一项有一定代价的功能"
+                "地图物品会被本插件进行一定程度的修改, 比如更新和重分配 map-id, 在 custom_data 上记录一些必要的数据等, 这意味着卸载插件后无法完整复原最初的地图数据组件",
+                "如果你使用了 \"跨服交易行, 由插件管理的随时背包\" 绕开同步时对地图物品的扫描的话, 插件也无法保证绕过的地图是否存在错误显示的问题",
+                "总而言之, 插件会尽可能保证地图仍然是可看可正常工作的, 这是一项有一定代价的功能"
         })
-        boolean enabled = false;
+        boolean enabled = true;
 
         @BlankLineBefore
         @Comment({
@@ -397,13 +406,13 @@ public final class PluginConfig {
 
         @BlankLineBefore
         @Comment({
-                "Ownership identifier for this server's map data; supports ${server-id} and ${world-uuid}",
+                "Ownership identifier for this server's map data; supports ${server-id} and ${world-uuid}; changes require a server restart",
                 "server-id is the server ID configured in server.yml",
                 "world-uuid is the UUID of the overworld where the map data belongs",
                 "Maps use this value to determine ownership; changing it makes previously compiled maps count as maps from another server"
         })
         @Comment(lang = "zh-CN", value = {
-                "本服地图数据的归属标志符, 支持占位符 ${server-id} 和 ${world-uuid}",
+                "本服地图数据的归属标志符, 支持占位符 ${server-id} 和 ${world-uuid}, 修改后需要重启服务器生效",
                 "server-id 为 server.yml 配置中的服务器 ID",
                 "world-uuid 为地图数据所属主世界的 UUID",
                 "地图通过这个值来判断地图数据归属, 所有修改此值后, 之前编译的地图会被视为其他服务器的地图"

@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.minecraft.server.MinecraftServer;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -15,122 +15,171 @@ import static org.junit.jupiter.api.Assertions.*;
 class MapRuntimeTest {
     private final Storage storage = new Storage();
     private final Shared shared = new Shared();
-    private final AtomicLong clock = new AtomicLong();
-    private final List<StoredMap> installed = new ArrayList<>();
+    private final Tasks nativeThread = new Tasks();
+    private final NativeMaps nativeState = new NativeMaps();
+    private final NativeMapAdapter nativeMaps = this.nativeState.adapter;
+    private final MinecraftServer server = this.nativeState.server;
+    private final List<StoredMap> updated = this.nativeState.updates;
     private final List<String> warnings = new ArrayList<>();
-    private final MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(this.storage), this.shared, value -> () -> {
-        this.installed.add(value);
-        return -1;
-    }, Runnable::run, Runnable::run, logger(this.warnings));
+    private final MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", Runnable::run, Runnable::run, logger(this.warnings));
 
     @Test
-    void observesPersistedReplicaOnceAndRevalidatesQuietMapsAgainstDatabase() {
+    void observesPersistedReplicaOnceAndWaitsForAnUpdateEvent() {
         this.storage.current = map(2);
         this.shared.contents.put(-1, map(1));
-        AtomicInteger lookups = new AtomicInteger();
-        MapRuntime runtime = new MapRuntime(this.receiver, id -> {
-            lookups.incrementAndGet();
-            return CompletableFuture.completedFuture(IDENTITY);
-        }, this.clock::get, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
         runtime.observe(1);
         runtime.observe(-1);
         runtime.observe(-1);
-        assertEquals(1, lookups.get());
-        assertEquals(List.of(map(2)), this.installed);
+        assertTrue(this.updated.isEmpty());
+        assertEquals(0, this.storage.reads);
+        this.nativeThread.runAll();
+        assertEquals(1, this.storage.reads);
+        assertEquals(List.of(map(2)), this.updated);
         assertEquals(0, this.shared.reads);
         this.storage.current = map(3);
-        runtime.tick();
+        runtime.updated(IDENTITY);
+        runtime.observe(-1);
         assertEquals(1, this.storage.reads);
-        this.clock.addAndGet(TimeUnit.MINUTES.toNanos(4));
-        runtime.installed(IDENTITY);
-        this.clock.addAndGet(TimeUnit.MINUTES.toNanos(1));
-        runtime.tick();
-        assertEquals(List.of(map(2), map(3)), this.installed);
+        assertEquals(List.of(map(2)), this.updated);
+        this.shared.contents.put(-1, map(3));
+        runtime.invalidate(-1);
+        assertEquals(List.of(map(2), map(3)), this.updated);
         assertTrue(this.shared.writes.isEmpty());
         assertEquals(0, this.storage.registrations);
         assertTrue(this.storage.writes.isEmpty());
     }
 
     @Test
-    void notificationRefreshesKnownReplicaAndReconnectBypassesStaleRedis() {
+    void notificationRefreshesKnownReplicaFromSharedCache() {
         this.shared.contents.put(-1, map(1));
-        MapRuntime runtime = new MapRuntime(this.receiver, id -> CompletableFuture.completedFuture(null), this.clock::get, logger(this.warnings));
-        runtime.installed(IDENTITY);
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        runtime.updated(IDENTITY);
         runtime.invalidate(-1);
-        assertEquals(List.of(map(1)), this.installed);
+        assertEquals(List.of(map(1)), this.updated);
         this.shared.contents.put(-1, map(2));
         runtime.invalidate(-1);
-        assertEquals(List.of(map(1), map(2)), this.installed);
-        this.storage.current = map(3);
-        runtime.revalidate();
-        assertEquals(List.of(map(1), map(2), map(3)), this.installed);
+        assertEquals(List.of(map(1), map(2)), this.updated);
         assertEquals(map(2), this.shared.contents.get(-1));
-        assertEquals(1, this.storage.reads);
+        assertEquals(0, this.storage.reads);
     }
 
     @Test
-    void backgroundFailureRetainsPixelsAndRetriesWithoutLogFlood() {
-        this.storage.current = map(1);
-        MapRuntime runtime = new MapRuntime(this.receiver, id -> CompletableFuture.completedFuture(IDENTITY), this.clock::get, logger(this.warnings));
+    void notificationsDuringUpdateShareOneRefetch() {
+        Tasks worker = new Tasks();
+        MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", worker, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        this.storage.current = map(9);
+        this.shared.contents.put(-1, map(1));
+        runtime.updated(IDENTITY);
+        runtime.invalidate(-1);
+        worker.runAll();
+        // 旧画面已准备, 连续通知先合并到同一更新任务.
+        this.shared.contents.put(-1, map(2));
+        runtime.invalidate(-1);
+        runtime.invalidate(-1);
+        this.nativeThread.runAll();
+        assertTrue(this.updated.isEmpty());
+        worker.runAll();
+        this.nativeThread.runAll();
+        worker.runAll();
+        this.nativeThread.runAll();
+        assertEquals(List.of(map(2)), this.updated);
+        assertEquals(2, this.shared.reads);
+        assertEquals(0, this.storage.reads);
+        assertTrue(this.warnings.isEmpty());
+    }
+
+    @Test
+    void firstObservationForcesDatabaseReadInsideAnExistingReceive() {
+        Tasks worker = new Tasks();
+        MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", worker, this.nativeThread, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(receiver, this.nativeMaps, this.server, Runnable::run, logger(this.warnings));
+        this.storage.current = map(2);
+        this.shared.contents.put(-1, map(1));
+        CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
+        worker.runAll();
+        // 首次识别在旧缓存更新前完成, 已有等待者随后取得数据库中的画面.
         runtime.observe(-1);
+        assertSame(waiting, receiver.receive(IDENTITY));
+        this.nativeThread.runAll();
+        assertTrue(this.updated.isEmpty());
+        worker.runAll();
+        this.nativeThread.runAll();
+        worker.runAll();
+        assertEquals(-1, waiting.join());
+        assertEquals(List.of(map(2)), this.updated);
+        assertEquals(1, this.shared.reads);
+        assertEquals(1, this.storage.reads);
+        assertTrue(this.warnings.isEmpty());
+    }
+
+    @Test
+    void failedRefreshRetainsPixelsUntilAnotherUpdateEvent() {
+        this.storage.current = map(1);
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
+        runtime.observe(-1);
+        this.nativeThread.runAll();
         this.storage.current = null;
-        runtime.revalidate();
-        runtime.revalidate();
-        assertEquals(List.of(map(1)), this.installed);
+        runtime.invalidate(-1);
+        runtime.invalidate(-1);
+        assertEquals(List.of(map(1)), this.updated);
         assertEquals(1, this.warnings.size());
         this.storage.current = map(4);
-        this.clock.addAndGet(TimeUnit.SECONDS.toNanos(29));
-        runtime.tick();
-        assertEquals(List.of(map(1)), this.installed);
-        this.clock.addAndGet(TimeUnit.SECONDS.toNanos(1));
-        runtime.tick();
-        assertEquals(List.of(map(1), map(4)), this.installed);
+        runtime.observe(-1);
+        runtime.updated(IDENTITY);
+        assertEquals(List.of(map(1)), this.updated);
+        this.shared.contents.put(-1, map(4));
+        runtime.invalidate(-1);
+        assertEquals(List.of(map(1), map(4)), this.updated);
         assertEquals(1, this.warnings.size());
     }
 
     @Test
-    void closingStopsCallbacksAndRetainsIdentitiesForReenable() {
+    void closingStopsCallbacks() {
         this.storage.current = map(1);
-        MapRuntime runtime = new MapRuntime(this.receiver, id -> CompletableFuture.completedFuture(IDENTITY), this.clock::get, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
         runtime.observe(-1);
+        this.nativeThread.runAll();
+        runtime.observe(-2);
         runtime.close();
         this.receiver.close();
         this.storage.current = map(2);
         runtime.invalidate(-1);
-        runtime.revalidate();
-        this.clock.addAndGet(TimeUnit.HOURS.toNanos(1));
-        runtime.tick();
         runtime.observe(-2);
-        assertEquals(List.of(map(1)), this.installed);
-        assertEquals(List.of(IDENTITY), runtime.identities());
-        MapReceiver resumedReceiver = new MapReceiver(() -> CompletableFuture.completedFuture(this.storage), this.shared, value -> () -> {
-            this.installed.add(value);
-            return -1;
-        }, Runnable::run, Runnable::run, logger(this.warnings));
-        MapRuntime resumed = new MapRuntime(resumedReceiver, id -> { throw new AssertionError("known map identity was lost"); }, this.clock::get, logger(this.warnings));
-        for (MapIdentity identity : runtime.identities()) {
-            resumed.installed(identity);
-        }
-        resumed.revalidate();
-        assertEquals(List.of(map(1), map(2)), this.installed);
+        this.nativeThread.runAll();
+        assertEquals(List.of(map(1)), this.updated);
     }
 
     @Test
     void unrelatedNegativeMapsNeverReachStorage() {
-        AtomicInteger lookups = new AtomicInteger();
-        MapRuntime runtime = new MapRuntime(this.receiver, id -> {
-            lookups.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
-        }, this.clock::get, logger(this.warnings));
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, this.nativeThread, logger(this.warnings));
         runtime.observe(-8);
         runtime.observe(-8);
-        this.clock.addAndGet(TimeUnit.HOURS.toNanos(1));
-        runtime.tick();
-        runtime.revalidate();
-        assertEquals(1, lookups.get());
-        assertTrue(runtime.identities().isEmpty());
+        this.nativeThread.runAll();
         assertEquals(0, this.storage.reads);
         assertEquals(0, this.shared.reads);
         assertTrue(this.warnings.isEmpty());
+    }
+
+    @Test
+    void rejectedIdentityTaskCanBeTriggeredByTheNextObservation() {
+        this.storage.current = map(1);
+        AtomicInteger submissions = new AtomicInteger();
+        MapRuntime runtime = new MapRuntime(this.receiver, this.nativeMaps, this.server, task -> {
+            if (submissions.incrementAndGet() == 1) throw new RejectedExecutionException("native executor rejected task");
+            this.nativeThread.execute(task);
+        }, logger(this.warnings));
+
+        runtime.observe(-1);
+        assertEquals(1, submissions.get());
+        assertEquals(0, this.storage.reads);
+        assertTrue(this.updated.isEmpty());
+        assertEquals(1, this.warnings.size());
+        runtime.observe(-1);
+        runtime.observe(-1);
+        assertEquals(2, submissions.get());
+        this.nativeThread.runAll();
+        assertEquals(List.of(map(1)), this.updated);
     }
 }

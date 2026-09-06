@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class SessionLock {
+    private static final String KEY_PREFIX = "ss:lock:";
     // TTL 仅回收崩溃后再无人登录的残留键
     private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);
     private static final String RELEASE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
@@ -25,23 +26,20 @@ public final class SessionLock {
 
     private SparrowSync plugin;
     private RedisConnector connector;
-    private String keyPrefix;  // "ss:{cluster}:lock:", cluster 隔离共用一个 Redis 的多套集群
     private String serverId;
 
     public SessionLock(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
     }
 
-    public SessionLock(@NotNull RedisConnector connector, @NotNull String clusterId, @NotNull String serverId) {
+    public SessionLock(@NotNull RedisConnector connector, @NotNull String serverId) {
         this.connector = connector;
-        this.keyPrefix = "ss:" + clusterId + ":lock:";
         this.serverId = serverId;
     }
 
     /** 绑定 Redis 连接与本服锁命名空间. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
-        this.keyPrefix = "ss:" + ServerConfig.clusterId() + ":lock:";
         this.serverId = ServerConfig.serverId();
     }
 
@@ -97,7 +95,7 @@ public final class SessionLock {
      */
     public int sweepStaleLocks() {
         RedisCommands<byte[], byte[]> commands = this.connector.connection().sync();
-        ScanArgs pattern = ScanArgs.Builder.matches(this.keyPrefix + "*").limit(200);
+        ScanArgs pattern = ScanArgs.Builder.matches(KEY_PREFIX + "*").limit(200);
         int swept = 0;
         KeyScanCursor<byte[]> cursor = commands.scan(pattern);
         while (true) {
@@ -129,7 +127,7 @@ public final class SessionLock {
     }
 
     private byte[] key(UUID player) {
-        return bytes(this.keyPrefix + player);
+        return bytes(KEY_PREFIX + player);
     }
 
     private static byte[] bytes(String text) {

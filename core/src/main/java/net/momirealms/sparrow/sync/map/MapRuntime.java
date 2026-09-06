@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -7,34 +8,30 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.function.IntFunction;
-import java.util.function.LongSupplier;
+import java.util.concurrent.Executor;
 
+// 维护已经更新或正在展示的负数副本, 让后续来源更新能进入原生地图对象.
 @ApiStatus.Internal
 public final class MapRuntime {
-    private static final long REVALIDATE_NANOS = TimeUnit.MINUTES.toNanos(5);
-    private static final long RETRY_NANOS = TimeUnit.SECONDS.toNanos(30);
-
     private final MapReceiver receiver;
-    private final IntFunction<CompletableFuture<MapIdentity>> identities;
-    private final LongSupplier clock;
+    private final NativeMapAdapter nativeMaps;
+    private final MinecraftServer server;
+    private final Executor nativeExecutor; // 身份查询由允许原生访问的线程执行
     private final SyncLogger logger;
-    private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 本服务已发现的负数 ID, 静止地图仍保留条目
     private volatile boolean closed;
 
-    public MapRuntime(@NotNull MapReceiver receiver, @NotNull IntFunction<CompletableFuture<MapIdentity>> identities, @NotNull LongSupplier clock, @NotNull SyncLogger logger) {
+    public MapRuntime(@NotNull MapReceiver receiver, @NotNull NativeMapAdapter nativeMaps, @NotNull MinecraftServer server, @NotNull Executor nativeExecutor, @NotNull SyncLogger logger) {
         this.receiver = receiver;
-        this.identities = identities;
-        this.clock = clock;
+        this.nativeMaps = nativeMaps;
+        this.server = server;
+        this.nativeExecutor = nativeExecutor;
         this.logger = logger;
     }
 
-    // 发包线程只登记 ID, 原生查询由 identities 投递到拥有线程.
+    // 从发包路径发现待识别的负数地图.
     public void observe(int globalId) {
         if (this.closed || globalId >= 0 || this.tracked.containsKey(globalId)) return;
         Tracked entry = new Tracked();
@@ -42,38 +39,33 @@ public final class MapRuntime {
         this.identify(globalId, entry);
     }
 
-    // 已经完成接收安装的地图直接沿用其身份, 静止地图同样保留在重查范围内.
-    public void installed(@NotNull MapIdentity identity) {
+    // 登记已完成更新的身份, 使静止副本也能接收后续更新.
+    public void updated(@NotNull MapIdentity identity) {
         if (this.closed) return;
         Tracked entry = this.tracked.computeIfAbsent(identity.globalId(), ignored -> new Tracked());
-        synchronized (entry) {
-            if (entry.identity == null) {
-                entry.nextCheck = this.clock.getAsLong() + REVALIDATE_NANOS;
-            }
-            entry.identity = identity;
-        }
+        entry.identity = identity;
     }
 
+    // 识别原生地图维度中的来源身份, 成功后核对数据库内容.
     private void identify(int id, Tracked entry) {
-        synchronized (entry) {
-            if (this.closed || entry.loading) return;
-            entry.loading = true;
-        }
-        CompletableFuture.completedFuture(null).thenCompose(ignored -> this.identities.apply(id)).whenComplete((identity, failure) -> {
-            synchronized (entry) {
-                entry.loading = false;
-                if (this.closed) return;
-                entry.identity = identity;
-                entry.nextCheck = failure == null ? Long.MAX_VALUE : this.clock.getAsLong() + RETRY_NANOS;
-            }
+        if (this.closed) return;
+        CompletableFuture.completedFuture(null).thenCompose(ignored -> CompletableFuture.supplyAsync(() -> {
+            if (this.closed) return null;
+            return this.nativeMaps.replicaIdentity(this.server.overworld(), id);
+        }, this.nativeExecutor)).whenComplete((identity, failure) -> {
+            if (this.closed) return;
+            entry.identity = identity;
             if (failure != null) {
                 this.failed(id, entry, failure);
+                // 身份查询失败后撤销登记, 后续发包可再次触发识别.
+                this.tracked.remove(id, entry);
             } else if (identity != null) {
                 this.refresh(id, entry, true);
             }
         });
     }
 
+    // 通知对应的内容过期, 已知副本立即安排刷新.
     public void invalidate(int globalId) {
         if (this.closed) return;
         this.receiver.invalidate(globalId);
@@ -83,66 +75,27 @@ public final class MapRuntime {
         }
     }
 
-    // 只查询最后已提交内容, 定时器和重连均不采集来源世界.
-    public void revalidate() {
-        if (this.closed) return;
-        this.receiver.invalidateAll();
-        for (var entry : this.tracked.entrySet()) {
-            this.refresh(entry.getKey(), entry.getValue(), true);
-        }
-    }
-
-    public void tick() {
-        if (this.closed) return;
-        long now = this.clock.getAsLong();
-        for (var current : this.tracked.entrySet()) {
-            Tracked entry = current.getValue();
-            synchronized (entry) {
-                if (now < entry.nextCheck || entry.loading) continue;
-            }
-            if (entry.identity == null) {
-                this.identify(current.getKey(), entry);
-            } else {
-                this.refresh(current.getKey(), entry, true);
-            }
-        }
-    }
-
+    // 为已识别副本请求当前内容, 同图读取和失效补拉由接收器合并.
     private void refresh(int id, Tracked entry, boolean database) {
-        MapIdentity identity;
-        synchronized (entry) {
-            identity = entry.identity;
-            if (this.closed || identity == null) return;
-            if (entry.loading) {
-                entry.again = true;
-                return;
-            }
-            entry.loading = true;
-        }
+        MapIdentity identity = entry.identity;
+        if (this.closed || identity == null) return;
+        // 先标记强制读库, 已有接收任务也会在更新前按此要求补拉.
         if (database) {
             this.receiver.invalidate(id, true);
         }
         this.receiver.receive(identity).whenComplete((localId, failure) -> {
-            boolean again;
-            synchronized (entry) {
-                entry.loading = false;
-                if (this.closed) return;
-                entry.nextCheck = this.clock.getAsLong() + (failure == null ? REVALIDATE_NANOS : RETRY_NANOS);
-                again = entry.again;
-                entry.again = false;
-                if (failure == null) {
+            if (this.closed) return;
+            if (failure == null) {
+                synchronized (entry) {
                     entry.failed = false;
                 }
-            }
-            if (failure != null) {
+            } else {
                 this.failed(id, entry, failure);
-            }
-            if (again) {
-                this.refresh(id, entry, true);
             }
         });
     }
 
+    // 记录一个连续故障周期的首次失败, 成功刷新后允许再次记录.
     private void failed(int id, Tracked entry, Throwable failure) {
         synchronized (entry) {
             if (entry.failed) return;
@@ -151,27 +104,15 @@ public final class MapRuntime {
         this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_REFRESH_FAILED, String.valueOf(id), String.valueOf(failure));
     }
 
-    @NotNull
-    public List<MapIdentity> identities() {
-        List<MapIdentity> identities = new ArrayList<>();
-        for (Tracked entry : this.tracked.values()) {
-            MapIdentity identity = entry.identity;
-            if (identity != null) {
-                identities.add(identity);
-            }
-        }
-        return identities;
-    }
-
+    // 关服停止刷新并释放已追踪的身份.
     public void close() {
         this.closed = true;
+        this.tracked.clear();
     }
 
+    // 保存一张负数地图的身份和告警状态.
     private static final class Tracked {
-        private volatile @Nullable MapIdentity identity;
-        private long nextCheck;
-        private boolean loading;
-        private boolean again;
-        private boolean failed;
+        private volatile @Nullable MapIdentity identity; // 识别完成后的完整身份, null 表示尚未识别或不属于本插件
+        private boolean failed; // 本轮连续失败是否已经打印过告警, 由条目监视器保护
     }
 }

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -25,24 +26,24 @@ class MapPublisherTest {
                 return firstWrite;
             }
         };
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        publisher.capture(SOURCE, () -> map(1).data());
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        publisher.publish(SOURCE, map(1).data());
         worker.runAll();
         assertFalse(publisher.sealAndAwait(0, TimeUnit.NANOSECONDS));
-        assertTrue(publisher.capture(SOURCE, () -> { throw new AssertionError("capture after seal"); }).isCompletedExceptionally());
+        assertTrue(publisher.publish(SOURCE, map(1).data()).isCompletedExceptionally());
         firstWrite.complete(null);
         assertTrue(publisher.sealAndAwait(1, TimeUnit.SECONDS));
         publisher.close();
 
-        MapPublisher closed = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        CompletableFuture<StoredMap> queued = closed.capture(SOURCE, () -> map(2).data());
+        MapPublisher closed = new MapPublisher(storage, shared, worker);
+        CompletableFuture<StoredMap> queued = closed.publish(SOURCE, map(2).data());
         closed.close();
         worker.runAll();
         assertTrue(queued.isCompletedExceptionally());
         assertEquals(map(1), storage.current);
     }
     @Test
-    void serializesCompletePublicationWithoutBlockingCaptureOrAllocatingAgain() {
+    void serializesCompletePublicationWithoutBlockingSubmissionOrAllocatingAgain() {
         Storage storage = new Storage();
         Tasks worker = new Tasks();
         CompletableFuture<Void> firstRedisWrite = new CompletableFuture<>();
@@ -55,10 +56,10 @@ class MapPublisherTest {
                 return this.writes.size() == 1 ? firstRedisWrite : CompletableFuture.completedFuture(null);
             }
         };
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        CompletableFuture<StoredMap> first = publisher.capture(SOURCE, () -> map(1).data());
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        CompletableFuture<StoredMap> first = publisher.publish(SOURCE, map(1).data());
         worker.runAll();
-        CompletableFuture<StoredMap> second = publisher.capture(SOURCE, () -> map(2).data());
+        CompletableFuture<StoredMap> second = publisher.publish(SOURCE, map(2).data());
         worker.runAll();
         assertFalse(first.isDone());
         assertFalse(second.isDone());
@@ -76,16 +77,16 @@ class MapPublisherTest {
         Storage storage = new Storage();
         Shared shared = new Shared();
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        publisher.capture(SOURCE, () -> map(3).data());
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        publisher.publish(SOURCE, map(3).data());
         worker.runAll();
-        publisher.capture(SOURCE, () -> map(3).data());
+        publisher.publish(SOURCE, map(3).data());
         worker.runAll();
         assertEquals(1, shared.writes.size());
         assertEquals(1, shared.touches);
         assertTrue(storage.writes.isEmpty());
         shared.contents.clear();
-        publisher.capture(SOURCE, () -> map(3).data());
+        publisher.publish(SOURCE, map(3).data());
         worker.runAll();
         assertEquals(2, shared.writes.size());
         assertEquals(map(3), shared.contents.get(-1));
@@ -103,12 +104,12 @@ class MapPublisherTest {
                 return map.equals(map(2)) ? failedRedis : super.publish(map);
             }
         };
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        publisher.capture(SOURCE, () -> map(1).data());
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        publisher.publish(SOURCE, map(1).data());
         worker.runAll();
-        CompletableFuture<StoredMap> failed = publisher.capture(SOURCE, () -> map(2).data());
+        CompletableFuture<StoredMap> failed = publisher.publish(SOURCE, map(2).data());
         worker.runAll();
-        CompletableFuture<StoredMap> newer = publisher.capture(SOURCE, () -> map(1).data());
+        CompletableFuture<StoredMap> newer = publisher.publish(SOURCE, map(1).data());
         failedRedis.completeExceptionally(new IllegalStateException("Redis offline"));
         worker.runAll();
         assertTrue(failed.isCompletedExceptionally());
@@ -118,43 +119,63 @@ class MapPublisherTest {
     }
 
     @Test
-    void retriesDetachedCandidateWithoutRecapturingWorld() {
+    void failedPublicationStopsUntilAnotherSubmission() {
         Storage storage = new Storage();
+        int[] attempts = {0};
+        IllegalStateException failure = new IllegalStateException("Redis offline");
         Shared shared = new Shared() {
-            int attempts;
             @Override
             @NotNull
             public CompletableFuture<Void> publish(@NotNull StoredMap map) {
-                return ++this.attempts < 3 ? CompletableFuture.failedFuture(new IllegalStateException("temporary")) : super.publish(map);
+                return ++attempts[0] == 1 ? CompletableFuture.failedFuture(failure) : super.publish(map);
             }
         };
         Tasks worker = new Tasks();
-        int[] captures = {0};
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
-        CompletableFuture<StoredMap> result = publisher.capture(SOURCE, () -> { captures[0]++; return map(4).data(); });
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        CompletableFuture<StoredMap> result = publisher.publish(SOURCE, map(4).data());
         worker.runAll();
-        assertEquals(map(4), result.join());
-        assertEquals(1, captures[0]);
+        assertSame(failure, assertThrows(CompletionException.class, result::join).getCause());
+        assertEquals(1, attempts[0]);
+        assertEquals(map(4), storage.current);
+        assertTrue(shared.contents.isEmpty());
+
+        CompletableFuture<StoredMap> next = publisher.publish(SOURCE, map(5).data());
+        worker.runAll();
+        assertEquals(map(5), next.join());
+        assertEquals(2, attempts[0]);
+        assertEquals(storage.current, shared.contents.get(-1));
     }
 
     @Test
-    void concurrentCapturesMayPublishInEitherOrder() throws Exception {
+    void immediatelyCompletedPublicationsReleaseTheirPendingEntries() {
+        Storage storage = new Storage();
+        Shared shared = new Shared();
+        MapPublisher publisher = new MapPublisher(storage, shared, Runnable::run);
+        assertEquals(map(1), publisher.publish(SOURCE, map(1).data()).join());
+        assertEquals(map(2), publisher.publish(SOURCE, map(2).data()).join());
+        assertEquals(List.of(1, 2), shared.writes);
+        assertTrue(publisher.sealAndAwait(0, TimeUnit.NANOSECONDS));
+        publisher.close();
+    }
+
+    @Test
+    void concurrentSamplesPublishInSubmissionOrder() throws Exception {
         Storage storage = new Storage();
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), new Shared(), worker);
+        MapPublisher publisher = new MapPublisher(storage, new Shared(), worker);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        CompletableFuture<CompletableFuture<StoredMap>> slow = CompletableFuture.supplyAsync(() -> publisher.capture(SOURCE, () -> {
+        CompletableFuture<CompletableFuture<StoredMap>> slow = CompletableFuture.supplyAsync(() -> {
             started.countDown();
             try {
                 assertTrue(release.await(2, TimeUnit.SECONDS));
             } catch (InterruptedException exception) {
                 throw new AssertionError(exception);
             }
-            return map(1).data();
-        }));
+            return publisher.publish(SOURCE, map(1).data());
+        });
         assertTrue(started.await(2, TimeUnit.SECONDS));
-        CompletableFuture<StoredMap> quick = publisher.capture(SOURCE, () -> map(2).data());
+        CompletableFuture<StoredMap> quick = publisher.publish(SOURCE, map(2).data());
         release.countDown();
         CompletableFuture<StoredMap> late = slow.get(2, TimeUnit.SECONDS);
         worker.runAll();

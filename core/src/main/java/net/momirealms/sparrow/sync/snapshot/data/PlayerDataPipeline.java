@@ -153,7 +153,7 @@ public final class PlayerDataPipeline {
 
     /** 解码快照中全部已装配类型的数据, 可在任意线程调用. */
     @NotNull
-    public PrepareResult prepare(@NotNull Snapshot snapshot) {
+    public DecodeResult decode(@NotNull Snapshot snapshot) {
         // 已注册数据进入固定槽位, 未安装的类型作为 passthrough 留给下次保存
         int size = this.dataRegistry.size();
         Tag[] tags = new Tag[size];
@@ -181,14 +181,14 @@ public final class PlayerDataPipeline {
             } catch (Throwable throwable) {
                 // 关键类型解码失败时不允许应用这份快照的任何数据
                 if (type.critical()) {
-                    return new PrepareResult.Failed(key, String.valueOf(throwable.getMessage()));
+                    return new DecodeResult.Failed(key, String.valueOf(throwable.getMessage()));
                 }
                 // 槽位保留为可恢复状态, PreApplyEvent 仍可为它补入合法值
                 context.decodeSkipped(i, throwable);
                 this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, throwable, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
             }
         }
-        return new PrepareResult.Ready(context);
+        return new DecodeResult.Ready(context);
     }
 
     /** 在 Gate 阶段把可原生表达的 pending 槽位写入原版登录数据源. */
@@ -392,12 +392,12 @@ public final class PlayerDataPipeline {
     }
 
     /** 预解码结果, Failed 表示关键类型解码失败, 整份快照不应被应用. */
-    public sealed interface PrepareResult {
+    public sealed interface DecodeResult {
 
-        record Ready(@NotNull SnapshotApplyContext context) implements PrepareResult {
+        record Ready(@NotNull SnapshotApplyContext context) implements DecodeResult {
         }
 
-        record Failed(@NotNull DataKey key, @NotNull String detail) implements PrepareResult {
+        record Failed(@NotNull DataKey key, @NotNull String detail) implements DecodeResult {
         }
     }
 

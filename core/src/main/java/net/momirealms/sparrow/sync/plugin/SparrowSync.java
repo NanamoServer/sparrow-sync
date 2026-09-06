@@ -397,7 +397,6 @@ public class SparrowSync implements Plugin {
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
-                        this.snapshotService.reloadMaps();
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));

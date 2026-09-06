@@ -14,29 +14,15 @@ public interface MapHandler {
     @NotNull
     MapType type();
 
-    /** 编译本服原图的组件. <strong>输入只读, 来源标记由管线写入</strong>. */
+    /** 等待模式所需的数据准备后编译本服原图. <strong>输入只读, 来源标记由管线写入</strong>. */
     @NotNull
-    default CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
-        throw new UnsupportedOperationException("map handler requires asynchronous compilation");
-    }
+    CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications);
 
-    /** 应用已准备好的接收结果. <strong>输入只读; 实际恢复原始 ID 由管线清理来源标记</strong>. */
+    /** 等待接收数据就绪后生成本服组件. <strong>输入只读, 实际恢复原始 ID 后由管线清理来源标记</strong>. */
     @NotNull
-    default CompoundTag decode(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
-        throw new UnsupportedOperationException("map handler requires asynchronous decoding");
-    }
+    CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId);
 
-    @NotNull
-    default CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
-        return CompletableFuture.completedFuture(this.compile(components, origin));
-    }
-
-    @NotNull
-    default CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
-        return CompletableFuture.completedFuture(this.decode(components, origin, ownerId));
-    }
-
-    /** 中转不重新登记来源, 可续期已有共享缓存. */
+    /** 处理已经带有模式的中转地图, 默认保留组件. SYNC 可在此续期共享缓存, 来源身份继续沿用物品标记. */
     @NotNull
     default CompletableFuture<CompoundTag> forwardAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
         return CompletableFuture.completedFuture(components);

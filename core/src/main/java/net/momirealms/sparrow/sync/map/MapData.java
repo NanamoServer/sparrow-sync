@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
+// 保存一次采集得到的地图持久内容, 供异步编码、内容比较和跨服传输使用.
 @ApiStatus.Internal
 public final class MapData {
     public static final int PIXEL_COUNT = 128 * 128;

@@ -6,6 +6,7 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.sync.map.MapOrigin;
 import net.momirealms.sparrow.sync.map.MapPipeline;
+import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.map.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
@@ -150,7 +151,7 @@ class CaptureSchedulingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"published", "disabled", "stash"})
+    @ValueSource(strings = {"published", "closed", "stash"})
     void mapPreparationDelaysSnapshotHandoffAndKeepsPlayerSubmissionOrder(String outcome) throws Exception {
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "enabled", true);
         Field loggerField = SnapshotService.class.getDeclaredField("logger");
@@ -206,12 +207,21 @@ class CaptureSchedulingTest {
                 result.putInt("minecraft:map_id", -2);
                 return CompletableFuture.completedFuture(result);
             }
+            @Override
+            @NotNull
+            public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
+                throw new AssertionError("unexpected map decode");
+            }
         };
         MapPipeline maps = new MapPipeline(registry, List.of(handler), logger);
-        Class<?> mapSaveType = Class.forName(SnapshotService.class.getName() + "$MapSave");
+        MapSyncService mapSync = NmsPlayerFixture.allocate(MapSyncService.class);
+        NmsPlayerFixture.set(MapSyncService.class, mapSync, "pipeline", maps);
+        NmsPlayerFixture.set(MapSyncService.class, mapSync, "ownerId", "A-world");
+        NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", mapSync);
+        Class<?> mapSaveType = MapSyncService.Capture.class;
         Constructor<?> mapSave = mapSaveType.getDeclaredConstructors()[0];
         mapSave.setAccessible(true);
-        Object preparation = mapSave.newInstance(maps, MapType.SYNC, "A-world", Map.of());
+        Object preparation = mapSave.newInstance(MapType.SYNC, Map.of());
         Class<?> contextType = Class.forName(SnapshotService.class.getName() + "$SaveContext");
         Constructor<?> context = contextType.getDeclaredConstructors()[0];
         context.setAccessible(true);
@@ -267,14 +277,13 @@ class CaptureSchedulingTest {
         }
         CompoundTag completed = NBT.createCompound();
         completed.putInt("minecraft:map_id", -1);
-        if (outcome.equals("disabled")) {
-            NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "enabled", false);
+        if (outcome.equals("closed")) {
             maps.close();
         } else {
             firstMap.complete(completed);
         }
         assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
-        assertEquals(outcome.equals("disabled") ? List.of(1, 2) : List.of(-1, -2), this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
+        assertEquals(outcome.equals("closed") ? List.of(1, -2) : List.of(-1, -2), this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
     }
 
     @Test

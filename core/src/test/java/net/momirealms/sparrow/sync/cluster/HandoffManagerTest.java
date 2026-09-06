@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.cluster;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.test.RedisTestSupport;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock.AcquireOutcome;
 import net.momirealms.sparrow.sync.cluster.HandoffManager.HandoffOutcome;
@@ -34,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // 两套 broker 与锁模拟持有服 serverA 和等锁服 serverB, appId 每次随机隔离
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class HandoffManagerTest {
-    private static final String CLUSTER = "it" + Long.toHexString(System.nanoTime());
     // 压缩节奏让判死场景秒级完成
     private static final long PROBE_INTERVAL = 100;
     private static final long PROBE_TIMEOUT = 300;
@@ -57,7 +57,7 @@ class HandoffManagerTest {
 
     @BeforeAll
     void connect() {
-        PluginConfig.RedisOptions options = new PluginConfig.RedisOptions();
+        PluginConfig.RedisOptions options = RedisTestSupport.options(1);
         this.connectorA = new RedisConnector(options, this.logger);
         try {
             this.connectorA.initialize();
@@ -66,11 +66,11 @@ class HandoffManagerTest {
         }
         this.connectorB = new RedisConnector(options, this.logger);
         this.connectorB.initialize();
-        this.lockA = new SessionLock(this.connectorA, CLUSTER, "serverA");
-        this.lockB = new SessionLock(this.connectorB, CLUSTER, "serverB");
-        this.brokerA = new MessageBrokerManager(this.connectorA, CLUSTER, "serverA", this.logger);
+        this.lockA = new SessionLock(this.connectorA, "serverA");
+        this.lockB = new SessionLock(this.connectorB, "serverB");
+        this.brokerA = new MessageBrokerManager(this.connectorA, "serverA", this.logger);
         this.brokerA.initialize();
-        this.brokerB = new MessageBrokerManager(this.connectorB, CLUSTER, "serverB", this.logger);
+        this.brokerB = new MessageBrokerManager(this.connectorB, "serverB", this.logger);
         this.brokerB.initialize();
         HandoffManager.ProbeScheduler scheduler = (task, delayMillis) -> this.probeExecutor.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
         this.serviceA = new HandoffManager(this.brokerA.broker(), this.lockA, this.sessionsA::contains, scheduler, PROBE_INTERVAL, PROBE_TIMEOUT, DEAD_SILENCE);
@@ -85,7 +85,7 @@ class HandoffManagerTest {
     void disconnect() {
         this.probeExecutor.shutdownNow();
         if (this.inspection != null) {
-            List<String> keys = this.inspection.sync().keys("ss:" + CLUSTER + ":lock:*");
+            List<String> keys = this.inspection.sync().keys("ss:lock:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
             this.inspection.close();
         }
@@ -185,7 +185,7 @@ class HandoffManagerTest {
     }
 
     private String key(UUID player) {
-        return "ss:" + CLUSTER + ":lock:" + player;
+        return "ss:lock:" + player;
     }
 
     private static final class QuietLogger implements PluginLogger {

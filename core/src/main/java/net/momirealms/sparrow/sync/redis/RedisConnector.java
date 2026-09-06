@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.redis;
 
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisConnectionStateListener;
 import io.lettuce.core.RedisCredentials;
 import io.lettuce.core.RedisCredentialsProvider;
 import io.lettuce.core.RedisURI;
@@ -22,6 +21,7 @@ public final class RedisConnector {
     private SparrowSync plugin;
     private PluginConfig.RedisOptions options;
     private SyncLogger logger;
+    private int database; // 启动连接实际选用的数据库编号, 消息频道也按此隔离
 
     private volatile RedisClient client;
     private volatile StatefulRedisConnection<byte[], byte[]> connection;  // 锁命令
@@ -44,7 +44,9 @@ public final class RedisConnector {
     }
 
     public void initialize() {
-        this.client = RedisClient.create(buildUri(this.options));
+        RedisURI uri = buildUri(this.options);
+        this.database = uri.getDatabase();
+        this.client = RedisClient.create(uri);
         this.connection = this.client.connect(ByteArrayCodec.INSTANCE);
         this.brokerConnection = new PubSubRedisConnection(this.client);
         this.logger.info(LogCategory.LIFECYCLE, LogConstants.REDIS_READY);
@@ -69,6 +71,10 @@ public final class RedisConnector {
         return this.brokerConnection;
     }
 
+    public int database() {
+        return this.database;
+    }
+
     public boolean available() {
         StatefulRedisConnection<byte[], byte[]> connection = this.connection;
         return connection != null && connection.isOpen();
@@ -81,13 +87,5 @@ public final class RedisConnector {
         if (connection != null) connection.close();
         RedisClient client = this.client;
         if (client != null) client.shutdown(0, 2, TimeUnit.SECONDS);
-    }
-
-    public void addConnectionListener(@NotNull RedisConnectionStateListener listener) {
-        this.client.addListener(listener);
-    }
-
-    public void removeConnectionListener(@NotNull RedisConnectionStateListener listener) {
-        this.client.removeListener(listener);
     }
 }

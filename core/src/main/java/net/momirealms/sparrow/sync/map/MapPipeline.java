@@ -60,80 +60,11 @@ public final class MapPipeline {
         this.handlers = Map.copyOf(indexed);
     }
 
-    // 保存快照时编译本服原图, 已携带模式的地图沿用其来源服策略.
+    // 等待地图发布获取到全局唯一ID后生成传输快照.
     @NotNull
-    public Snapshot compile(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId) {
-        return this.rewrite(snapshot, components -> {
-            try {
-                return this.compileMap(components, type, ownerId);
-            } catch (RuntimeException exception) {
-                this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_MAP_COMPILE_FAILED, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(exception.getMessage()));
-                return components;
-            }
-        });
-    }
-
-    // 解码按物品携带的模式分派, 本服配置仅决定之后新编译地图的模式.
-    @NotNull
-    public Snapshot decode(@NotNull Snapshot snapshot, @NotNull String ownerId) {
-        return this.rewrite(snapshot, components -> {
-            try {
-                return this.decodeMap(components, ownerId);
-            } catch (RuntimeException exception) {
-                this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_MAP_DECODE_FAILED, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(exception.getMessage()));
-                return components;
-            }
-        });
-    }
-
-    private CompoundTag compileMap(CompoundTag components, MapType type, String ownerId) {
-        CompoundTag marker = this.marker(components);
-        if (marker != null && marker.containsKey(MAP_TYPE)) return components;
-        Tag mapId = components.get(MAP_ID);
-        if (mapId == null) return components;
-        if (!(mapId instanceof IntTag id)) {
-            throw new IllegalArgumentException("map id is not an integer");
-        }
-        CompoundTag compiled = this.handler(type).compile(components, new MapOrigin(type, ownerId, id.getAsInt()));
-        return this.finishCompile(compiled, marker, type, ownerId, mapId);
-    }
-
-    private CompoundTag finishCompile(CompoundTag compiled, @Nullable CompoundTag marker, MapType type, String ownerId, Tag mapId) {
-        CompoundTag origin = marker == null ? NBT.createCompound() : new CompoundTag(new HashMap<>(marker.tags));
-        origin.putString(MAP_TYPE, type.name());
-        origin.putString(ORIGIN_SERVER, ownerId);
-        origin.put(ORIGIN_ID, mapId);
-        return this.writeMarker(compiled, origin);
-    }
-
-    private CompoundTag decodeMap(CompoundTag components, String ownerId) {
-        CompoundTag marker = this.marker(components);
-        if (marker == null || !marker.containsKey(MAP_TYPE)) return components;
-        if (!(marker.get(MAP_TYPE) instanceof StringTag type)
-                || !(marker.get(ORIGIN_SERVER) instanceof StringTag originServer)
-                || originServer.getAsString().isBlank()
-                || !(marker.get(ORIGIN_ID) instanceof IntTag originId)) {
-            throw new IllegalArgumentException("invalid map origin metadata");
-        }
-        MapType mapType = MapType.valueOf(type.getAsString());
-        MapOrigin origin = new MapOrigin(mapType, originServer.getAsString(), originId.getAsInt());
-        CompoundTag decoded = this.handler(mapType).decode(components, origin, ownerId);
-        return this.finishDecode(decoded, marker, origin, ownerId);
-    }
-
-    private CompoundTag finishDecode(CompoundTag decoded, CompoundTag marker, MapOrigin origin, String ownerId) {
-        // 只有实际恢复原始 ID 才清理标记, 回源缺图保留负数副本的身份.
-        if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
-        CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
-        remaining.remove(MAP_TYPE);
-        remaining.remove(ORIGIN_SERVER);
-        remaining.remove(ORIGIN_ID);
-        return this.writeMarker(decoded, remaining);
-    }
-
-    @NotNull
-    public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+    public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
         return this.rewriteAsync(snapshot, components -> {
+            // 已有模式的中转地图交给其处理器续行
             CompoundTag marker = this.marker(components);
             if (marker != null && marker.containsKey(MAP_TYPE)) {
                 MapOrigin origin = this.origin(marker);
@@ -141,34 +72,50 @@ public final class MapPipeline {
             }
             Tag mapId = components.get(MAP_ID);
             if (mapId == null) return CompletableFuture.completedFuture(components);
-            if (!(mapId instanceof IntTag id)) {
-                throw new IllegalArgumentException("map id is not an integer");
-            }
-            return this.handler(type).compileAsync(components, new MapOrigin(type, ownerId, id.getAsInt()), captured)
-                    .thenApply(compiled -> this.finishCompile(compiled, marker, type, ownerId, mapId));
+            return this.handler(type)
+                    .compileAsync(components, new MapOrigin(type, ownerId, ((IntTag) mapId).getAsInt()), publications)
+                    .thenApply(compiled -> {
+                        // 在处理器成功后写入地图来源字段, 保留同命名空间的其他业务字段.
+                        CompoundTag origin = marker == null ? NBT.createCompound() : new CompoundTag(new HashMap<>(marker.tags));
+                        origin.putString(MAP_TYPE, type.name());
+                        origin.putString(ORIGIN_SERVER, ownerId);
+                        origin.put(ORIGIN_ID, mapId);
+                        return this.writeMarker(compiled, origin);
+                    });
         }, LogConstants.DATA_MAP_COMPILE_FAILED);
     }
 
+    // 按物品的来源模式准备接收数据, 等原生副本可用后返回快照.
     @NotNull
     public CompletableFuture<Snapshot> decodeAsync(@NotNull Snapshot snapshot, @NotNull String ownerId) {
         return this.rewriteAsync(snapshot, components -> {
             CompoundTag marker = this.marker(components);
             if (marker == null || !marker.containsKey(MAP_TYPE)) return CompletableFuture.completedFuture(components);
             MapOrigin origin = this.origin(marker);
-            return this.handler(origin.type()).decodeAsync(components, origin, ownerId).thenApply(decoded -> this.finishDecode(decoded, marker, origin, ownerId));
+            return this.handler(origin.type()).decodeAsync(components, origin, ownerId).thenApply(decoded -> {
+                // 只有实际恢复原始 ID 才清理标记, 回源缺图保留负数副本的身份.
+                if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
+                CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
+                remaining.remove(MAP_TYPE);
+                remaining.remove(ORIGIN_SERVER);
+                remaining.remove(ORIGIN_ID);
+                return this.writeMarker(decoded, remaining);
+            });
         }, LogConstants.DATA_MAP_DECODE_FAILED);
     }
 
+    // 校验并读取物品记录的模式和原图来源.
     private MapOrigin origin(CompoundTag marker) {
-        if (!(marker.get(MAP_TYPE) instanceof StringTag type) || !(marker.get(ORIGIN_SERVER) instanceof StringTag server)
-                || server.getAsString().isBlank() || !(marker.get(ORIGIN_ID) instanceof IntTag id)) {
+        if (!(marker.get(MAP_TYPE) instanceof StringTag type) || !(marker.get(ORIGIN_SERVER) instanceof StringTag server) || server.getAsString().isBlank() || !(marker.get(ORIGIN_ID) instanceof IntTag id)) {
             throw new IllegalArgumentException("invalid map origin metadata");
         }
         return new MapOrigin(MapType.valueOf(type.getAsString()), server.getAsString(), id.getAsInt());
     }
 
+    // 并行准备单张地图结果, 完成后沿原快照结构生成改写结果.
     private CompletableFuture<Snapshot> rewriteAsync(Snapshot snapshot, Function<CompoundTag, CompletableFuture<CompoundTag>> operation, String failureKey) {
         if (this.closed.isDone()) return CompletableFuture.completedFuture(snapshot);
+        // 按标签对象身份记住准备结果, 两次遍历可准确对应同一物品的组件
         Map<CompoundTag, CompletableFuture<CompoundTag>> prepared = new IdentityHashMap<>();
         this.rewrite(snapshot, components -> {
             prepared.computeIfAbsent(components, item -> {
@@ -188,11 +135,17 @@ public final class MapPipeline {
             });
             return components;
         });
+        // 关闭信号只参与完成竞争, 快照引用留在本次操作中, 完成后即可释放.
         return CompletableFuture.allOf(prepared.values().toArray(CompletableFuture[]::new))
-                .thenApply(ignored -> this.rewrite(snapshot, components -> prepared.get(components).getNow(components)))
-                .applyToEither(this.closed.thenApply(ignored -> snapshot), Function.identity());
+                .applyToEither(this.closed, Function.identity())
+                .thenApply(ignored -> {
+                    if (this.closed.isDone()) return snapshot;
+                    Snapshot rewritten = this.rewrite(snapshot, components -> prepared.get(components).getNow(components));
+                    return this.closed.isDone() ? snapshot : rewritten;
+                });
     }
 
+    // 结束当前管线的物品等待并返回原快照, 底层发布由服务生命周期另行收尾
     public void close() {
         this.closed.complete(null);
     }
@@ -206,14 +159,12 @@ public final class MapPipeline {
         return handler;
     }
 
+    // 读取物品的来源命名空间
     @Nullable
     private CompoundTag marker(CompoundTag components) {
         Tag custom = components.get(CUSTOM_DATA);
         if (custom == null) return null;
-        if (!(custom instanceof CompoundTag data)) {
-            throw new IllegalArgumentException("map custom data is not a compound");
-        }
-        Tag marker = data.get(NAMESPACE);
+        Tag marker = ((CompoundTag) custom).get(NAMESPACE);
         if (marker == null) return null;
         if (!(marker instanceof CompoundTag compound)) {
             throw new IllegalArgumentException("map sparrow-sync data is not a compound");
@@ -221,10 +172,11 @@ public final class MapPipeline {
         return compound;
     }
 
-    // 来源元数据与同命名空间的其他业务字段共存, 清理后逐层移除空节点.
+    // 以新父节点写入来源命名空间, 空命名空间就移除.
     private CompoundTag writeMarker(CompoundTag components, CompoundTag marker) {
         CompoundTag custom = components.get(CUSTOM_DATA) instanceof CompoundTag data
-                ? new CompoundTag(new HashMap<>(data.tags)) : NBT.createCompound();
+                ? new CompoundTag(new HashMap<>(data.tags))
+                : NBT.createCompound();
         if (marker.isEmpty()) {
             custom.remove(NAMESPACE);
         } else {
@@ -239,7 +191,7 @@ public final class MapPipeline {
         return result;
     }
 
-    // 仅处理已启用的内置物品数据, 其他类型继续按原快照透传.
+    // 在已启用的背包与末影箱数据中查找地图, 按需要复制快照节点.
     private Snapshot rewrite(Snapshot snapshot, UnaryOperator<CompoundTag> operation) {
         Map<DataKey, Tag> changed = null;
         for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
@@ -254,7 +206,7 @@ public final class MapPipeline {
         return changed == null ? snapshot : new Snapshot(snapshot.meta(), changed);
     }
 
-    // 遍历原版承载物品的组件, custom_data 中的业务 NBT 保持原样.
+    // 处理一件地图及原版组件承载的嵌套物品.
     private CompoundTag rewriteItem(CompoundTag item, UnaryOperator<CompoundTag> operation) {
         if (!(item.get("components") instanceof CompoundTag components)) return item;
         CompoundTag changed = components;
@@ -262,6 +214,7 @@ public final class MapPipeline {
         if (id.equals("minecraft:filled_map") || id.equals("filled_map")) {
             changed = operation.apply(changed);
         }
+        // 嵌套遍历限定原版物品组件, custom_data 中的任意业务 NBT 按原值保留
         changed = this.rewriteList(changed, "minecraft:container", true, operation);
         for (int i = 0; i < ITEM_LISTS.length; i++) {
             changed = this.rewriteList(changed, ITEM_LISTS[i], false, operation);
@@ -279,7 +232,7 @@ public final class MapPipeline {
         return result;
     }
 
-    // 快照 Tag 按不可变值共享, 仅复制真正发生变化的父节点和列表.
+    // 逐项处理物品列表, 仅在某项变化后复制列表与父节点.
     private CompoundTag rewriteList(CompoundTag parent, String key, boolean slotted, UnaryOperator<CompoundTag> operation) {
         if (!(parent.get(key) instanceof ListTag items)) return parent;
         ListTag changed = null;

@@ -372,7 +372,7 @@ class PlayerDataPipelineTest {
     }
 
     private static SnapshotApplyContext context(PlayerDataPipeline pipeline, Snapshot snapshot) {
-        return assertInstanceOf(PlayerDataPipeline.PrepareResult.Ready.class, pipeline.prepare(snapshot)).context();
+        return assertInstanceOf(PlayerDataPipeline.DecodeResult.Ready.class, pipeline.decode(snapshot)).context();
     }
 
     private static Snapshot snapshotWith(DataKey... keys) {

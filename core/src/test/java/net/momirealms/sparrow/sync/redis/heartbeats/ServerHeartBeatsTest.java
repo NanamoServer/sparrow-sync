@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.redis.heartbeats;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.test.RedisTestSupport;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
@@ -32,7 +34,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // 压缩心跳与探测节奏让全链秒级完成; 每个用例用独立 serverId 隔离, 应答槽是单值的, 需要应答方时显式指定
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ServerHeartBeatsTest {
-    private static final String CLUSTER = "it" + Long.toHexString(System.nanoTime());
     private static final long HEARTBEAT_INTERVAL = 200;
     private static final long HEARTBEAT_TTL = 600;
     private static final long PROBE_WAIT = 500;
@@ -66,7 +67,7 @@ class ServerHeartBeatsTest {
 
     @BeforeAll
     void connect() {
-        PluginConfig.RedisOptions options = new PluginConfig.RedisOptions();
+        PluginConfig.RedisOptions options = RedisTestSupport.options(2);
         this.connectorA = new RedisConnector(options, this.logger);
         try {
             this.connectorA.initialize();
@@ -78,11 +79,11 @@ class ServerHeartBeatsTest {
         this.connectorC = new RedisConnector(options, this.logger);
         this.connectorC.initialize();
         // A 与 B 共用身份 dup, 模拟两台误配同一个 server-id 的服务器; C 以 stale 模拟崩溃后带残键重启的单台服务器
-        this.brokerA = new MessageBrokerManager(this.connectorA, CLUSTER, "dup", this.logger);
+        this.brokerA = new MessageBrokerManager(this.connectorA, "dup", this.logger);
         this.brokerA.initialize();
-        this.brokerB = new MessageBrokerManager(this.connectorB, CLUSTER, "dup", this.logger);
+        this.brokerB = new MessageBrokerManager(this.connectorB, "dup", this.logger);
         this.brokerB.initialize();
-        this.brokerC = new MessageBrokerManager(this.connectorC, CLUSTER, "stale", this.logger);
+        this.brokerC = new MessageBrokerManager(this.connectorC, "stale", this.logger);
         this.brokerC.initialize();
         this.inspector = RedisClient.create(options.url());
         this.inspection = this.inspector.connect();
@@ -92,7 +93,7 @@ class ServerHeartBeatsTest {
     void disconnect() {
         this.heartbeatExecutor.shutdownNow();
         if (this.inspection != null) {
-            List<String> keys = this.inspection.sync().keys("ss:" + CLUSTER + ":*");
+            List<String> keys = this.inspection.sync().keys("ss:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
             this.inspection.close();
         }
@@ -173,10 +174,35 @@ class ServerHeartBeatsTest {
     }
 
     @Test
+    void sameServerIdCanRegisterInDifferentRedisDatabases() {
+        RedisConnector other = new RedisConnector(RedisTestSupport.options(5), this.logger);
+        MessageBrokerManager otherBroker = new MessageBrokerManager(other, "dup", this.logger);
+        ServerHeartBeats localRegistry = this.registry(this.connectorA, this.brokerA, "dup");
+        ServerHeartBeats otherRegistry = null;
+        try {
+            other.initialize();
+            otherBroker.initialize();
+            otherRegistry = this.registry(other, otherBroker, "dup");
+            assertTrue(localRegistry.initialize());
+            assertTrue(otherRegistry.initialize());
+            String localToken = this.inspection.sync().get(this.serverKey("dup"));
+            byte[] otherToken = other.connection().sync().get(this.serverKey("dup").getBytes(StandardCharsets.UTF_8));
+            assertNotNull(localToken);
+            assertNotNull(otherToken);
+            assertNotEquals(localToken, new String(otherToken, StandardCharsets.UTF_8));
+        } finally {
+            localRegistry.shutdown();
+            if (otherRegistry != null) otherRegistry.shutdown();
+            otherBroker.shutdown();
+            other.shutdown();
+        }
+    }
+
+    @Test
     void sweepMatchesTheExactServerId() {
         UUID prefixed = UUID.randomUUID();
         this.inspection.sync().set(this.lockKey(prefixed), "srv2:" + UUID.randomUUID());
-        SessionLock lock = new SessionLock(this.connectorA, CLUSTER, "srv");
+        SessionLock lock = new SessionLock(this.connectorA, "srv");
         try {
             assertEquals(0, lock.sweepStaleLocks(), "srv must not match the srv2 prefix");
             assertNotNull(this.inspection.sync().get(this.lockKey(prefixed)));
@@ -186,16 +212,16 @@ class ServerHeartBeatsTest {
     }
 
     private ServerHeartBeats registry(RedisConnector connector, MessageBrokerManager broker, String serverId) {
-        SessionLock lock = new SessionLock(connector, CLUSTER, serverId);
-        return new ServerHeartBeats(connector, broker.broker(), lock, CLUSTER, serverId, this.logger, this.scheduler, HEARTBEAT_INTERVAL, HEARTBEAT_TTL, PROBE_WAIT);
+        SessionLock lock = new SessionLock(connector, serverId);
+        return new ServerHeartBeats(connector, broker.broker(), lock, serverId, this.logger, this.scheduler, HEARTBEAT_INTERVAL, HEARTBEAT_TTL, PROBE_WAIT);
     }
 
     private String serverKey(String serverId) {
-        return "ss:" + CLUSTER + ":server:" + serverId;
+        return "ss:server:" + serverId;
     }
 
     private String lockKey(UUID player) {
-        return "ss:" + CLUSTER + ":lock:" + player;
+        return "ss:lock:" + player;
     }
 
     private static final class QuietLogger implements PluginLogger {

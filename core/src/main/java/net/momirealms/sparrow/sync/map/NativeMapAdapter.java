@@ -25,12 +25,13 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.util.Map;
 
+// 在原生地图对象与可跨服保存的内容之间转换, 并维护本服负数副本.
 @ApiStatus.Internal
 public final class NativeMapAdapter {
     private final HolderLookup.Provider registries;
-    private final DynamicOps<Tag> ops;
+    private final DynamicOps<Tag> ops; // 携带当前注册表的插件 NBT 编解码上下文
     private final int dataVersion;
-    private final Codec<MapItemSavedData> codec = MapItemSavedDataProxy.INSTANCE.getCodec();
+    private final Codec<MapItemSavedData> codec = MapItemSavedDataProxy.INSTANCE.getCodec(); // 版本代理提供的地图 Codec; 旧分支返回 null 并使用 load/save
 
     public NativeMapAdapter(@NotNull HolderLookup.Provider registries, int dataVersion) {
         this.registries = registries;
@@ -38,26 +39,11 @@ public final class NativeMapAdapter {
         this.dataVersion = dataVersion;
     }
 
-    /** 读取原生地图. <strong>调用方须处于允许原生地图访问的线程, 同一 ID 的安装操作须串行</strong>. */
+    // 按原生 ID 复制世界中现存的地图内容.
     @Nullable
     public MapData capture(@NotNull ServerLevel level, int mapId) {
         MapItemSavedData data = level.getMapData(new MapId(mapId));
-        return data == null ? null : this.capture(data);
-    }
-
-    // 从已落盘副本的隔离维度恢复身份, 不因一个负数 ID 把其他插件的地图纳入同步.
-    @Nullable
-    public MapIdentity replicaIdentity(@NotNull ServerLevel level, int mapId) {
-        MapItemSavedData data = level.getMapData(new MapId(mapId));
         if (data == null) return null;
-        MapIdentity identity = MapIdentity.fromReplicaDimension(Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, data.dimension).getOrThrow().getAsString());
-        return identity != null && identity.globalId() == mapId ? identity : null;
-    }
-
-    /** 复制持久内容, 返回值可交给异步存储. <strong>Paper 在主线程调用, Folia 遵守地图访问线程约束</strong>. */
-    @NotNull
-    public MapData capture(@NotNull MapItemSavedData data) {
-        // Folia 原生修改使用同一地图监视器, 像素与标记在锁内复制为独立数据.
         synchronized (data) {
             Tag tag = this.codec == null
                     ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
@@ -66,7 +52,16 @@ public final class NativeMapAdapter {
         }
     }
 
-    /** 构造独立副本, 保留源图内容并隔离本服地形. */
+    // 从已保存副本的隔离维度恢复完整身份.
+    @Nullable
+    public MapIdentity replicaIdentity(@NotNull ServerLevel level, int mapId) {
+        MapItemSavedData data = level.getMapData(new MapId(mapId));
+        if (data == null) return null;
+        MapIdentity identity = MapIdentity.fromReplicaDimension(Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, data.dimension).getOrThrow().getAsString());
+        return identity != null && identity.globalId() == mapId ? identity : null;
+    }
+
+    // 将来源内容准备为独立的原生副本, 此阶段可由异步工作线程调用.
     @NotNull
     public MapItemSavedData prepareReplica(@NotNull MapIdentity identity, @NotNull MapData data) throws IOException {
         if (data.dataVersion() > this.dataVersion) {
@@ -74,6 +69,7 @@ public final class NativeMapAdapter {
         }
         CompoundTag tag = data.getTag();
         if (data.dataVersion() < this.dataVersion) {
+            // SAVED_DATA_MAP_DATA 的升级入口读取外层 data 字段, 这里补齐原生文件结构
             CompoundTag root = NBT.createCompound();
             root.put("data", tag);
             Tag fixed = DataFixers.getDataFixer().update(References.SAVED_DATA_MAP_DATA, new Dynamic<>(NBTOps.INSTANCE, root), data.dataVersion(), this.dataVersion).getValue();
@@ -82,6 +78,7 @@ public final class NativeMapAdapter {
             }
             tag = upgraded;
         }
+        // 持久画面归属隔离维度, 展示框和 Bukkit 世界绑定随后由本服建立
         tag.putString("dimension", identity.replicaDimension());
         tag.remove("UUIDMost");
         tag.remove("UUIDLeast");
@@ -93,13 +90,9 @@ public final class NativeMapAdapter {
                 .getOrThrow(message -> new IOException("failed to decode map: " + message));
     }
 
-    /** 注册或更新已准备的原生副本. <strong>原生访问线程调用; 同 ID 串行, prepared 的所有权转交原生存储</strong>. */
+    // 将同一 identity 经 prepareReplica 得到的副本写入世界, 已有同身份副本则原地更新.
     @NotNull
-    public MapItemSavedData installReplica(@NotNull ServerLevel level, @NotNull MapIdentity identity, @NotNull MapItemSavedData prepared) {
-        String dimension = Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, prepared.dimension).getOrThrow().getAsString();
-        if (!identity.replicaDimension().equals(dimension)) {
-            throw new IllegalArgumentException("prepared map does not belong to this replica identity");
-        }
+    public MapItemSavedData updateReplica(@NotNull ServerLevel level, @NotNull MapIdentity identity, @NotNull MapItemSavedData prepared) {
         MapId id = new MapId(identity.globalId());
         MapItemSavedData existing = level.getMapData(id);
         if (existing == null) {
@@ -124,6 +117,7 @@ public final class NativeMapAdapter {
             // 保留 MapView、渲染缓冲与持有者身份, 原生保存和发包继续观察同一对象.
             System.arraycopy(prepared.colors, 0, target.colors, 0, MapData.PIXEL_COUNT);
             MapItemSavedDataProxy proxy = MapItemSavedDataProxy.INSTANCE;
+            // 来源旗帜用新内容替换, 本服玩家和展示框装饰继续留在目标对象中
             Map<String, MapBanner> banners = proxy.getBannerMarkers(target);
             for (String key : banners.keySet()) {
                 target.decorations.remove(key);
@@ -131,6 +125,7 @@ public final class NativeMapAdapter {
             banners.clear();
             banners.putAll(proxy.getBannerMarkers(prepared));
             target.decorations.putAll(prepared.decorations);
+            // 装饰合并后按原版规则重算计数, 供标记数量限制继续使用
             int tracked = 0;
             for (MapDecoration decoration : target.decorations.values()) {
                 if (decoration.type().value().trackCount()) {
@@ -138,6 +133,7 @@ public final class NativeMapAdapter {
                 }
             }
             proxy.setTrackedDecorationCount(target, tracked);
+            // 标记像素矩形两个端点及装饰变更, 所有原生查看者随后生成各自更新包
             proxy.setColorsDirty(target, 0, 0);
             proxy.setColorsDirty(target, 127, 127);
             proxy.setDecorationsDirty(target);

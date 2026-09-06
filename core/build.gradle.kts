@@ -96,6 +96,7 @@ tasks {
 
     test {
         useJUnitPlatform()
+        providers.gradleProperty("sparrow.test.redis").orNull?.let { systemProperty("sparrow.test.redis", it) }
     }
 }
 

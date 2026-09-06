@@ -43,16 +43,16 @@ class MapDataTest {
         invalid.putByteArray("colors", new byte[1]);
         assertThrows(IllegalArgumentException.class, () -> new MapData(4440, invalid));
         assertThrows(IllegalArgumentException.class, () -> new MapSource("owner", -1));
-        assertThrows(IllegalArgumentException.class, () -> new MapIdentity("cluster", new MapSource("owner", 0), 0));
-        MapIdentity first = new MapIdentity("集群/A", new MapSource("Owner/世界", 0), -1);
-        MapIdentity second = new MapIdentity("集群/A", new MapSource("Owner/世界", 1), -1);
+        assertThrows(IllegalArgumentException.class, () -> new MapIdentity(new MapSource("owner", 0), 0));
+        MapIdentity first = new MapIdentity(new MapSource("Owner/世界", 0), -1);
+        MapIdentity second = new MapIdentity(new MapSource("Owner/世界", 1), -1);
         assertTrue(first.replicaDimension().matches("[a-z0-9_.-]+:[a-z0-9/._-]+"));
         assertNotEquals(first.replicaDimension(), second.replicaDimension());
-        assertNotEquals(first.replicaDimension(), new MapIdentity("B", first.source(), -1).replicaDimension());
+        assertNotEquals(first.replicaDimension(), new MapIdentity(first.source(), -2).replicaDimension());
         assertEquals(first, MapIdentity.fromReplicaDimension(first.replicaDimension()));
         assertNull(MapIdentity.fromReplicaDimension("minecraft:overworld"));
-        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/not-hex/41/0/-1"));
-        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/41/42/0/1"));
+        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/not-hex/0/-1"));
+        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/41/0/1"));
         assertNull(MapIdentity.fromReplicaDimension(first.replicaDimension() + "/extra"));
     }
 }

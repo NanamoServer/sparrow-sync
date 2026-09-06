@@ -25,6 +25,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -43,6 +44,8 @@ class MapPipelineTest {
     private static final MapPipeline PIPELINE = new MapPipeline(REGISTRY, List.of(new HideMapHandler()), LOGGER);
     private static final String OWNER = "A-world-1";
 
+    private final MapFlowTestSupport.NativeMaps nativeMaps = new MapFlowTestSupport.NativeMaps(new MapIdentity(new MapSource(OWNER, 7), -1));
+
     @TempDir
     Path directory;
 
@@ -50,14 +53,14 @@ class MapPipelineTest {
     void syncCompilationWaitsForPublicationAndTransitKeepsItsMode() {
         MapFlowTestSupport.Shared shared = new MapFlowTestSupport.Shared();
         MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
-        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(storage), shared, value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
-        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler("cluster", receiver)), LOGGER);
+        MapReceiver receiver = this.nativeMaps.receiver(storage, shared, "B-world", Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
         CompletableFuture<StoredMap> published = new CompletableFuture<>();
         CompletableFuture<Snapshot> waiting = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
         assertFalse(waiting.isDone());
         assertEquals(7, components(original).getInt("minecraft:map_id"));
-        published.complete(new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
+        published.complete(new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
         Snapshot compiled = waiting.join();
         assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
         assertEquals("SYNC", marker(compiled).getString("map-type"));
@@ -70,11 +73,10 @@ class MapPipelineTest {
     @Test
     void asyncDecodeWaitsForReplicaAndOnlyClearsOriginAfterSuccessfulReturn() {
         MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
-        storage.current = new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
+        storage.current = new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
         MapFlowTestSupport.Tasks nativeThread = new MapFlowTestSupport.Tasks();
-        int[] localId = {-1};
-        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(storage), new MapFlowTestSupport.Shared(), value -> () -> localId[0], Runnable::run, nativeThread, LOGGER);
-        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler("cluster", receiver)), LOGGER);
+        MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, nativeThread, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
         Snapshot compiled = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
         CompletableFuture<Snapshot> waiting = pipeline.decodeAsync(compiled, OWNER);
@@ -82,7 +84,7 @@ class MapPipelineTest {
         nativeThread.runAll();
         assertSame(compiled, waiting.join());
         assertEquals(OWNER, marker(waiting.join()).getString("origin-server"));
-        localId[0] = 7;
+        this.nativeMaps.sourcePresent(true);
         CompletableFuture<Snapshot> returned = pipeline.decodeAsync(compiled, OWNER);
         nativeThread.runAll();
         assertEquals(original.data(), returned.join().data());
@@ -92,13 +94,13 @@ class MapPipelineTest {
     @Test
     void asynchronousFailureKeepsWholeItemWhileOtherMapsCompile() {
         List<String> warnings = new ArrayList<>();
-        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new MapFlowTestSupport.Storage()), new MapFlowTestSupport.Shared(), value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
-        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler("cluster", receiver)), MapFlowTestSupport.logger(warnings));
+        MapReceiver receiver = this.nativeMaps.receiver(new MapFlowTestSupport.Storage(), new MapFlowTestSupport.Shared(), "B-world", Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler(receiver)), MapFlowTestSupport.logger(warnings));
         CompoundTag inventory = NBT.createCompound();
         ListTag items = list(map(7), map(8));
         inventory.put("items", items);
         Snapshot snapshot = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
-        StoredMap success = new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 8), -2), MapFlowTestSupport.map(4).data());
+        StoredMap success = new StoredMap(new MapIdentity(new MapSource(OWNER, 8), -2), MapFlowTestSupport.map(4).data());
         Snapshot compiled = pipeline.compileAsync(snapshot, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.failedFuture(new IllegalStateException("database unavailable")), 8, CompletableFuture.completedFuture(success))).join();
         ListTag result = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
         assertSame(items.get(0), result.get(0));
@@ -108,20 +110,94 @@ class MapPipelineTest {
 
     @Test
     void timeoutReleasesSnapshotWithoutTerminatingThePublicationChain() throws Exception {
-        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new MapFlowTestSupport.Storage()), new MapFlowTestSupport.Shared(), value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
-        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler("cluster", receiver)), LOGGER);
+        MapReceiver receiver = this.nativeMaps.receiver(new MapFlowTestSupport.Storage(), new MapFlowTestSupport.Shared(), "B-world", Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
         CompletableFuture<StoredMap> storage = new CompletableFuture<>();
         assertSame(original, pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, storage)).get(7, TimeUnit.SECONDS));
         assertFalse(storage.isDone());
-        storage.complete(new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
+        storage.complete(new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
+        assertEquals(7, components(original).getInt("minecraft:map_id"));
+    }
+
+    @Test
+    void completedOperationsReleaseCloseSignalDependencies() throws ReflectiveOperationException {
+        this.nativeMaps.sourcePresent(true);
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        storage.current = new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
+        MapFlowTestSupport.Tasks nativeThread = new MapFlowTestSupport.Tasks();
+        MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, nativeThread, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
+        Field field = MapPipeline.class.getDeclaredField("closed");
+        field.setAccessible(true);
+        CompletableFuture<?> closed = (CompletableFuture<?>) field.get(pipeline);
+
+        for (int i = 0; i < 5; i++) {
+            Snapshot empty = new Snapshot(meta("A"), Map.of());
+            assertSame(empty, pipeline.compileAsync(empty, MapType.HIDE, OWNER, Map.of()).join());
+            assertSame(empty, pipeline.decodeAsync(empty, OWNER).join());
+            assertEquals(0, closed.getNumberOfDependents());
+
+            Snapshot original = snapshot(map(7));
+            Snapshot hidden = pipeline.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+            assertEquals(original.data(), pipeline.decodeAsync(hidden, OWNER).join().data());
+            assertEquals(0, closed.getNumberOfDependents());
+
+            CompletableFuture<StoredMap> published = new CompletableFuture<>();
+            CompletableFuture<Snapshot> compiling = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+            assertFalse(compiling.isDone());
+            assertTrue(closed.getNumberOfDependents() > 0);
+            published.complete(storage.current);
+            Snapshot compiled = compiling.join();
+            assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
+            assertEquals(0, closed.getNumberOfDependents());
+
+            CompletableFuture<Snapshot> decoding = pipeline.decodeAsync(compiled, OWNER);
+            assertFalse(decoding.isDone());
+            nativeThread.runAll();
+            assertEquals(original.data(), decoding.join().data());
+            assertEquals(0, closed.getNumberOfDependents());
+        }
+        assertFalse(closed.isDone());
+    }
+
+    @Test
+    void closeReleasesCompileAndDecodeWithoutCompletingTheirUnderlyingWork() {
+        this.nativeMaps.sourcePresent(true);
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        storage.current = new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
+        MapFlowTestSupport.Tasks nativeThread = new MapFlowTestSupport.Tasks();
+        MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, nativeThread, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
+        Snapshot original = snapshot(map(7));
+        Snapshot compiled = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+        CompletableFuture<StoredMap> published = new CompletableFuture<>();
+        CompletableFuture<Snapshot> compiling = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+        CompletableFuture<Snapshot> decoding = pipeline.decodeAsync(compiled, OWNER);
+        CompletableFuture<Integer> received = receiver.receive(storage.current.identity());
+        assertFalse(compiling.isDone());
+        assertFalse(decoding.isDone());
+
+        pipeline.close();
+        assertSame(original, compiling.getNow(null));
+        assertSame(compiled, decoding.getNow(null));
+        assertFalse(published.isDone());
+        assertFalse(received.isDone());
+        assertSame(original, pipeline.compileAsync(original, MapType.HIDE, OWNER, Map.of()).getNow(null));
+        assertSame(compiled, pipeline.decodeAsync(compiled, OWNER).getNow(null));
+
+        published.complete(storage.current);
+        nativeThread.runAll();
+        assertEquals(7, received.join());
+        assertSame(original, compiling.join());
+        assertSame(compiled, decoding.join());
         assertEquals(7, components(original).getInt("minecraft:map_id"));
     }
 
     @Test
     void unregisteredSyncModePassesThroughWithoutHalfEncoding() {
         Snapshot original = snapshot(map(7));
-        assertSame(original, PIPELINE.compile(original, MapType.SYNC, OWNER));
+        assertSame(original, PIPELINE.compileAsync(original, MapType.SYNC, OWNER, Map.of()).join());
     }
 
     @Test
@@ -134,32 +210,32 @@ class MapPipelineTest {
             }
 
             @Override
-            public @NonNull CompoundTag compile(@NonNull CompoundTag components, @NonNull MapOrigin origin) {
+            public @NonNull CompletableFuture<CompoundTag> compileAsync(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull Map<Integer, CompletableFuture<StoredMap>> captured) {
                 CompoundTag result = components.copy();
                 result.putInt("minecraft:map_id", -1);
-                return result;
+                return CompletableFuture.completedFuture(result);
             }
 
             @Override
-            public @NonNull CompoundTag decode(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull String ownerId) {
-                return restore[0] ? new HideMapHandler().decode(components, origin, ownerId) : components;
+            public @NonNull CompletableFuture<CompoundTag> decodeAsync(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull String ownerId) {
+                return restore[0] ? new HideMapHandler().decodeAsync(components, origin, ownerId) : CompletableFuture.completedFuture(components);
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
         Snapshot original = snapshot(map(7));
-        Snapshot compiled = pipeline.compile(original, MapType.SYNC, OWNER);
-        Snapshot missing = pipeline.decode(compiled, OWNER);
+        Snapshot compiled = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of()).join();
+        Snapshot missing = pipeline.decodeAsync(compiled, OWNER).join();
         assertEquals(-1, components(missing).getInt("minecraft:map_id"));
         assertEquals(OWNER, marker(missing).getString("origin-server"));
         restore[0] = true;
-        assertEquals(original.data(), pipeline.decode(compiled, OWNER).data());
+        assertEquals(original.data(), pipeline.decodeAsync(compiled, OWNER).join().data());
     }
 
     @Test
     void existingOriginIsNotRecompiledByAnotherServer() {
-        Snapshot compiled = PIPELINE.compile(snapshot(map(7)), MapType.HIDE, OWNER);
-        assertSame(compiled, PIPELINE.decode(compiled, "B-world-2"));
-        assertSame(compiled, PIPELINE.compile(compiled, MapType.HIDE, "B-world-2"));
+        Snapshot compiled = PIPELINE.compileAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
+        assertSame(compiled, PIPELINE.decodeAsync(compiled, "B-world-2").join());
+        assertSame(compiled, PIPELINE.compileAsync(compiled, MapType.HIDE, "B-world-2", Map.of()).join());
         assertEquals(OWNER, marker(compiled).getString("origin-server"));
     }
 
@@ -167,7 +243,7 @@ class MapPipelineTest {
     void hideCompilesMapZeroIntoTheSpecifiedSchemaAndLeavesTheSourceUnchanged() {
         Snapshot original = snapshot(map(0));
         CompoundTag expected = firstItem(original).copy();
-        Snapshot compiled = PIPELINE.compile(original, MapType.HIDE, OWNER);
+        Snapshot compiled = PIPELINE.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join();
 
         assertFalse(components(compiled).containsKey("minecraft:map_id"));
         assertEquals(3, marker(compiled).size());
@@ -175,26 +251,31 @@ class MapPipelineTest {
         assertEquals(OWNER, marker(compiled).getString("origin-server"));
         assertEquals(0, marker(compiled).getInt("origin-id"));
         assertEquals(expected, firstItem(original));
-        assertEquals(original.data(), PIPELINE.decode(compiled, OWNER).data());
+        assertEquals(original.data(), PIPELINE.decodeAsync(compiled, OWNER).join().data());
     }
 
     @Test
     void hiddenMapsKeepTheirOwnerAcrossHopsAndRemainHiddenAfterAWorldReset() {
         Snapshot original = snapshot(map(42));
-        Snapshot compiled = PIPELINE.compile(original, MapType.HIDE, OWNER);
-        Snapshot inB = PIPELINE.decode(compiled, "B-world-2");
+        Snapshot compiled = PIPELINE.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot inB = PIPELINE.decodeAsync(compiled, "B-world-2").join();
         Snapshot savedByB = new Snapshot(meta("B"), inB.data());
-        Snapshot inC = PIPELINE.compile(savedByB, MapType.HIDE, "B-world-2");
+        Snapshot inC = PIPELINE.compileAsync(savedByB, MapType.HIDE, "B-world-2", Map.of()).join();
 
         assertSame(savedByB, inC);
-        assertSame(inC, PIPELINE.decode(inC, "C-world-3"));
-        assertSame(inC, PIPELINE.decode(inC, "A-rebuilt-world"));
+        assertSame(inC, PIPELINE.decodeAsync(inC, "C-world-3").join());
+        assertSame(inC, PIPELINE.decodeAsync(inC, "A-rebuilt-world").join());
         assertFalse(components(inC).containsKey("minecraft:map_id"));
-        assertEquals(original.data(), PIPELINE.decode(inC, OWNER).data());
+        assertEquals(original.data(), PIPELINE.decodeAsync(inC, OWNER).join().data());
     }
 
     @Test
     void returnToOwnerRemovesOnlyMapMetadataFromCustomData() {
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        storage.current = new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
+        this.nativeMaps.sourcePresent(true);
+        MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         CompoundTag item = map(7);
         CompoundTag components = item.getCompound("components");
         components.putString("minecraft:custom_name", "A's map");
@@ -207,8 +288,9 @@ class MapPipelineTest {
         Snapshot original = snapshot(item);
 
         for (MapType type : MapType.values()) {
-            Snapshot compiled = PIPELINE.compile(original, type, OWNER);
-            assertEquals(original.data(), PIPELINE.decode(compiled, OWNER).data());
+            Snapshot compiled = pipeline.compileAsync(original, type, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+            assertEquals(type.name(), marker(compiled).getString("map-type"));
+            assertEquals(original.data(), pipeline.decodeAsync(compiled, OWNER).join().data());
         }
     }
 
@@ -229,7 +311,7 @@ class MapPipelineTest {
         contents.put("items", list(box, crossbow, food));
         Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, contents, EnderChestDataType.ENDER_CHEST, contents));
 
-        Snapshot compiled = PIPELINE.compile(original, MapType.HIDE, OWNER);
+        Snapshot compiled = PIPELINE.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join();
         for (Tag value : compiled.data().values()) {
             ListTag items = ((CompoundTag) value).getList("items");
             CompoundTag hiddenBundle = items.getCompound(0).getCompound("components").getList("minecraft:container").getCompound(0).getCompound("item");
@@ -237,41 +319,41 @@ class MapPipelineTest {
             assertFalse(items.getCompound(1).getCompound("components").getList("minecraft:charged_projectiles").getCompound(0).getCompound("components").containsKey("minecraft:map_id"));
             assertFalse(items.getCompound(2).getCompound("components").getCompound("minecraft:use_remainder").getCompound("components").containsKey("minecraft:map_id"));
         }
-        assertEquals(original.data(), PIPELINE.decode(compiled, OWNER).data());
+        assertEquals(original.data(), PIPELINE.decodeAsync(compiled, OWNER).join().data());
     }
 
     @Test
     void disabledTypesAndItemLikeCustomDataAreNotCompiled() {
         Snapshot original = snapshot(map(7));
         MapPipeline disabled = new MapPipeline(new DataRegistry(), List.of(new HideMapHandler()), LOGGER);
-        assertSame(original, disabled.compile(original, MapType.HIDE, OWNER));
+        assertSame(original, disabled.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join());
         Snapshot unknown = new Snapshot(meta("A"), Map.of(DataKey.of("other", "inventory"), original.data(InventoryDataType.INVENTORY)));
-        assertSame(unknown, PIPELINE.compile(unknown, MapType.HIDE, OWNER));
+        assertSame(unknown, PIPELINE.compileAsync(unknown, MapType.HIDE, OWNER, Map.of()).join());
 
         CompoundTag stone = item("minecraft:stone");
         CompoundTag custom = NBT.createCompound();
         custom.put("display_example", map(7));
         stone.getCompound("components").put("minecraft:custom_data", custom);
         Snapshot customSnapshot = snapshot(stone);
-        assertSame(customSnapshot, PIPELINE.compile(customSnapshot, MapType.HIDE, OWNER));
+        assertSame(customSnapshot, PIPELINE.compileAsync(customSnapshot, MapType.HIDE, OWNER, Map.of()).join());
     }
 
     @Test
     void decodeDoesNotGuessTheOwnerOfUncompiledItems() {
         Snapshot original = snapshot(map(7));
-        assertSame(original, PIPELINE.decode(original, "B-world-2"));
+        assertSame(original, PIPELINE.decodeAsync(original, "B-world-2").join());
         Snapshot idless = snapshot(item("minecraft:filled_map"));
-        assertSame(idless, PIPELINE.compile(idless, MapType.HIDE, OWNER));
-        assertSame(idless, PIPELINE.decode(idless, OWNER));
+        assertSame(idless, PIPELINE.compileAsync(idless, MapType.HIDE, OWNER, Map.of()).join());
+        assertSame(idless, PIPELINE.decodeAsync(idless, OWNER).join());
     }
 
     @Test
     void malformedOriginMetadataKeepsTheOriginalMap() {
-        Snapshot compiled = PIPELINE.compile(snapshot(map(7)), MapType.HIDE, OWNER);
+        Snapshot compiled = PIPELINE.compileAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
         CompoundTag brokenItem = firstItem(compiled).copy();
         brokenItem.getCompound("components").getCompound("minecraft:custom_data").getCompound("sparrow-sync").remove("origin-id");
         Snapshot broken = snapshot(brokenItem);
-        assertSame(broken, PIPELINE.decode(broken, OWNER));
+        assertSame(broken, PIPELINE.decodeAsync(broken, OWNER).join());
     }
 
     @Test
@@ -286,27 +368,27 @@ class MapPipelineTest {
 
             @Override
             @NotNull
-            public CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
                 calls[0]++;
                 assertEquals(new MapOrigin(MapType.HIDE, OWNER, 7), origin);
-                return new HideMapHandler().compile(components, origin);
+                return new HideMapHandler().compileAsync(components, origin, captured);
             }
 
             @Override
             @NotNull
-            public CompoundTag decode(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
+            public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
                 calls[1]++;
                 assertEquals(new MapOrigin(MapType.HIDE, OWNER, 7), origin);
                 assertEquals(calls[1] == 1 ? "B-world-2" : OWNER, ownerId);
-                return new HideMapHandler().decode(components, origin, ownerId);
+                return new HideMapHandler().decodeAsync(components, origin, ownerId);
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
-        Snapshot compiled = pipeline.compile(snapshot(map(7)), MapType.HIDE, OWNER);
-        pipeline.compile(compiled, MapType.HIDE, OWNER);
-        pipeline.decode(compiled, "B-world-2");
+        Snapshot compiled = pipeline.compileAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
+        pipeline.compileAsync(compiled, MapType.HIDE, OWNER, Map.of()).join();
+        pipeline.decodeAsync(compiled, "B-world-2").join();
         assertArrayEquals(new int[]{1, 1}, calls);
-        pipeline.decode(compiled, OWNER);
+        pipeline.decodeAsync(compiled, OWNER).join();
         assertArrayEquals(new int[]{1, 2}, calls);
     }
 
@@ -324,20 +406,20 @@ class MapPipelineTest {
 
             @Override
             @NotNull
-            public CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
                 if (origin.id() == 7) {
                     throw new IllegalStateException("compile failure");
                 }
-                return new HideMapHandler().compile(components, origin);
+                return new HideMapHandler().compileAsync(components, origin, captured);
             }
 
             @Override
             @NotNull
-            public CompoundTag decode(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
+            public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
                 if (origin.id() == 8) {
                     throw new IllegalStateException("decode failure");
                 }
-                return new HideMapHandler().decode(components, origin, ownerId);
+                return new HideMapHandler().decodeAsync(components, origin, ownerId);
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(failing), logger);
@@ -346,11 +428,11 @@ class MapPipelineTest {
         inventory.put("items", originalItems);
         Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
         try {
-            Snapshot compiled = pipeline.compile(original, MapType.HIDE, OWNER);
+            Snapshot compiled = pipeline.compileAsync(original, MapType.HIDE, OWNER, Map.of()).join();
             ListTag compiledItems = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
             assertSame(originalItems.get(0), compiledItems.get(0));
             assertFalse(compiledItems.getCompound(1).getCompound("components").containsKey("minecraft:map_id"));
-            Snapshot decoded = pipeline.decode(compiled, OWNER);
+            Snapshot decoded = pipeline.decodeAsync(compiled, OWNER).join();
             ListTag decodedItems = ((CompoundTag) decoded.data(InventoryDataType.INVENTORY)).getList("items");
             assertSame(originalItems.get(0), decodedItems.get(0));
             assertSame(compiledItems.get(1), decodedItems.get(1));

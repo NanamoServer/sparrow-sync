@@ -2,10 +2,13 @@ package net.momirealms.sparrow.sync.map.handler;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.map.MapOrigin;
+import net.momirealms.sparrow.sync.map.StoredMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @ApiStatus.Internal
 public final class HideMapHandler implements MapHandler {
@@ -17,18 +20,18 @@ public final class HideMapHandler implements MapHandler {
 
     @Override
     @NotNull
-    public CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
+    public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
         CompoundTag hidden = new CompoundTag(new HashMap<>(components.tags));
         hidden.remove("minecraft:map_id");
-        return hidden;
+        return CompletableFuture.completedFuture(hidden);
     }
 
     @Override
     @NotNull
-    public CompoundTag decode(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
-        if (!ownerId.equals(origin.ownerId())) return components;
+    public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
+        if (!ownerId.equals(origin.ownerId())) return CompletableFuture.completedFuture(components);
         CompoundTag restored = new CompoundTag(new HashMap<>(components.tags));
         restored.putInt("minecraft:map_id", origin.id());
-        return restored;
+        return CompletableFuture.completedFuture(restored);
     }
 }

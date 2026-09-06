@@ -5,7 +5,6 @@ import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
-import net.momirealms.sparrow.yaml.serializer.auto.annotation.BlankLineBefore;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
@@ -52,14 +51,6 @@ public final class ServerConfig {
         return config.serverId;
     }
 
-    /**
-     * 本服所属集群的标识, 决定 Redis 键前缀, 共享同一数据库和 Redis 的服务器必须一致.
-     */
-    @NotNull
-    public static String clusterId() {
-        return config.clusterId;
-    }
-
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
         @Comment("Configuration file version, do not modify this value")
@@ -76,20 +67,6 @@ public final class ServerConfig {
                 "请在启动前设置, 此值为空时 SparrowSync 会关闭服务器",
                 "注意: 一旦设置后, 不再推荐未来修改此值, 新的值会被视为新的服务器, 这可能会对地图数据同步造成一定的影响"
         })
-        String serverId = "";
-
-        // todo 待删除
-        @BlankLineBefore
-        @Comment({
-                "Identifier of the data synchronization cluster this server belongs to; all servers synchronizing data together must use the same value",
-                "Set this before startup; SparrowSync shuts down the server if this value is empty",
-                "This prefixes every Redis key, allowing multiple clusters to share Redis without interfering with each other"
-        })
-        @Comment(lang = "zh-CN", value = {
-                "本服务器所属的数据同步集群标志符, 所有参与数据同步的同一批服务器必须使用相同的值.",
-                "请在启动前设置, 此值为空时 SparrowSync 会关闭服务器.",
-                "此值用作所有 Redis 键的前缀, 使多个集群可以共用 Redis 而互不干扰"
-        })
-        String clusterId = "main";
+        String serverId = ""; // 同时参与默认地图源 ID, 改名后旧地图按原来源身份保留
     }
 }

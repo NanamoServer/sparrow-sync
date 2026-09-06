@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
@@ -13,6 +14,7 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -219,6 +221,12 @@ class SnapshotStashTest {
 
         @Override
         public void shutdown() {
+        }
+
+        @Override
+        @NotNull
+        public MapStorage maps(@NotNull String ownerId) {
+            throw new UnsupportedOperationException();
         }
 
         @Override

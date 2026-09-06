@@ -67,8 +67,8 @@ public final class DebugApplyCommand extends BukkitCommandFeature {
             return;
         }
         // 预解码在异步线程完成, 关键数据解不开则不动玩家
-        PlayerDataPipeline.PrepareResult prepared = pipeline.prepare(snapshot);
-        if (!(prepared instanceof PlayerDataPipeline.PrepareResult.Ready ready)) {
+        PlayerDataPipeline.DecodeResult prepared = pipeline.decode(snapshot);
+        if (!(prepared instanceof PlayerDataPipeline.DecodeResult.Ready ready)) {
             SnapshotUtils.send(player, "[FAIL] prepare: " + prepared, false);
             plugin().logger().warn("Debug apply failed to prepare debug/" + relative + " for " + player.getName() + ": " + prepared);
             return;

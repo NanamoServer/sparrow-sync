@@ -1,14 +1,11 @@
 package net.momirealms.sparrow.sync.map;
 
-import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
+import net.momirealms.sparrow.sync.test.RedisTestSupport;
+import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisChannelHandler;
-import io.lettuce.core.RedisConnectionStateListener;
-import io.lettuce.core.KillArgs;
-import java.net.SocketAddress;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,7 +14,7 @@ import org.junit.jupiter.api.TestInstance;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HexFormat;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -28,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RedisMapCacheTest {
-    private final String cluster = "maps-it-" + UUID.randomUUID();
     private RedisConnector connector;
     private MessageBrokerManager broker;
     private RedisMapCache source;
@@ -37,16 +33,16 @@ class RedisMapCacheTest {
     @BeforeAll
     void connect() {
         SyncLogger logger = MapFlowTestSupport.logger(new ArrayList<>());
-        this.connector = new RedisConnector(new PluginConfig.RedisOptions(), logger);
+        this.connector = new RedisConnector(RedisTestSupport.options(3), logger);
         try {
             this.connector.initialize();
         } catch (RuntimeException exception) {
             Assumptions.assumeTrue(false, "local Redis unavailable: " + exception.getMessage());
         }
-        this.broker = new MessageBrokerManager(this.connector, this.cluster, "map-tests", logger);
+        this.broker = new MessageBrokerManager(this.connector, "map-tests", logger);
         this.broker.initialize();
-        this.source = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), this.cluster, "A-world", ForkJoinPool.commonPool());
-        this.foreign = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), this.cluster, "B-world", ForkJoinPool.commonPool());
+        this.source = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), "A-world", ForkJoinPool.commonPool());
+        this.foreign = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), "B-world", ForkJoinPool.commonPool());
     }
 
     @AfterAll
@@ -65,7 +61,7 @@ class RedisMapCacheTest {
         MapInvalidationMessage.listener(id -> {
             if (id == -1) notified.countDown();
         });
-        StoredMap stored = new StoredMap(new MapIdentity(this.cluster, MapFlowTestSupport.SOURCE, -1), MapFlowTestSupport.map(7).data());
+        StoredMap stored = new StoredMap(new MapIdentity(MapFlowTestSupport.SOURCE, -1), MapFlowTestSupport.map(7).data());
         this.source.publish(stored).get(5, TimeUnit.SECONDS);
         assertTrue(notified.await(2, TimeUnit.SECONDS));
         assertEquals(stored, this.foreign.find(-1).get(3, TimeUnit.SECONDS).orElseThrow());
@@ -82,39 +78,51 @@ class RedisMapCacheTest {
     }
 
     @Test
-    void isolatesClustersAndRejectsCorruptPayloads() {
-        StoredMap stored = new StoredMap(new MapIdentity(this.cluster, MapFlowTestSupport.SOURCE, -2), MapFlowTestSupport.map(9).data());
+    void rejectsCorruptPayloads() {
+        StoredMap stored = new StoredMap(new MapIdentity(MapFlowTestSupport.SOURCE, -2), MapFlowTestSupport.map(9).data());
         this.source.publish(stored).join();
-        RedisMapCache otherCluster = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), this.cluster + "-other", "A-world", ForkJoinPool.commonPool());
-        assertTrue(otherCluster.find(-2).join().isEmpty());
-        assertThrows(CompletionException.class, () -> otherCluster.publish(stored).join());
         this.connector.connection().sync().set(this.key(-2), new byte[]{1, 2, 3});
         assertThrows(CompletionException.class, () -> this.foreign.find(-2).join());
     }
 
     @Test
-    void connectionListenerReceivesAutomaticReconnectOfItsOwnConnection() throws Exception {
-        CountDownLatch reconnected = new CountDownLatch(1);
-        RedisConnectionStateListener listener = new RedisConnectionStateListener() {
-            @Override
-            public void onRedisConnected(RedisChannelHandler<?, ?> connection, SocketAddress address) {
-                reconnected.countDown();
-            }
-        };
-        this.connector.addConnectionListener(listener);
-        RedisClient inspector = RedisClient.create(new PluginConfig.RedisOptions().url());
-        try (var inspection = inspector.connect()) {
-            long ownConnection = this.connector.connection().sync().clientId();
-            assertEquals(1L, inspection.sync().clientKill(KillArgs.Builder.id(ownConnection)));
-            assertTrue(reconnected.await(5, TimeUnit.SECONDS));
-            assertEquals("PONG", this.connector.connection().async().ping().toCompletableFuture().get(5, TimeUnit.SECONDS));
+    void separatesCachesLocksAndMessageChannelsByRedisDatabase() {
+        SyncLogger logger = MapFlowTestSupport.logger(new ArrayList<>());
+        RedisConnector other = new RedisConnector(RedisTestSupport.options(4), logger);
+        MessageBrokerManager otherBroker = new MessageBrokerManager(other, "other-map-tests", logger);
+        try {
+            other.initialize();
+            otherBroker.initialize();
+            assertEquals(3, this.connector.database());
+            assertEquals(4, other.database());
+            assertFalse(Arrays.equals(this.broker.broker().channel(), otherBroker.broker().channel()));
+            RedisMapCache otherCache = new RedisMapCache(other.connection().async(), otherBroker.broker(), "A-world", ForkJoinPool.commonPool());
+            StoredMap stored = new StoredMap(MapFlowTestSupport.IDENTITY, MapFlowTestSupport.map(9).data());
+            this.source.publish(stored).join();
+            assertTrue(otherCache.find(-1).join().isEmpty());
+            StoredMap otherStored = new StoredMap(stored.identity(), MapFlowTestSupport.map(10).data());
+            otherCache.publish(otherStored).join();
+            assertEquals(stored, this.source.find(-1).join().orElseThrow());
+            assertEquals(otherStored, otherCache.find(-1).join().orElseThrow());
+            // 两个 broker 均已订阅, 本库广播只有本库的一个订阅者收到.
+            assertEquals(1L, this.connector.connection().sync().publish(this.broker.broker().channel(), this.broker.broker().encode(new MapInvalidationMessage(-1))));
+            assertEquals(1L, other.connection().sync().publish(otherBroker.broker().channel(), otherBroker.broker().encode(new MapInvalidationMessage(-1))));
+            UUID player = UUID.randomUUID();
+            SessionLock localLock = new SessionLock(this.connector, "map-tests");
+            SessionLock otherLock = new SessionLock(other, "map-tests");
+            String localValue = assertInstanceOf(SessionLock.AcquireOutcome.Acquired.class, localLock.tryAcquire(player).join()).value();
+            String otherValue = assertInstanceOf(SessionLock.AcquireOutcome.Acquired.class, otherLock.tryAcquire(player).join()).value();
+            assertTrue(localLock.release(player, localValue).join());
+            assertEquals(otherValue, assertInstanceOf(SessionLock.AcquireOutcome.Held.class, otherLock.tryAcquire(player).join()).value());
+            assertTrue(otherLock.release(player, otherValue).join());
         } finally {
-            this.connector.removeConnectionListener(listener);
-            inspector.shutdown();
+            if (other.available()) other.connection().sync().del(this.key(-1));
+            otherBroker.shutdown();
+            other.shutdown();
         }
     }
 
     private byte[] key(int id) {
-        return ("sparrow-sync:maps:" + HexFormat.of().formatHex(this.cluster.getBytes(StandardCharsets.UTF_8)) + ":" + id).getBytes(StandardCharsets.UTF_8);
+        return ("sparrow-sync:maps:" + id).getBytes(StandardCharsets.UTF_8);
     }
 }

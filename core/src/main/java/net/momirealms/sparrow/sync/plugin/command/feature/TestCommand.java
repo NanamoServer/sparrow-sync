@@ -193,8 +193,8 @@ public final class TestCommand extends BukkitCommandFeature {
             }
 
             // 预解码走完整链路的快照, 关键失败则不扰动直接终止
-            PlayerDataPipeline.PrepareResult prepared = pipeline.prepare(roundTripped);
-            if (!(prepared instanceof PlayerDataPipeline.PrepareResult.Ready ready)) {
+            PlayerDataPipeline.DecodeResult prepared = pipeline.decode(roundTripped);
+            if (!(prepared instanceof PlayerDataPipeline.DecodeResult.Ready ready)) {
                 check(report, "prepare", false, String.valueOf(prepared));
                 return summarize(report);
             }
@@ -205,7 +205,7 @@ public final class TestCommand extends BukkitCommandFeature {
             PlayerDataPipeline.ApplyResult result = pipeline.apply(player, ready.context());
             if (!(result instanceof PlayerDataPipeline.ApplyResult.Success)) {
                 check(report, "apply", false, String.valueOf(result));
-                if (pipeline.prepare(roundTripped) instanceof PlayerDataPipeline.PrepareResult.Ready recovery) pipeline.apply(player, recovery.context());
+                if (pipeline.decode(roundTripped) instanceof PlayerDataPipeline.DecodeResult.Ready recovery) pipeline.apply(player, recovery.context());
                 report.add("!! player state may be disturbed, rejoin to be safe");
                 return summarize(report);
             }

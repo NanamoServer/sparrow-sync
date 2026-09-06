@@ -45,14 +45,13 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 // 集成测试, 依赖本机 27017 端口的 MongoDB, 不可达时整类跳过
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MongoStorageProviderTest {
-    private static final String TEST_DATABASE = "sparrow_sync_it";
+    private static final String TEST_DATABASE = "sparrow_sync_it_" + UUID.randomUUID().toString().replace("-", "");
     private static final DataKey STATS = DataKey.of("test", "stats");
     private static final DataKey BLOB = DataKey.of("test", "blob");
     private static final long BASE_TIME = 1_756_300_000_000L;
@@ -98,12 +97,12 @@ class MongoStorageProviderTest {
     @Test
     void mapStorageFactoryUsesTheProvidersDatabaseAndOwnerBinding() {
         String owner = this.player.toString();
-        var maps = this.provider.maps("factory-test", owner).join();
+        var maps = this.provider.maps(owner);
         CompoundTag tag = NBT.createCompound();
         tag.putString("dimension", "minecraft:overworld");
         tag.putByteArray("colors", new byte[MapData.PIXEL_COUNT]);
         var stored = maps.register(new MapSource(owner, 0), new MapData(4440, tag)).join();
-        var other = this.provider.maps("factory-test", "other-owner").join();
+        var other = this.provider.maps("other-owner");
         assertEquals(stored, other.find(stored.identity().globalId()).join().orElseThrow());
         assertThrows(CompletionException.class, () -> other.update(stored.identity(), stored.data()).join());
     }

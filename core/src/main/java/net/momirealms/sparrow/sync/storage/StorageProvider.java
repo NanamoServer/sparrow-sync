@@ -20,11 +20,9 @@ public interface StorageProvider {
 
     void shutdown();
 
-    // 异步创建绑定集群和本服来源身份的地图存储.
+    // 在启动线程完成地图存储初始化, 返回绑定本服来源身份的存储.
     @NotNull
-    default CompletableFuture<MapStorage> maps(@NotNull String clusterId, @NotNull String ownerId) {
-        return CompletableFuture.failedFuture(new UnsupportedOperationException("map storage is not supported by this provider"));
-    }
+    MapStorage maps(@NotNull String ownerId);
 
     // ---- 查询 ----
 

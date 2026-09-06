@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 本服在同步集群中的身份注册表.
- * 心跳键 {@code ss:{cluster}:server:{serverId}} 的值为本次启动的 token, 周期续期, 停跳的服务器随 TTL 自动消失.
+ * 心跳键 {@code ss:server:{serverId}} 的值为本次启动的 token, 周期续期, 停跳的服务器随 TTL 自动消失.
  * 启动注册时发现同 id 的键已存在则发起 redis 消息探查所以还存活, 若存活则属配置冲突, 关闭服务器.
  */
 public final class ServerHeartBeats {
@@ -60,19 +60,17 @@ public final class ServerHeartBeats {
             @NotNull RedisConnector connector,
             @NotNull MessageBroker<ByteBuf> broker,
             @NotNull SessionLock lock,
-            @NotNull String clusterId,
             @NotNull String serverId,
             @NotNull SyncLogger logger,
             @NotNull HeartbeatScheduler scheduler
     ) {
-        this(connector, broker, lock, clusterId, serverId, logger, scheduler, HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TTL_MILLIS, PROBE_WAIT_MILLIS);
+        this(connector, broker, lock, serverId, logger, scheduler, HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TTL_MILLIS, PROBE_WAIT_MILLIS);
     }
 
     ServerHeartBeats(
             @NotNull RedisConnector connector,
             @NotNull MessageBroker<ByteBuf> broker,
             @NotNull SessionLock lock,
-            @NotNull String clusterId,
             @NotNull String serverId,
             @NotNull SyncLogger logger,
             @NotNull HeartbeatScheduler scheduler,
@@ -86,7 +84,7 @@ public final class ServerHeartBeats {
         this.logger = logger;
         this.serverId = serverId;
         this.token = UUID.randomUUID().toString();
-        this.key = ("ss:" + clusterId + ":server:" + serverId).getBytes(StandardCharsets.UTF_8);
+        this.key = ("ss:server:" + serverId).getBytes(StandardCharsets.UTF_8);
         this.scheduler = scheduler;
         this.heartbeatIntervalMillis = heartbeatIntervalMillis;
         this.heartbeatTtlMillis = heartbeatTtlMillis;
@@ -101,7 +99,7 @@ public final class ServerHeartBeats {
         this.lock = this.plugin.sessionLock();
         this.logger = this.plugin.logger();
         this.serverId = ServerConfig.serverId();
-        this.key = ("ss:" + ServerConfig.clusterId() + ":server:" + this.serverId).getBytes(StandardCharsets.UTF_8);
+        this.key = ("ss:server:" + this.serverId).getBytes(StandardCharsets.UTF_8);
         this.scheduler = (task, intervalMillis) -> this.plugin.scheduler().asyncRepeating(task, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
         ServerProbeMessage.registry(this);
         if (!this.initialize()) {
