@@ -291,8 +291,10 @@ public class SparrowSync implements Plugin {
     @Override
     public void onPluginDisable() {
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
+        if (this.snapshotService != null)       this.snapshotService.stopMapReceiving();
         if (this.sessionManager != null)        this.sessionManager.shutdown(); // 封口外部保存并为 ACTIVE 会话投递 SHUTDOWN 保存
         if (this.snapshotService != null)       this.snapshotService.sealAndAwaitHandoffs(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.snapshotService != null)       this.snapshotService.finishMapPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.playerExecutor != null)        this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
         if (this.scheduler != null)             this.scheduler.shutdownScheduler();
@@ -395,6 +397,7 @@ public class SparrowSync implements Plugin {
                 syncExecutor.execute(() -> {
                     try {
                         long syncStartTime = System.currentTimeMillis();
+                        this.snapshotService.reloadMaps();
                         long syncTime = System.currentTimeMillis() - syncStartTime;
                         this.reloading.set(false);
                         future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));

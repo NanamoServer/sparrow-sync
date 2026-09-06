@@ -62,21 +62,33 @@ public final class ServerConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
-        @Comment("Do not modify this value")
+        @Comment("Configuration file version, do not modify this value")
+        @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改此值")
         String configVersion = DependencyVersions.CONFIG_VERSION;
 
         @Comment({
-                "Identifies this server inside the sync cluster, it must be unique across every server sharing the database",
-                "Set it before starting the server, SparrowSync shuts the server down while this value is empty",
-                "Snapshots record it, so renaming it later only affects snapshots written from now on"
+                "Unique identifier for this server in the synchronization cluster; every server participating in data synchronization must use a different value",
+                "Set this before startup; SparrowSync shuts down the server if this value is empty",
+                "Once set, changing this value is discouraged; a new value identifies a new server and may affect map data synchronization"
+        })
+        @Comment(lang = "zh-CN", value = {
+                "本服务器在同步集群中的唯一标志符, 所有参与数据同步的服务器必须使用不同的值",
+                "请在启动前设置, 此值为空时 SparrowSync 会关闭服务器",
+                "注意: 一旦设置后, 不再推荐未来修改此值, 新的值会被视为新的服务器, 这可能会对地图数据同步造成一定的影响"
         })
         String serverId = "";
 
+        // todo 待删除
         @BlankLineBefore
         @Comment({
-                "Identifies the cluster this server belongs to",
-                "Every server sharing the same database and Redis must use the same value,",
-                "it prefixes every Redis key so two clusters can share one Redis without interfering"
+                "Identifier of the data synchronization cluster this server belongs to; all servers synchronizing data together must use the same value",
+                "Set this before startup; SparrowSync shuts down the server if this value is empty",
+                "This prefixes every Redis key, allowing multiple clusters to share Redis without interfering with each other"
+        })
+        @Comment(lang = "zh-CN", value = {
+                "本服务器所属的数据同步集群标志符, 所有参与数据同步的同一批服务器必须使用相同的值.",
+                "请在启动前设置, 此值为空时 SparrowSync 会关闭服务器.",
+                "此值用作所有 Redis 键的前缀, 使多个集群可以共用 Redis 而互不干扰"
         })
         String clusterId = "main";
     }

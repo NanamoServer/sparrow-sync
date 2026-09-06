@@ -2,9 +2,14 @@ package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
+import io.lettuce.core.RedisConnectionStateListener;
+import io.lettuce.core.RedisChannelHandler;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.MapPipeline;
+import net.momirealms.sparrow.sync.map.MapIdentity;
+import net.momirealms.sparrow.sync.map.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.map.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapType;
@@ -23,6 +28,11 @@ import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.util.EventUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
+import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.network.NMSPacketListener;
+import net.momirealms.sparrow.ui.network.NMSPacketEvent;
+import net.momirealms.sparrow.ui.network.NetworkUser;
+import net.momirealms.sparrow.ui.network.PacketFlow;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -32,6 +42,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.SocketAddress;
 
 /** 快照的读取、应用、采集和编码流水线. */
 public final class SnapshotService {
@@ -39,7 +51,10 @@ public final class SnapshotService {
     private SyncLogger logger;
     private DataRegistry dataRegistry;
     private PlayerDataPipeline playerDataPipeline;
-    private MapSyncService mapSync;
+    private volatile MapSyncService mapSync;
+    private boolean observingMaps;
+    private volatile boolean closingMaps;
+    private RedisConnectionStateListener mapConnectionListener;
     private UUID mapWorldUuid;
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
@@ -47,6 +62,7 @@ public final class SnapshotService {
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
     private final SnapshotHandoffTracker handoffs = new SnapshotHandoffTracker();
     private final ConcurrentHashMap<UUID, CompletableFuture<Void>> mapSaves = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<SaveRequest, PendingMapSnapshot> pendingMapSnapshots = new ConcurrentHashMap<>();
 
     public SnapshotService(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -73,13 +89,79 @@ public final class SnapshotService {
             activeTypes.add(applyOrder.get(i).asString());
         }
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
+        this.reloadMaps();
     }
 
     private synchronized MapSyncService maps(String ownerId) {
-        if (this.mapSync == null || !this.mapSync.ownerId().equals(ownerId)) {
+        if (this.mapSync == null || this.mapSync.closed() || !this.mapSync.ownerId().equals(ownerId)) {
+            List<MapIdentity> known = this.mapSync == null ? List.of() : this.mapSync.knownReplicas();
+            if (this.mapSync != null) {
+                this.mapSync.close();
+            }
             this.mapSync = new MapSyncService(this.plugin, ownerId, this.mapWorldUuid);
+            if (this.closingMaps) {
+                this.mapSync.stopReceiving();
+            } else {
+                this.mapSync.start(known);
+            }
         }
         return this.mapSync;
+    }
+
+    public synchronized void reloadMaps() {
+        if (this.closingMaps || this.mapWorldUuid == null) return;
+        PluginConfig.MapOptions options = PluginConfig.synchronization$map();
+        if (!options.enabled()) {
+            if (this.mapSync != null) {
+                this.mapSync.close();
+            }
+            return;
+        }
+        this.maps(options.resolveOwnerId(ServerConfig.serverId(), this.mapWorldUuid));
+        if (this.observingMaps) return;
+        SparrowUI.getInstance().networkManager().registerNMSPacketListener(new NMSPacketListener() {
+            @Override
+            public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
+                MapSyncService maps = SnapshotService.this.mapSync;
+                if (maps != null && !SnapshotService.this.closingMaps) {
+                    maps.observe(((ClientboundMapItemDataPacket) packet).mapId().id());
+                }
+            }
+        }, ClientboundMapItemDataPacket.class, PacketFlow.CLIENTBOUND);
+        MapInvalidationMessage.listener(id -> {
+            MapSyncService maps = this.mapSync;
+            if (maps != null && !this.closingMaps) {
+                maps.invalidate(id);
+            }
+        });
+        this.mapConnectionListener = new RedisConnectionStateListener() {
+            @Override
+            public void onRedisConnected(RedisChannelHandler<?, ?> connection, SocketAddress address) {
+                MapSyncService maps = SnapshotService.this.mapSync;
+                if (maps == null || SnapshotService.this.closingMaps) return;
+                CompletableFuture.runAsync(maps::reconnected, SnapshotService.this.plugin.scheduler().async());
+            }
+        };
+        this.plugin.redisConnector().addConnectionListener(this.mapConnectionListener);
+        this.observingMaps = true;
+    }
+
+    public synchronized void stopMapReceiving() {
+        this.closingMaps = true;
+        MapInvalidationMessage.listener(null);
+        if (this.mapConnectionListener != null) {
+            this.plugin.redisConnector().removeConnectionListener(this.mapConnectionListener);
+        }
+        if (this.mapSync != null) {
+            this.mapSync.stopReceiving();
+        }
+    }
+
+    public void finishMapPublishing(long timeout, @NotNull TimeUnit unit) {
+        MapSyncService maps = this.mapSync;
+        if (maps != null && !maps.closed()) {
+            maps.finishPublishing(timeout, unit);
+        }
     }
 
     /** 在 Gate 阶段把远端快照写入原版登录数据源. */
@@ -235,16 +317,21 @@ public final class SnapshotService {
             return;
         }
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
-        if (maps == null) {
+        if (maps == null || !PluginConfig.synchronization$map().enabled()) {
             this.writePrepared(context, snapshot, captured.captureNanos(), request);
             return;
         }
         CompletableFuture<Snapshot> prepared = maps.pipeline().compileAsync(snapshot, maps.type(), maps.ownerId(), maps.captured());
+        this.pendingMapSnapshots.put(request, new PendingMapSnapshot(snapshot, context.playerName()));
         // 地图准备允许并行, 同一玩家提交快照仍沿 encode 的先后顺序衔接, 不阻塞桶内其他玩家.
         UUID player = context.meta().player();
         CompletableFuture<Void> submitted = this.mapSaves.compute(player, (key, previous) -> {
             CompletableFuture<Void> tail = previous == null ? CompletableFuture.completedFuture(null) : previous.handle((value, failure) -> null);
-            return tail.thenCompose(ignored -> prepared).thenAcceptAsync(value -> this.writePrepared(context, value, captured.captureNanos(), request), this.serialExecutor.executor(player));
+            return tail.thenCompose(ignored -> prepared).thenAcceptAsync(value -> {
+                if (request.completion.isDone()) return;
+                this.writePrepared(context, PluginConfig.synchronization$map().enabled() ? value : snapshot, captured.captureNanos(), request);
+                this.pendingMapSnapshots.remove(request);
+            }, this.serialExecutor.executor(player));
         });
         submitted.whenComplete((ignored, failure) -> {
             this.mapSaves.remove(player, submitted);
@@ -315,6 +402,14 @@ public final class SnapshotService {
     /** 执行器排空超时后, 把尚未 settle 的快照留到本地 pending. */
     public void stashUnsettled() {
         if (this.writer != null) this.writer.stashUnsettled();
+        // 地图准备尚未交给 SnapshotWriter 时, 原始物品快照也必须进入本地 pending.
+        for (var entry : this.pendingMapSnapshots.entrySet()) {
+            if (!this.pendingMapSnapshots.remove(entry.getKey(), entry.getValue())) continue;
+            PendingMapSnapshot pending = entry.getValue();
+            this.plugin.snapshotStash().stash(pending.snapshot(), pending.playerName(), StorageProvider.SaveResult.RETRY_LATER);
+            entry.getKey().handedOff();
+            entry.getKey().completion.complete(new SnapshotSaveResult.Settled(StorageProvider.SaveResult.RETRY_LATER));
+        }
     }
 
     /**
@@ -336,15 +431,21 @@ public final class SnapshotService {
     private record MapSave(MapPipeline pipeline, MapType type, String ownerId, Map<Integer, CompletableFuture<StoredMap>> captured) {
     }
 
+    private record PendingMapSnapshot(Snapshot snapshot, String playerName) {
+    }
+
     private final class SaveRequest {
         private final CompletableFuture<SnapshotSaveResult> completion = new CompletableFuture<>();
+        private final AtomicBoolean handedOff = new AtomicBoolean();
 
         private SaveRequest() {
             SnapshotService.this.handoffs.accept();
         }
 
         private void handedOff() {
-            SnapshotService.this.handoffs.handedOff();
+            if (this.handedOff.compareAndSet(false, true)) {
+                SnapshotService.this.handoffs.handedOff();
+            }
         }
 
         private void cancel() {

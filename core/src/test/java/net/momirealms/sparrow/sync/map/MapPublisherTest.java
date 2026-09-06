@@ -13,6 +13,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MapPublisherTest {
     @Test
+    void sealingWaitsForFullPublicationAndClosingStopsQueuedWrites() {
+        Storage storage = new Storage();
+        Tasks worker = new Tasks();
+        CompletableFuture<Void> firstWrite = new CompletableFuture<>();
+        Shared shared = new Shared() {
+            @Override
+            @NotNull
+            public CompletableFuture<Void> publish(@NotNull StoredMap map) {
+                super.publish(map);
+                return firstWrite;
+            }
+        };
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        publisher.capture(SOURCE, () -> map(1).data());
+        worker.runAll();
+        assertFalse(publisher.sealAndAwait(0, TimeUnit.NANOSECONDS));
+        assertTrue(publisher.capture(SOURCE, () -> { throw new AssertionError("capture after seal"); }).isCompletedExceptionally());
+        firstWrite.complete(null);
+        assertTrue(publisher.sealAndAwait(1, TimeUnit.SECONDS));
+        publisher.close();
+
+        MapPublisher closed = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        CompletableFuture<StoredMap> queued = closed.capture(SOURCE, () -> map(2).data());
+        closed.close();
+        worker.runAll();
+        assertTrue(queued.isCompletedExceptionally());
+        assertEquals(map(1), storage.current);
+    }
+    @Test
     void serializesCompletePublicationWithoutBlockingCaptureOrAllocatingAgain() {
         Storage storage = new Storage();
         Tasks worker = new Tasks();

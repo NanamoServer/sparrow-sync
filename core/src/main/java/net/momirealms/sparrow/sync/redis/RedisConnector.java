@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.redis;
 
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.RedisConnectionStateListener;
 import io.lettuce.core.RedisCredentials;
 import io.lettuce.core.RedisCredentialsProvider;
 import io.lettuce.core.RedisURI;
@@ -80,5 +81,13 @@ public final class RedisConnector {
         if (connection != null) connection.close();
         RedisClient client = this.client;
         if (client != null) client.shutdown(0, 2, TimeUnit.SECONDS);
+    }
+
+    public void addConnectionListener(@NotNull RedisConnectionStateListener listener) {
+        this.client.addListener(listener);
+    }
+
+    public void removeConnectionListener(@NotNull RedisConnectionStateListener listener) {
+        this.client.removeListener(listener);
     }
 }

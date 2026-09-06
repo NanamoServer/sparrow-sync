@@ -6,6 +6,10 @@ import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
+import io.netty.buffer.Unpooled;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.MinecraftServer;
@@ -22,6 +26,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.BundleContents;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.item.component.UseRemainder;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.saveddata.maps.MapBanner;
@@ -188,6 +194,17 @@ class NativeMapAdapterTest {
         assertEquals(1, map.get(DataComponents.MAP_ID).id());
         assertNull(map.get(DataComponents.CUSTOM_DATA));
         assertTrue(service.capture(player, MapType.HIDE).isEmpty());
+        inventory.setItem(0, ItemStack.EMPTY);
+        assertEquals(java.util.Set.of(1), service.capture(player, MapType.SYNC).keySet());
+        inventory.clearContent();
+        ItemStack crossbow = new ItemStack(Items.CROSSBOW);
+        crossbow.set(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.of(box));
+        inventory.setItem(0, crossbow);
+        assertEquals(java.util.Set.of(1), service.capture(player, MapType.SYNC).keySet());
+        ItemStack consumable = new ItemStack(Items.STONE);
+        consumable.set(DataComponents.USE_REMAINDER, new UseRemainder(crossbow));
+        inventory.setItem(0, consumable);
+        assertEquals(java.util.Set.of(1), service.capture(player, MapType.SYNC).keySet());
         inventory.clearContent();
         assertTrue(service.capture(player, MapType.SYNC).isEmpty());
         registry.register(NmsPlayerFixture.allocate(EnderChestDataType.class));
@@ -220,6 +237,8 @@ class NativeMapAdapterTest {
         NmsPlayerFixture.set(MapSyncService.class, service, "level", this.level);
         NmsPlayerFixture.set(MapSyncService.class, service, "nativeMaps", this.adapter);
         NmsPlayerFixture.set(MapSyncService.class, service, "publisher", publisher);
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new MapFlowTestSupport.Storage()), new MapFlowTestSupport.Shared(), map -> () -> -1, Runnable::run, Runnable::run, plugin.logger());
+        NmsPlayerFixture.set(MapSyncService.class, service, "runtime", new MapRuntime(receiver, id -> CompletableFuture.completedFuture(null), System::nanoTime, plugin.logger()));
         return service;
     }
 
@@ -264,6 +283,51 @@ class NativeMapAdapterTest {
         assertEquals(prepared.dimension, loaded.dimension);
         assertEquals(prepared.centerX, loaded.centerX);
         assertNull(this.adapter.capture(this.level, 12345));
+    }
+
+    @Test
+    void nativeMapPacketsRefreshMultipleViewersAndRemainReadableAfterReload() throws Exception {
+        MapItemSavedData replica = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11)));
+        this.adapter.installReplica(this.level, this.identity, replica);
+        CraftPlayer handheldViewer = NmsPlayerFixture.create();
+        CraftPlayer frameViewer = NmsPlayerFixture.create();
+        handheldViewer.getHandle().setId(1);
+        frameViewer.getHandle().setId(2);
+        replica.getHoldingPlayer(handheldViewer.getHandle());
+        replica.getHoldingPlayer(frameViewer.getHandle());
+        ClientboundMapItemDataPacket first = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), handheldViewer.getHandle());
+        replica.getUpdatePacket(new MapId(-1), frameViewer.getHandle());
+        MapItemSavedData client = MapItemSavedData.createForClient((byte) 2, false, Level.OVERWORLD);
+        first.applyToMap(client);
+        assertEquals(11, client.colors[0]);
+        Object view = replica.mapView;
+        MapItemSavedData updated = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(29)));
+        this.adapter.installReplica(this.level, this.identity, updated);
+        for (CraftPlayer viewer : List.of(handheldViewer, frameViewer)) {
+            ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
+            assertNotNull(packet);
+            assertTrue(packet.colorPatch().isPresent());
+            RegistryFriendlyByteBuf buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
+            try {
+                ClientboundMapItemDataPacket.STREAM_CODEC.encode(buffer, packet);
+                ClientboundMapItemDataPacket decoded = ClientboundMapItemDataPacket.STREAM_CODEC.decode(buffer);
+                assertEquals(-1, decoded.mapId().id());
+                decoded.applyToMap(client);
+                assertEquals(29, client.colors[0]);
+            } finally {
+                buffer.release();
+            }
+        }
+        assertSame(view, replica.mapView);
+        assertEquals(1, replica.mapView.getRenderers().size());
+        this.storage.saveAndJoin();
+        this.storage.cache.clear();
+        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        MapItemSavedData reloaded = this.level.getMapData(new MapId(-1));
+        assertEquals(29, reloaded.colors[0]);
+        reloaded.getHoldingPlayer(handheldViewer.getHandle());
+        assertNotNull(reloaded.getUpdatePacket(new MapId(-1), handheldViewer.getHandle()));
+        assertNull(this.adapter.replicaIdentity(this.level, 1));
     }
 
     @Test

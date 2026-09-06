@@ -48,4 +48,6 @@ bin/
 /docs/
 
 ### Server run logs ###
+logs/
 core/logs/
+bukkit-proxy/logs/

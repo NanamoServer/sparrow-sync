@@ -45,6 +45,7 @@ public final class MapPipeline {
     private final DataRegistry registry;
     private final Map<MapType, MapHandler> handlers;
     private final SyncLogger logger;
+    private final CompletableFuture<Void> closed = new CompletableFuture<>();
 
     public MapPipeline(@NotNull DataRegistry registry, @NotNull List<? extends MapHandler> handlers, @NotNull SyncLogger logger) {
         this.registry = registry;
@@ -167,6 +168,7 @@ public final class MapPipeline {
     }
 
     private CompletableFuture<Snapshot> rewriteAsync(Snapshot snapshot, Function<CompoundTag, CompletableFuture<CompoundTag>> operation, String failureKey) {
+        if (this.closed.isDone()) return CompletableFuture.completedFuture(snapshot);
         Map<CompoundTag, CompletableFuture<CompoundTag>> prepared = new IdentityHashMap<>();
         this.rewrite(snapshot, components -> {
             prepared.computeIfAbsent(components, item -> {
@@ -178,14 +180,21 @@ public final class MapPipeline {
                 }
                 // 超时只结束本次物品等待, 不截断底层发布链, 防止旧写入迟到越过新写入.
                 return result.copy().orTimeout(5, TimeUnit.SECONDS).exceptionally(failure -> {
-                    this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, failure, failureKey, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(failure));
+                    if (!this.closed.isDone()) {
+                        this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, failure, failureKey, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(failure));
+                    }
                     return item;
                 });
             });
             return components;
         });
         return CompletableFuture.allOf(prepared.values().toArray(CompletableFuture[]::new))
-                .thenApply(ignored -> this.rewrite(snapshot, components -> prepared.get(components).getNow(components)));
+                .thenApply(ignored -> this.rewrite(snapshot, components -> prepared.get(components).getNow(components)))
+                .applyToEither(this.closed.thenApply(ignored -> snapshot), Function.identity());
+    }
+
+    public void close() {
+        this.closed.complete(null);
     }
 
     @NotNull

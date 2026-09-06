@@ -45,6 +45,15 @@ public final class NativeMapAdapter {
         return data == null ? null : this.capture(data);
     }
 
+    // 从已落盘副本的隔离维度恢复身份, 不因一个负数 ID 把其他插件的地图纳入同步.
+    @Nullable
+    public MapIdentity replicaIdentity(@NotNull ServerLevel level, int mapId) {
+        MapItemSavedData data = level.getMapData(new MapId(mapId));
+        if (data == null) return null;
+        MapIdentity identity = MapIdentity.fromReplicaDimension(Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, data.dimension).getOrThrow().getAsString());
+        return identity != null && identity.globalId() == mapId ? identity : null;
+    }
+
     /** 复制持久内容, 返回值可交给异步存储. <strong>Paper 在主线程调用, Folia 遵守地图访问线程约束</strong>. */
     @NotNull
     public MapData capture(@NotNull MapItemSavedData data) {

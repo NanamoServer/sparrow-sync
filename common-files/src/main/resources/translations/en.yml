@@ -129,6 +129,8 @@ log.data.map_decode_failed: 'Map decoding failed for player <arg:0>; syncing tha
 log.data.map_source_missing: 'Source map <arg:0>:<arg:1> is missing; keeping replica <arg:2> without recreating the original.'
 log.data.map_cache_failed: 'Redis cache lookup failed for map <arg:0>; reading from the database: <arg:1>'
 log.data.map_cache_touch_failed: 'Redis cache renewal failed for map <arg:0>; keeping the installed local map: <arg:1>'
+log.data.map_refresh_failed: 'Map <arg:0> refresh failed; keeping the native replica and retrying later: <arg:1>'
+log.data.map_publish_unfinished: 'Map publication for owner <arg:0> did not finish before the shutdown deadline; native maps remain in the server save path.'
 log.data.advancement_tracker_install_failed: 'Failed to install the advancement progress tracker for <arg:0>; this login has been refused'
 log.data.native_apply_fallback: 'Falling back to join apply after <arg:0> failed to write into the native player data of <arg:1>'
 log.data.apply_failed: 'The critical data <arg:0> failed to apply to <arg:1>'

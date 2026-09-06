@@ -97,6 +97,8 @@ public interface LogConstants {
     String DATA_MAP_SOURCE_MISSING = "log.data.map_source_missing";
     String DATA_MAP_CACHE_FAILED = "log.data.map_cache_failed";
     String DATA_MAP_CACHE_TOUCH_FAILED = "log.data.map_cache_touch_failed";
+    String DATA_MAP_REFRESH_FAILED = "log.data.map_refresh_failed";
+    String DATA_MAP_PUBLISH_UNFINISHED = "log.data.map_publish_unfinished";
     String DATA_ADVANCEMENT_TRACKER_INSTALL_FAILED = "log.data.advancement_tracker_install_failed";
     String DATA_NATIVE_APPLY_FALLBACK = "log.data.native_apply_fallback";
     String DATA_APPLY_FAILED = "log.data.apply_failed";

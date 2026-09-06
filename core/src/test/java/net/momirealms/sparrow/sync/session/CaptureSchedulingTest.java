@@ -20,6 +20,10 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
@@ -37,6 +41,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -47,6 +52,8 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -57,6 +64,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CaptureSchedulingTest {
+    @TempDir
+    Path directory;
     private final RecordingType sync = new RecordingType("sync", false);
     private final RecordingType async = new RecordingType("async", true);
     private final List<Snapshot> written = new CopyOnWriteArrayList<>();
@@ -140,8 +149,10 @@ class CaptureSchedulingTest {
         replace(ServerConfig.class, "config", this.previousServerConfig);
     }
 
-    @Test
-    void mapPreparationDelaysSnapshotHandoffAndKeepsPlayerSubmissionOrder() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"published", "disabled", "stash"})
+    void mapPreparationDelaysSnapshotHandoffAndKeepsPlayerSubmissionOrder(String outcome) throws Exception {
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "enabled", true);
         Field loggerField = SnapshotService.class.getDeclaredField("logger");
         loggerField.setAccessible(true);
         SyncLogger logger = (SyncLogger) loggerField.get(this.service);
@@ -231,11 +242,39 @@ class CaptureSchedulingTest {
         assertNull(failure.get());
         assertTrue(this.written.isEmpty());
         assertEquals(2, this.pendingHandoffs());
+        if (outcome.equals("stash")) {
+            BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+            SnapshotStash stash = new SnapshotStash(this.directory, codec, logger);
+            SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+            NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotStash", stash);
+            NmsPlayerFixture.set(SnapshotService.class, this.service, "plugin", plugin);
+            this.executor.shutdown(1, TimeUnit.SECONDS);
+            this.service.stashUnsettled();
+            this.service.stashUnsettled();
+            assertEquals(0, this.pendingHandoffs());
+            try (var files = Files.list(this.directory.resolve("pending"))) {
+                List<Path> pending = files.sorted().toList();
+                assertEquals(2, pending.size());
+                for (int i = 0; i < pending.size(); i++) {
+                    Snapshot raw = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(Files.readAllBytes(pending.get(i)))).snapshot();
+                    assertEquals(i + 1, ((CompoundTag) raw.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id"));
+                }
+            }
+            maps.close();
+            assertTrue(this.written.isEmpty());
+            assertEquals(0, this.pendingHandoffs());
+            return;
+        }
         CompoundTag completed = NBT.createCompound();
         completed.putInt("minecraft:map_id", -1);
-        firstMap.complete(completed);
+        if (outcome.equals("disabled")) {
+            NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "enabled", false);
+            maps.close();
+        } else {
+            firstMap.complete(completed);
+        }
         assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
-        assertEquals(List.of(-1, -2), this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
+        assertEquals(outcome.equals("disabled") ? List.of(1, 2) : List.of(-1, -2), this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
     }
 
     @Test

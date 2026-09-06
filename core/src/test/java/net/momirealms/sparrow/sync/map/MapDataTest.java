@@ -49,5 +49,10 @@ class MapDataTest {
         assertTrue(first.replicaDimension().matches("[a-z0-9_.-]+:[a-z0-9/._-]+"));
         assertNotEquals(first.replicaDimension(), second.replicaDimension());
         assertNotEquals(first.replicaDimension(), new MapIdentity("B", first.source(), -1).replicaDimension());
+        assertEquals(first, MapIdentity.fromReplicaDimension(first.replicaDimension()));
+        assertNull(MapIdentity.fromReplicaDimension("minecraft:overworld"));
+        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/not-hex/41/0/-1"));
+        assertNull(MapIdentity.fromReplicaDimension("sparrow-sync:map/41/42/0/1"));
+        assertNull(MapIdentity.fromReplicaDimension(first.replicaDimension() + "/extra"));
     }
 }

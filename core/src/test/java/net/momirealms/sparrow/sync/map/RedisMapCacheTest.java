@@ -4,6 +4,11 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.RedisChannelHandler;
+import io.lettuce.core.RedisConnectionStateListener;
+import io.lettuce.core.KillArgs;
+import java.net.SocketAddress;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -85,6 +90,28 @@ class RedisMapCacheTest {
         assertThrows(CompletionException.class, () -> otherCluster.publish(stored).join());
         this.connector.connection().sync().set(this.key(-2), new byte[]{1, 2, 3});
         assertThrows(CompletionException.class, () -> this.foreign.find(-2).join());
+    }
+
+    @Test
+    void connectionListenerReceivesAutomaticReconnectOfItsOwnConnection() throws Exception {
+        CountDownLatch reconnected = new CountDownLatch(1);
+        RedisConnectionStateListener listener = new RedisConnectionStateListener() {
+            @Override
+            public void onRedisConnected(RedisChannelHandler<?, ?> connection, SocketAddress address) {
+                reconnected.countDown();
+            }
+        };
+        this.connector.addConnectionListener(listener);
+        RedisClient inspector = RedisClient.create(new PluginConfig.RedisOptions().url());
+        try (var inspection = inspector.connect()) {
+            long ownConnection = this.connector.connection().sync().clientId();
+            assertEquals(1L, inspection.sync().clientKill(KillArgs.Builder.id(ownConnection)));
+            assertTrue(reconnected.await(5, TimeUnit.SECONDS));
+            assertEquals("PONG", this.connector.connection().async().ping().toCompletableFuture().get(5, TimeUnit.SECONDS));
+        } finally {
+            this.connector.removeConnectionListener(listener);
+            inspector.shutdown();
+        }
     }
 
     private byte[] key(int id) {

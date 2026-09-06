@@ -13,6 +13,46 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MapReceiverTest {
     @Test
+    void closingCancelsPreparedInstallAndRejectsNewReads() {
+        Storage storage = new Storage();
+        storage.current = map(1);
+        Tasks nativeThread = new Tasks();
+        List<StoredMap> installed = new ArrayList<>();
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(storage), new Shared(), map -> () -> {
+            installed.add(map);
+            return -1;
+        }, Runnable::run, nativeThread, logger(new ArrayList<>()));
+        CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
+        receiver.close();
+        nativeThread.runAll();
+        assertTrue(waiting.isCompletedExceptionally());
+        assertTrue(receiver.receive(IDENTITY).isCompletedExceptionally());
+        assertTrue(installed.isEmpty());
+        assertEquals(1, storage.reads);
+    }
+
+    @Test
+    void timedOutReadCannotInstallAfterAReplacementReadCompletes() {
+        CompletableFuture<Optional<StoredMap>> old = new CompletableFuture<>();
+        Shared shared = new Shared() {
+            @Override
+            @NotNull
+            public CompletableFuture<Optional<StoredMap>> find(int id) {
+                return ++this.reads == 1 ? old : CompletableFuture.completedFuture(Optional.of(map(2)));
+            }
+        };
+        List<StoredMap> installed = new ArrayList<>();
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new Storage()), shared, map -> () -> {
+            installed.add(map);
+            return -1;
+        }, Runnable::run, Runnable::run, logger(new ArrayList<>()));
+        CompletableFuture<Integer> timedOut = receiver.receive(IDENTITY);
+        timedOut.completeExceptionally(new java.util.concurrent.TimeoutException());
+        assertEquals(-1, receiver.receive(IDENTITY).join());
+        old.complete(Optional.of(map(1)));
+        assertEquals(List.of(map(2)), installed);
+    }
+    @Test
     void mergesConcurrentReadsAndWaitsForNativeInstallation() {
         Storage storage = new Storage();
         storage.current = map(8);
