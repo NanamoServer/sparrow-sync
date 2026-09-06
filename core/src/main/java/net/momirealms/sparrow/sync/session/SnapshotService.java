@@ -5,7 +5,9 @@ import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.MapPipeline;
-import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
+import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.StoredMap;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -23,6 +25,7 @@ import net.momirealms.sparrow.sync.util.EventUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -36,13 +39,14 @@ public final class SnapshotService {
     private SyncLogger logger;
     private DataRegistry dataRegistry;
     private PlayerDataPipeline playerDataPipeline;
-    private MapPipeline mapPipeline;
+    private MapSyncService mapSync;
     private UUID mapWorldUuid;
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
     private SnapshotWriter writer;
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
     private final SnapshotHandoffTracker handoffs = new SnapshotHandoffTracker();
+    private final ConcurrentHashMap<UUID, CompletableFuture<Void>> mapSaves = new ConcurrentHashMap<>();
 
     public SnapshotService(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -52,7 +56,6 @@ public final class SnapshotService {
         this.logger = this.plugin.logger();
         this.dataRegistry = this.plugin.dataRegistry();
         this.playerDataPipeline = this.plugin.playerDataPipeline();
-        this.mapPipeline = new MapPipeline(this.dataRegistry, List.of(new HideMapHandler()), this.logger);
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);
@@ -72,6 +75,13 @@ public final class SnapshotService {
         this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(dataTypeCount), activeTypes.toString()));
     }
 
+    private synchronized MapSyncService maps(String ownerId) {
+        if (this.mapSync == null || !this.mapSync.ownerId().equals(ownerId)) {
+            this.mapSync = new MapSyncService(this.plugin, ownerId, this.mapWorldUuid);
+        }
+        return this.mapSync;
+    }
+
     /** 在 Gate 阶段把远端快照写入原版登录数据源. */
     @NotNull
     Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
@@ -79,18 +89,18 @@ public final class SnapshotService {
     }
 
     /**
-     * 读取玩家最新的快照并在当前线程预解码.
+     * 读取玩家最新快照, 等地图原生数据就绪后异步预解码玩家数据.
      * 任意线程可调用, 关键数据无法解码时返回失败结果.
      */
     @NotNull
     CompletableFuture<SnapshotLoadResult> loadLatest(@NotNull UUID player, @NotNull String playerName) {
         long loadStart = System.nanoTime();
         return this.storage.latestSnapshot(player)
-                .thenApply(latest -> latest
-                        .map(snapshot -> this.prepare(snapshot, player, playerName, loadStart))
+                .thenCompose(latest -> latest
+                        .map(snapshot -> this.prepareMaps(snapshot).thenApplyAsync(prepared -> this.prepare(snapshot, prepared, player, playerName, loadStart), this.plugin.scheduler().async()))
                         .orElseGet(() -> {
                             this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName, millis(loadStart, System.nanoTime()));
-                            return new SnapshotLoadResult.Empty();
+                            return CompletableFuture.<SnapshotLoadResult>completedFuture(new SnapshotLoadResult.Empty());
                         }))
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
@@ -99,14 +109,7 @@ public final class SnapshotService {
                 });
     }
 
-    private SnapshotLoadResult prepare(Snapshot snapshot, UUID player, String playerName, long loadStart) {
-        Snapshot prepared = snapshot;
-        // // 单独处理地图数据
-        PluginConfig.MapOptions mapOptions = PluginConfig.synchronization$map();
-        if (mapOptions.enabled()) {
-            String ownerId = mapOptions.resolveOwnerId(ServerConfig.serverId(), this.mapWorldUuid);
-            prepared = this.mapPipeline.decode(snapshot, ownerId);
-        }
+    private SnapshotLoadResult prepare(Snapshot snapshot, Snapshot prepared, UUID player, String playerName, long loadStart) {
         return switch (this.playerDataPipeline.prepare(prepared)) {
             case PlayerDataPipeline.PrepareResult.Ready ready -> {
                 long loadNanos = System.nanoTime() - loadStart;
@@ -119,6 +122,32 @@ public final class SnapshotService {
                 yield new SnapshotLoadResult.Failed(detail);
             }
         };
+    }
+
+    private CompletableFuture<Snapshot> prepareMaps(Snapshot snapshot) {
+        PluginConfig.MapOptions options = PluginConfig.synchronization$map();
+        if (!options.enabled()) return CompletableFuture.completedFuture(snapshot);
+        try {
+            String ownerId = options.resolveOwnerId(ServerConfig.serverId(), this.mapWorldUuid);
+            return this.maps(ownerId).pipeline().decodeAsync(snapshot, ownerId);
+        } catch (RuntimeException exception) {
+            this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, exception, LogConstants.DATA_MAP_DECODE_FAILED, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(exception.getMessage()));
+            return CompletableFuture.completedFuture(snapshot);
+        }
+    }
+
+    @Nullable
+    private MapSave captureMaps(Player player, SaveContext context) {
+        PluginConfig.MapOptions options = PluginConfig.synchronization$map();
+        if (!options.enabled()) return null;
+        try {
+            String ownerId = options.resolveOwnerId(context.meta().server(), this.mapWorldUuid);
+            MapSyncService maps = this.maps(ownerId);
+            return new MapSave(maps.pipeline(), options.type(), ownerId, maps.capture(player, options.type()));
+        } catch (RuntimeException exception) {
+            this.logger.warnWithFileCause(LogCategory.DATA, context.meta().player(), context.playerName(), exception, LogConstants.DATA_MAP_COMPILE_FAILED, context.playerName(), context.meta().id().toString(), String.valueOf(exception.getMessage()));
+            return null;
+        }
     }
 
     /** 把预解码数据应用到玩家. <strong>必须在玩家的拥有线程上调用</strong>. */
@@ -155,7 +184,8 @@ public final class SnapshotService {
             request.fail(new IllegalStateException("critical data of " + player.getName() + " could not be captured"));
             return request.completion;
         }
-        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request), request);
+        MapSave maps = this.captureMaps(player, context);
+        this.submitSerial(context.meta().player(), () -> this.encodeAndSubmit(context, captured, request, maps), request);
         return request.completion;
     }
 
@@ -170,12 +200,13 @@ public final class SnapshotService {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
             return request.completion;
         }
+        MapSave maps = this.captureMaps(player, context);
         this.submitSerial(context.meta().player(), () -> {
             if (!(this.playerDataPipeline.captureAsync(player, pending) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, request);
+            this.encodeAndSubmit(context, captured, request, maps);
         }, request);
         return request.completion;
     }
@@ -185,28 +216,45 @@ public final class SnapshotService {
     CompletableFuture<SnapshotSaveResult> captureOfflineAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
         SaveContext context = this.newContext(player, cause, retainedData);
+        // 玩家已退出但世界地图仍在更新, 地图候选必须在当前 Region tick 采集后再交给离线编码.
+        MapSave maps = this.captureMaps(player, context);
         this.submitSerial(context.meta().player(), () -> {
             if (!(this.playerDataPipeline.capture(player, CaptureMode.OFFLINE) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
                 request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be captured"));
                 return;
             }
-            this.encodeAndSubmit(context, captured, request);
+            this.encodeAndSubmit(context, captured, request, maps);
         }, request);
         return request.completion;
     }
 
     // encode 的结果已经独立, 后续事件和存储只持有快照 Tag
-    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
+    private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request, @Nullable MapSave maps) {
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
         }
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
-        // 单独处理地图数据
-        PluginConfig.MapOptions mapOptions = PluginConfig.synchronization$map();
-        if (mapOptions.enabled()) {
-            snapshot = this.mapPipeline.compile(snapshot, mapOptions.type(), mapOptions.resolveOwnerId(context.meta().server(), this.mapWorldUuid));
+        if (maps == null) {
+            this.writePrepared(context, snapshot, captured.captureNanos(), request);
+            return;
         }
+        CompletableFuture<Snapshot> prepared = maps.pipeline().compileAsync(snapshot, maps.type(), maps.ownerId(), maps.captured());
+        // 地图准备允许并行, 同一玩家提交快照仍沿 encode 的先后顺序衔接, 不阻塞桶内其他玩家.
+        UUID player = context.meta().player();
+        CompletableFuture<Void> submitted = this.mapSaves.compute(player, (key, previous) -> {
+            CompletableFuture<Void> tail = previous == null ? CompletableFuture.completedFuture(null) : previous.handle((value, failure) -> null);
+            return tail.thenCompose(ignored -> prepared).thenAcceptAsync(value -> this.writePrepared(context, value, captured.captureNanos(), request), this.serialExecutor.executor(player));
+        });
+        submitted.whenComplete((ignored, failure) -> {
+            this.mapSaves.remove(player, submitted);
+            if (failure != null) {
+                request.fail(failure);
+            }
+        });
+    }
+
+    private void writePrepared(SaveContext context, Snapshot snapshot, long captureNanos, SaveRequest request) {
         SnapshotSaveEvent event = new SnapshotSaveEvent(context.playerName(), snapshot, request.completion.minimalCompletionStage());
         if (EventUtils.fireAndCheckCancel(event)) {
             this.logger.file(LogCategory.SAVE, context.meta().player(), context.playerName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, context.playerName(), context.meta().cause().name(), context.meta().id().toString());
@@ -214,7 +262,7 @@ public final class SnapshotService {
             return;
         }
         // write 返回时首次存储任务已入队或快照已转交 stash, 最终 settle 继续走 completion
-        this.writer.write(snapshot, context.playerName(), captured.captureNanos(), request.completion);
+        this.writer.write(snapshot, context.playerName(), captureNanos, request.completion);
         request.handedOff();
     }
 
@@ -283,6 +331,9 @@ public final class SnapshotService {
     }
 
     private record SaveContext(@NotNull SnapshotMeta meta, @NotNull String playerName, @NotNull Map<DataKey, Tag> retainedData) {
+    }
+
+    private record MapSave(MapPipeline pipeline, MapType type, String ownerId, Map<Integer, CompletableFuture<StoredMap>> captured) {
     }
 
     private final class SaveRequest {

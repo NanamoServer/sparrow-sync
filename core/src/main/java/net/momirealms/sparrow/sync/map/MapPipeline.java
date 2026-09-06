@@ -23,9 +23,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 @ApiStatus.Internal
@@ -90,6 +94,10 @@ public final class MapPipeline {
             throw new IllegalArgumentException("map id is not an integer");
         }
         CompoundTag compiled = this.handler(type).compile(components, new MapOrigin(type, ownerId, id.getAsInt()));
+        return this.finishCompile(compiled, marker, type, ownerId, mapId);
+    }
+
+    private CompoundTag finishCompile(CompoundTag compiled, @Nullable CompoundTag marker, MapType type, String ownerId, Tag mapId) {
         CompoundTag origin = marker == null ? NBT.createCompound() : new CompoundTag(new HashMap<>(marker.tags));
         origin.putString(MAP_TYPE, type.name());
         origin.putString(ORIGIN_SERVER, ownerId);
@@ -109,6 +117,10 @@ public final class MapPipeline {
         MapType mapType = MapType.valueOf(type.getAsString());
         MapOrigin origin = new MapOrigin(mapType, originServer.getAsString(), originId.getAsInt());
         CompoundTag decoded = this.handler(mapType).decode(components, origin, ownerId);
+        return this.finishDecode(decoded, marker, origin, ownerId);
+    }
+
+    private CompoundTag finishDecode(CompoundTag decoded, CompoundTag marker, MapOrigin origin, String ownerId) {
         // 只有实际恢复原始 ID 才清理标记, 回源缺图保留负数副本的身份.
         if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
         CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
@@ -116,6 +128,64 @@ public final class MapPipeline {
         remaining.remove(ORIGIN_SERVER);
         remaining.remove(ORIGIN_ID);
         return this.writeMarker(decoded, remaining);
+    }
+
+    @NotNull
+    public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+        return this.rewriteAsync(snapshot, components -> {
+            CompoundTag marker = this.marker(components);
+            if (marker != null && marker.containsKey(MAP_TYPE)) {
+                MapOrigin origin = this.origin(marker);
+                return this.handler(origin.type()).forwardAsync(components, origin);
+            }
+            Tag mapId = components.get(MAP_ID);
+            if (mapId == null) return CompletableFuture.completedFuture(components);
+            if (!(mapId instanceof IntTag id)) {
+                throw new IllegalArgumentException("map id is not an integer");
+            }
+            return this.handler(type).compileAsync(components, new MapOrigin(type, ownerId, id.getAsInt()), captured)
+                    .thenApply(compiled -> this.finishCompile(compiled, marker, type, ownerId, mapId));
+        }, LogConstants.DATA_MAP_COMPILE_FAILED);
+    }
+
+    @NotNull
+    public CompletableFuture<Snapshot> decodeAsync(@NotNull Snapshot snapshot, @NotNull String ownerId) {
+        return this.rewriteAsync(snapshot, components -> {
+            CompoundTag marker = this.marker(components);
+            if (marker == null || !marker.containsKey(MAP_TYPE)) return CompletableFuture.completedFuture(components);
+            MapOrigin origin = this.origin(marker);
+            return this.handler(origin.type()).decodeAsync(components, origin, ownerId).thenApply(decoded -> this.finishDecode(decoded, marker, origin, ownerId));
+        }, LogConstants.DATA_MAP_DECODE_FAILED);
+    }
+
+    private MapOrigin origin(CompoundTag marker) {
+        if (!(marker.get(MAP_TYPE) instanceof StringTag type) || !(marker.get(ORIGIN_SERVER) instanceof StringTag server)
+                || server.getAsString().isBlank() || !(marker.get(ORIGIN_ID) instanceof IntTag id)) {
+            throw new IllegalArgumentException("invalid map origin metadata");
+        }
+        return new MapOrigin(MapType.valueOf(type.getAsString()), server.getAsString(), id.getAsInt());
+    }
+
+    private CompletableFuture<Snapshot> rewriteAsync(Snapshot snapshot, Function<CompoundTag, CompletableFuture<CompoundTag>> operation, String failureKey) {
+        Map<CompoundTag, CompletableFuture<CompoundTag>> prepared = new IdentityHashMap<>();
+        this.rewrite(snapshot, components -> {
+            prepared.computeIfAbsent(components, item -> {
+                CompletableFuture<CompoundTag> result;
+                try {
+                    result = operation.apply(item);
+                } catch (RuntimeException exception) {
+                    result = CompletableFuture.failedFuture(exception);
+                }
+                // 超时只结束本次物品等待, 不截断底层发布链, 防止旧写入迟到越过新写入.
+                return result.copy().orTimeout(5, TimeUnit.SECONDS).exceptionally(failure -> {
+                    this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, failure, failureKey, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(failure));
+                    return item;
+                });
+            });
+            return components;
+        });
+        return CompletableFuture.allOf(prepared.values().toArray(CompletableFuture[]::new))
+                .thenApply(ignored -> this.rewrite(snapshot, components -> prepared.get(components).getNow(components)));
     }
 
     @NotNull

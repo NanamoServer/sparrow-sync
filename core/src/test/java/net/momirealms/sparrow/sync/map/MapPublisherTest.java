@@ -1,0 +1,136 @@
+package net.momirealms.sparrow.sync.map;
+
+import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class MapPublisherTest {
+    @Test
+    void serializesCompletePublicationWithoutBlockingCaptureOrAllocatingAgain() {
+        Storage storage = new Storage();
+        Tasks worker = new Tasks();
+        CompletableFuture<Void> firstRedisWrite = new CompletableFuture<>();
+        Shared shared = new Shared() {
+            @Override
+            @NotNull
+            public CompletableFuture<Void> publish(@NotNull StoredMap map) {
+                super.publish(map);
+                assertEquals(map, storage.current);
+                return this.writes.size() == 1 ? firstRedisWrite : CompletableFuture.completedFuture(null);
+            }
+        };
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        CompletableFuture<StoredMap> first = publisher.capture(SOURCE, () -> map(1).data());
+        worker.runAll();
+        CompletableFuture<StoredMap> second = publisher.capture(SOURCE, () -> map(2).data());
+        worker.runAll();
+        assertFalse(first.isDone());
+        assertFalse(second.isDone());
+        assertEquals(map(1), storage.current);
+        firstRedisWrite.complete(null);
+        worker.runAll();
+        assertEquals(IDENTITY, first.join().identity());
+        assertEquals(map(2), second.join());
+        assertEquals(1, storage.registrations);
+        assertEquals(List.of(1, 2), shared.writes);
+    }
+
+    @Test
+    void unchangedContentOnlyRenewsExistingCacheAndSourceRebuildsMissingCache() {
+        Storage storage = new Storage();
+        Shared shared = new Shared();
+        Tasks worker = new Tasks();
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        publisher.capture(SOURCE, () -> map(3).data());
+        worker.runAll();
+        publisher.capture(SOURCE, () -> map(3).data());
+        worker.runAll();
+        assertEquals(1, shared.writes.size());
+        assertEquals(1, shared.touches);
+        assertTrue(storage.writes.isEmpty());
+        shared.contents.clear();
+        publisher.capture(SOURCE, () -> map(3).data());
+        worker.runAll();
+        assertEquals(2, shared.writes.size());
+        assertEquals(map(3), shared.contents.get(-1));
+    }
+
+    @Test
+    void failedRedisCommitDoesNotMakeOldLocalContentLookLikeCurrentDatabaseContent() {
+        Storage storage = new Storage();
+        Tasks worker = new Tasks();
+        CompletableFuture<Void> failedRedis = new CompletableFuture<>();
+        Shared shared = new Shared() {
+            @Override
+            @NotNull
+            public CompletableFuture<Void> publish(@NotNull StoredMap map) {
+                return map.equals(map(2)) ? failedRedis : super.publish(map);
+            }
+        };
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        publisher.capture(SOURCE, () -> map(1).data());
+        worker.runAll();
+        CompletableFuture<StoredMap> failed = publisher.capture(SOURCE, () -> map(2).data());
+        worker.runAll();
+        CompletableFuture<StoredMap> newer = publisher.capture(SOURCE, () -> map(1).data());
+        failedRedis.completeExceptionally(new IllegalStateException("Redis offline"));
+        worker.runAll();
+        assertTrue(failed.isCompletedExceptionally());
+        assertEquals(map(1), newer.join());
+        assertEquals(List.of(2, 1), storage.writes);
+        assertEquals(storage.current, shared.contents.get(-1));
+    }
+
+    @Test
+    void retriesDetachedCandidateWithoutRecapturingWorld() {
+        Storage storage = new Storage();
+        Shared shared = new Shared() {
+            int attempts;
+            @Override
+            @NotNull
+            public CompletableFuture<Void> publish(@NotNull StoredMap map) {
+                return ++this.attempts < 3 ? CompletableFuture.failedFuture(new IllegalStateException("temporary")) : super.publish(map);
+            }
+        };
+        Tasks worker = new Tasks();
+        int[] captures = {0};
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), shared, worker);
+        CompletableFuture<StoredMap> result = publisher.capture(SOURCE, () -> { captures[0]++; return map(4).data(); });
+        worker.runAll();
+        assertEquals(map(4), result.join());
+        assertEquals(1, captures[0]);
+    }
+
+    @Test
+    void concurrentCapturesMayPublishInEitherOrder() throws Exception {
+        Storage storage = new Storage();
+        Tasks worker = new Tasks();
+        MapPublisher publisher = new MapPublisher(() -> CompletableFuture.completedFuture(storage), new Shared(), worker);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CompletableFuture<CompletableFuture<StoredMap>> slow = CompletableFuture.supplyAsync(() -> publisher.capture(SOURCE, () -> {
+            started.countDown();
+            try {
+                assertTrue(release.await(2, TimeUnit.SECONDS));
+            } catch (InterruptedException exception) {
+                throw new AssertionError(exception);
+            }
+            return map(1).data();
+        }));
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        CompletableFuture<StoredMap> quick = publisher.capture(SOURCE, () -> map(2).data());
+        release.countDown();
+        CompletableFuture<StoredMap> late = slow.get(2, TimeUnit.SECONDS);
+        worker.runAll();
+        assertEquals(map(2), quick.join());
+        assertEquals(map(1), late.join());
+        assertEquals(map(1), storage.current);
+    }
+}

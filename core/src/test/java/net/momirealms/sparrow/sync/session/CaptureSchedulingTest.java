@@ -2,6 +2,13 @@ package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.sync.map.MapOrigin;
+import net.momirealms.sparrow.sync.map.MapPipeline;
+import net.momirealms.sparrow.sync.map.StoredMap;
+import net.momirealms.sparrow.sync.map.handler.MapHandler;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -12,6 +19,8 @@ import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
@@ -32,8 +41,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -125,6 +138,104 @@ class CaptureSchedulingTest {
         replace(Bukkit.class, "server", this.previousServer);
         replace(PluginConfig.class, "config", this.previousConfig);
         replace(ServerConfig.class, "config", this.previousServerConfig);
+    }
+
+    @Test
+    void mapPreparationDelaysSnapshotHandoffAndKeepsPlayerSubmissionOrder() throws Exception {
+        Field loggerField = SnapshotService.class.getDeclaredField("logger");
+        loggerField.setAccessible(true);
+        SyncLogger logger = (SyncLogger) loggerField.get(this.service);
+        DataRegistry registry = new DataRegistry();
+        AtomicInteger id = new AtomicInteger(1);
+        registry.register(new PlayerDataType<Integer>() {
+            @Override
+            @NotNull
+            public DataKey key() { return InventoryDataType.INVENTORY; }
+            @Override
+            @NotNull
+            public StorageFormat storage() { return StorageFormat.BINARY; }
+            @Override
+            @NotNull
+            public Integer capture(@NotNull Player player, @NotNull CaptureMode mode) { return id.getAndIncrement(); }
+            @Override
+            @NotNull
+            public Tag encode(@NotNull Integer value) {
+                CompoundTag components = NBT.createCompound();
+                components.putInt("minecraft:map_id", value);
+                CompoundTag item = NBT.createCompound();
+                item.putString("id", "minecraft:filled_map");
+                item.put("components", components);
+                CompoundTag root = NBT.createCompound();
+                ListTag items = NBT.createList();
+                items.add(item);
+                root.put("items", items);
+                return root;
+            }
+            @Override
+            @NotNull
+            public Integer decode(@NotNull Tag tag, int version) { throw new AssertionError("unexpected decode"); }
+            @Override
+            public void apply(@NotNull Player player, @NotNull Integer value) { throw new AssertionError("unexpected apply"); }
+        });
+        registry.freeze();
+        PlayerDataPipeline data = new PlayerDataPipeline(null);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, data, "dataRegistry", registry);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, data, "logger", logger);
+        NmsPlayerFixture.set(SnapshotService.class, this.service, "playerDataPipeline", data);
+        CompletableFuture<CompoundTag> firstMap = new CompletableFuture<>();
+        MapHandler handler = new MapHandler() {
+            @Override
+            @NotNull
+            public MapType type() { return MapType.SYNC; }
+            @Override
+            @NotNull
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+                if (origin.id() == 1) return firstMap;
+                CompoundTag result = components.copy();
+                result.putInt("minecraft:map_id", -2);
+                return CompletableFuture.completedFuture(result);
+            }
+        };
+        MapPipeline maps = new MapPipeline(registry, List.of(handler), logger);
+        Class<?> mapSaveType = Class.forName(SnapshotService.class.getName() + "$MapSave");
+        Constructor<?> mapSave = mapSaveType.getDeclaredConstructors()[0];
+        mapSave.setAccessible(true);
+        Object preparation = mapSave.newInstance(maps, MapType.SYNC, "A-world", Map.of());
+        Class<?> contextType = Class.forName(SnapshotService.class.getName() + "$SaveContext");
+        Constructor<?> context = contextType.getDeclaredConstructors()[0];
+        context.setAccessible(true);
+        Class<?> requestType = Class.forName(SnapshotService.class.getName() + "$SaveRequest");
+        Constructor<?> request = requestType.getDeclaredConstructors()[0];
+        request.setAccessible(true);
+        Method encode = SnapshotService.class.getDeclaredMethod("encodeAndSubmit", contextType, PlayerDataPipeline.CaptureResult.Ready.class, requestType, mapSaveType);
+        encode.setAccessible(true);
+        CountDownLatch encoded = new CountDownLatch(2);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        for (int i = 1; i <= 2; i++) {
+            SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), i, SaveCause.WORLD_SAVE, false, "A", 4440);
+            Object saveContext = context.newInstance(meta, this.player.getName(), Map.of());
+            Object saveRequest = request.newInstance(this.service);
+            PlayerDataPipeline.CaptureResult.Ready captured = (PlayerDataPipeline.CaptureResult.Ready) data.capture(this.player, CaptureMode.SYNC);
+            this.executor.submit(this.player.getUniqueId(), () -> {
+                try {
+                    encode.invoke(this.service, saveContext, captured, saveRequest, preparation);
+                } catch (ReflectiveOperationException exception) {
+                    failure.set(exception);
+                } finally {
+                    encoded.countDown();
+                }
+            });
+        }
+        this.releaseWorker.countDown();
+        assertTrue(encoded.await(2, TimeUnit.SECONDS));
+        assertNull(failure.get());
+        assertTrue(this.written.isEmpty());
+        assertEquals(2, this.pendingHandoffs());
+        CompoundTag completed = NBT.createCompound();
+        completed.putInt("minecraft:map_id", -1);
+        firstMap.complete(completed);
+        assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
+        assertEquals(List.of(-1, -2), this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
     }
 
     @Test

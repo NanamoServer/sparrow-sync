@@ -3,15 +3,10 @@ package net.momirealms.sparrow.sync.plugin.configuration;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
-import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
-import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.SnapshotService;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
-import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -121,23 +117,14 @@ class MapConfigTest {
     @Test
     void disabledSnapshotPreparationDoesNotEnterTheMapPipelineOrResolveTheOwner() throws Exception {
         this.config().reload();
-        DataRegistry registry = new DataRegistry();
-        registry.freeze();
-        PlayerDataPipeline playerPipeline = new PlayerDataPipeline(null);
-        NmsPlayerFixture.set(PlayerDataPipeline.class, playerPipeline, "dataRegistry", registry);
         SnapshotService service = new SnapshotService(null);
-        NmsPlayerFixture.set(SnapshotService.class, service, "playerDataPipeline", playerPipeline);
-        PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> {
-            throw new AssertionError("unexpected log: " + args[0]);
-        });
-        NmsPlayerFixture.set(SnapshotService.class, service, "logger", new SyncLogger(console));
         SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1L, SaveCause.DISCONNECT, false, "A", 0);
         Snapshot snapshot = new Snapshot(meta, Map.of());
-        // 地图管线和主世界 UUID 都未装配, 关闭开关后仍可完成玩家数据准备.
-        Method prepare = SnapshotService.class.getDeclaredMethod("prepare", Snapshot.class, UUID.class, String.class, long.class);
+        // 地图服务和主世界 UUID 都未装配, 关闭开关直接返回原快照.
+        Method prepare = SnapshotService.class.getDeclaredMethod("prepareMaps", Snapshot.class);
         prepare.setAccessible(true);
-        Object result = prepare.invoke(service, snapshot, meta.player(), "Steve", System.nanoTime());
-        assertEquals("Ready", result.getClass().getSimpleName());
+        CompletableFuture<?> result = (CompletableFuture<?>) prepare.invoke(service, snapshot);
+        assertSame(snapshot, result.join());
     }
 
     private PluginConfig config() {

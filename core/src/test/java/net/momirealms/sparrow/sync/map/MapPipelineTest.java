@@ -8,6 +8,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
+import net.momirealms.sparrow.sync.map.handler.SyncMapHandler;
 import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -30,6 +31,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,6 +45,78 @@ class MapPipelineTest {
 
     @TempDir
     Path directory;
+
+    @Test
+    void syncCompilationWaitsForPublicationAndTransitKeepsItsMode() {
+        MapFlowTestSupport.Shared shared = new MapFlowTestSupport.Shared();
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(storage), shared, value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler("cluster", receiver)), LOGGER);
+        Snapshot original = snapshot(map(7));
+        CompletableFuture<StoredMap> published = new CompletableFuture<>();
+        CompletableFuture<Snapshot> waiting = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+        assertFalse(waiting.isDone());
+        assertEquals(7, components(original).getInt("minecraft:map_id"));
+        published.complete(new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
+        Snapshot compiled = waiting.join();
+        assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
+        assertEquals("SYNC", marker(compiled).getString("map-type"));
+        assertSame(compiled, pipeline.compileAsync(compiled, MapType.HIDE, "B", Map.of()).join());
+        assertEquals(1, shared.touches);
+        assertEquals(0, storage.registrations);
+        assertTrue(shared.writes.isEmpty());
+    }
+
+    @Test
+    void asyncDecodeWaitsForReplicaAndOnlyClearsOriginAfterSuccessfulReturn() {
+        MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
+        storage.current = new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(4).data());
+        MapFlowTestSupport.Tasks nativeThread = new MapFlowTestSupport.Tasks();
+        int[] localId = {-1};
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(storage), new MapFlowTestSupport.Shared(), value -> () -> localId[0], Runnable::run, nativeThread, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler("cluster", receiver)), LOGGER);
+        Snapshot original = snapshot(map(7));
+        Snapshot compiled = pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+        CompletableFuture<Snapshot> waiting = pipeline.decodeAsync(compiled, OWNER);
+        assertFalse(waiting.isDone());
+        nativeThread.runAll();
+        assertSame(compiled, waiting.join());
+        assertEquals(OWNER, marker(waiting.join()).getString("origin-server"));
+        localId[0] = 7;
+        CompletableFuture<Snapshot> returned = pipeline.decodeAsync(compiled, OWNER);
+        nativeThread.runAll();
+        assertEquals(original.data(), returned.join().data());
+        assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
+    }
+
+    @Test
+    void asynchronousFailureKeepsWholeItemWhileOtherMapsCompile() {
+        List<String> warnings = new ArrayList<>();
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new MapFlowTestSupport.Storage()), new MapFlowTestSupport.Shared(), value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler("cluster", receiver)), MapFlowTestSupport.logger(warnings));
+        CompoundTag inventory = NBT.createCompound();
+        ListTag items = list(map(7), map(8));
+        inventory.put("items", items);
+        Snapshot snapshot = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
+        StoredMap success = new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 8), -2), MapFlowTestSupport.map(4).data());
+        Snapshot compiled = pipeline.compileAsync(snapshot, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.failedFuture(new IllegalStateException("database unavailable")), 8, CompletableFuture.completedFuture(success))).join();
+        ListTag result = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
+        assertSame(items.get(0), result.get(0));
+        assertEquals(-2, result.getCompound(1).getCompound("components").getInt("minecraft:map_id"));
+        assertEquals(1, warnings.size());
+    }
+
+    @Test
+    void timeoutReleasesSnapshotWithoutTerminatingThePublicationChain() throws Exception {
+        MapReceiver receiver = new MapReceiver(() -> CompletableFuture.completedFuture(new MapFlowTestSupport.Storage()), new MapFlowTestSupport.Shared(), value -> () -> -1, Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler("cluster", receiver)), LOGGER);
+        Snapshot original = snapshot(map(7));
+        CompletableFuture<StoredMap> storage = new CompletableFuture<>();
+        assertSame(original, pipeline.compileAsync(original, MapType.SYNC, OWNER, Map.of(7, storage)).get(7, TimeUnit.SECONDS));
+        assertFalse(storage.isDone());
+        storage.complete(new StoredMap(new MapIdentity("cluster", new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
+        assertEquals(7, components(original).getInt("minecraft:map_id"));
+    }
 
     @Test
     void unregisteredSyncModePassesThroughWithoutHalfEncoding() {

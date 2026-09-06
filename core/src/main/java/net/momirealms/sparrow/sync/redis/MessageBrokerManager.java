@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.Logger;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.map.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.cluster.HandoffRequestMessage;
@@ -56,6 +57,7 @@ public final class MessageBrokerManager {
         broker.registry().register(HandoffResponseMessage.ID, HandoffResponseMessage.CODEC);
         broker.registry().register(ServerProbeMessage.ID, ServerProbeMessage.CODEC);
         broker.registry().register(ServerProbeResponseMessage.ID, ServerProbeResponseMessage.CODEC);
+        broker.registry().register(MapInvalidationMessage.ID, MapInvalidationMessage.CODEC);
         broker.subscribe();
         this.broker = broker;
     }

@@ -299,9 +299,10 @@ public final class PluginConfig {
         @Comment({
                 "Mode assigned to maps when compiling snapshots on this server",
                 "HIDE removes IDs until the map returns to its owner",
+                "SYNC publishes source map data and installs persistent negative-ID replicas on other servers",
                 "Maps already carrying a mode keep that mode when passing through another server",
-                "Available: HIDE, SYNC; modes require a registered map handler",
-                "Unregistered modes warn and pass map items through unchanged"
+                "Available: HIDE, SYNC",
+                "Failed maps warn and pass through unchanged"
         })
         MapType type = MapType.HIDE;
 
@@ -310,7 +311,7 @@ public final class PluginConfig {
                 "Identifies the map data owned by this server",
                 "Supported placeholders: ${server-id}, ${world-uuid}",
                 "world-uuid is the UUID of the overworld, where the map data belongs",
-                "Changing this ID leaves maps compiled under the previous ID unrestored"
+                "Changing this ID treats previously compiled maps as foreign maps"
         })
         String mapOwnerId = "${server-id}-${world-uuid}";
 
