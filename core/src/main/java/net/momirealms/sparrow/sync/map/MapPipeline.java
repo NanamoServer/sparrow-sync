@@ -43,6 +43,7 @@ public final class MapPipeline {
     private static final String ORIGIN_SERVER = "origin-server";
     private static final String ORIGIN_ID = "origin-id";
     private static final String[] ITEM_LISTS = {"minecraft:bundle_contents", "minecraft:charged_projectiles"};
+    private static final DataKey[] ITEM_DATA_KEYS = {InventoryDataType.INVENTORY, EnderChestDataType.ENDER_CHEST};
 
     private final DataRegistry registry;
     private final Map<MapType, MapHandler> handlers;
@@ -137,6 +138,7 @@ public final class MapPipeline {
             });
             return components;
         });
+        if (prepared.isEmpty()) return CompletableFuture.completedFuture(snapshot);
         // 关闭信号只参与完成竞争, 快照引用留在本次操作中, 完成后即可释放.
         return CompletableFuture.allOf(prepared.values().toArray(CompletableFuture[]::new))
                 .applyToEither(this.closed, Function.identity())
@@ -196,10 +198,10 @@ public final class MapPipeline {
     // 在已启用的背包与末影箱数据中查找地图, 按需要复制快照节点.
     private Snapshot rewrite(Snapshot snapshot, UnaryOperator<CompoundTag> operation) {
         Map<DataKey, Tag> changed = null;
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
-            DataKey key = entry.getKey();
-            if (!this.registry.registered(key) || !(key.equals(InventoryDataType.INVENTORY) || key.equals(EnderChestDataType.ENDER_CHEST))) continue;
-            if (!(entry.getValue() instanceof CompoundTag container)) continue;
+        for (int i = 0; i < ITEM_DATA_KEYS.length; i++) {
+            DataKey key = ITEM_DATA_KEYS[i];
+            if (!this.registry.registered(key)) continue;
+            if (!(snapshot.data(key) instanceof CompoundTag container)) continue;
             CompoundTag prepared = this.rewriteList(container, "items", false, operation);
             if (prepared == container) continue;
             if (changed == null) changed = new LinkedHashMap<>(snapshot.data());

@@ -13,6 +13,7 @@ import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
 import net.momirealms.sparrow.sync.map.cache.MapCache;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
@@ -38,6 +39,10 @@ final class MapFlowTestSupport {
 
     static StoredMap map(int pixel) {
         return new StoredMap(IDENTITY, new MapData(4440, MapDataTest.content(pixel)));
+    }
+
+    static String dimension(MapItemSavedData data) {
+        return Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, data.dimension).getOrThrow().getAsString();
     }
 
     static SyncLogger logger(List<String> warnings) {

@@ -3,6 +3,8 @@ package net.momirealms.sparrow.sync.map;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -14,6 +16,23 @@ import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MapPublisherTest {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void coldPublisherComparesExistingDatabaseContentBeforeUpdating(int pixel) {
+        Storage storage = new Storage();
+        storage.current = map(1);
+        Shared shared = new Shared();
+        Tasks worker = new Tasks();
+        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        CompletableFuture<StoredMap> result = publisher.publish(SOURCE, map(pixel).data());
+        worker.runAll();
+        assertEquals(map(pixel), result.join());
+        assertEquals(1, storage.registrations);
+        assertEquals(pixel == 1 ? List.of() : List.of(2), storage.writes);
+        assertEquals(List.of(pixel), shared.writes);
+        assertEquals(storage.current, shared.contents.get(IDENTITY.globalId()));
+    }
+
     @Test
     void sealingWaitsForFullPublicationAndClosingStopsQueuedWrites() {
         Storage storage = new Storage();

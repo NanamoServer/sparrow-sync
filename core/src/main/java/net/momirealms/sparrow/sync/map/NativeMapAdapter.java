@@ -8,7 +8,6 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.fixes.References;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.maps.MapBanner;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -72,15 +71,6 @@ public final class NativeMapAdapter {
                 ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
                 : this.codec.encodeStart(this.ops, data).getOrThrow();
         return new MapData(this.dataVersion, (CompoundTag) tag);
-    }
-
-    // 从已保存副本的隔离维度恢复完整身份.
-    @Nullable
-    public MapIdentity replicaIdentity(@NotNull ServerLevel level, int mapId) {
-        MapItemSavedData data = level.getMapData(new MapId(mapId));
-        if (data == null) return null;
-        MapIdentity identity = MapIdentity.fromReplicaDimension(Level.RESOURCE_KEY_CODEC.encodeStart(NBTOps.INSTANCE, data.dimension).getOrThrow().getAsString());
-        return identity != null && identity.globalId() == mapId ? identity : null;
     }
 
     // 将来源内容准备为独立的原生副本, 此阶段可由异步工作线程调用.

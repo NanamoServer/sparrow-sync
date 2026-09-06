@@ -195,23 +195,21 @@ class NativeMapAdapterTest {
 
     @Test
     void syncReturnPreservesCurrentOriginalAndMissingOrChangedOwnerKeepsNegativeReplica() throws Exception {
-        MapSyncService service = this.service("A-world", new DataRegistry(), null);
         MapItemSavedData source = MapItemSavedData.createFresh(0, 0, (byte) 0, true, false, Level.OVERWORLD);
         source.colors[0] = 90;
         this.level.setMapData(new MapId(1), source);
         StoredMap old = new StoredMap(MapFlowTestSupport.IDENTITY, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(10)));
-        assertEquals(1, this.receive(service.ownerId(), old).join());
+        assertEquals(1, this.receive("A-world", old).join());
         assertSame(source, this.level.getMapData(new MapId(1)));
         assertEquals(90, source.colors[0]);
         assertNull(this.level.getMapData(new MapId(-1)));
 
         this.storage.cache.clear();
-        assertEquals(-1, this.receive(service.ownerId(), old).join());
+        assertEquals(-1, this.receive("A-world", old).join());
         assertEquals(10, this.level.getMapData(new MapId(-1)).colors[0]);
         assertNull(this.level.getMapData(new MapId(1)));
         this.level.setMapData(new MapId(1), source);
-        MapSyncService changedOwner = this.service("B-world", new DataRegistry(), null);
-        assertEquals(-1, this.receive(changedOwner.ownerId(), old).join());
+        assertEquals(-1, this.receive("B-world", old).join());
         assertEquals(90, source.colors[0]);
         this.storage.saveAndJoin();
         assertTrue(Files.exists(this.directory.resolve("map_-1.dat")));
@@ -242,7 +240,7 @@ class NativeMapAdapterTest {
         assertSame(view, old.mapView);
         assertSame(colors, old.colors);
         assertNull(old.uniqueId);
-        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
         assertEquals(20, old.colors[0]);
         assertEquals(-1, receiver.receive(this.identity).join());
         MapItemSavedData current = this.level.getMapData(new MapId(-1));
@@ -253,7 +251,7 @@ class NativeMapAdapterTest {
         assertTrue(current.isDirty());
         this.storage.saveAndJoin();
         this.storage.cache.clear();
-        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
         assertEquals(30, this.level.getMapData(new MapId(-1)).colors[0]);
         receiver.close();
     }
@@ -553,12 +551,12 @@ class NativeMapAdapterTest {
         assertEquals(1, replica.mapView.getRenderers().size());
         this.storage.saveAndJoin();
         this.storage.cache.clear();
-        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
         MapItemSavedData reloaded = this.level.getMapData(new MapId(-1));
         assertEquals(29, reloaded.colors[0]);
         reloaded.getHoldingPlayer(handheldViewer.getHandle());
         assertNotNull(reloaded.getUpdatePacket(new MapId(-1), handheldViewer.getHandle()));
-        assertNull(this.adapter.replicaIdentity(this.level, 1));
+        assertNull(this.level.getMapData(new MapId(1)));
     }
 
     @Test
@@ -602,7 +600,7 @@ class NativeMapAdapterTest {
         MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(6)));
         assertSame(original, this.adapter.updateReplica(this.level, this.identity, prepared));
         assertSame(original, this.level.getMapData(new MapId(-1)));
-        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
         assertEquals(6, original.colors[0]);
         assertThrows(IOException.class, () -> this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION + 1, MapDataTest.content(6))));
     }
@@ -621,7 +619,7 @@ class NativeMapAdapterTest {
         assertEquals(90, source.colors[0]);
         assertSame(replica, this.level.getMapData(new MapId(-1)));
         assertEquals(20, replica.colors[0]);
-        assertEquals(this.identity, this.adapter.replicaIdentity(this.level, -1));
+        assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
     }
 
     @Test

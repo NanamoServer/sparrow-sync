@@ -193,11 +193,6 @@ public final class MapSyncService {
         return marker != null && (!(marker instanceof net.minecraft.nbt.CompoundTag compound) || CompoundTagProxy.INSTANCE.getTags(compound).containsKey("map-type"));
     }
 
-    @NotNull
-    public String ownerId() {
-        return this.ownerId;
-    }
-
     public void observe(int globalId) {
         if (!this.closed) {
             this.receiver.observe(globalId);

@@ -54,6 +54,25 @@ class MapPipelineTest {
     Path directory;
 
     @Test
+    void mapFreeItemsAreVisitedOnceAndKeepTheOriginalSnapshot() {
+        int[] visits = {0};
+        CompoundTag item = new CompoundTag(item("minecraft:stone").tags) {
+            @Override
+            public Tag get(@NotNull String key) {
+                if (key.equals("components")) visits[0]++;
+                return super.get(key);
+            }
+        };
+        Snapshot original = snapshot(item);
+        CompletableFuture<Snapshot> compiled = PIPELINE.compileAsync(original, MapType.HIDE, OWNER, Map.of());
+        assertTrue(compiled.isDone());
+        assertSame(original, compiled.join());
+        assertEquals(1, visits[0]);
+        assertSame(original, PIPELINE.decodeAsync(original, OWNER).join());
+        assertEquals(2, visits[0]);
+    }
+
+    @Test
     void syncCompilationWaitsForPublicationAndTransitKeepsItsMode() {
         MapFlowTestSupport.Shared shared = new MapFlowTestSupport.Shared();
         MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();

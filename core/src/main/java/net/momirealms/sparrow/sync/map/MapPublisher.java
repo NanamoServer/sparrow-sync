@@ -74,7 +74,8 @@ public final class MapPublisher {
         CompletableFuture<StoredMap> registered = known == null ? this.storage.register(source, data) : CompletableFuture.completedFuture(known);
         return registered.thenCompose(current -> {
             if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map publisher is closed"));
-            CompletableFuture<Void> write = current.data().equals(data)
+            // 命中的记录已确认内容变化, 首次登记才需核对数据库中的已有内容.
+            CompletableFuture<Void> write = known == null && current.data().equals(data)
                     ? CompletableFuture.completedFuture(null)
                     : this.storage.update(current.identity(), data);
             StoredMap latest = new StoredMap(current.identity(), data);

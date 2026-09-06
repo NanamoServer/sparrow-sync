@@ -247,8 +247,10 @@ public final class SnapshotService {
             return;
         }
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
+        // 地图等待闭包只持有耗时值, 采集对象的生命周期在本次编码任务内结束.
+        long captureNanos = captured.captureNanos();
         if (maps == null) {
-            this.writePrepared(context, snapshot, captured.captureNanos(), request);
+            this.writePrepared(context, snapshot, captureNanos, request);
             return;
         }
         CompletableFuture<Snapshot> prepared = this.mapSync.compileAsync(snapshot, maps);
@@ -260,7 +262,7 @@ public final class SnapshotService {
             CompletableFuture<Void> tail = previous == null ? CompletableFuture.completedFuture(null) : previous.handle((value, failure) -> null);
             return tail.thenCompose(ignored -> prepared).thenAcceptAsync(value -> {
                 if (request.completion.isDone()) return;
-                this.writePrepared(context, value, captured.captureNanos(), request);
+                this.writePrepared(context, value, captureNanos, request);
                 this.pendingMapSnapshots.remove(request);
             }, this.serialExecutor.executor(player));
         });

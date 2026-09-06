@@ -108,7 +108,7 @@ class RedisMapCacheTest {
             publisher.publish(MapFlowTestSupport.SOURCE, MapFlowTestSupport.map(8).data()).get(5, TimeUnit.SECONDS);
             assertTrue(refreshed.await(3, TimeUnit.SECONDS));
             assertSame(nativeMaps.replica, nativeMaps.level.getMapData(new MapId(-1)));
-            assertEquals(MapFlowTestSupport.IDENTITY, nativeMaps.adapter.replicaIdentity(nativeMaps.level, -1));
+            assertEquals(MapFlowTestSupport.IDENTITY.replicaDimension(), MapFlowTestSupport.dimension(nativeMaps.replica));
             assertEquals(8, nativeMaps.replica.colors[0]);
             assertTrue(nativeMaps.replica.isDirty());
         } finally {
