@@ -1,6 +1,7 @@
-package net.momirealms.sparrow.sync.map;
+package net.momirealms.sparrow.sync.map.handler;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.sync.map.MapOrigin;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,7 +14,7 @@ public interface MapHandler {
     @NotNull
     CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin);
 
-    /** 接收地图并按来源决定应用行为. <strong>输入只读, 回源后的来源标记由管线清理</strong>. */
+    /** 应用已准备好的接收结果. <strong>输入只读; 实际恢复原始 ID 由管线清理来源标记</strong>. */
     @NotNull
     CompoundTag decode(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId);
 }

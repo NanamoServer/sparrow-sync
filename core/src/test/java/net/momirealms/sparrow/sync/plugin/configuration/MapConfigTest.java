@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.configuration;
 
-import net.momirealms.sparrow.sync.map.MapType;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -28,6 +28,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class MapConfigTest {
     @TempDir
     Path directory;
+
+    @Test
+    void syncModeIsRecognizedByTheTypedConfiguration() throws Exception {
+        Files.writeString(this.directory.resolve("config.yml"), """
+                config-version: "%s"
+                synchronization:
+                  map:
+                    enabled: true
+                    type: SYNC
+                    map-owner-id: "owner"
+                """.formatted(DependencyVersions.CONFIG_VERSION));
+        this.config().reload();
+        assertEquals(MapType.SYNC, PluginConfig.synchronization$map().type());
+    }
 
     @Test
     void defaultMapConfigurationWritesBothOptionsAndResolvesTheOverworldIdentity() throws Exception {

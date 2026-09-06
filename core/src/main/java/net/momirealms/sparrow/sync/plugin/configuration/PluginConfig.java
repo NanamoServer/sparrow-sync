@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.configuration;
 
-import net.momirealms.sparrow.sync.map.MapType;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -300,7 +300,8 @@ public final class PluginConfig {
                 "Mode assigned to maps when compiling snapshots on this server",
                 "HIDE removes IDs until the map returns to its owner",
                 "Maps already carrying a mode keep that mode when passing through another server",
-                "Available: HIDE; reloading affects later compilation and decoding"
+                "Available: HIDE, SYNC; modes require a registered map handler",
+                "Unregistered modes warn and pass map items through unchanged"
         })
         MapType type = MapType.HIDE;
 

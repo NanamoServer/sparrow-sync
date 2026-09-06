@@ -1,9 +1,8 @@
 package net.momirealms.sparrow.sync.map;
 
-import net.momirealms.sparrow.sync.map.handler.MapType;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 @ApiStatus.Internal
-public record MapOrigin(@NotNull MapType type, @NotNull String ownerId, int id) {
+public record StoredMap(@NotNull MapIdentity identity, @NotNull MapData data) {
 }

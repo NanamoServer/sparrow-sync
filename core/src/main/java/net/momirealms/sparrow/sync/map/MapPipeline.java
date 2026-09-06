@@ -7,6 +7,8 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.StringTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.handler.MapHandler;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -107,8 +109,8 @@ public final class MapPipeline {
         MapType mapType = MapType.valueOf(type.getAsString());
         MapOrigin origin = new MapOrigin(mapType, originServer.getAsString(), originId.getAsInt());
         CompoundTag decoded = this.handler(mapType).decode(components, origin, ownerId);
-        // 外服接收行为由模式决定, 完整 owner ID 相同才清理回源标记.
-        if (!ownerId.equals(origin.ownerId())) return decoded;
+        // 只有实际恢复原始 ID 才清理标记, 回源缺图保留负数副本的身份.
+        if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
         CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
         remaining.remove(MAP_TYPE);
         remaining.remove(ORIGIN_SERVER);

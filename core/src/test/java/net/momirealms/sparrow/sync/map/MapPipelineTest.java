@@ -5,6 +5,9 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
+import net.momirealms.sparrow.sync.map.handler.MapHandler;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -17,6 +20,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,11 +37,48 @@ import static org.junit.jupiter.api.Assertions.*;
 class MapPipelineTest {
     private static final DataRegistry REGISTRY = registry();
     private static final SyncLogger LOGGER = new SyncLogger(new RecordingLogger());
-    private static final MapPipeline PIPELINE = new MapPipeline(REGISTRY, List.of(MapType.values()), LOGGER);
+    private static final MapPipeline PIPELINE = new MapPipeline(REGISTRY, List.of(new HideMapHandler()), LOGGER);
     private static final String OWNER = "A-world-1";
 
     @TempDir
     Path directory;
+
+    @Test
+    void unregisteredSyncModePassesThroughWithoutHalfEncoding() {
+        Snapshot original = snapshot(map(7));
+        assertSame(original, PIPELINE.compile(original, MapType.SYNC, OWNER));
+    }
+
+    @Test
+    void missingOriginKeepsReplicaMetadataUntilNativeIdWasRestored() {
+        boolean[] restore = {false};
+        MapHandler handler = new MapHandler() {
+            @Override
+            public @NonNull MapType type() {
+                return MapType.SYNC;
+            }
+
+            @Override
+            public @NonNull CompoundTag compile(@NonNull CompoundTag components, @NonNull MapOrigin origin) {
+                CompoundTag result = components.copy();
+                result.putInt("minecraft:map_id", -1);
+                return result;
+            }
+
+            @Override
+            public @NonNull CompoundTag decode(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull String ownerId) {
+                return restore[0] ? new HideMapHandler().decode(components, origin, ownerId) : components;
+            }
+        };
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
+        Snapshot original = snapshot(map(7));
+        Snapshot compiled = pipeline.compile(original, MapType.SYNC, OWNER);
+        Snapshot missing = pipeline.decode(compiled, OWNER);
+        assertEquals(-1, components(missing).getInt("minecraft:map_id"));
+        assertEquals(OWNER, marker(missing).getString("origin-server"));
+        restore[0] = true;
+        assertEquals(original.data(), pipeline.decode(compiled, OWNER).data());
+    }
 
     @Test
     void existingOriginIsNotRecompiledByAnotherServer() {
@@ -127,7 +168,7 @@ class MapPipelineTest {
     @Test
     void disabledTypesAndItemLikeCustomDataAreNotCompiled() {
         Snapshot original = snapshot(map(7));
-        MapPipeline disabled = new MapPipeline(new DataRegistry(), List.of(MapType.values()), LOGGER);
+        MapPipeline disabled = new MapPipeline(new DataRegistry(), List.of(new HideMapHandler()), LOGGER);
         assertSame(original, disabled.compile(original, MapType.HIDE, OWNER));
         Snapshot unknown = new Snapshot(meta("A"), Map.of(DataKey.of("other", "inventory"), original.data(InventoryDataType.INVENTORY)));
         assertSame(unknown, PIPELINE.compile(unknown, MapType.HIDE, OWNER));
@@ -173,7 +214,7 @@ class MapPipelineTest {
             public CompoundTag compile(@NotNull CompoundTag components, @NotNull MapOrigin origin) {
                 calls[0]++;
                 assertEquals(new MapOrigin(MapType.HIDE, OWNER, 7), origin);
-                return MapType.HIDE.compile(components, origin);
+                return new HideMapHandler().compile(components, origin);
             }
 
             @Override
@@ -182,7 +223,7 @@ class MapPipelineTest {
                 calls[1]++;
                 assertEquals(new MapOrigin(MapType.HIDE, OWNER, 7), origin);
                 assertEquals(calls[1] == 1 ? "B-world-2" : OWNER, ownerId);
-                return MapType.HIDE.decode(components, origin, ownerId);
+                return new HideMapHandler().decode(components, origin, ownerId);
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
@@ -212,7 +253,7 @@ class MapPipelineTest {
                 if (origin.id() == 7) {
                     throw new IllegalStateException("compile failure");
                 }
-                return MapType.HIDE.compile(components, origin);
+                return new HideMapHandler().compile(components, origin);
             }
 
             @Override
@@ -221,7 +262,7 @@ class MapPipelineTest {
                 if (origin.id() == 8) {
                     throw new IllegalStateException("decode failure");
                 }
-                return MapType.HIDE.decode(components, origin, ownerId);
+                return new HideMapHandler().decode(components, origin, ownerId);
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(failing), logger);

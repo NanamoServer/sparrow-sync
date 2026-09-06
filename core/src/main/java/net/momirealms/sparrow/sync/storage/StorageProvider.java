@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.storage;
 
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery.PinFilter;
 import org.jetbrains.annotations.ApiStatus;
@@ -18,6 +19,12 @@ public interface StorageProvider {
     void initialize();
 
     void shutdown();
+
+    // 异步创建绑定集群和本服来源身份的地图存储.
+    @NotNull
+    default CompletableFuture<MapStorage> maps(@NotNull String clusterId, @NotNull String ownerId) {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException("map storage is not supported by this provider"));
+    }
 
     // ---- 查询 ----
 

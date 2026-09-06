@@ -18,6 +18,7 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.map.MapStorage;
 import org.bson.Document;
 import org.bson.UuidRepresentation;
 import org.bson.conversions.Bson;
@@ -120,6 +121,17 @@ public final class MongoStorageProvider implements StorageProvider {
             throw new IllegalStateException("mongo storage is not initialized");
         }
         return collection;
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<MapStorage> maps(@NotNull String clusterId, @NotNull String ownerId) {
+        MongoCollection<Document> collection = this.snapshots;
+        if (collection == null) {
+            throw new IllegalStateException("mongo storage is not initialized");
+        }
+        MongoMapStorage storage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), clusterId, ownerId, this.asyncExecutor);
+        return storage.initialize().thenApply(ignored -> storage);
     }
 
     private MongoCollection<Document> userCollection() {

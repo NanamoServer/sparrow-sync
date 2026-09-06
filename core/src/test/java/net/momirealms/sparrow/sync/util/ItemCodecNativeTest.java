@@ -22,7 +22,8 @@ import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.map.MapPipeline;
-import net.momirealms.sparrow.sync.map.MapType;
+import net.momirealms.sparrow.sync.map.handler.MapType;
+import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -220,7 +221,7 @@ class ItemCodecNativeTest {
         PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> {
             throw new AssertionError("unexpected log: " + args[0]);
         });
-        MapPipeline pipeline = new MapPipeline(registry, List.of(MapType.values()), new SyncLogger(console));
+        MapPipeline pipeline = new MapPipeline(registry, List.of(new HideMapHandler()), new SyncLogger(console));
         Snapshot compiled = pipeline.compile(original, MapType.HIDE, "A-world");
         Snapshot hidden = pipeline.decode(compiled, "B-world");
         InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY), meta.mcDataVersion());

@@ -5,7 +5,7 @@ import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.MapPipeline;
-import net.momirealms.sparrow.sync.map.MapType;
+import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -52,7 +52,7 @@ public final class SnapshotService {
         this.logger = this.plugin.logger();
         this.dataRegistry = this.plugin.dataRegistry();
         this.playerDataPipeline = this.plugin.playerDataPipeline();
-        this.mapPipeline = new MapPipeline(this.dataRegistry, List.of(MapType.values()), this.logger);
+        this.mapPipeline = new MapPipeline(this.dataRegistry, List.of(new HideMapHandler()), this.logger);
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);

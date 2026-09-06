@@ -13,6 +13,7 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -221,17 +222,17 @@ class SnapshotStashTest {
         }
 
         @Override
-        public CompletableFuture<Optional<Snapshot>> latestSnapshot(UUID player) {
+        public @NonNull CompletableFuture<Optional<Snapshot>> latestSnapshot(UUID player) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public CompletableFuture<Optional<Snapshot>> snapshot(UUID snapshotId) {
+        public @NonNull CompletableFuture<Optional<Snapshot>> snapshot(UUID snapshotId) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public CompletableFuture<List<SnapshotMeta>> listSnapshots(SnapshotQuery query) {
+        public @NonNull CompletableFuture<List<SnapshotMeta>> listSnapshots(SnapshotQuery query) {
             throw new UnsupportedOperationException();
         }
 

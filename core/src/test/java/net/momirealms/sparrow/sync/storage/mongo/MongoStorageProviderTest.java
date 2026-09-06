@@ -22,6 +22,8 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.map.MapData;
+import net.momirealms.sparrow.sync.map.MapSource;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterAll;
@@ -38,6 +40,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,6 +93,19 @@ class MongoStorageProviderTest {
             client.getDatabase(TEST_DATABASE).drop();
         } catch (Exception ignored) {
         }
+    }
+
+    @Test
+    void mapStorageFactoryUsesTheProvidersDatabaseAndOwnerBinding() {
+        String owner = this.player.toString();
+        var maps = this.provider.maps("factory-test", owner).join();
+        CompoundTag tag = NBT.createCompound();
+        tag.putString("dimension", "minecraft:overworld");
+        tag.putByteArray("colors", new byte[MapData.PIXEL_COUNT]);
+        var stored = maps.register(new MapSource(owner, 0), new MapData(4440, tag)).join();
+        var other = this.provider.maps("factory-test", "other-owner").join();
+        assertEquals(stored, other.find(stored.identity().globalId()).join().orElseThrow());
+        assertThrows(CompletionException.class, () -> other.update(stored.identity(), stored.data()).join());
     }
 
     @Test
