@@ -16,7 +16,6 @@ import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -38,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -64,7 +64,7 @@ class MongoStorageProviderTest {
     @BeforeAll
     void connect() {
         PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
         this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
         // 读走内联执行, 写按玩家投递到 worker, 与运行期同构
         this.provider = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
@@ -167,7 +167,7 @@ class MongoStorageProviderTest {
             snapshots.createIndex(Indexes.ascending("cause"));
 
             PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
             MongoStorageProvider upgraded = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
             try {
                 upgraded.initialize();
@@ -200,7 +200,7 @@ class MongoStorageProviderTest {
                     new com.mongodb.client.model.ReplaceOptions().upsert(true));
 
             PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new DataRegistry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
             MongoStorageProvider outdated = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
             try {
                 assertThrows(IllegalStateException.class, outdated::initialize);
@@ -338,9 +338,11 @@ class MongoStorageProviderTest {
 
     @Test
     void oversizedSnapshotIsRejectedBeforeWrite() {
-        // 未注册的二进制字段原样透传, 16MB 载荷触发写前守卫
+        // 不可压缩的载荷超过 15 MiB, 触发 Mongo 写前大小检查
         Map<DataKey, Tag> data = new LinkedHashMap<>();
-        data.put(BLOB, NBT.createByteArray(new byte[16 * 1024 * 1024]));
+        byte[] payload = new byte[15 * 1024 * 1024 + 1024];
+        new Random(7L).nextBytes(payload);
+        data.put(BLOB, NBT.createByteArray(payload));
         Snapshot oversized = new Snapshot(meta(1, false), data);
 
         // 重试也不会变小, 归类为需要人工介入而不是留在重试队列里

@@ -2,13 +2,13 @@ package net.momirealms.sparrow.sync.codec;
 
 import com.mongodb.MongoClientSettings;
 import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.nbt.DoubleTag;
-import net.momirealms.sparrow.nbt.IntTag;
+import net.momirealms.sparrow.nbt.ByteTag;
+import net.momirealms.sparrow.nbt.FloatTag;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
@@ -28,11 +28,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocumentSnapshotCodecTest {
-    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
 
     @Test
     void roundTripPreservesSnapshot() throws IOException {
@@ -45,25 +46,17 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
-    void binaryFormFieldsStoredAsBinary() throws IOException {
-        Document document = this.codec.encode(SnapshotFixtures.snapshot());
+    void dataIsOneFrameContainingOnlyDataKeys() throws IOException {
+        Snapshot snapshot = SnapshotFixtures.snapshot();
+        Document document = this.codec.encode(snapshot);
 
-        Document data = document.get("data", Document.class);
-        // BINARY 注册类型与未知二进制字段落为 Binary, STRUCTURED 类型落为可读文档
-        assertInstanceOf(Binary.class, data.get(SnapshotFixtures.INVENTORY.asString()));
-        assertInstanceOf(Binary.class, data.get(SnapshotFixtures.UNKNOWN_BLOB.asString()));
-        assertInstanceOf(Document.class, data.get(SnapshotFixtures.HEALTH.asString()));
-    }
+        Binary payload = assertInstanceOf(Binary.class, document.get("data"));
+        CompoundTag data = assertInstanceOf(CompoundTag.class, new BinarySnapshotCodec(CompressorRegistry.NONE).deframe(payload.getData()));
 
-    @Test
-    void structuredFieldsAreQueryableInDocument() throws IOException {
-        Document document = this.codec.encode(SnapshotFixtures.snapshot());
-
-        Document health = document.get("data", Document.class).get(SnapshotFixtures.HEALTH.asString(), Document.class);
-
-        assertEquals(19.5, health.getDouble("value"));
-        assertEquals(18, health.getInteger("food"));
-        assertEquals("SURVIVAL", health.getString("mode"));
+        assertEquals(snapshot.data().size(), data.size());
+        snapshot.data().forEach((key, value) -> assertEquals(value, data.get(key.asString())));
+        assertFalse(data.containsKey("player"));
+        assertFalse(data.containsKey("id"));
     }
 
     @Test
@@ -89,8 +82,7 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
-    void narrowNumericTypesWidenButKeepValue() throws IOException {
-        // 结构化字段里的 byte 与 float 经 BSON 往返后升宽为 int 与 double
+    void narrowNumericTypesKeepTheirTagTypes() throws IOException {
         CompoundTag structured = NBT.createCompound();
         structured.putBoolean("flying", true);
         structured.putFloat("exhaustion", 1.5f);
@@ -99,22 +91,47 @@ class DocumentSnapshotCodecTest {
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
 
         CompoundTag health = (CompoundTag) restored.data(SnapshotFixtures.HEALTH);
-        assertInstanceOf(IntTag.class, health.get("flying"));
-        assertInstanceOf(DoubleTag.class, health.get("exhaustion"));
-        // NumericTag 宽容取值下语义不变
+        assertInstanceOf(ByteTag.class, health.get("flying"));
+        assertInstanceOf(FloatTag.class, health.get("exhaustion"));
         assertTrue(health.getBoolean("flying"));
         assertEquals(1.5f, health.getFloat("exhaustion"));
+        assertEquals(snapshot, restored);
     }
 
     @Test
-    void nullDataFieldIsSkipped() throws IOException {
-        // 人工写入的 null 字段视为缺失, 不落为 EndTag 拖垮后续二进制编码
+    void decodeRejectsMissingOrNullData() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.get("data", Document.class).put("sparrow_sync:broken", null);
+        document.remove("data");
 
-        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(document)).snapshot();
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document)).reason());
+        document.put("data", null);
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document)).reason());
+    }
 
-        assertTrue(restored.data().keySet().stream().noneMatch(key -> key.value().equals("broken")));
+    @Test
+    void emptyDataRoundTripsAsAnEmptyCompoundFrame() throws IOException {
+        Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of());
+
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot());
+    }
+
+    @Test
+    void metadataCanBeReadWithoutDecodingData() throws IOException {
+        Snapshot snapshot = SnapshotFixtures.snapshot();
+        Document document = this.codec.encode(snapshot);
+        document.remove("data");
+
+        assertEquals(snapshot.meta(), DocumentSnapshotCodec.decodeMeta(document));
+        document.put("data", new Binary(new byte[]{0}));
+        assertEquals(snapshot.meta(), DocumentSnapshotCodec.decodeMeta(document));
+    }
+
+    @Test
+    void decodeRejectsNonCompoundDataFrame() throws IOException {
+        Document document = this.codec.encode(SnapshotFixtures.snapshot());
+        document.put("data", new Binary(new BinarySnapshotCodec(CompressorRegistry.NONE).frame(NBT.createInt(3))));
+
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document)).reason());
     }
 
     @Test
@@ -147,19 +164,17 @@ class DocumentSnapshotCodecTest {
     @Test
     void binaryFieldWithBadMagicReportsBadMagic() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.get("data", Document.class).put(SnapshotFixtures.INVENTORY.asString(), new Binary(new byte[]{99, 1, 2, 3}));
+        document.put("data", new Binary(new byte[]{99, 1, 2, 3}));
 
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document));
 
-        // 帧头错误按精确原因上报, detail 指出出错字段
         assertEquals(InvalidReason.BAD_MAGIC, invalid.reason());
-        assertTrue(invalid.detail().contains(SnapshotFixtures.INVENTORY.asString()));
     }
 
     @Test
     void binaryFieldWithUnknownCompressionReportsUnsupportedCompression() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.get("data", Document.class).put(SnapshotFixtures.INVENTORY.asString(), new Binary(new byte[]{'S', 'S', 1, 9}));
+        document.put("data", new Binary(new byte[]{'S', 'S', 1, 9}));
 
         DecodedSnapshot decoded = this.codec.decode(document);
 
@@ -170,7 +185,7 @@ class DocumentSnapshotCodecTest {
     void binaryFieldWithGarbageBodyReportsCorrupted() throws IOException {
         // 帧头合法但 NBT 体是垃圾字节
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.get("data", Document.class).put(SnapshotFixtures.INVENTORY.asString(), new Binary(new byte[]{'S', 'S', 1, 0, 11, 22}));
+        document.put("data", new Binary(new byte[]{'S', 'S', 1, 0, 11, 22}));
 
         DecodedSnapshot decoded = this.codec.decode(document);
 
@@ -178,29 +193,30 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
-    void storageFormDriftFallsBackToValueType() throws IOException {
-        // 模拟写方把 BINARY 注册的字段按结构化落盘, 读方以值类型为准还原而不是判损坏
+    void decodeRejectsLegacyMixedDocumentData() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.get("data", Document.class).put(SnapshotFixtures.INVENTORY.asString(), new Document("heldSlot", 3));
+        document.put("data", new Document()
+                .append(SnapshotFixtures.INVENTORY.asString(), new Binary(new byte[]{'S', 'S', 1, 0}))
+                .append(SnapshotFixtures.HEALTH.asString(), new Document("value", 19.5)));
 
-        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(document)).snapshot();
-
-        CompoundTag inventory = assertInstanceOf(CompoundTag.class, restored.data(SnapshotFixtures.INVENTORY));
-        assertEquals(3, inventory.getInt("heldSlot"));
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document)).reason());
     }
 
     @Test
-    void structuredUuidRoundTripsThroughMarkerDocument() throws IOException {
-        // NBT 中 UUID 即 IntArrayTag, 经 __i32a 标记文档无损往返
+    void uuidAndArraysRoundTripWithoutReservedMarkerKeys() throws IOException {
         UUID owner = UUID.fromString("11223344-5566-7788-99aa-bbccddeeff00");
         CompoundTag structured = NBT.createCompound();
         structured.putUUID("owner", owner);
+        structured.putLongArray("values", new long[]{Long.MIN_VALUE, Long.MAX_VALUE});
+        structured.putString("__i32a", "ordinary field");
+        structured.putString("__i64a", "ordinary field");
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.HEALTH, structured));
 
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
 
         CompoundTag health = assertInstanceOf(CompoundTag.class, restored.data(SnapshotFixtures.HEALTH));
         assertEquals(owner, health.getUUID("owner"));
+        assertEquals(snapshot, restored);
     }
 
     @Test
@@ -218,15 +234,33 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
-    void binaryFieldBytesRoundTripThroughOwnHeader() throws IOException {
-        // BINARY 字段字节自带压缩标识, 与实例配置无关
+    void dataFrameUsesItsOwnCompressionHeader() throws IOException {
         Snapshot snapshot = SnapshotFixtures.snapshot();
         Document document = this.codec.encode(snapshot);
-        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.NONE));
+        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.NONE));
 
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, plainCodec.decode(document)).snapshot();
 
-        Tag inventory = restored.data(SnapshotFixtures.INVENTORY);
-        assertEquals(snapshot.data(SnapshotFixtures.INVENTORY), inventory);
+        assertEquals(snapshot, restored);
+    }
+
+    @Test
+    void dataAcceptsByteArrayRepresentation() throws IOException {
+        Snapshot snapshot = SnapshotFixtures.snapshot();
+        Document document = this.codec.encode(snapshot);
+        document.put("data", document.get("data", Binary.class).getData());
+
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(document)).snapshot());
+    }
+
+    @Test
+    void storedSnapshotCanBeDumpedAndReadInBothFormats() throws IOException {
+        Snapshot snapshot = SnapshotFixtures.snapshot();
+        Snapshot stored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
+        JsonSnapshotCodec json = new JsonSnapshotCodec();
+        BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, json.decode(json.encode(stored))).snapshot());
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, binary.decode(binary.encode(stored))).snapshot());
     }
 }

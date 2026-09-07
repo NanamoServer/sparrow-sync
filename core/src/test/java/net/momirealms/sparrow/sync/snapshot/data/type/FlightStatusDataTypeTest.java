@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -53,8 +52,6 @@ class FlightStatusDataTypeTest {
     @Test
     void declaresGameModeDependencyAndRemainsNonCritical() {
         FlightStatusDataType type = new FlightStatusDataType();
-
-        assertEquals(StorageFormat.STRUCTURED, type.storage());
         assertEquals(Set.of(GameModeDataType.GAME_MODE), type.dependencies());
         assertFalse(type.critical());
     }

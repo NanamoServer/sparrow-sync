@@ -9,7 +9,6 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.PDCMergeBla
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -27,12 +26,6 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     @NotNull
     public DataKey key() {
         return PERSISTENT_DATA;
-    }
-
-    @Override
-    @NotNull
-    public StorageFormat storage() {
-        return StorageFormat.BINARY;
     }
 
     @Override

@@ -13,7 +13,6 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -43,12 +42,6 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
     @NotNull
     public DataKey key() {
         return ENDER_CHEST;
-    }
-
-    @Override
-    @NotNull
-    public StorageFormat storage() {
-        return StorageFormat.BINARY;
     }
 
     @Override

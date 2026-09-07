@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import org.bukkit.Location;
 import org.bukkit.Server;
@@ -46,8 +45,6 @@ class LocationDataTypeTest {
     @Test
     void declaresDependenciesAndRemainsNonCritical() {
         LocationDataType type = new LocationDataType();
-
-        assertEquals(StorageFormat.STRUCTURED, type.storage());
         assertEquals(Set.of(FlightStatusDataType.FLIGHT_STATUS, PotionEffectsDataType.POTION_EFFECTS), type.dependencies());
         assertFalse(type.critical());
     }

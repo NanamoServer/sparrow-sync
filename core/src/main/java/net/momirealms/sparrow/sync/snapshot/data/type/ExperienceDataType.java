@@ -7,7 +7,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -22,7 +21,7 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
 
 
     public ExperienceDataType() {
-        super(EXPERIENCE, StorageFormat.STRUCTURED, Experience.CODEC);
+        super(EXPERIENCE, Experience.CODEC);
     }
 
     @Override

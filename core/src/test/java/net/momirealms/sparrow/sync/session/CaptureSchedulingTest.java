@@ -32,7 +32,6 @@ import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
@@ -169,9 +168,6 @@ class CaptureSchedulingTest {
             @Override
             @NotNull
             public DataKey key() { return InventoryDataType.INVENTORY; }
-            @Override
-            @NotNull
-            public StorageFormat storage() { return StorageFormat.BINARY; }
             @Override
             @NotNull
             public Integer capture(@NotNull Player player, @NotNull CaptureMode mode) { return id.getAndIncrement(); }
@@ -348,10 +344,6 @@ class CaptureSchedulingTest {
 
             @Override
             @NotNull
-            public StorageFormat storage() { return StorageFormat.BINARY; }
-
-            @Override
-            @NotNull
             public InventoryDataType.Inventory capture(@NotNull Player player, @NotNull CaptureMode captureMode) {
                 capturedOn.set(Thread.currentThread());
                 return new InventoryDataType.Inventory(new ItemStack[]{item}, 0, 0);
@@ -476,12 +468,6 @@ class CaptureSchedulingTest {
         @NotNull
         public DataKey key() {
             return this.key;
-        }
-
-        @Override
-        @NotNull
-        public StorageFormat storage() {
-            return StorageFormat.STRUCTURED;
         }
 
         @Override

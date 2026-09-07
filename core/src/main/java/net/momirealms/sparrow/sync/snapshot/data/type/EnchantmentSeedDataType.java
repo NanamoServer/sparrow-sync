@@ -5,7 +5,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -18,7 +17,7 @@ public final class EnchantmentSeedDataType extends CodecDataType<Integer> implem
     public static final DataKey ENCHANTMENT_SEED = DataKey.sparrow("enchantment_seed");
 
     public EnchantmentSeedDataType() {
-        super(ENCHANTMENT_SEED, StorageFormat.STRUCTURED, Codec.INT);
+        super(ENCHANTMENT_SEED, Codec.INT);
     }
 
     @Override

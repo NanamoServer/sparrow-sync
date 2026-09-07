@@ -6,7 +6,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -22,7 +21,7 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     public static final DataKey HEALTH = DataKey.sparrow("health");
 
     public HealthDataType() {
-        super(HEALTH, StorageFormat.STRUCTURED, Health.CODEC);
+        super(HEALTH, Health.CODEC);
     }
 
     @Override

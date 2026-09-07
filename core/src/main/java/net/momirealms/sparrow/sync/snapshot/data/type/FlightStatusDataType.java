@@ -4,7 +4,6 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.entity.player.Abilities;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -17,7 +16,7 @@ public final class FlightStatusDataType extends CodecDataType<FlightStatusDataTy
     public static final DataKey FLIGHT_STATUS = DataKey.sparrow("flight_status");
 
     public FlightStatusDataType() {
-        super(FLIGHT_STATUS, StorageFormat.STRUCTURED, FlightStatus.CODEC);
+        super(FLIGHT_STATUS, FlightStatus.CODEC);
     }
 
     @Override

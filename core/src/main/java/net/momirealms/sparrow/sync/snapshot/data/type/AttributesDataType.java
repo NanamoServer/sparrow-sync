@@ -19,7 +19,6 @@ import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.ai.attributes.AttributeInstanceProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -77,7 +76,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     private volatile CaptureTargets captureTargets;
 
     public AttributesDataType() {
-        super(ATTRIBUTES, StorageFormat.STRUCTURED, CODEC);
+        super(ATTRIBUTES, CODEC);
     }
 
     @Override

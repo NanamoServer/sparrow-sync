@@ -2,7 +2,6 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,12 +19,6 @@ public interface PlayerDataType<T> {
 
     @NotNull
     DataKey key();
-
-    /**
-     * 文档存储中的排布形态.
-     */
-    @NotNull
-    StorageFormat storage();
 
     /**
      * 是否视为关键数据, 关键数据在采集、解码或应用阶段失败都会中止当前同步流程.

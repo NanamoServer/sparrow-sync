@@ -5,18 +5,14 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
-import net.momirealms.sparrow.sync.test.StubPlayerDataType;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
-// 编解码测试共享的注册表与标准快照
+// 编解码测试共享的标准快照
 final class SnapshotFixtures {
     static final DataKey INVENTORY = DataKey.of("sparrow", "inventory");
     static final DataKey HEALTH = DataKey.of("sparrow", "health");
@@ -27,13 +23,6 @@ final class SnapshotFixtures {
     static final UUID SNAPSHOT_ID = UUID.fromString("11112222-3333-4444-5555-666677778888");
 
     private SnapshotFixtures() {
-    }
-
-    static DataRegistry registry() {
-        DataRegistry registry = new DataRegistry();
-        registry.register(new StubPlayerDataType(INVENTORY, StorageFormat.BINARY, true, Set.of()));
-        registry.register(new StubPlayerDataType(HEALTH, StorageFormat.STRUCTURED));
-        return registry;
     }
 
     static SnapshotMeta meta() {
@@ -47,7 +36,7 @@ final class SnapshotFixtures {
                 .build();
     }
 
-    // BINARY 字段超过压缩阈值, STRUCTURED 与未知字段只用 BSON 安全类型, 保证文档形态严格往返
+    // 覆盖嵌套物品数据, 普通数值和外部类型的数据, 总大小超过压缩阈值
     static Snapshot snapshot() {
         return new Snapshot(meta(), Map.of(
                 INVENTORY, inventoryTag(),

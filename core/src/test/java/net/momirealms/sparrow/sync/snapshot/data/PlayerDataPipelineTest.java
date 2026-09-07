@@ -14,7 +14,6 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -65,8 +64,8 @@ class PlayerDataPipelineTest {
     @Test
     void captureSkipsFailingNonCriticalType() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED).failingCapture()
+                new FakeType(ALPHA),
+                new FakeType(BRAVO).failingCapture()
         );
 
         PlayerDataPipeline.CaptureResult.Ready ready = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
@@ -78,8 +77,8 @@ class PlayerDataPipelineTest {
     @Test
     void encodeSkipsFailingNonCriticalType() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED).failingEncode()
+                new FakeType(ALPHA),
+                new FakeType(BRAVO).failingEncode()
         );
         PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(this.player, CaptureMode.SYNC));
 
@@ -92,8 +91,8 @@ class PlayerDataPipelineTest {
     @Test
     void nonCriticalDecodeFailureCanBeRecoveredByEventData() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED).failingDecode()
+                new FakeType(ALPHA),
+                new FakeType(BRAVO).failingDecode()
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
         Map<DataKey, Object> eventData = new LinkedHashMap<>(context.pendingValues());
@@ -110,8 +109,8 @@ class PlayerDataPipelineTest {
     @Test
     void eventRemovalMarksPendingTypeAsSkipped() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED)
+                new FakeType(ALPHA),
+                new FakeType(BRAVO)
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
 
@@ -125,9 +124,9 @@ class PlayerDataPipelineTest {
     @Test
     void criticalPlayerFailureAbortsRemainingTypes() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED),
-                new FakeType(BRAVO, StorageFormat.BINARY, true, Set.of(ALPHA)).failingApply(),
-                new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO))
+                new FakeType(ALPHA),
+                new FakeType(BRAVO, true, Set.of(ALPHA)).failingApply(),
+                new FakeType(CHARLIE, false, Set.of(BRAVO))
         );
 
         PlayerDataPipeline.ApplyResult.Failure failure = assertInstanceOf(PlayerDataPipeline.ApplyResult.Failure.class,
@@ -142,8 +141,8 @@ class PlayerDataPipelineTest {
     @Test
     void nonCriticalPlayerFailureIsSkipped() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new FakeType(ALPHA, StorageFormat.STRUCTURED).failingApply(),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED)
+                new FakeType(ALPHA).failingApply(),
+                new FakeType(BRAVO)
         );
 
         PlayerDataPipeline.ApplyResult.Success result = assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class,
@@ -157,8 +156,8 @@ class PlayerDataPipelineTest {
     @Test
     void nativeSuccessIsHiddenFromEventAndNotAppliedTwice() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED)
+                new NativeFakeType(ALPHA, false, Set.of()),
+                new FakeType(BRAVO)
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
         CompoundTag local = new CompoundTag();
@@ -181,7 +180,7 @@ class PlayerDataPipelineTest {
 
     @Test
     void nativeNotAppliedStaysPendingWithoutFailure() {
-        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).unsupportedNative());
+        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, false, Set.of()).unsupportedNative());
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
         CompoundTag local = new CompoundTag();
         local.putString("local", "kept");
@@ -196,13 +195,13 @@ class PlayerDataPipelineTest {
 
     @Test
     void ineligibleExternalTypeStaysPendingWhilePlayerDataIsApplied() {
-        NativeFakeType external = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative();
+        NativeFakeType external = new NativeFakeType(ALPHA, false, Set.of()).externalNative();
         external.nativeEligibility = session -> {
             assertSame(this.session, session);
             assertSame(this.connection, session.connection());
             return false;
         };
-        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of()));
+        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, false, Set.of()));
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
         Object pendingValue = context.pendingValues().get(ALPHA);
 
@@ -221,11 +220,11 @@ class PlayerDataPipelineTest {
 
     @Test
     void eligibilityFailureFallsBackAndContinuesOtherNativeTypes() {
-        NativeFakeType external = new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative();
+        NativeFakeType external = new NativeFakeType(ALPHA, false, Set.of()).externalNative();
         external.nativeEligibility = session -> {
             throw new LinkageError("legacy player field unavailable");
         };
-        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of()));
+        PlayerDataPipeline pipeline = this.createPipeline(external, new NativeFakeType(BRAVO, false, Set.of()));
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
 
         pipeline.applyNative(this.session, Optional.empty(), context);
@@ -239,7 +238,7 @@ class PlayerDataPipelineTest {
 
     @Test
     void externalNativeSuccessDoesNotPublishSyntheticPlayerData() {
-        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).externalNative());
+        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, false, Set.of()).externalNative());
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
 
         Optional<CompoundTag> playerData = pipeline.applyNative(this.session, Optional.empty(), context);
@@ -254,12 +253,12 @@ class PlayerDataPipelineTest {
     @Test
     void nativeHandoffsRunOnceInDependencyOrderAlongsidePlayerApply() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()).withHandoff(player -> {
+                new NativeFakeType(ALPHA, false, Set.of()).withHandoff(player -> {
                     assertSame(this.player, player);
                     this.applied.add(ALPHA);
                 }),
-                new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA)).externalNative().withHandoff(player -> this.applied.add(BRAVO)),
-                new FakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO))
+                new NativeFakeType(BRAVO, false, Set.of(ALPHA)).externalNative().withHandoff(player -> this.applied.add(BRAVO)),
+                new FakeType(CHARLIE, false, Set.of(BRAVO))
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE));
 
@@ -279,10 +278,10 @@ class PlayerDataPipelineTest {
     @ValueSource(booleans = {false, true})
     void handoffFailureUsesItsDataTypeCriticality(boolean critical) {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, critical, Set.of()).externalNative().withHandoff(player -> {
+                new NativeFakeType(ALPHA, critical, Set.of()).externalNative().withHandoff(player -> {
                     throw new IllegalStateException("handoff failed");
                 }),
-                new FakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA))
+                new FakeType(BRAVO, false, Set.of(ALPHA))
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO));
         assertTrue(pipeline.applyNative(this.session, Optional.empty(), context).isEmpty());
@@ -303,9 +302,9 @@ class PlayerDataPipelineTest {
     @Test
     void everyNativeFailureFallsBackAndLaterNativeTypesContinue() {
         PlayerDataPipeline pipeline = this.createPipeline(
-                new NativeFakeType(ALPHA, StorageFormat.BINARY, true, Set.of()).failingNative(),
-                new NativeFakeType(BRAVO, StorageFormat.STRUCTURED, false, Set.of(ALPHA)).failingNative(),
-                new NativeFakeType(CHARLIE, StorageFormat.STRUCTURED, false, Set.of(BRAVO))
+                new NativeFakeType(ALPHA, true, Set.of()).failingNative(),
+                new NativeFakeType(BRAVO, false, Set.of(ALPHA)).failingNative(),
+                new NativeFakeType(CHARLIE, false, Set.of(BRAVO))
         );
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, BRAVO, CHARLIE));
 
@@ -325,12 +324,12 @@ class PlayerDataPipelineTest {
 
     @Test
     void syntheticPlayerDataOnlyExistsWhenANativeSlotWasWritten() {
-        PlayerDataPipeline joinOnly = this.createPipeline(new FakeType(ALPHA, StorageFormat.STRUCTURED));
+        PlayerDataPipeline joinOnly = this.createPipeline(new FakeType(ALPHA));
         SnapshotApplyContext joinOnlyContext = context(joinOnly, snapshotWith(ALPHA));
 
         assertTrue(joinOnly.applyNative(this.session, Optional.empty(), joinOnlyContext).isEmpty());
 
-        PlayerDataPipeline nativePipeline = this.createPipeline(new NativeFakeType(ALPHA, StorageFormat.STRUCTURED, false, Set.of()));
+        PlayerDataPipeline nativePipeline = this.createPipeline(new NativeFakeType(ALPHA, false, Set.of()));
         SnapshotApplyContext nativeContext = context(nativePipeline, snapshotWith(ALPHA));
         CompoundTag root = nativePipeline.applyNative(this.session, Optional.empty(), nativeContext).orElseThrow();
 
@@ -340,8 +339,8 @@ class PlayerDataPipelineTest {
 
     @Test
     void freezeIncludesTypesRegisteredByThirdParties() {
-        FakeType thirdParty = new FakeType(BRAVO, StorageFormat.STRUCTURED);
-        PlayerDataPipeline pipeline = this.createPipeline(thirdParty, new FakeType(ALPHA, StorageFormat.STRUCTURED));
+        FakeType thirdParty = new FakeType(BRAVO);
+        PlayerDataPipeline pipeline = this.createPipeline(thirdParty, new FakeType(ALPHA));
 
         pipeline.apply(this.player, context(pipeline, snapshotWith(ALPHA, BRAVO)));
 
@@ -350,7 +349,7 @@ class PlayerDataPipelineTest {
 
     @Test
     void unregisteredSnapshotDataIsRetainedForNextSave() {
-        PlayerDataPipeline pipeline = this.createPipeline(new FakeType(ALPHA, StorageFormat.STRUCTURED));
+        PlayerDataPipeline pipeline = this.createPipeline(new FakeType(ALPHA));
         DataKey unknown = DataKey.of("other", "unknown");
 
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, unknown));
@@ -400,7 +399,6 @@ class PlayerDataPipelineTest {
 
     private class FakeType implements PlayerDataType<String> {
         private final DataKey key;
-        private final StorageFormat storage;
         private final boolean critical;
         private final Set<DataKey> dependencies;
         private boolean captureFails;
@@ -408,13 +406,12 @@ class PlayerDataPipelineTest {
         private boolean decodeFails;
         private boolean applyFails;
 
-        private FakeType(DataKey key, StorageFormat storage) {
-            this(key, storage, false, Set.of());
+        private FakeType(DataKey key) {
+            this(key, false, Set.of());
         }
 
-        private FakeType(DataKey key, StorageFormat storage, boolean critical, Set<DataKey> dependencies) {
+        private FakeType(DataKey key, boolean critical, Set<DataKey> dependencies) {
             this.key = key;
-            this.storage = storage;
             this.critical = critical;
             this.dependencies = Set.copyOf(dependencies);
         }
@@ -443,12 +440,6 @@ class PlayerDataPipelineTest {
         @NotNull
         public DataKey key() {
             return this.key;
-        }
-
-        @Override
-        @NotNull
-        public StorageFormat storage() {
-            return this.storage;
         }
 
         @Override
@@ -495,8 +486,8 @@ class PlayerDataPipelineTest {
         private boolean nativeFails;
         private Predicate<PlayerSession> nativeEligibility = session -> true;
 
-        private NativeFakeType(DataKey key, StorageFormat storage, boolean critical, Set<DataKey> dependencies) {
-            super(key, storage, critical, dependencies);
+        private NativeFakeType(DataKey key, boolean critical, Set<DataKey> dependencies) {
+            super(key, critical, dependencies);
         }
 
         private NativeFakeType unsupportedNative() {

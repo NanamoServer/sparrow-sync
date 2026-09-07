@@ -1,21 +1,16 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
-import net.momirealms.sparrow.nbt.ByteArrayTag;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.codec.ops.BsonOps;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bson.Document;
 import org.bson.types.Binary;
 import org.jetbrains.annotations.NotNull;
@@ -27,7 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * MongoDB 文档形态的快照编解码, 元数据与 STRUCTURED 数据排布为 BSON 字段, BINARY 数据交给 {@link BinarySnapshotCodec} 封为自带版本与压缩标识的字节帧.
+ * MongoDB 文档形态的快照编解码, 元数据保留为 BSON 字段, 整份 data 保存为一个 NBT 二进制帧.
  * 文档含 BSON UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
  */
 public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
@@ -42,21 +37,18 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static final String FIELD_DATA = "data";
 
     private SparrowSync plugin;
-    private DataRegistry registry;
     private BinarySnapshotCodec binary;
 
     public DocumentSnapshotCodec(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
     }
 
-    public DocumentSnapshotCodec(@NotNull DataRegistry registry, @NotNull BinarySnapshotCodec binary) {
-        this.registry = registry;
+    public DocumentSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
         this.binary = binary;
     }
 
-    /** 绑定启动期创建完成的注册表与二进制 codec. */
+    /** 绑定启动期创建完成的二进制 codec. */
     public void onLoad() {
-        this.registry = this.plugin.dataRegistry();
         this.binary = this.plugin.binaryCodec();
     }
 
@@ -73,24 +65,13 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_SERVER, meta.server());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
-        Document data = new Document();
+        // data 以 DataKey 为键封成一个帧, 元数据单独保留供列表和索引查询.
+        CompoundTag data = NBT.createCompound();
         for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
-            data.append(entry.getKey().asString(), this.toDocumentValue(entry.getKey(), entry.getValue()));
+            data.put(entry.getKey().asString(), entry.getValue());
         }
-        document.append(FIELD_DATA, data);
+        document.append(FIELD_DATA, new Binary(this.binary.frame(data)));
         return document;
-    }
-
-    private Object toDocumentValue(DataKey key, Tag tag) throws IOException {
-        PlayerDataType<?> type = this.registry.type(key);
-        if (type != null && type.storage() == StorageFormat.BINARY) {
-            return new Binary(this.binary.frame(tag));
-        }
-        // 未注册的二进制字段原样透传, 内容不解释
-        if (type == null && tag instanceof ByteArrayTag bytes) {
-            return new Binary(bytes.value());
-        }
-        return NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, tag);
     }
 
     @Override
@@ -107,15 +88,17 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
             }
             Document document = SnapshotUpgradePipeline.upgrade(encoded, format);
             SnapshotMeta meta = decodeMetaFields(document);
+            byte[] bytes = switch (document.get(FIELD_DATA)) {
+                case Binary binary -> binary.getData();
+                case byte[] payload -> payload;
+                case null, default -> throw new IOException("missing or non-binary data field");
+            };
+            if (!(this.binary.deframe(bytes) instanceof CompoundTag values)) {
+                return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "data tag is not a compound");
+            }
             Map<DataKey, Tag> data = new LinkedHashMap<>();
-            Document values = document.get(FIELD_DATA, Document.class);
-            if (values != null) {
-                for (Map.Entry<String, Object> entry : values.entrySet()) {
-                    // null 字段视为缺失, EndTag 进入快照会截断二进制帧
-                    if (entry.getValue() == null) continue;
-                    DataKey key = DataKey.parse(entry.getKey());
-                    data.put(key, this.fromDocumentValue(key, entry.getValue()));
-                }
+            for (Map.Entry<String, Tag> entry : values.entrySet()) {
+                data.put(DataKey.parse(entry.getKey()), entry.getValue());
             }
             return new DecodedSnapshot.Valid(new Snapshot(meta, data));
         } catch (FormatException exception) {
@@ -151,26 +134,6 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
                 readString(document.get(FIELD_SERVER)),
                 document.get(FIELD_MC_DATA) instanceof Number mcData ? mcData.intValue() : 0
         );
-    }
-
-    // 以值的实际类型为准还原, 写读两侧注册形态不一致时字段仍可读, 不拖垮整份快照
-    private Tag fromDocumentValue(DataKey key, Object value) throws IOException {
-        if (value instanceof Binary || value instanceof byte[]) {
-            PlayerDataType<?> type = this.registry.type(key);
-            if (type != null && type.storage() == StorageFormat.BINARY) {
-                try {
-                    return this.binary.deframe(binaryBytes(value));
-                } catch (FormatException exception) {
-                    throw new FormatException(exception.reason(), exception.getMessage() + " (field " + key.asString() + ")");
-                }
-            }
-            return NBT.createByteArray(binaryBytes(value));
-        }
-        return BsonOps.INSTANCE.convertTo(NBTOps.INSTANCE, value);
-    }
-
-    private static byte[] binaryBytes(Object value) {
-        return value instanceof Binary binary ? binary.getData() : (byte[]) value;
     }
 
     private static long readTimestamp(Object value) {

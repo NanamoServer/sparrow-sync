@@ -7,7 +7,6 @@ import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
@@ -24,7 +23,7 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
 
     public PotionEffectsDataType() {
-        super(POTION_EFFECTS, StorageFormat.STRUCTURED, MobEffectInstance.CODEC.listOf(), MinecraftRegistryOps::sparrowNbt);
+        super(POTION_EFFECTS, MobEffectInstance.CODEC.listOf(), MinecraftRegistryOps::sparrowNbt);
     }
 
     @Override

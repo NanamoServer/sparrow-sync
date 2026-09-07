@@ -7,7 +7,6 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -23,7 +22,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
     public static final DataKey LOCATION = DataKey.sparrow("location");
 
     public LocationDataType() {
-        super(LOCATION, StorageFormat.STRUCTURED, PlayerLocation.CODEC);
+        super(LOCATION, PlayerLocation.CODEC);
     }
 
     @Override

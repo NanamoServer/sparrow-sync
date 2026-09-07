@@ -6,7 +6,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -20,7 +19,7 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
     private static final Codec<GameMode> CODEC = Codec.STRING.comapFlatMap(GameModeDataType::parseGameMode, GameMode::name);
 
     public GameModeDataType() {
-        super(GAME_MODE, StorageFormat.STRUCTURED, CODEC);
+        super(GAME_MODE, CODEC);
     }
 
     @Override

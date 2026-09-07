@@ -158,7 +158,7 @@ public final class TestCommand extends BukkitCommandFeature {
         }
         // 与正式装配同一配置来源, 冒烟覆盖的是用户实际选用的压缩器
         BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(PluginConfig.synchronization$compression());
-        DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(plugin().dataRegistry(), binaryCodec);
+        DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(binaryCodec);
 
         try {
             // 采集原始快照

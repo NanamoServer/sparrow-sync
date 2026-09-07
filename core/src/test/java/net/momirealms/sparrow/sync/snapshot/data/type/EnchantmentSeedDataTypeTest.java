@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -35,8 +34,6 @@ class EnchantmentSeedDataTypeTest {
     @Test
     void declaresStructuredNonCriticalData() {
         EnchantmentSeedDataType type = new EnchantmentSeedDataType();
-
-        assertEquals(StorageFormat.STRUCTURED, type.storage());
         assertFalse(type.critical());
     }
 

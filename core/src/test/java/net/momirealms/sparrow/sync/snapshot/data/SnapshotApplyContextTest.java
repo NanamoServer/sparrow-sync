@@ -4,7 +4,6 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
@@ -48,12 +47,6 @@ class SnapshotApplyContextTest {
     }
 
     private record FakeType(@NotNull DataKey key) implements PlayerDataType<String> {
-
-        @Override
-        @NotNull
-        public StorageFormat storage() {
-            return StorageFormat.STRUCTURED;
-        }
 
         @Override
         @NotNull

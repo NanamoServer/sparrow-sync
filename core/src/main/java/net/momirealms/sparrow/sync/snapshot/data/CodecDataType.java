@@ -5,7 +5,6 @@ import com.mojang.serialization.DynamicOps;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -18,22 +17,20 @@ import java.util.function.Supplier;
  */
 public abstract class CodecDataType<T> implements PlayerDataType<T> {
     private final DataKey key;
-    private final StorageFormat storage;
     private final Codec<T> codec;
     private final Supplier<DynamicOps<Tag>> ops;
 
     /** 纯数据 codec 用本构造, 在裸 NBTOps 上运行, 不依赖服务器环境. */
-    protected CodecDataType(@NotNull DataKey key, @NotNull StorageFormat storage, @NotNull Codec<T> codec) {
-        this(key, storage, codec, () -> NBTOps.INSTANCE);
+    protected CodecDataType(@NotNull DataKey key, @NotNull Codec<T> codec) {
+        this(key, codec, () -> NBTOps.INSTANCE);
     }
 
     /**
      * 含注册表引用的 codec (药水效果, 物品等) 用本构造传入注册表 ops.
      * <strong>ops 惰性求值, 装配发生在启动期而注册表 ops 要求服务器就绪</strong>.
      */
-    protected CodecDataType(@NotNull DataKey key, @NotNull StorageFormat storage, @NotNull Codec<T> codec, @NotNull Supplier<DynamicOps<Tag>> ops) {
+    protected CodecDataType(@NotNull DataKey key, @NotNull Codec<T> codec, @NotNull Supplier<DynamicOps<Tag>> ops) {
         this.key = key;
-        this.storage = storage;
         this.codec = codec;
         this.ops = ops;
     }
@@ -42,12 +39,6 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
     @NotNull
     public final DataKey key() {
         return this.key;
-    }
-
-    @Override
-    @NotNull
-    public final StorageFormat storage() {
-        return this.storage;
     }
 
     @Override

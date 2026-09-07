@@ -17,7 +17,6 @@ import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -56,12 +55,6 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     @NotNull
     public DataKey key() {
         return INVENTORY;
-    }
-
-    @Override
-    @NotNull
-    public StorageFormat storage() {
-        return StorageFormat.BINARY;
     }
 
     @Override

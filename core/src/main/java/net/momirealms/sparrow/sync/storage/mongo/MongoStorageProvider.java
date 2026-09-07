@@ -285,7 +285,7 @@ public final class MongoStorageProvider implements StorageProvider {
             return new SaveOutcome(result, null);
         }
         // 写前守卫, 16 MB 文档上限检查
-        long payload = payloadBytes(document);
+        long payload = document.get(DocumentSnapshotCodec.FIELD_DATA, Binary.class).getData().length;
         if (payload > MAX_PAYLOAD_BYTES) {
             this.logger.error(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(payload));
             return new SaveOutcome(SaveResult.REJECTED_OVERSIZED, null);
@@ -341,35 +341,6 @@ public final class MongoStorageProvider implements StorageProvider {
         }
         DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
         throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
-    }
-
-    // data 里可能嵌套 Document 和 List, 所有层级的二进制内容都计入大小
-    private static long payloadBytes(Document document) {
-        Document data = document.get(DocumentSnapshotCodec.FIELD_DATA, Document.class);
-        return data == null ? 0 : binaryBytesOf(data);
-    }
-
-    private static long binaryBytesOf(Object value) {
-        return switch (value) {
-            case Binary binary -> binary.getData().length;
-            case byte[] bytes -> bytes.length;
-            case Document document -> {
-                long bytes = 0;
-                for (Map.Entry<String, Object> entry : document.entrySet()) {
-                    bytes += binaryBytesOf(entry.getValue());
-                }
-                yield bytes;
-            }
-            case List<?> list -> {
-                long bytes = 0;
-                int size = list.size();
-                for (int i = 0; i < size; i++) {
-                    bytes += binaryBytesOf(list.get(i));
-                }
-                yield bytes;
-            }
-            case null, default -> 0;
-        };
     }
 
     private static Bson byPlayer(UUID player) {

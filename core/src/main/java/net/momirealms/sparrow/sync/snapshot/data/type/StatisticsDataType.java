@@ -26,7 +26,6 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJso
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.StorageFormat;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.GsonUtils;
@@ -55,12 +54,6 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     @NotNull
     public DataKey key() {
         return STATISTICS;
-    }
-
-    @Override
-    @NotNull
-    public StorageFormat storage() {
-        return StorageFormat.STRUCTURED;
     }
 
     @Override

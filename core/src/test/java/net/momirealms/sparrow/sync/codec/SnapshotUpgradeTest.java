@@ -21,19 +21,20 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 升级管线: 低版本经管线升到当前布局, 高版本按当前布局尽力读, 读不动才报 UNSUPPORTED_FORMAT
+// 升级管线覆盖二进制快照与文档元数据, 文档的 data 必须符合当前二进制布局.
 class SnapshotUpgradeTest {
     private static final UUID PLAYER = UUID.fromString("7f2b3c1d-0a9e-4b8c-9d6f-112233445566");
     private static final long TIMESTAMP = 1_756_300_000_000L;
 
-    private final DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(SnapshotFixtures.registry(), new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+    private final DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
     private final BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
 
     @Test
-    void v1DocumentGainsDerivedIdAndStaysReadable() {
+    void legacyDocumentDataIsRejectedButMetadataRemainsReadable() {
         DecodedSnapshot decoded = this.documentCodec.decode(v1Document(7L));
 
-        SnapshotMeta meta = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot().meta();
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
+        SnapshotMeta meta = DocumentSnapshotCodec.decodeMeta(v1Document(7L));
         assertEquals(PLAYER, meta.player());
         assertEquals(TIMESTAMP, meta.timestamp());
     }
@@ -41,9 +42,9 @@ class SnapshotUpgradeTest {
     @Test
     void derivedIdIsStableAcrossReadsAndDistinctPerVersion() {
         // 同一份 v1 数据反复读出的 id 必须一致, 否则插回时会产生副本
-        UUID first = metaOf(this.documentCodec.decode(v1Document(7L))).id();
-        UUID again = metaOf(this.documentCodec.decode(v1Document(7L))).id();
-        UUID other = metaOf(this.documentCodec.decode(v1Document(8L))).id();
+        UUID first = DocumentSnapshotCodec.decodeMeta(v1Document(7L)).id();
+        UUID again = DocumentSnapshotCodec.decodeMeta(v1Document(7L)).id();
+        UUID other = DocumentSnapshotCodec.decodeMeta(v1Document(8L)).id();
 
         assertEquals(first, again);
         assertNotEquals(first, other);
@@ -82,10 +83,6 @@ class SnapshotUpgradeTest {
         document.put("format", SnapshotCodec.CURRENT_VERSION + 1);
 
         assertEquals(PLAYER, DocumentSnapshotCodec.decodeMeta(document).player());
-    }
-
-    private static SnapshotMeta metaOf(DecodedSnapshot decoded) {
-        return assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot().meta();
     }
 
     // v1 布局: 有 version 没有 id, _id 是驱动生成的 ObjectId 形态 (这里用一个非 UUID 值代表)
