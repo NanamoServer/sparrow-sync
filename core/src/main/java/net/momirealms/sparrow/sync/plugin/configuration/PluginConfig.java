@@ -217,7 +217,7 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MysqlOptions {
-        String url = "jdbc:mysql://localhost:3306/minecraft";
+        String url = "jdbc:mysql://localhost:3306/minecraft?connectTimeout=5000&socketTimeout=10000&characterEncoding=UTF-8"; // JDBC 地址与驱动参数, 超时单位为毫秒
         String username = "root";
         String password = "";
         String tablePrefix = "sparrow_sync_";
