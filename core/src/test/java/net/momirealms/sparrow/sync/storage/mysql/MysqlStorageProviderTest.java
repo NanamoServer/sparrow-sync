@@ -13,6 +13,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
@@ -25,17 +26,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.sql.DriverManager;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,6 +159,216 @@ class MysqlStorageProviderTest {
                 .mapTo(SnapshotMeta.class).one());
         assertEquals(meta, found);
         assertEquals("FEDCBA98765432100123456789ABCDEF", provider.jdbi().withHandle(handle -> handle.createQuery("SELECT HEX(id) FROM `" + this.prefix + "snapshots`").mapTo(String.class).one()));
+        assertEquals(List.of(meta), provider.listSnapshots(SnapshotQuery.of(meta.player())).join());
+    }
+
+    @Test
+    void snapshotQueriesUseTimestampAndUnsignedBinaryIdOrder() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot earlier = new Snapshot(new SnapshotMeta(UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"), player, 10, SaveCause.COMMAND, true, "大厅", 4440), Map.of());
+        Snapshot lowerId = new Snapshot(new SnapshotMeta(UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff"), player, 20, SaveCause.COMMAND, false, "大厅", 4440), Map.of());
+        Snapshot latest = new Snapshot(new SnapshotMeta(UUID.fromString("80000000-0000-0000-0000-000000000000"), player, 20, SaveCause.COMMAND, false, "大厅", 4440), Map.of(DataKey.of("external", "test"), NBT.createString("payload😀")));
+        Snapshot foreign = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 30, SaveCause.COMMAND, false, "other", 4440), Map.of());
+        for (Snapshot snapshot : List.of(earlier, latest, lowerId, foreign)) {
+            this.insert(provider.jdbi(), this.codec.encode(snapshot));
+        }
+        assertEquals(Optional.of(latest), provider.latestSnapshot(player).join());
+        assertEquals(Optional.of(earlier), provider.snapshot(earlier.meta().id()).join());
+        assertEquals(Optional.of(latest), provider.snapshot(latest.meta().id()).join());
+        assertEquals(Optional.of(foreign), provider.latestSnapshot(foreign.meta().player()).join());
+        assertEquals(Optional.empty(), provider.latestSnapshot(UUID.randomUUID()).join());
+        assertEquals(Optional.empty(), provider.snapshot(UUID.randomUUID()).join());
+        assertEquals(List.of(latest.meta(), lowerId.meta(), earlier.meta()), provider.listSnapshots(SnapshotQuery.of(player)).join());
+    }
+
+    @Test
+    void listCombinesInclusiveRangesPinFiltersAndLimits() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        long[] timestamps = {Long.MIN_VALUE, 10, 20, 20, 30, Long.MAX_VALUE};
+        List<SnapshotMeta> metas = new ArrayList<>();
+        for (int i = 0; i < timestamps.length; i++) {
+            SnapshotMeta meta = new SnapshotMeta(new UUID(0, i + 1), player, timestamps[i], SaveCause.COMMAND, i % 2 == 1, "", 4440);
+            metas.add(meta);
+            this.insert(provider.jdbi(), this.codec.encode(new Snapshot(meta, Map.of())));
+        }
+        SnapshotQuery all = SnapshotQuery.of(player);
+        List<Map.Entry<SnapshotQuery, List<SnapshotMeta>>> cases = List.of(
+                Map.entry(all, List.of(metas.get(5), metas.get(4), metas.get(3), metas.get(2), metas.get(1), metas.get(0))),
+                Map.entry(all.between(10, 20), List.of(metas.get(3), metas.get(2), metas.get(1))),
+                Map.entry(all.between(20, 20), List.of(metas.get(3), metas.get(2))),
+                Map.entry(all.between(Long.MIN_VALUE, 10), List.of(metas.get(1), metas.get(0))),
+                Map.entry(all.between(30, Long.MAX_VALUE), List.of(metas.get(5), metas.get(4))),
+                Map.entry(all.between(Long.MIN_VALUE, Long.MIN_VALUE), List.of(metas.get(0))),
+                Map.entry(all.between(Long.MAX_VALUE, Long.MAX_VALUE), List.of(metas.get(5))),
+                Map.entry(all.between(21, 29), List.of()),
+                Map.entry(all.withPinned(SnapshotQuery.PinFilter.PINNED), List.of(metas.get(5), metas.get(3), metas.get(1))),
+                Map.entry(all.withPinned(SnapshotQuery.PinFilter.UNPINNED), List.of(metas.get(4), metas.get(2), metas.get(0))),
+                Map.entry(all.between(10, 20).withPinned(SnapshotQuery.PinFilter.PINNED).withLimit(1), List.of(metas.get(3))),
+                Map.entry(all.between(10, 20).withPinned(SnapshotQuery.PinFilter.UNPINNED).withLimit(1), List.of(metas.get(2))),
+                Map.entry(all.withLimit(2), List.of(metas.get(5), metas.get(4)))
+        );
+        for (int i = 0; i < cases.size(); i++) {
+            var expected = cases.get(i);
+            assertEquals(expected.getValue(), provider.listSnapshots(expected.getKey()).join(), expected.getKey().toString());
+        }
+        assertEquals(List.of(), provider.listSnapshots(SnapshotQuery.of(UUID.randomUUID())).join());
+        assertEquals(provider.listSnapshots(all).join(), provider.listSnapshots(all.withLimit(-1)).join());
+    }
+
+    @Test
+    void invalidFullSnapshotsFailWhileMetadataRemainsReadable() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot valid = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 10, SaveCause.COMMAND, false, "", 4440), Map.of());
+        SnapshotMeta broken = new SnapshotMeta(UUID.randomUUID(), player, 20, SaveCause.COMMAND, false, "", 4440);
+        this.insert(provider.jdbi(), this.codec.encode(valid));
+        this.insert(provider.jdbi(), new SnapshotRow(broken, 2, new byte[]{0}));
+        CompletionException byId = assertThrows(CompletionException.class, () -> provider.snapshot(broken.id()).join());
+        assertInstanceOf(IOException.class, byId.getCause());
+        assertTrue(byId.getCause().getMessage().contains("CORRUPTED"));
+        assertThrows(CompletionException.class, () -> provider.latestSnapshot(player).join());
+        assertEquals(List.of(broken, valid.meta()), provider.listSnapshots(SnapshotQuery.of(player)).join());
+        assertEquals(Optional.of(valid), provider.snapshot(valid.meta().id()).join());
+        provider.jdbi().useHandle(handle -> handle.createUpdate("UPDATE `" + this.prefix + "snapshots` SET format = 99 WHERE id = :id").bind("id", broken.id()).execute());
+        CompletionException futureFormat = assertThrows(CompletionException.class, () -> provider.latestSnapshot(player).join());
+        assertTrue(futureFormat.getCause().getMessage().contains("UNSUPPORTED_FORMAT"));
+    }
+
+    @Test
+    void fullSnapshotDecodeIsQueuedAfterTheConnectionIsReleased() throws Exception {
+        ArrayDeque<Runnable> tasks = new ArrayDeque<>();
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix, tasks::addLast);
+        provider.initialize();
+        Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 20, SaveCause.COMMAND, false, "", 4440), Map.of(DataKey.of("test", "payload"), NBT.createString("detached row")));
+        HikariDataSource pool = this.pool(provider);
+        for (int i = 0; i < 2; i++) {
+            this.insert(provider.jdbi(), this.codec.encode(snapshot));
+            CompletableFuture<Optional<Snapshot>> read = i == 0 ? provider.latestSnapshot(snapshot.meta().player()) : provider.snapshot(snapshot.meta().id());
+            assertFalse(read.isDone());
+            assertEquals(1, tasks.size());
+            // 只执行数据库阶段, 解码仍在队列中, 此时连接已经归还.
+            tasks.removeFirst().run();
+            assertFalse(read.isDone());
+            assertEquals(1, tasks.size());
+            assertEquals(0, pool.getHikariPoolMXBean().getActiveConnections());
+            provider.jdbi().useHandle(handle -> handle.execute("DELETE FROM `" + this.prefix + "snapshots`"));
+            tasks.removeFirst().run();
+            assertEquals(Optional.of(snapshot), read.join());
+            assertTrue(tasks.isEmpty());
+        }
+    }
+
+    @Test
+    void ensureUserRefreshesTheNameAndSessionTime() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        long before = System.currentTimeMillis();
+        provider.ensureUser(player, "Original").join();
+        long after = System.currentTimeMillis();
+        long seen = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT last_seen FROM `" + this.prefix + "users` WHERE player = :player").bind("player", player).mapTo(Long.class).one());
+        assertTrue(seen >= before && seen <= after);
+        provider.jdbi().useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "users` SET last_seen = 1"));
+        provider.ensureUser(player, "Original").join();
+        long refreshed = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT last_seen FROM `" + this.prefix + "users`").mapTo(Long.class).one());
+        assertTrue(refreshed > 1);
+        provider.ensureUser(player, "Renamed").join();
+        assertEquals(Optional.of(player), provider.lookupUser("Renamed").join());
+        assertEquals(Optional.empty(), provider.lookupUser("Original").join());
+        int count = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "users`").mapTo(Integer.class).one());
+        assertEquals(1, count);
+    }
+
+    @Test
+    void lookupUserChoosesTheLatestSessionAndBreaksTiesByUuid() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID first = UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff");
+        UUID second = UUID.fromString("80000000-0000-0000-0000-000000000000");
+        provider.ensureUser(first, "Shared").join();
+        provider.ensureUser(second, "Shared").join();
+        provider.jdbi().useHandle(handle -> handle.createUpdate("UPDATE `" + this.prefix + "users` SET last_seen = CASE WHEN player = :first THEN 20 ELSE 10 END").bind("first", first).execute());
+        assertEquals(Optional.of(first), provider.lookupUser("Shared").join());
+        provider.jdbi().useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "users` SET last_seen = 20"));
+        assertEquals(Optional.of(second), provider.lookupUser("Shared").join());
+        assertEquals(Optional.empty(), provider.lookupUser("Nobody").join());
+    }
+
+    @Test
+    void namesPreserveUnicodeCaseAndLiteralSqlCharacters() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        List<String> names = List.of("Catnies", "catnies", "Cátnies", "Ca\u0301tnies", "玩家😀", "a' OR '1'='1", " Leading", "", "😀".repeat(64));
+        List<UUID> players = new ArrayList<>();
+        for (int i = 0; i < names.size(); i++) {
+            UUID player = UUID.randomUUID();
+            players.add(player);
+            provider.ensureUser(player, names.get(i)).join();
+        }
+        for (int i = 0; i < names.size(); i++) {
+            assertEquals(Optional.of(players.get(i)), provider.lookupUser(names.get(i)).join(), names.get(i));
+        }
+    }
+
+    @Test
+    void invalidUserNamesFailWithoutChangingTheExistingMapping() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        provider.ensureUser(player, "Original").join();
+        provider.jdbi().useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "users` SET last_seen = 17"));
+        List<String> invalid = List.of("a".repeat(65), "😀".repeat(65), "Original ", " ");
+        for (int i = 0; i < invalid.size(); i++) {
+            String name = invalid.get(i);
+            CompletionException write = assertThrows(CompletionException.class, () -> provider.ensureUser(player, name).join());
+            assertInstanceOf(IllegalArgumentException.class, write.getCause());
+            CompletionException read = assertThrows(CompletionException.class, () -> provider.lookupUser(name).join());
+            assertInstanceOf(IllegalArgumentException.class, read.getCause());
+        }
+        assertEquals(Optional.of(player), provider.lookupUser("Original").join());
+        long seen = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT last_seen FROM `" + this.prefix + "users`").mapTo(Long.class).one());
+        assertEquals(17, seen);
+    }
+
+    @Test
+    void databaseErrorsCompleteQueryAndUserFuturesExceptionally() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        provider.jdbi().useHandle(handle -> {
+            handle.execute("DROP TABLE `" + this.prefix + "snapshots`");
+            handle.execute("DROP TABLE `" + this.prefix + "users`");
+        });
+        assertThrows(CompletionException.class, () -> provider.latestSnapshot(player).join());
+        assertThrows(CompletionException.class, () -> provider.snapshot(UUID.randomUUID()).join());
+        assertThrows(CompletionException.class, () -> provider.listSnapshots(SnapshotQuery.of(player)).join());
+        assertThrows(CompletionException.class, () -> provider.ensureUser(player, "Catnies").join());
+        assertThrows(CompletionException.class, () -> provider.lookupUser("Catnies").join());
+    }
+
+    @Test
+    void queryAndUserOperationsRespectTheTablePrefix() throws Exception {
+        MysqlStorageProvider first = this.provider(this.url, this.prefix);
+        MysqlStorageProvider second = this.provider(this.url, "other_" + this.prefix);
+        first.initialize();
+        second.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 20, SaveCause.COMMAND, false, "", 4440), Map.of());
+        this.insert(first.jdbi(), this.codec.encode(snapshot));
+        first.ensureUser(player, "First").join();
+        second.ensureUser(player, "Second").join();
+        assertEquals(Optional.empty(), second.latestSnapshot(player).join());
+        assertEquals(Optional.empty(), second.snapshot(snapshot.meta().id()).join());
+        assertEquals(List.of(), second.listSnapshots(SnapshotQuery.of(player)).join());
+        assertEquals(Optional.empty(), second.lookupUser("First").join());
+        assertEquals(Optional.empty(), first.lookupUser("Second").join());
+        assertEquals(Optional.of(player), first.lookupUser("First").join());
+        assertEquals(Optional.of(player), second.lookupUser("Second").join());
     }
 
     /**
@@ -536,6 +753,11 @@ class MysqlStorageProviderTest {
      * @throws Exception 当反射配置字段失败时
      */
     private MysqlStorageProvider provider(String url, String prefix) throws Exception {
+        return this.provider(url, prefix, ForkJoinPool.commonPool());
+    }
+
+    // 查询阶段测试使用可手动推进的执行器, 普通用例使用真实异步线程.
+    private MysqlStorageProvider provider(String url, String prefix, Executor executor) throws Exception {
         // 复用配置加载器写入的字段, 在测试内构造所需连接参数.
         PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
         for (Map.Entry<String, String> entry : Map.of("url", url, "username", this.username, "password", this.password, "tablePrefix", prefix).entrySet()) {
@@ -543,7 +765,7 @@ class MysqlStorageProviderTest {
             field.setAccessible(true);
             field.set(options, entry.getValue());
         }
-        MysqlStorageProvider provider = new MysqlStorageProvider(options);
+        MysqlStorageProvider provider = new MysqlStorageProvider(options, this.codec, executor);
         this.providers.add(provider);
         return provider;
     }

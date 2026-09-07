@@ -5,7 +5,11 @@ import com.mysql.cj.jdbc.JdbcConnection;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
+import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
@@ -13,25 +17,37 @@ import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.argument.AbstractArgumentFactory;
 import org.jdbi.v3.core.argument.Argument;
 import org.jdbi.v3.core.config.ConfigRegistry;
+import org.jdbi.v3.core.statement.Query;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 
 @ApiStatus.Internal
 public final class MysqlStorageProvider {
     private static final long MIN_PACKET_BYTES = 64L * 1024 * 1024; // 服务端和驱动均须允许至少 64 MiB 的传输包
     private static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
+    private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
+    private static final String NEWEST_FIRST = " ORDER BY `ts` DESC, `id` DESC";
 
     private final PluginConfig.MysqlOptions options;
+    private final RowSnapshotCodec codec;
+    private final Executor asyncExecutor; // JDBC 读取与解码分别提交到插件 worker
     private HikariDataSource dataSource;
     private Jdbi jdbi;
 
-    public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options) {
+    public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options, @NotNull RowSnapshotCodec codec, @NotNull Executor asyncExecutor) {
         this.options = options;
+        this.codec = codec;
+        this.asyncExecutor = asyncExecutor;
     }
 
     // 建立连接池并将数据库升级到当前表版本.
@@ -119,6 +135,96 @@ public final class MysqlStorageProvider {
         int driverPacket = properties.getMemorySizeProperty(PropertyKey.maxAllowedPacket).getValue();
         if (serverPacket < MIN_PACKET_BYTES || driverPacket < MIN_PACKET_BYTES) {
             throw new IllegalStateException("MySQL max_allowed_packet and Connector/J maxAllowedPacket must both be at least " + MIN_PACKET_BYTES + " bytes");
+        }
+    }
+
+    // 完整读取先带回元数据和字节帧, 连接释放后再投递解码.
+    @NotNull
+    public CompletableFuture<Optional<Snapshot>> latestSnapshot(@NotNull UUID player) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
+                        .bind("player", player).mapTo(SnapshotRow.class).findOne()), this.asyncExecutor)
+                .thenApplyAsync(row -> row.map(this::decodeRow), this.asyncExecutor);
+    }
+
+    @NotNull
+    public CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
+                        .bind("id", snapshotId).mapTo(SnapshotRow.class).findOne()), this.asyncExecutor)
+                .thenApplyAsync(row -> row.map(this::decodeRow), this.asyncExecutor);
+    }
+
+    // 已存在但损坏的快照以异常交给上层, 保留行编解码器给出的原因.
+    private Snapshot decodeRow(SnapshotRow row) {
+        DecodedSnapshot decoded = this.codec.decode(row);
+        if (decoded instanceof DecodedSnapshot.Valid(Snapshot snapshot)) return snapshot;
+        DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
+        throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
+    }
+
+    // 组合有效筛选条件, 列表只读取可独立解析的元数据列.
+    @NotNull
+    public CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query) {
+        return CompletableFuture.supplyAsync(() -> {
+            StringBuilder sql = new StringBuilder("SELECT " + META_COLUMNS + " FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player");
+            if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
+                sql.append(" AND `ts` >= :from");
+            }
+            if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
+                sql.append(" AND `ts` <= :to");
+            }
+            if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
+                sql.append(" AND `pinned` = :pinned");
+            }
+            sql.append(NEWEST_FIRST);
+            if (query.limit() > SnapshotQuery.NO_LIMIT) {
+                sql.append(" LIMIT :limit");
+            }
+            return this.jdbi().withHandle(handle -> {
+                Query statement = handle.createQuery(sql.toString()).bind("player", query.player());
+                if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
+                    statement.bind("from", query.from());
+                }
+                if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
+                    statement.bind("to", query.to());
+                }
+                if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
+                    statement.bind("pinned", query.pinned() == SnapshotQuery.PinFilter.PINNED);
+                }
+                if (query.limit() > SnapshotQuery.NO_LIMIT) {
+                    statement.bind("limit", query.limit());
+                }
+                return statement.mapTo(SnapshotMeta.class).list();
+            });
+        }, this.asyncExecutor);
+    }
+
+    // 每次会话刷新当前名字和出现时间, 主键保持玩家 UUID.
+    @NotNull
+    public CompletableFuture<Void> ensureUser(@NotNull UUID player, @NotNull String name) {
+        return CompletableFuture.runAsync(() -> {
+            validateUserName(name);
+            this.jdbi().useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.options.tablePrefix() + "users` (`player`, `name`, `last_seen`) VALUES (:player, :name, :lastSeen) ON DUPLICATE KEY UPDATE `name` = :name, `last_seen` = :lastSeen")
+                    .bind("player", player).bind("name", name).bind("lastSeen", System.currentTimeMillis()).execute());
+        }, this.asyncExecutor);
+    }
+
+    // 同名记录取最近会话, 同毫秒时按 UUID 保持稳定顺序.
+    @NotNull
+    public CompletableFuture<Optional<UUID>> lookupUser(@NotNull String name) {
+        return CompletableFuture.supplyAsync(() -> {
+            validateUserName(name);
+            return this.jdbi().withHandle(handle -> handle.createQuery("SELECT `player` FROM `" + this.options.tablePrefix() + "users` WHERE `name` = :name ORDER BY `last_seen` DESC, `player` DESC LIMIT 1")
+                    .bind("name", name).map((result, context) -> UUIDUtils.fromBytes(result.getBytes("player"))).findOne());
+        }, this.asyncExecutor);
+    }
+
+    // VARCHAR(64) 按 Unicode 码点计数; utf8mb4_bin 的 PAD SPACE 比较要求名称拒绝尾随 U+0020.
+    private static void validateUserName(String name) {
+        if (name.codePointCount(0, name.length()) > 64) {
+            throw new IllegalArgumentException("MySQL user names must contain at most 64 Unicode code points");
+        }
+        if (name.endsWith(" ")) {
+            throw new IllegalArgumentException("MySQL user names must not end with U+0020 space");
         }
     }
 
