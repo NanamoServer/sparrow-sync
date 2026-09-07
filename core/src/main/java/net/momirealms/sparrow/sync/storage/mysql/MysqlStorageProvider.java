@@ -213,12 +213,6 @@ public final class MysqlStorageProvider implements StorageProvider {
         }, this.asyncExecutor);
     }
 
-    @Override
-    @NotNull
-    public CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
-        return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
-    }
-
     // 编码由通用 worker 执行, 保存立即进入玩家队列, 写库时按请求顺序等待编码结果.
     @Override
     @NotNull
@@ -377,7 +371,7 @@ public final class MysqlStorageProvider implements StorageProvider {
     }
 
     @NotNull
-    public Jdbi jdbi() {
+    Jdbi jdbi() {
         if (this.jdbi == null) throw new IllegalStateException("MySQL storage is not initialized");
         return this.jdbi;
     }

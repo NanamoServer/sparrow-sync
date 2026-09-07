@@ -907,23 +907,23 @@ class MysqlStorageProviderTest {
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "bad-prefix")::initialize);
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "a".repeat(53))::initialize);
         assertThrows(IllegalArgumentException.class, this.provider("jdbc:postgresql://localhost/test", this.prefix)::initialize);
-        assertThrows(IllegalStateException.class, this.provider(this.urlWith("maxAllowedPacket=1048576"), this.prefix)::initialize);
-        assertThrows(IllegalStateException.class, this.provider(this.urlWith("autoReconnect=true"), this.prefix)::initialize);
     }
 
     /**
-     * 验证 URL 的超时参数生效, 且池中连接启用严格写入模式.
+     * 验证 URL 的驱动参数覆盖默认值, 且池中连接启用严格写入模式.
      *
      * @throws Exception 当测试配置注入或数据库操作失败时
      */
     @Test
     void urlDriverParametersOverrideInternalDefaults() throws Exception {
-        MysqlStorageProvider provider = this.provider(this.urlWith("connectTimeout=4321&socketTimeout=8765"), this.prefix);
+        MysqlStorageProvider provider = this.provider(this.urlWith("connectTimeout=4321&socketTimeout=8765&maxAllowedPacket=1048576&autoReconnect=true"), this.prefix);
         provider.initialize();
         provider.jdbi().useHandle(handle -> {
             var properties = handle.getConnection().unwrap(JdbcConnection.class).getPropertySet();
             assertEquals(4321, properties.getIntegerProperty(PropertyKey.connectTimeout).getValue());
             assertEquals(8765, properties.getIntegerProperty(PropertyKey.socketTimeout).getValue());
+            assertEquals(1048576, properties.getIntegerProperty(PropertyKey.maxAllowedPacket).getValue());
+            assertTrue(properties.getBooleanProperty(PropertyKey.autoReconnect).getValue());
             assertTrue(handle.createQuery("SELECT @@session.sql_mode").mapTo(String.class).one().contains("STRICT_TRANS_TABLES"));
         });
     }

@@ -193,7 +193,7 @@ class SnapshotStashTest {
         }
     }
 
-    // 只记录 saveSnapshot 的桩存储, 结果按脚本出队, 队列耗尽后重复最后一个
+    // 记录保存请求并返回完整结果, 结果按脚本出队, 队列耗尽后重复最后一个.
     private static final class RecordingStorage implements StorageProvider {
         private final Queue<SaveResult> script = new ArrayDeque<>();
         private final List<UUID> savedIds = new ArrayList<>();
@@ -209,10 +209,10 @@ class SnapshotStashTest {
         }
 
         @Override
-        public CompletableFuture<SaveResult> saveSnapshot(Snapshot snapshot) {
+        public CompletableFuture<SaveOutcome> saveSnapshotOutcome(Snapshot snapshot) {
             this.savedIds.add(snapshot.meta().id());
             SaveResult next = this.script.poll();
-            return CompletableFuture.completedFuture(next != null ? next : this.fallback);
+            return CompletableFuture.completedFuture(new SaveOutcome(next != null ? next : this.fallback, null));
         }
 
         @Override

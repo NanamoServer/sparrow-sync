@@ -85,15 +85,15 @@ public interface StorageProvider {
      * @return 落库结果, 语义见 {@link SaveResult}
      */
     @NotNull
-    CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot);
+    default CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
+        return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
+    }
 
     /**
      * 写入快照并保留可重试失败的原始原因, 供重试编排层收敛日志.
      */
     @NotNull
-    default CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot) {
-        return this.saveSnapshot(snapshot).thenApply(result -> new SaveOutcome(result, null));
-    }
+    CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot);
 
     /**
      * 轮转玩家的历史快照, 未固定的快照多于 maxUnpinned 时删除逻辑时间戳最早的超量部分, 固定快照永不轮转.

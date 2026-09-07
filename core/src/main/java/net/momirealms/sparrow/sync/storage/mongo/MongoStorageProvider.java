@@ -8,7 +8,6 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.Sorts;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -49,12 +48,11 @@ public final class MongoStorageProvider implements StorageProvider {
     private static final long MAX_PAYLOAD_BYTES = 15L * 1024 * 1024; // 二进制载荷上限, 给 MongoDB 的 16 MB 文档限制留出余量
     private static final Bson NEWEST_FIRST = Sorts.descending(DocumentSnapshotCodec.FIELD_TIMESTAMP, DocumentSnapshotCodec.FIELD_ID); // 新快照在前, _id 确定同一采集时间下的顺序
 
-    private final SparrowSync plugin;
-    private PluginConfig.MongoOptions options;
-    private DocumentSnapshotCodec codec;
-    private PlayerSerialExecutor serialExecutor; // 同一玩家的写入和轮转排队执行
-    private Executor asyncExecutor;              // 没有顺序要求的数据库操作执行器
-    private SyncLogger logger;
+    private final PluginConfig.MongoOptions options;
+    private final DocumentSnapshotCodec codec;
+    private final PlayerSerialExecutor serialExecutor; // 同一玩家的写入和轮转排队执行
+    private final Executor asyncExecutor;              // 没有顺序要求的数据库操作执行器
+    private final SyncLogger logger;
 
     private MongoClient mongoClient;
     private MongoDatabase mongoDatabase;
@@ -62,31 +60,16 @@ public final class MongoStorageProvider implements StorageProvider {
     private volatile MongoCollection<Document> snapshots;
     private MongoMapStorage maps;
 
-    public MongoStorageProvider(@NotNull SparrowSync plugin) {
-        this.plugin = plugin;
-    }
-
     public MongoStorageProvider(@NotNull PluginConfig.MongoOptions options,
                                 @NotNull DocumentSnapshotCodec codec,
                                 @NotNull PlayerSerialExecutor serialExecutor,
                                 @NotNull Executor asyncExecutor,
                                 @NotNull SyncLogger logger) {
-        this.plugin = null;
         this.options = options;
         this.codec = codec;
         this.serialExecutor = serialExecutor;
         this.asyncExecutor = asyncExecutor;
         this.logger = logger;
-    }
-
-    /** 绑定启动依赖并连接 MongoDB. */
-    public void onLoad() {
-        this.options = PluginConfig.database$mongodb();
-        this.codec = this.plugin.documentCodec();
-        this.serialExecutor = this.plugin.playerExecutor();
-        this.asyncExecutor = this.plugin.scheduler().async();
-        this.logger = this.plugin.logger();
-        this.initialize();
     }
 
     @Override
@@ -209,12 +192,6 @@ public final class MongoStorageProvider implements StorageProvider {
             }
         }
         return filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
-    }
-
-    @Override
-    @NotNull
-    public CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
-        return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
     }
 
     @Override

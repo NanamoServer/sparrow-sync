@@ -687,10 +687,6 @@ public class SparrowSync implements Plugin {
         return this.binaryCodec;
     }
 
-    public DocumentSnapshotCodec documentCodec() {
-        return this.documentCodec;
-    }
-
     public SessionManager sessionManager() {
         return this.sessionManager;
     }

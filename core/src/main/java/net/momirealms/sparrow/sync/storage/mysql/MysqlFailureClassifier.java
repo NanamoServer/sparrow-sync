@@ -9,7 +9,6 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLSyntaxErrorException;
 
-// todo 重新设计这几个方法的位置
 final class MysqlFailureClassifier {
     private MysqlFailureClassifier() {
     }
