@@ -137,18 +137,18 @@ class MongoMapStorageTest {
         StoredMap a = this.source.register(new MapSource("A", 1), data(1)).join();
         MapIdentity wrong = new MapIdentity(new MapSource("A", 2), a.identity().globalId());
         assertThrows(CompletionException.class, () -> this.source.update(wrong, data(2)).join());
-        this.database.getCollection(this.prefix + "map_counters").updateOne(eq("_id", "maps"), set("sequence", 0L));
+        this.database.getCollection(this.prefix + "meta").updateOne(eq("_id", "maps"), set("sequence", 0L));
         assertThrows(CompletionException.class, () -> this.source.register(new MapSource("A", 2), data(2)).join());
         assertEquals(a, this.source.find(a.identity().globalId()).join().orElseThrow());
     }
 
     @Test
     void stopsAtMinimumIntWithoutWrappingOrReusingIds() {
-        this.database.getCollection(this.prefix + "map_counters").updateOne(eq("_id", "maps"), set("sequence", -(long) Integer.MIN_VALUE - 1));
+        this.database.getCollection(this.prefix + "meta").updateOne(eq("_id", "maps"), set("sequence", -(long) Integer.MIN_VALUE - 1));
         StoredMap last = this.source.register(new MapSource("A", 1), data(1)).join();
         assertEquals(Integer.MIN_VALUE, last.identity().globalId());
         assertThrows(CompletionException.class, () -> this.source.register(new MapSource("A", 2), data(2)).join());
-        assertEquals(-(long) Integer.MIN_VALUE, this.database.getCollection(this.prefix + "map_counters").find(eq("_id", "maps")).first().getLong("sequence"));
+        assertEquals(-(long) Integer.MIN_VALUE, this.database.getCollection(this.prefix + "meta").find(eq("_id", "maps")).first().getLong("sequence"));
     }
 
     @Test

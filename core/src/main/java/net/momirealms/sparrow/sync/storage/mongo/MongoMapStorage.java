@@ -45,7 +45,7 @@ import static com.mongodb.client.model.Updates.setOnInsert;
 public final class MongoMapStorage implements MapStorage {
     private static final long MAX_SEQUENCE = -(long) Integer.MIN_VALUE; // 可分配负数 int 的数量
     private final MongoCollection<Document> maps; // 完整地图记录, 含身份、数据版本与二进制 NBT
-    private final MongoCollection<Document> counters; // 当前集合前缀下共用一个自增序列, 已分配或空洞 ID 均不复用
+    private final MongoCollection<Document> meta; // 地图序列按 _id=maps 存在零散元数据集合中, 已分配或空洞 ID 均不复用
     private final Executor executor;
 
     public MongoMapStorage(@NotNull MongoDatabase database, @NotNull String prefix, @NotNull Executor executor) {
@@ -53,7 +53,7 @@ public final class MongoMapStorage implements MapStorage {
         this.maps = database.getCollection(prefix + "maps")
                 .withReadPreference(ReadPreference.primary())
                 .withReadConcern(ReadConcern.MAJORITY).withWriteConcern(WriteConcern.MAJORITY);
-        this.counters = database.getCollection(prefix + "map_counters")
+        this.meta = database.getCollection(prefix + "meta")
                 .withReadPreference(ReadPreference.primary())
                 .withReadConcern(ReadConcern.MAJORITY).withWriteConcern(WriteConcern.MAJORITY);
         this.executor = executor;
@@ -64,10 +64,10 @@ public final class MongoMapStorage implements MapStorage {
         this.maps.createIndex(Indexes.ascending("owner", "origin_id"), new IndexOptions().unique(true).name("map_source"));
         // 多个服务器可同时初始化同一组集合, 已存在计数器沿用原序列
         try {
-            this.counters.updateOne(eq("_id", "maps"), setOnInsert("sequence", 0L), new UpdateOptions().upsert(true));
+            this.meta.updateOne(eq("_id", "maps"), setOnInsert("sequence", 0L), new UpdateOptions().upsert(true));
         } catch (MongoWriteException exception) {
             if (exception.getError().getCategory() != ErrorCategory.DUPLICATE_KEY
-                    || this.counters.find(eq("_id", "maps")).first() == null) {
+                    || this.meta.find(eq("_id", "maps")).first() == null) {
                 throw exception;
             }
         }
@@ -88,7 +88,7 @@ public final class MongoMapStorage implements MapStorage {
             // 先完成内容编码再分配 ID, 映射写入时已经具备可读取的完整画面
             Binary payload = encode(initial);
             // 条件自增到负 int 空间的末端即停止, 分配失败产生的空洞保留.
-            Document counter = this.counters.findOneAndUpdate(
+            Document counter = this.meta.findOneAndUpdate(
                     and(eq("_id", "maps"), gte("sequence", 0L), lt("sequence", MAX_SEQUENCE)),
                     inc("sequence", 1L), new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER));
             if (counter == null) {

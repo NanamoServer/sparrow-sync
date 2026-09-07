@@ -248,6 +248,30 @@ public final class Dependencies {
             .build();
 
     /**
+     * MySQL
+     */
+    public static final Dependency JDBI_CORE = Dependency.builder()
+            .groupId("org{}jdbi")
+            .artifactId("jdbi3-core")
+            .version(DependencyVersions.JDBI)
+            .addRelocation("jdbi", "org{}jdbi")
+            .addRelocations(GEANTY_REF.relocations())
+            .build();
+
+    public static final Dependency HIKARI_CP = Dependency.builder()
+            .groupId("com{}zaxxer")
+            .artifactId("HikariCP")
+            .version(DependencyVersions.HIKARI_CP)
+            .addRelocation("hikari", "com{}zaxxer{}hikari")
+            .build();
+
+    public static final Dependency MYSQL_DRIVER = Dependency.builder()
+            .groupId("com{}mysql")
+            .artifactId("mysql-connector-j")
+            .version(DependencyVersions.MYSQL_DRIVER)
+            .build();
+
+    /**
      * Lettuce
      */
     public static final Dependency LETTUCE = Dependency.builder()

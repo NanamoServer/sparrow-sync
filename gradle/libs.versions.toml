@@ -10,7 +10,10 @@ paper-api = "1.21.8-R0.1-SNAPSHOT"
 asm = "9.9.1"
 asmcommons = "9.9.1"
 caffeine = "3.2.3"
-geantyref = "1.3.16"
+geantyref = "2.0.1"
+jdbi = "3.54.0"
+hikari-cp = "7.1.0"
+mysql-driver = "9.7.0"
 cloud-core = "2.0.0"
 cloud-services = "2.0.0"
 cloud-brigadier = "2.0.0-beta.15"
@@ -47,6 +50,9 @@ jetbrains-annotations = { module = "org.jetbrains:annotations", version = "26.0.
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref = "mongodb-driver" }
+jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
+hikari-cp = { module = "com.zaxxer:HikariCP", version.ref = "hikari-cp" }
+mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-driver" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
 mojang-brigadier = { module = "com.mojang:brigadier", version.ref = "mojang-brigadier" }

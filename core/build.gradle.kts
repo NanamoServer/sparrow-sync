@@ -29,11 +29,21 @@ dependencies {
     compileOnly(libs.datafixerupper)
     compileOnly(libs.lettuce.core)
     compileOnly(libs.mongodb.driver.sync)
+    compileOnly(libs.jdbi.core)
+    compileOnly(libs.hikari.cp)
+    compileOnly(libs.mysql.connector.j) {
+        exclude(group = "com.google.protobuf", module = "protobuf-java")
+    }
     compileOnly(libs.zstd.jni)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mongodb.driver.sync)
+    testImplementation(libs.jdbi.core)
+    testImplementation(libs.hikari.cp)
+    testImplementation(libs.mysql.connector.j) {
+        exclude(group = "com.google.protobuf", module = "protobuf-java")
+    }
     testImplementation(libs.lettuce.core)
     testImplementation(libs.caffeine)
     testImplementation(libs.datafixerupper)
@@ -61,6 +71,10 @@ buildConfig {
     buildConfigField("MONGODB_DRIVER", libs.versions.mongodb.driver.get())
     buildConfigField("REACTIVE_STREAMS", libs.versions.reactive.streams.get())
     buildConfigField("ZSTD_JNI", libs.versions.zstd.get())
+    // MYSQL
+    buildConfigField("JDBI", libs.versions.jdbi.get())
+    buildConfigField("HIKARI_CP", libs.versions.hikari.cp.get())
+    buildConfigField("MYSQL_DRIVER", libs.versions.mysql.driver.get())
     // LETTUCE
     buildConfigField("LETTUCE", libs.versions.lettuce.get())
     buildConfigField("JACKSON", libs.versions.jackson.core.get())

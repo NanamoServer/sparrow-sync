@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -106,6 +107,23 @@ class MongoStorageProviderTest {
         assertEquals(stored, other.find(stored.identity().globalId()).join().orElseThrow());
         other.update(stored.identity(), stored.data()).join();
         assertEquals(stored, maps.find(stored.identity().globalId()).join().orElseThrow());
+
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            var database = client.getDatabase(TEST_DATABASE);
+            var meta = database.getCollection("it_meta");
+            var schema = meta.find(new Document("_id", "schema")).first();
+            var counter = meta.find(new Document("_id", "maps")).first();
+            assertEquals(1, schema.getInteger("version"));
+            assertEquals(-(long) stored.identity().globalId(), counter.getLong("sequence"));
+            assertEquals(Set.of("_id_"), Set.copyOf(meta.listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
+            assertFalse(database.listCollectionNames().into(new ArrayList<>()).contains("it_map_counters"));
+
+            IndexReconciler.reconcile(this.logger, meta, database.getCollection("it_users"), database.getCollection("it_snapshots"));
+            assertEquals(schema, meta.find(new Document("_id", "schema")).first());
+            assertEquals(counter, meta.find(new Document("_id", "maps")).first());
+            var next = this.provider.maps().register(new MapSource(owner, 1), stored.data()).join();
+            assertEquals(stored.identity().globalId() - 1, next.identity().globalId());
+        }
     }
 
     @Test

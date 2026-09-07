@@ -437,9 +437,11 @@ public class SparrowSync implements Plugin {
                 // Common
                 Dependencies.CAFFEINE,
                 Dependencies.ZSTD_JNI,
-                // MangoDB
+                // MongoDB
                 Dependencies.MONGODB_DRIVER_CORE, Dependencies.MONGODB_DRIVER_SYNC, Dependencies.MONGODB_DRIVER_REACTIVESTREAMS,
                 Dependencies.MONGODB_DRIVER_BSON, Dependencies.MONGODB_DRIVER_KOTLIN_COROUTINE, Dependencies.REACTIVE_STREAMS,
+                // MySQL
+                Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MYSQL_DRIVER,
                 // Lettuce
                 Dependencies.LETTUCE,
                 Dependencies.REACTOR_CORE, Dependencies.REACTIVE_STREAMS,
