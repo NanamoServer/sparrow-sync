@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -17,6 +18,9 @@ import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MapReceiverTest {
+    @RegisterExtension
+    private final MapFlowTestSupport.PluginInstance pluginInstance = new MapFlowTestSupport.PluginInstance();
+
     private final NativeMaps nativeMaps = new NativeMaps();
 
     @ParameterizedTest

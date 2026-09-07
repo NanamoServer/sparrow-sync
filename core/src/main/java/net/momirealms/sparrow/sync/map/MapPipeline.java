@@ -65,7 +65,7 @@ public final class MapPipeline {
 
     // 等待地图发布获取到全局唯一ID后生成传输快照.
     @NotNull
-    public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
+    public CompletableFuture<Snapshot> encodeAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
         Map<Integer, CompletableFuture<Boolean>> renewals = new HashMap<>();
         return this.rewriteAsync(snapshot, components -> {
             // 已有模式的中转地图交给其处理器续行

@@ -18,12 +18,18 @@ import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
+import java.lang.reflect.Proxy;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +42,33 @@ import java.util.concurrent.Executor;
 final class MapFlowTestSupport {
     static final MapSource SOURCE = new MapSource("A-world", 1);
     static final MapIdentity IDENTITY = new MapIdentity(SOURCE, -1);
+
+    static void scheduler(Executor worker, Executor nativeThread) {
+        Object sync = Proxy.newProxyInstance(RegionExecutor.class.getClassLoader(), new Class<?>[]{RegionExecutor.class}, (proxy, method, arguments) -> {
+            if (!method.getName().equals("execute")) {
+                throw new AssertionError("unexpected region scheduler call: " + method.getName());
+            }
+            nativeThread.execute((Runnable) arguments[0]);
+            return null;
+        });
+        Object scheduler = Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (proxy, method, arguments) -> switch (method.getName()) {
+            case "async" -> worker;
+            case "sync" -> sync;
+            default -> throw new AssertionError("unexpected scheduler call: " + method.getName());
+        });
+        SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "scheduler", scheduler);
+        NmsPlayerFixture.set(SparrowSync.class, null, "instance", plugin);
+    }
+
+    static final class PluginInstance implements AfterEachCallback {
+        private final SparrowSync previous = SparrowSync.instance();
+
+        @Override
+        public void afterEach(ExtensionContext context) {
+            NmsPlayerFixture.set(SparrowSync.class, null, "instance", this.previous);
+        }
+    }
 
     static StoredMap map(int pixel) {
         return new StoredMap(IDENTITY, new MapData(4440, MapDataTest.content(pixel)));
@@ -107,7 +140,9 @@ final class MapFlowTestSupport {
                     this.updates.add(new StoredMap(this.identity, new MapData(4440, MapDataTest.content(this.replica.colors[0] & 255))));
                 }
             });
-            return new MapReceiver(storage, shared, this.adapter, this.server, ownerId, worker, recording, logger);
+            MapReceiver receiver = new MapReceiver(storage, shared, this.adapter, this.server, ownerId, logger);
+            scheduler(worker, recording);
+            return receiver;
         }
 
         private static HolderLookup.Provider bootstrap() {

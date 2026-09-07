@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.map.cache.MapCache;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.jetbrains.annotations.NotNull;
@@ -28,34 +29,29 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /** 为传输物品和已登记副本准备本服地图 ID, 合并同图读取并处理更新通知与接收关闭. */
 public final class MapReceiver {
     private final MapStorage storage;
-    private final MapCache shared;
+    private final MapCache redisCache;
     private final NativeMapAdapter nativeMaps;
     private final MinecraftServer server;
     private final String ownerId;
-    private final Executor worker;
-    private final Executor nativeExecutor;
     private final SyncLogger logger;
     private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 已登记接收更新的全局地图 ID, 登记后持续保留条目
-    private final Map<Integer, Flight> flights = new HashMap<>(); // 同图共享任务; 此监视器也保护失效状态与最终更新
+    private final Map<Integer, Flight> receiveTasks = new HashMap<>(); // 同图共享任务; 此监视器也保护失效状态与最终更新
     private final Set<Integer> databaseReads = new HashSet<>(); // 下次读取必须跳过两层缓存的全局 ID, 由 flights 监视器保护
-    private final Cache<Integer, StoredMap> cache = Caffeine.newBuilder().maximumSize(1024).expireAfterWrite(Duration.ofMinutes(5)).build(); // 至多 1024 张, 写入后 5 分钟过期, 读取命中不会推迟到期
+    private final Cache<Integer, StoredMap> localCache = Caffeine.newBuilder().maximumSize(1024).expireAfterWrite(Duration.ofMinutes(5)).build(); // 至多 1024 张, 写入后 5 分钟过期, 读取命中不会推迟到期
     private volatile boolean closed;
 
-    public MapReceiver(@NotNull MapStorage storage, @NotNull MapCache shared, @NotNull NativeMapAdapter nativeMaps, @NotNull MinecraftServer server, @NotNull String ownerId, @NotNull Executor worker, @NotNull Executor nativeExecutor, @NotNull SyncLogger logger) {
+    public MapReceiver(@NotNull MapStorage storage, @NotNull MapCache redisCache, @NotNull NativeMapAdapter nativeMaps, @NotNull MinecraftServer server, @NotNull String ownerId, @NotNull SyncLogger logger) {
         this.storage = storage;
-        this.shared = shared;
+        this.redisCache = redisCache;
         this.nativeMaps = nativeMaps;
         this.server = server;
         this.ownerId = ownerId;
-        this.worker = worker;
-        this.nativeExecutor = nativeExecutor;
         this.logger = logger;
     }
 
@@ -79,17 +75,17 @@ public final class MapReceiver {
 
     @NotNull
     private CompletableFuture<Integer> receive(int globalId, @Nullable MapIdentity expectedIdentity) {
-        synchronized (this.flights) {
+        synchronized (this.receiveTasks) {
             if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map receiver is closed"));
-            Flight flight = this.flights.get(globalId);
+            Flight flight = this.receiveTasks.get(globalId);
             if (flight == null) {
                 flight = new Flight(globalId, expectedIdentity);
-                this.flights.put(globalId, flight);
+                this.receiveTasks.put(globalId, flight);
                 Flight admitted = flight;
                 // 任务超时后从登记表移除, 后续主线程回调通过接收任务引用核对放弃迟到结果
                 flight.result.orTimeout(5, TimeUnit.SECONDS).whenComplete((result, failure) -> {
-                    synchronized (this.flights) {
-                        this.flights.remove(globalId, admitted);
+                    synchronized (this.receiveTasks) {
+                        this.receiveTasks.remove(globalId, admitted);
                     }
                 });
                 this.read(flight);
@@ -109,13 +105,13 @@ public final class MapReceiver {
 
     // 使指定地图重新读取, 并按需要强制核对数据库.
     public void invalidate(int globalId, boolean database) {
-        synchronized (this.flights) {
+        synchronized (this.receiveTasks) {
             if (this.closed) return;
-            this.cache.invalidate(globalId);
+            this.localCache.invalidate(globalId);
             if (database) {
                 this.databaseReads.add(globalId);
             }
-            Flight flight = this.flights.get(globalId);
+            Flight flight = this.receiveTasks.get(globalId);
             if (flight != null) {
                 flight.invalidated = true;
             }
@@ -125,13 +121,13 @@ public final class MapReceiver {
     // 先摘除活动任务, 再在锁外通知等待者失败; 已更新的本服地图副本继续保留
     public void close() {
         ArrayList<Flight> abandoned;
-        synchronized (this.flights) {
+        synchronized (this.receiveTasks) {
             this.closed = true;
             this.tracked.clear();
-            abandoned = new ArrayList<>(this.flights.values());
-            this.flights.clear();
+            abandoned = new ArrayList<>(this.receiveTasks.values());
+            this.receiveTasks.clear();
             this.databaseReads.clear();
-            this.cache.invalidateAll();
+            this.localCache.invalidateAll();
         }
         for (Flight flight : abandoned) {
             flight.result.completeExceptionally(new CancellationException("map receiver is closed"));
@@ -142,7 +138,7 @@ public final class MapReceiver {
     @NotNull
     public CompletableFuture<Boolean> touch(int globalId) {
         if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map receiver is closed"));
-        return this.shared.touch(globalId);
+        return this.redisCache.touch(globalId);
     }
 
     /**
@@ -154,76 +150,80 @@ public final class MapReceiver {
     private void read(Flight flight) {
         int id = flight.globalId;
         boolean database = this.databaseReads.remove(id);
-        StoredMap cached = this.cache.getIfPresent(id);
+        StoredMap cached = this.localCache.getIfPresent(id);
         CompletableFuture<Optional<StoredMap>> read = CompletableFuture.completedFuture(cached).thenComposeAsync(value -> {
             if (this.closed || flight.result.isDone()) return CompletableFuture.failedFuture(new CancellationException("map read ended"));
             if (database) return this.storage.find(id);
             if (value != null) return CompletableFuture.completedFuture(Optional.of(value));
-            return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.shared.find(id)).exceptionally(failure -> {
+            return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.redisCache.find(id)).exceptionally(failure -> {
                 this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_CACHE_FAILED, String.valueOf(id), String.valueOf(failure.getMessage()));
                 return Optional.empty();
             }).thenCompose(found -> found.isPresent() ? CompletableFuture.completedFuture(found) : this.storage.find(id));
-        }, this.worker);
+        }, SparrowSync.instance().scheduler().async());
         // 地图存储记录须对应请求的全局 ID, NMS 地图对象在异步线程独立构造.
         read.thenApplyAsync(value -> {
-            if (this.closed || flight.result.isDone()) {
-                throw new CancellationException("map read ended");
-            }
-            StoredMap map = value.orElseThrow(() -> new IllegalStateException("global map does not exist: " + id));
-            if (map.identity().globalId() != id) {
-                throw new IllegalArgumentException("global map id mismatch: " + id);
-            }
-            try {
-                return new Prepared(map, this.nativeMaps.prepareReplica(map.identity(), map.data()));
-            } catch (IOException exception) {
-                throw new CompletionException(exception);
-            }
-        }, this.worker).thenAcceptAsync(prepared -> {
-            int localId;
-            synchronized (this.flights) {
-                if (this.closed || this.flights.get(id) != flight || flight.result.isDone()) return;
-                // 读取期间收到通知时, 当前画面作废, 同一等待任务继续读取更新结果
-                if (flight.invalidated) {
-                    flight.invalidated = false;
-                    this.read(flight);
-                    return;
-                }
-                // 物品带来的来源约束在这里核对, 包含准备期间新加入的玩家请求.
-                if (flight.expectedIdentity != null && !prepared.map.identity().equals(flight.expectedIdentity)) {
-                    throw new IllegalArgumentException("global map origin mismatch: " + id);
-                }
-                // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能写入本服 Caffeine 地图缓存或更新本服 NMS 地图数据.
-                localId = this.updateLocalMap(prepared.map, prepared.nativeData);
-                // 缓存命中的重复更新沿用原到期时间, 强制数据库校验会更新缓存内容
-                if (cached == null || database) {
-                    this.cache.put(id, prepared.map);
-                }
-                this.flights.remove(id, flight);
-                // 续期不写内容, 失败也不撤销已经更新的 NMS 地图数据.
-                CompletableFuture.completedFuture(null).thenComposeAsync(ignored -> this.closed ? CompletableFuture.completedFuture(false) : this.shared.touch(id), this.worker).exceptionally(failure -> {
-                    this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_CACHE_TOUCH_FAILED, String.valueOf(id), String.valueOf(failure));
-                    return false;
+                    if (this.closed || flight.result.isDone()) {
+                        throw new CancellationException("map read ended");
+                    }
+                    StoredMap map = value.orElseThrow(() -> new IllegalStateException("global map does not exist: " + id));
+                    if (map.identity().globalId() != id) {
+                        throw new IllegalArgumentException("global map id mismatch: " + id);
+                    }
+                    try {
+                        return new Prepared(map, this.nativeMaps.prepareReplica(map.identity(), map.data()));
+                    } catch (IOException exception) {
+                        throw new CompletionException(exception);
+                    }
+                }, SparrowSync.instance().scheduler().async())
+                .thenAcceptAsync(prepared -> {
+                    int localId;
+                    synchronized (this.receiveTasks) {
+                        if (this.closed || this.receiveTasks.get(id) != flight || flight.result.isDone()) return;
+                        // 读取期间收到通知时, 当前画面作废, 同一等待任务继续读取更新结果
+                        if (flight.invalidated) {
+                            flight.invalidated = false;
+                            this.read(flight);
+                            return;
+                        }
+                        // 物品带来的来源约束在这里核对, 包含准备期间新加入的玩家请求.
+                        if (flight.expectedIdentity != null && !prepared.map.identity().equals(flight.expectedIdentity)) {
+                            throw new IllegalArgumentException("global map origin mismatch: " + id);
+                        }
+                        // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能写入本服 Caffeine 地图缓存或更新本服 NMS 地图数据.
+                        localId = this.updateLocalMap(prepared.map, prepared.nativeData);
+                        // 缓存命中的重复更新沿用原到期时间, 强制数据库校验会更新缓存内容
+                        if (cached == null || database) {
+                            this.localCache.put(id, prepared.map);
+                        }
+                        this.receiveTasks.remove(id, flight);
+                        // 续期不写内容, 失败也不撤销已经更新的 NMS 地图数据.
+                        CompletableFuture.completedFuture(null)
+                                .thenComposeAsync(ignored -> this.closed ? CompletableFuture.completedFuture(false) : this.redisCache.touch(id), SparrowSync.instance().scheduler().async())
+                                .exceptionally(failure -> {
+                                    this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_CACHE_TOUCH_FAILED, String.valueOf(id), String.valueOf(failure));
+                                    return false;
+                                });
+                    }
+                    // 锁外完成 Future, 等待者可以继续快照流程而无需占用更新锁
+                    flight.result.complete(localId);
+                }, SparrowSync.instance().scheduler().sync())
+                .whenComplete((ignored, failure) -> {
+                    if (failure == null) return;
+                    boolean retry;
+                    synchronized (this.receiveTasks) {
+                        if (this.closed || this.receiveTasks.get(id) != flight || flight.result.isDone()) return;
+                        retry = flight.invalidated;
+                        if (retry) {
+                            flight.invalidated = false;
+                            this.read(flight);
+                        } else {
+                            this.receiveTasks.remove(id, flight);
+                        }
+                    }
+                    if (!retry) {
+                        flight.result.completeExceptionally(failure);
+                    }
                 });
-            }
-            // 锁外完成 Future, 等待者可以继续快照流程而无需占用更新锁
-            flight.result.complete(localId);
-        }, this.nativeExecutor).whenComplete((ignored, failure) -> {
-            if (failure == null) return;
-            boolean retry;
-            synchronized (this.flights) {
-                if (this.closed || this.flights.get(id) != flight || flight.result.isDone()) return;
-                retry = flight.invalidated;
-                if (retry) {
-                    flight.invalidated = false;
-                    this.read(flight);
-                } else {
-                    this.flights.remove(id, flight);
-                }
-            }
-            if (!retry) {
-                flight.result.completeExceptionally(failure);
-            }
-        });
     }
 
     // 在主线程选择返回来源服后使用的地图 ID 或更新本服地图副本, 来源地图内容由来源世界继续维护.
@@ -255,7 +255,7 @@ public final class MapReceiver {
         if (this.tracked.putIfAbsent(globalId, entry) != null) return;
         // 在发包回调中登记首见 ID, 接收流程交给异步线程发起.
         try {
-            this.worker.execute(() -> this.refresh(globalId, entry, true));
+            SparrowSync.instance().scheduler().async().execute(() -> this.refresh(globalId, entry, true));
         } catch (RejectedExecutionException exception) {
             if (!this.closed) {
                 this.failed(globalId, entry, exception);

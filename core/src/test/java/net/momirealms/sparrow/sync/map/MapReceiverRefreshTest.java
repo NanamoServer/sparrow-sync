@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.map;
 
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -16,6 +17,9 @@ import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MapReceiverRefreshTest {
+    @RegisterExtension
+    private final MapFlowTestSupport.PluginInstance pluginInstance = new MapFlowTestSupport.PluginInstance();
+
     private final Storage storage = new Storage();
     private final Shared shared = new Shared();
     private final Tasks nativeThread = new Tasks();
@@ -33,7 +37,7 @@ class MapReceiverRefreshTest {
             worker.execute(task);
         };
         MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", dispatch, this.nativeThread, logger(this.warnings));
-        Field field = MapReceiver.class.getDeclaredField("flights");
+        Field field = MapReceiver.class.getDeclaredField("receiveTasks");
         field.setAccessible(true);
         this.storage.current = map(2);
         synchronized (field.get(receiver)) {

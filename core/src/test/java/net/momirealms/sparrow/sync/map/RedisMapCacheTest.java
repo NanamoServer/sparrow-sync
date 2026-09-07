@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.TestInstance;
 
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RedisMapCacheTest {
+    @RegisterExtension
+    private final MapFlowTestSupport.PluginInstance pluginInstance = new MapFlowTestSupport.PluginInstance();
+
     private RedisConnector connector;
     private MessageBrokerManager broker;
     private RedisMapCache source;
@@ -93,12 +97,13 @@ class RedisMapCacheTest {
         storage.current = MapFlowTestSupport.map(7);
         SyncLogger logger = MapFlowTestSupport.logger(new ArrayList<>());
         CountDownLatch refreshed = new CountDownLatch(1);
-        MapReceiver receiver = new MapReceiver(storage, this.foreign, nativeMaps.adapter, nativeMaps.server, "B-world", ForkJoinPool.commonPool(), task -> {
+        MapReceiver receiver = new MapReceiver(storage, this.foreign, nativeMaps.adapter, nativeMaps.server, "B-world", logger);
+        MapFlowTestSupport.scheduler(ForkJoinPool.commonPool(), task -> {
             task.run();
             if (nativeMaps.replica.colors[0] == 8) {
                 refreshed.countDown();
             }
-        }, logger);
+        });
         MapPublisher publisher = new MapPublisher(storage, this.source, "A-world", ForkJoinPool.commonPool());
         try {
             receiver.invalidate(-1, true);

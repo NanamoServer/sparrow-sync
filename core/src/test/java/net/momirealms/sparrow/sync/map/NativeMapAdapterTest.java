@@ -78,6 +78,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.io.TempDir;
@@ -103,6 +104,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NativeMapAdapterTest {
+    @RegisterExtension
+    private final MapFlowTestSupport.PluginInstance pluginInstance = new MapFlowTestSupport.PluginInstance();
+
     private static HolderLookup.Provider registries;
     @TempDir
     Path directory;
@@ -238,7 +242,8 @@ class NativeMapAdapterTest {
         byte[] colors = old.colors;
         MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
         database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
-        MapReceiver receiver = new MapReceiver(database, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), "B-world", Runnable::run, Runnable::run, MapFlowTestSupport.logger(new ArrayList<>()));
+        MapReceiver receiver = new MapReceiver(database, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), "B-world", MapFlowTestSupport.logger(new ArrayList<>()));
+        MapFlowTestSupport.scheduler(Runnable::run, Runnable::run);
         // 首次观察按全局 ID 查库, 原地修正本地副本的身份与内容.
         receiver.observe(-1);
         assertEquals(1, database.reads);
@@ -393,7 +398,8 @@ class NativeMapAdapterTest {
     private CompletableFuture<Integer> receive(String ownerId, StoredMap map) {
         MapFlowTestSupport.Storage storage = new MapFlowTestSupport.Storage();
         storage.current = map;
-        MapReceiver receiver = new MapReceiver(storage, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), ownerId, Runnable::run, Runnable::run, MapFlowTestSupport.logger(new ArrayList<>()));
+        MapReceiver receiver = new MapReceiver(storage, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), ownerId, MapFlowTestSupport.logger(new ArrayList<>()));
+        MapFlowTestSupport.scheduler(Runnable::run, Runnable::run);
         return receiver.receive(map.identity());
     }
 

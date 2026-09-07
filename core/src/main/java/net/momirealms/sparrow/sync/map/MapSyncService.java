@@ -67,7 +67,7 @@ public final class MapSyncService {
         MapStorage storage = plugin.storageProvider().maps();
         MapCache shared = new RedisMapCache(plugin.redisConnector().connection().async(), plugin.messageBrokerManager().broker(), plugin.scheduler().async());
         this.publisher = new MapPublisher(storage, shared, ownerId, plugin.scheduler().async());
-        this.receiver = new MapReceiver(storage, shared, this.nativeMaps, this.server, ownerId, plugin.scheduler().async(), plugin.scheduler().sync(), plugin.logger());
+        this.receiver = new MapReceiver(storage, shared, this.nativeMaps, this.server, ownerId, plugin.logger());
         this.pipeline = new MapPipeline(plugin.dataRegistry(), List.of(new HideMapHandler(), new SyncMapHandler(this.receiver)), plugin.logger());
     }
 
@@ -91,7 +91,7 @@ public final class MapSyncService {
     /** 等待本次地图发布结果, 将快照中的地图物品编码为传输形式. */
     @NotNull
     public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull Capture captured) {
-        return this.pipeline.compileAsync(snapshot, captured.type(), this.ownerId, captured.publications());
+        return this.pipeline.encodeAsync(snapshot, captured.type(), this.ownerId, captured.publications());
     }
 
     /** 更新本服地图数据并选择物品 ID, 返回供玩家数据解码使用的快照. */

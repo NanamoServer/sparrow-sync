@@ -222,7 +222,7 @@ class ItemCodecNativeTest {
             throw new AssertionError("unexpected log: " + args[0]);
         });
         MapPipeline pipeline = new MapPipeline(registry, List.of(new HideMapHandler()), new SyncLogger(console));
-        Snapshot compiled = pipeline.compileAsync(original, MapType.HIDE, "A-world", Map.of()).join();
+        Snapshot compiled = pipeline.encodeAsync(original, MapType.HIDE, "A-world", Map.of()).join();
         Snapshot hidden = pipeline.decodeAsync(compiled, "B-world").join();
         InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
         ItemCodec.LoadedItems decodedEnder = enderChestType.decode(hidden.data(EnderChestDataType.ENDER_CHEST), meta.mcDataVersion());
@@ -244,7 +244,7 @@ class ItemCodecNativeTest {
         Snapshot saved = new Snapshot(savedMeta, Map.of(
                 InventoryDataType.INVENTORY, inventoryType.encode(decodedInventory),
                 EnderChestDataType.ENDER_CHEST, enderChestType.encode(decodedEnder)));
-        Snapshot forwarded = pipeline.compileAsync(saved, MapType.HIDE, "B-world", Map.of()).join();
+        Snapshot forwarded = pipeline.encodeAsync(saved, MapType.HIDE, "B-world", Map.of()).join();
         Snapshot restored = pipeline.decodeAsync(forwarded, "A-world").join();
         assertEquals(original.data(), restored.data());
         InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
