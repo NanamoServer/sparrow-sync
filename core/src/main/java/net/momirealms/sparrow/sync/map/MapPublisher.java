@@ -20,15 +20,17 @@ import java.util.concurrent.ExecutionException;
 public final class MapPublisher {
     private final MapStorage storage;
     private final MapCache shared;
+    private final String ownerId;
     private final Executor executor;
     private final ConcurrentHashMap<MapSource, CompletableFuture<StoredMap>> pending = new ConcurrentHashMap<>(); // 每张来源地图最后提交的发布任务, 监视器协调任务入队和停止接受新发布请求
     private final Cache<MapSource, StoredMap> published = Caffeine.newBuilder().maximumSize(1024).expireAfterAccess(Duration.ofMinutes(10)).build(); // 最近成功发布的内容, 供相等比较.
     private volatile boolean sealed; // 拒绝新发布, 已加入发布队列的任务仍可继续
     private volatile boolean closed; // 禁止发布链发起后续步骤, 已提交的外部 I/O 自行结束
 
-    public MapPublisher(@NotNull MapStorage storage, @NotNull MapCache shared, @NotNull Executor executor) {
+    public MapPublisher(@NotNull MapStorage storage, @NotNull MapCache shared, @NotNull String ownerId, @NotNull Executor executor) {
         this.storage = storage;
         this.shared = shared;
+        this.ownerId = ownerId;
         this.executor = executor;
     }
 
@@ -39,6 +41,8 @@ public final class MapPublisher {
      */
     @NotNull
     public CompletableFuture<StoredMap> publish(@NotNull MapSource source, @NotNull MapData data) {
+        // 来源上传权限在发布入口核对, 数据库和 Redis 按已确认的地图身份读写.
+        if (!this.ownerId.equals(source.ownerId())) return CompletableFuture.failedFuture(new IllegalArgumentException("only the origin owner may upload map content"));
         CompletableFuture<StoredMap> result;
         synchronized (this.pending) {
             if (this.sealed) return CompletableFuture.failedFuture(new CancellationException("map publisher is sealed"));

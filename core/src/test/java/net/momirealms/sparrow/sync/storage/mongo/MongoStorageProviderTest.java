@@ -95,16 +95,17 @@ class MongoStorageProviderTest {
     }
 
     @Test
-    void mapStorageFactoryUsesTheProvidersDatabaseAndOwnerBinding() {
+    void mapStorageFactoryUsesTheProvidersDatabaseAndCollectionPrefix() {
         String owner = this.player.toString();
-        var maps = this.provider.maps(owner);
+        var maps = this.provider.maps();
         CompoundTag tag = NBT.createCompound();
         tag.putString("dimension", "minecraft:overworld");
         tag.putByteArray("colors", new byte[MapData.PIXEL_COUNT]);
         var stored = maps.register(new MapSource(owner, 0), new MapData(4440, tag)).join();
-        var other = this.provider.maps("other-owner");
+        var other = this.provider.maps();
         assertEquals(stored, other.find(stored.identity().globalId()).join().orElseThrow());
-        assertThrows(CompletionException.class, () -> other.update(stored.identity(), stored.data()).join());
+        other.update(stored.identity(), stored.data()).join();
+        assertEquals(stored, maps.find(stored.identity().globalId()).join().orElseThrow());
     }
 
     @Test

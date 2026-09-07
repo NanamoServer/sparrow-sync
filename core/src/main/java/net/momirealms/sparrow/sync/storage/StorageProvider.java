@@ -20,9 +20,9 @@ public interface StorageProvider {
 
     void shutdown();
 
-    // 在插件启动时完成地图存储初始化, 返回绑定本服来源身份的存储.
+    // 在插件启动时完成地图存储初始化, 返回当前数据库和集合前缀下的地图存储.
     @NotNull
-    MapStorage maps(@NotNull String ownerId);
+    MapStorage maps();
 
     // ---- 查询 ----
 

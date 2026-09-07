@@ -16,6 +16,22 @@ import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MapPublisherTest {
+    @Test
+    void foreignSourceIsRejectedBeforeAnyWorkIsSubmitted() {
+        Storage storage = new Storage();
+        Shared shared = new Shared();
+        MapPublisher publisher = new MapPublisher(storage, shared, "B-world", task -> fail("foreign publication reached the worker"));
+        CompletableFuture<StoredMap> result = publisher.publish(SOURCE, map(1).data());
+        assertInstanceOf(IllegalArgumentException.class, assertThrows(CompletionException.class, result::join).getCause());
+        assertEquals(0, storage.registrations);
+        assertEquals(0, storage.reads);
+        assertTrue(storage.writes.isEmpty());
+        assertTrue(shared.writes.isEmpty());
+        assertEquals(0, shared.touches);
+        assertTrue(publisher.sealAndAwait(0, TimeUnit.NANOSECONDS));
+        publisher.close();
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {1, 2})
     void coldPublisherComparesExistingDatabaseContentBeforeUpdating(int pixel) {
@@ -23,7 +39,7 @@ class MapPublisherTest {
         storage.current = map(1);
         Shared shared = new Shared();
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         CompletableFuture<StoredMap> result = publisher.publish(SOURCE, map(pixel).data());
         worker.runAll();
         assertEquals(map(pixel), result.join());
@@ -46,7 +62,7 @@ class MapPublisherTest {
                 return firstWrite;
             }
         };
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         publisher.publish(SOURCE, map(1).data());
         worker.runAll();
         assertFalse(publisher.sealAndAwait(0, TimeUnit.NANOSECONDS));
@@ -55,7 +71,7 @@ class MapPublisherTest {
         assertTrue(publisher.sealAndAwait(1, TimeUnit.SECONDS));
         publisher.close();
 
-        MapPublisher closed = new MapPublisher(storage, shared, worker);
+        MapPublisher closed = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         CompletableFuture<StoredMap> queued = closed.publish(SOURCE, map(2).data());
         closed.close();
         worker.runAll();
@@ -76,7 +92,7 @@ class MapPublisherTest {
                 return this.writes.size() == 1 ? firstRedisWrite : CompletableFuture.completedFuture(null);
             }
         };
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         CompletableFuture<StoredMap> first = publisher.publish(SOURCE, map(1).data());
         worker.runAll();
         CompletableFuture<StoredMap> second = publisher.publish(SOURCE, map(2).data());
@@ -97,7 +113,7 @@ class MapPublisherTest {
         Storage storage = new Storage();
         Shared shared = new Shared();
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         publisher.publish(SOURCE, map(3).data());
         worker.runAll();
         publisher.publish(SOURCE, map(3).data());
@@ -124,7 +140,7 @@ class MapPublisherTest {
                 return map.equals(map(2)) ? failedRedis : super.publish(map);
             }
         };
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         publisher.publish(SOURCE, map(1).data());
         worker.runAll();
         CompletableFuture<StoredMap> failed = publisher.publish(SOURCE, map(2).data());
@@ -151,7 +167,7 @@ class MapPublisherTest {
             }
         };
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(storage, shared, worker);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), worker);
         CompletableFuture<StoredMap> result = publisher.publish(SOURCE, map(4).data());
         worker.runAll();
         assertSame(failure, assertThrows(CompletionException.class, result::join).getCause());
@@ -170,7 +186,7 @@ class MapPublisherTest {
     void immediatelyCompletedPublicationsReleaseTheirPendingEntries() {
         Storage storage = new Storage();
         Shared shared = new Shared();
-        MapPublisher publisher = new MapPublisher(storage, shared, Runnable::run);
+        MapPublisher publisher = new MapPublisher(storage, shared, SOURCE.ownerId(), Runnable::run);
         assertEquals(map(1), publisher.publish(SOURCE, map(1).data()).join());
         assertEquals(map(2), publisher.publish(SOURCE, map(2).data()).join());
         assertEquals(List.of(1, 2), shared.writes);
@@ -182,7 +198,7 @@ class MapPublisherTest {
     void concurrentSamplesPublishInSubmissionOrder() throws Exception {
         Storage storage = new Storage();
         Tasks worker = new Tasks();
-        MapPublisher publisher = new MapPublisher(storage, new Shared(), worker);
+        MapPublisher publisher = new MapPublisher(storage, new Shared(), SOURCE.ownerId(), worker);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CompletableFuture<CompletableFuture<StoredMap>> slow = CompletableFuture.supplyAsync(() -> {

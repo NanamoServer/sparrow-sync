@@ -268,7 +268,7 @@ class NativeMapAdapterTest {
         registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
         MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
         MapFlowTestSupport.Tasks worker = new MapFlowTestSupport.Tasks();
-        MapPublisher publisher = new MapPublisher(database, new MapFlowTestSupport.Shared(), worker);
+        MapPublisher publisher = new MapPublisher(database, new MapFlowTestSupport.Shared(), "A-world", worker);
         MapSyncService service = this.service("A-world", registry, publisher);
         CraftPlayer player = NmsPlayerFixture.create();
         Inventory inventory = new Inventory(player.getHandle(), new EntityEquipment());

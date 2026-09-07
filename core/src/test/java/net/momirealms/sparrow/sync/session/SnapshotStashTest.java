@@ -225,7 +225,7 @@ class SnapshotStashTest {
 
         @Override
         @NotNull
-        public MapStorage maps(@NotNull String ownerId) {
+        public MapStorage maps() {
             throw new UnsupportedOperationException();
         }
 

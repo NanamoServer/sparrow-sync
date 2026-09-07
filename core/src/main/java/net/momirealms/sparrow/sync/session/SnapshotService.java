@@ -45,7 +45,6 @@ public final class SnapshotService {
     private DataRegistry dataRegistry;
     private PlayerDataPipeline playerDataPipeline;
     private volatile MapSyncService mapSync;
-    private volatile boolean closingMaps;
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
     private SnapshotWriter writer;
@@ -90,12 +89,10 @@ public final class SnapshotService {
         SparrowUI.getInstance().networkManager().registerNMSPacketListener(new NMSPacketListener() {
             @Override
             public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
-                if (!SnapshotService.this.closingMaps) {
-                    maps.observe(((ClientboundMapItemDataPacket) packet).mapId().id());
-                }
+                maps.observe(((ClientboundMapItemDataPacket) packet).mapId().id());
             }
         }, ClientboundMapItemDataPacket.class, PacketFlow.CLIENTBOUND);
-        MapInvalidationMessage.listener(id -> {if (!this.closingMaps) maps.invalidate(id);});
+        MapInvalidationMessage.listener(maps::invalidate);
     }
 
     /** 把预解码数据应用到玩家, <strong>必须在玩家线程上调用</strong>. */
@@ -347,8 +344,7 @@ public final class SnapshotService {
     }
 
     // 停止地图通知和接收更新, 为关服最终保存保留来源发布入口.
-    public synchronized void stopMapReceiving() {
-        this.closingMaps = true;
+    public void stopMapReceiving() {
         MapInvalidationMessage.listener(null);
         if (this.mapSync != null) {
             this.mapSync.stopReceiving();
@@ -358,7 +354,7 @@ public final class SnapshotService {
     // 在玩家采集交接后排空地图发布, 与其余关服步骤共用剩余期限.
     public void finishMapPublishing(long timeout, @NotNull TimeUnit unit) {
         MapSyncService maps = this.mapSync;
-        if (maps != null && !maps.closed()) {
+        if (maps != null) {
             maps.finishPublishing(timeout, unit);
         }
     }

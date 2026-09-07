@@ -57,7 +57,6 @@ public final class MapSyncService {
     private final MapPublisher publisher;
     private final MapReceiver receiver;
     private final MapPipeline pipeline;
-    private volatile boolean closed; // 关服后各入口据此放弃后续工作
 
     public MapSyncService(@NotNull SparrowSync plugin, @NotNull String ownerId) {
         this.plugin = plugin;
@@ -65,9 +64,9 @@ public final class MapSyncService {
         this.server = MinecraftServer.getServer();
         this.nativeMaps = new NativeMapAdapter(this.server.registryAccess(), VersionHelper.WORLD_VERSION);
         this.nativeStorage = new NativeMapStorage(this.server, VersionHelper.WORLD_VERSION);
-        MapStorage storage = plugin.storageProvider().maps(ownerId);
-        MapCache shared = new RedisMapCache(plugin.redisConnector().connection().async(), plugin.messageBrokerManager().broker(), ownerId, plugin.scheduler().async());
-        this.publisher = new MapPublisher(storage, shared, plugin.scheduler().async());
+        MapStorage storage = plugin.storageProvider().maps();
+        MapCache shared = new RedisMapCache(plugin.redisConnector().connection().async(), plugin.messageBrokerManager().broker(), plugin.scheduler().async());
+        this.publisher = new MapPublisher(storage, shared, ownerId, plugin.scheduler().async());
         this.receiver = new MapReceiver(storage, shared, this.nativeMaps, this.server, ownerId, plugin.scheduler().async(), plugin.scheduler().sync(), plugin.logger());
         this.pipeline = new MapPipeline(plugin.dataRegistry(), List.of(new HideMapHandler(), new SyncMapHandler(this.receiver)), plugin.logger());
     }
@@ -194,15 +193,11 @@ public final class MapSyncService {
     }
 
     public void observe(int globalId) {
-        if (!this.closed) {
-            this.receiver.observe(globalId);
-        }
+        this.receiver.observe(globalId);
     }
 
     public void invalidate(int globalId) {
-        if (!this.closed) {
-            this.receiver.refresh(globalId);
-        }
+        this.receiver.refresh(globalId);
     }
 
     // 停止地图副本数据的拉取与更新, 来源发布保留到关服最终保存结束.
@@ -220,14 +215,9 @@ public final class MapSyncService {
 
     // 释放待编码的物品快照并停止服务后续工作, 数据库映射和本服地图副本继续留存
     public void close() {
-        this.closed = true;
         this.pipeline.close();
         this.stopReceiving();
         this.publisher.close();
-    }
-
-    public boolean closed() {
-        return this.closed;
     }
 
     // 保存期间持有的模式与发布任务, 供后续物品编码等待.

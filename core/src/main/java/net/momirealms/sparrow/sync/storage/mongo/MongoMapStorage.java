@@ -46,10 +46,9 @@ public final class MongoMapStorage implements MapStorage {
     private static final long MAX_SEQUENCE = -(long) Integer.MIN_VALUE; // 可分配负数 int 的数量
     private final MongoCollection<Document> maps; // 完整地图记录, 含身份、数据版本与二进制 NBT
     private final MongoCollection<Document> counters; // 当前集合前缀下共用一个自增序列, 已分配或空洞 ID 均不复用
-    private final String ownerId;
     private final Executor executor;
 
-    public MongoMapStorage(@NotNull MongoDatabase database, @NotNull String prefix, @NotNull String ownerId, @NotNull Executor executor) {
+    public MongoMapStorage(@NotNull MongoDatabase database, @NotNull String prefix, @NotNull Executor executor) {
         // 全局 ID 和首份画面按多数确认, 查询只读取已提交的地图记录.
         this.maps = database.getCollection(prefix + "maps")
                 .withReadPreference(ReadPreference.primary())
@@ -57,7 +56,6 @@ public final class MongoMapStorage implements MapStorage {
         this.counters = database.getCollection(prefix + "map_counters")
                 .withReadPreference(ReadPreference.primary())
                 .withReadConcern(ReadConcern.MAJORITY).withWriteConcern(WriteConcern.MAJORITY);
-        this.ownerId = ownerId;
         this.executor = executor;
     }
 
@@ -85,7 +83,6 @@ public final class MongoMapStorage implements MapStorage {
     @NotNull
     public CompletableFuture<StoredMap> register(@NotNull MapSource source, @NotNull MapData initial) {
         return CompletableFuture.supplyAsync(() -> {
-            this.checkOwner(source);
             Optional<StoredMap> existing = this.read(this.maps.find(this.sourceFilter(source)).first());
             if (existing.isPresent()) return existing.get();
             // 先完成内容编码再分配 ID, 映射写入时已经具备可读取的完整画面
@@ -117,7 +114,6 @@ public final class MongoMapStorage implements MapStorage {
     @NotNull
     public CompletableFuture<Void> update(@NotNull MapIdentity identity, @NotNull MapData data) {
         return CompletableFuture.runAsync(() -> {
-            this.checkOwner(identity.source());
             // 同时匹配来源和全局 ID, 更新仅作用于已登记的这份身份
             long matched = this.maps.updateOne(
                     and(this.sourceFilter(identity.source()), eq("_id", identity.globalId())),
@@ -127,13 +123,6 @@ public final class MongoMapStorage implements MapStorage {
                 throw new IllegalStateException("map identity does not match a registered map");
             }
         }, this.executor);
-    }
-
-    // 核对本服是否具有这张来源地图的上传权限.
-    private void checkOwner(MapSource source) {
-        if (!this.ownerId.equals(source.ownerId())) {
-            throw new IllegalArgumentException("only the origin owner may upload map content");
-        }
     }
 
     // 限定当前集合中的一份来源地图标识.

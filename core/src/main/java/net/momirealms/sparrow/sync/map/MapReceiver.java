@@ -27,27 +27,22 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 为传输物品和运行时刷新准备本服可用的地图 ID.
- *
- * <p>相同全局 ID 的读取共用一个任务, 顺序查询本服 Caffeine 地图缓存、Redis 地图缓存和数据库.
- * 数据准备完成后切到主线程更新副本或恢复来源地图 ID, 返回 Future 在更新完成后结束.
- * 关闭、超时或途中收到失效通知时, 已读取的结果须重新检查后才能应用.
- */
-// 为传输物品和运行时刷新准备本服可用的地图 ID.
+/** 为传输物品和已登记副本准备本服地图 ID, 合并同图读取并处理更新通知与接收关闭. */
 public final class MapReceiver {
     private final MapStorage storage;
     private final MapCache shared;
     private final NativeMapAdapter nativeMaps;
     private final MinecraftServer server;
     private final String ownerId;
-    private final MapRuntime runtime;
     private final Executor worker;
     private final Executor nativeExecutor;
     private final SyncLogger logger;
+    private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 已登记接收更新的全局地图 ID, 登记后持续保留条目
     private final Map<Integer, Flight> flights = new HashMap<>(); // 同图共享任务; 此监视器也保护失效状态与最终更新
     private final Set<Integer> databaseReads = new HashSet<>(); // 下次读取必须跳过两层缓存的全局 ID, 由 flights 监视器保护
     private final Cache<Integer, StoredMap> cache = Caffeine.newBuilder().maximumSize(1024).expireAfterWrite(Duration.ofMinutes(5)).build(); // 至多 1024 张, 写入后 5 分钟过期, 读取命中不会推迟到期
@@ -62,7 +57,6 @@ public final class MapReceiver {
         this.worker = worker;
         this.nativeExecutor = nativeExecutor;
         this.logger = logger;
-        this.runtime = new MapRuntime(this, worker, logger);
     }
 
     /**
@@ -130,10 +124,10 @@ public final class MapReceiver {
 
     // 先摘除活动任务, 再在锁外通知等待者失败; 已更新的本服地图副本继续保留
     public void close() {
-        this.runtime.close();
         ArrayList<Flight> abandoned;
         synchronized (this.flights) {
             this.closed = true;
+            this.tracked.clear();
             abandoned = new ArrayList<>(this.flights.values());
             this.flights.clear();
             this.databaseReads.clear();
@@ -242,7 +236,7 @@ public final class MapReceiver {
                 // 已有本服地图副本仍可能被展示框引用, 更新后登记该地图, 供后续通知触发更新.
                 if (level.getMapData(new MapId(identity.globalId())) != null) {
                     this.nativeMaps.updateReplica(level, identity, prepared);
-                    this.runtime.updated(identity.globalId());
+                    this.tracked.computeIfAbsent(identity.globalId(), ignored -> new Tracked());
                 }
                 return source.id();
             }
@@ -250,19 +244,68 @@ public final class MapReceiver {
         }
         // 在外服或返回来源服后找不到来源地图时, 保留本服地图副本, 交给原版保存和显示.
         this.nativeMaps.updateReplica(level, identity, prepared);
-        this.runtime.updated(identity.globalId());
+        this.tracked.computeIfAbsent(identity.globalId(), ignored -> new Tracked());
         return identity.globalId();
     }
 
+    // 首次发送负数 ID 地图数据时登记该地图, 按全局地图 ID 查询数据库中的地图同步标识与内容.
     public void observe(int globalId) {
-        this.runtime.observe(globalId);
+        if (this.closed || globalId >= 0 || this.tracked.containsKey(globalId)) return;
+        Tracked entry = new Tracked();
+        if (this.tracked.putIfAbsent(globalId, entry) != null) return;
+        // 在发包回调中登记首见 ID, 接收流程交给异步线程发起.
+        try {
+            this.worker.execute(() -> this.refresh(globalId, entry, true));
+        } catch (RejectedExecutionException exception) {
+            if (!this.closed) {
+                this.failed(globalId, entry, exception);
+            }
+        }
     }
 
+    // 使本服 Caffeine 地图缓存失效, 并为已登记的地图副本安排数据更新.
     public void refresh(int globalId) {
-        this.runtime.invalidate(globalId);
+        if (this.closed) return;
+        this.invalidate(globalId);
+        Tracked entry = this.tracked.get(globalId);
+        if (entry != null) {
+            this.refresh(globalId, entry, false);
+        }
+    }
+
+    // 已登记副本的刷新沿用同图接收任务, 成功后结束本轮连续故障告警.
+    private void refresh(int id, Tracked entry, boolean database) {
+        if (this.closed) return;
+        // 先标记强制读库, 已有接收任务也会在更新前按此要求补拉.
+        if (database) {
+            this.invalidate(id, true);
+        }
+        this.receive(id).whenComplete((localId, failure) -> {
+            if (this.closed) return;
+            if (failure == null) {
+                synchronized (entry) {
+                    entry.failed = false;
+                }
+            } else {
+                this.failed(id, entry, failure);
+            }
+        });
+    }
+
+    // 记录一个连续故障周期的首次失败, 成功刷新后允许再次记录.
+    private void failed(int id, Tracked entry, Throwable failure) {
+        synchronized (entry) {
+            if (entry.failed) return;
+            entry.failed = true;
+        }
+        this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_REFRESH_FAILED, String.valueOf(id), String.valueOf(failure));
     }
 
     private record Prepared(StoredMap map, MapItemSavedData nativeData) {
+    }
+
+    private static final class Tracked {
+        private boolean failed; // 本轮连续失败是否已经打印过告警, 由条目监视器保护
     }
 
     /**

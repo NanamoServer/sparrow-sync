@@ -50,12 +50,12 @@ class MongoMapStorageTest {
     @BeforeEach
     void prepare() {
         this.prefix = "it_" + UUID.randomUUID().toString().replace("-", "") + "_";
-        this.source = this.storage(this.prefix, "A");
-        this.receiver = this.storage(this.prefix, "B");
+        this.source = this.storage(this.prefix);
+        this.receiver = this.storage(this.prefix);
     }
 
-    private MongoMapStorage storage(String prefix, String ownerId) {
-        MongoMapStorage result = new MongoMapStorage(this.database, prefix, ownerId, this.executor);
+    private MongoMapStorage storage(String prefix) {
+        MongoMapStorage result = new MongoMapStorage(this.database, prefix, this.executor);
         result.initialize();
         return result;
     }
@@ -96,15 +96,16 @@ class MongoMapStorageTest {
     }
 
     @Test
-    void separatesOriginsAndCollectionPrefixesAndRestrictsUploads() {
+    void separatesOriginsAndCollectionPrefixesAndMatchesCompleteIdentity() {
         StoredMap a = this.source.register(new MapSource("A", 0), data(1)).join();
         StoredMap b = this.receiver.register(new MapSource("B", 0), data(2)).join();
         assertEquals(-1, a.identity().globalId());
         assertEquals(-2, b.identity().globalId());
-        MongoMapStorage other = this.storage("other-" + this.prefix, "A");
+        MongoMapStorage other = this.storage("other-" + this.prefix);
         assertEquals(-1, other.register(new MapSource("A", 0), data(3)).join().identity().globalId());
-        assertThrows(CompletionException.class, () -> this.receiver.register(a.identity().source(), data(4)).join());
-        assertThrows(CompletionException.class, () -> this.receiver.update(a.identity(), data(4)).join());
+        assertEquals(a, this.receiver.register(a.identity().source(), data(4)).join());
+        MapIdentity wrongOwner = new MapIdentity(new MapSource("B", 0), a.identity().globalId());
+        assertThrows(CompletionException.class, () -> this.receiver.update(wrongOwner, data(4)).join());
         other.update(a.identity(), data(4)).join();
         assertEquals(data(1), this.source.find(-1).join().orElseThrow().data());
         assertEquals(data(4), other.find(-1).join().orElseThrow().data());
@@ -117,7 +118,7 @@ class MongoMapStorageTest {
     void separatesDatabasesWithTheSameCollectionPrefix() {
         MongoDatabase otherDatabase = this.client.getDatabase(this.database.getName() + "_other");
         try {
-            MongoMapStorage other = new MongoMapStorage(otherDatabase, this.prefix, "A", this.executor);
+            MongoMapStorage other = new MongoMapStorage(otherDatabase, this.prefix, this.executor);
             other.initialize();
             StoredMap stored = this.source.register(new MapSource("A", 0), data(1)).join();
             assertTrue(other.find(-1).join().isEmpty());
@@ -153,7 +154,7 @@ class MongoMapStorageTest {
     @Test
     void malformedPayloadFailsAndReopeningKeepsTheMapping() {
         StoredMap a = this.source.register(new MapSource("A", 7), data(7)).join();
-        assertEquals(a, this.storage(this.prefix, "A").find(a.identity().globalId()).join().orElseThrow());
+        assertEquals(a, this.storage(this.prefix).find(a.identity().globalId()).join().orElseThrow());
         this.database.getCollection(this.prefix + "maps").updateOne(eq("_id", a.identity().globalId()), set("data", new Binary(new byte[0])));
         assertThrows(CompletionException.class, () -> this.receiver.find(a.identity().globalId()).join());
     }

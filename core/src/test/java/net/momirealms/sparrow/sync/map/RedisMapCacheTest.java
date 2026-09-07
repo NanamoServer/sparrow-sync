@@ -48,8 +48,8 @@ class RedisMapCacheTest {
         }
         this.broker = new MessageBrokerManager(this.connector, "map-tests", logger);
         this.broker.initialize();
-        this.source = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), "A-world", ForkJoinPool.commonPool());
-        this.foreign = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), "B-world", ForkJoinPool.commonPool());
+        this.source = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), ForkJoinPool.commonPool());
+        this.foreign = new RedisMapCache(this.connector.connection().async(), this.broker.broker(), ForkJoinPool.commonPool());
     }
 
     @AfterAll
@@ -73,7 +73,9 @@ class RedisMapCacheTest {
         assertTrue(notified.await(2, TimeUnit.SECONDS));
         assertEquals(stored, this.foreign.find(-1).get(3, TimeUnit.SECONDS).orElseThrow());
         assertTrue(this.connector.connection().sync().ttl(this.key(-1)) > 604_790);
-        assertThrows(CompletionException.class, () -> this.foreign.publish(stored).join());
+        MapPublisher foreignPublisher = new MapPublisher(new MapFlowTestSupport.Storage(), this.foreign, "B-world", ForkJoinPool.commonPool());
+        assertThrows(CompletionException.class, () -> foreignPublisher.publish(stored.identity().source(), stored.data()).join());
+        foreignPublisher.close();
         assertEquals(stored, this.source.find(-1).join().orElseThrow());
 
         this.connector.connection().sync().expire(this.key(-1), 1);
@@ -97,7 +99,7 @@ class RedisMapCacheTest {
                 refreshed.countDown();
             }
         }, logger);
-        MapPublisher publisher = new MapPublisher(storage, this.source, ForkJoinPool.commonPool());
+        MapPublisher publisher = new MapPublisher(storage, this.source, "A-world", ForkJoinPool.commonPool());
         try {
             receiver.invalidate(-1, true);
             receiver.receive(MapFlowTestSupport.IDENTITY).get(3, TimeUnit.SECONDS);
@@ -137,7 +139,7 @@ class RedisMapCacheTest {
             assertEquals(3, this.connector.database());
             assertEquals(4, other.database());
             assertFalse(Arrays.equals(this.broker.broker().channel(), otherBroker.broker().channel()));
-            RedisMapCache otherCache = new RedisMapCache(other.connection().async(), otherBroker.broker(), "A-world", ForkJoinPool.commonPool());
+            RedisMapCache otherCache = new RedisMapCache(other.connection().async(), otherBroker.broker(), ForkJoinPool.commonPool());
             StoredMap stored = new StoredMap(MapFlowTestSupport.IDENTITY, MapFlowTestSupport.map(9).data());
             this.source.publish(stored).join();
             assertTrue(otherCache.find(-1).join().isEmpty());

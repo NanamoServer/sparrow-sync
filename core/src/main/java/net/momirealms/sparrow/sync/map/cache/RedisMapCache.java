@@ -27,13 +27,11 @@ public final class RedisMapCache implements MapCache {
     private static final long TTL_SECONDS = 7 * 24 * 60 * 60;
     private final RedisAsyncCommands<byte[], byte[]> commands;
     private final MessageBroker<ByteBuf> broker;
-    private final String ownerId;
     private final Executor worker;
 
-    public RedisMapCache(@NotNull RedisAsyncCommands<byte[], byte[]> commands, @NotNull MessageBroker<ByteBuf> broker, @NotNull String ownerId, @NotNull Executor worker) {
+    public RedisMapCache(@NotNull RedisAsyncCommands<byte[], byte[]> commands, @NotNull MessageBroker<ByteBuf> broker, @NotNull Executor worker) {
         this.commands = commands;
         this.broker = broker;
-        this.ownerId = ownerId;
         this.worker = worker;
     }
 
@@ -60,9 +58,6 @@ public final class RedisMapCache implements MapCache {
     @NotNull
     public CompletableFuture<Void> publish(@NotNull StoredMap map) {
         MapIdentity identity = map.identity();
-        if (!this.ownerId.equals(identity.source().ownerId())) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("only the source owner may publish map content"));
-        }
         return CompletableFuture.supplyAsync(() -> {
             CompoundTag tag = NBT.createCompound();
             tag.putString("owner", identity.source().ownerId());

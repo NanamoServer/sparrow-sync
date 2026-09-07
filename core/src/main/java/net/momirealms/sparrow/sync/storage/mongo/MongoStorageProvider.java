@@ -125,12 +125,12 @@ public final class MongoStorageProvider implements StorageProvider {
 
     @Override
     @NotNull
-    public MapStorage maps(@NotNull String ownerId) {
+    public MapStorage maps() {
         MongoCollection<Document> collection = this.snapshots;
         if (collection == null) {
             throw new IllegalStateException("mongo storage is not initialized");
         }
-        MongoMapStorage storage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), ownerId, this.asyncExecutor);
+        MongoMapStorage storage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), this.asyncExecutor);
         storage.initialize();
         return storage;
     }
