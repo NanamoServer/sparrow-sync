@@ -10,13 +10,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
-// 维护已经更新或正在展示的负数副本, 让后续来源更新能进入原生地图对象.
+// 维护已经更新或正在展示的本服地图副本, 让后续来源更新能进入 NMS 地图对象.
 @ApiStatus.Internal
 public final class MapRuntime {
     private final MapReceiver receiver;
     private final Executor worker;
     private final SyncLogger logger;
-    private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 本服务已发现的负数 ID, 静止地图仍保留条目
+    private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 已登记接收更新的全局地图 ID, 登记后持续保留条目
     private volatile boolean closed;
 
     public MapRuntime(@NotNull MapReceiver receiver, @NotNull Executor worker, @NotNull SyncLogger logger) {
@@ -25,7 +25,7 @@ public final class MapRuntime {
         this.logger = logger;
     }
 
-    // 首次观察负数地图时按全局 ID 查库, 身份与内容一起取自共享记录.
+    // 首次发送负数 ID 地图数据时登记该地图, 按全局地图 ID 查询数据库中的地图同步标识与内容.
     public void observe(int globalId) {
         if (this.closed || globalId >= 0 || this.tracked.containsKey(globalId)) return;
         Tracked entry = new Tracked();
@@ -38,13 +38,13 @@ public final class MapRuntime {
         }
     }
 
-    // 登记已完成更新的地图, 使静止副本也能接收后续更新.
+    // 登记已完成更新的地图副本, 供后续通知触发更新.
     public void updated(int globalId) {
         if (this.closed) return;
         this.tracked.computeIfAbsent(globalId, ignored -> new Tracked());
     }
 
-    // 通知对应的内容过期, 已知副本立即安排刷新.
+    // 使本服 Caffeine 地图缓存失效, 并为已登记的地图副本安排数据更新.
     public void invalidate(int globalId) {
         if (this.closed) return;
         this.receiver.invalidate(globalId);
@@ -54,7 +54,7 @@ public final class MapRuntime {
         }
     }
 
-    // 为已观察副本请求共享记录, 同图读取和失效补拉由接收器合并.
+    // 为已登记的地图副本请求地图存储记录, 同图读取和失效补拉由接收器合并.
     private void refresh(int id, Tracked entry, boolean database) {
         if (this.closed) return;
         // 先标记强制读库, 已有接收任务也会在更新前按此要求补拉.
@@ -82,7 +82,7 @@ public final class MapRuntime {
         this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_REFRESH_FAILED, String.valueOf(id), String.valueOf(failure));
     }
 
-    // 关服停止刷新并释放已追踪的身份.
+    // 关服停止刷新并释放已登记的全局地图 ID.
     public void close() {
         this.closed = true;
         this.tracked.clear();

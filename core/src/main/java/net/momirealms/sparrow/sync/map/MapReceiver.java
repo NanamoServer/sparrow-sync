@@ -33,8 +33,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * 为传输物品和运行时刷新准备本服可用的地图 ID.
  *
- * <p>相同全局 ID 的读取共用一个任务, 顺序查询本地缓存、Redis 和数据库.
- * 数据准备完成后切到主线程更新副本或恢复原图 ID, 返回 Future 在更新完成后结束.
+ * <p>相同全局 ID 的读取共用一个任务, 顺序查询本服 Caffeine 地图缓存、Redis 地图缓存和数据库.
+ * 数据准备完成后切到主线程更新副本或恢复来源地图 ID, 返回 Future 在更新完成后结束.
  * 关闭、超时或途中收到失效通知时, 已读取的结果须重新检查后才能应用.
  */
 // 为传输物品和运行时刷新准备本服可用的地图 ID.
@@ -67,17 +67,17 @@ public final class MapReceiver {
 
     /**
      * 等待指定地图在本服就绪, 同图并发请求共享结果.
-     * <p>任务最多等待 5 秒. <strong>同一全局 ID 必须对应同一完整来源身份</strong>.
+     * <p>任务最多等待 5 秒. <strong>同一全局 ID 必须对应同一地图同步标识</strong>.
      *
-     * @param identity 物品明确携带的完整身份, 须与共享记录一致
-     * @return 更新后的负数 ID, 或回源找到的非负原始 ID; 失败时异常完成
+     * @param identity 物品明确携带的地图同步标识, 须与地图存储记录一致
+     * @return 更新后的负数 ID, 或返回来源服后找到的非负来源地图 ID; 失败时异常完成
      */
     @NotNull
     public CompletableFuture<Integer> receive(@NotNull MapIdentity identity) {
         return this.receive(identity.globalId(), identity);
     }
 
-    // 运行时按全局 ID 获取共享身份, 本地副本内容由读取结果更新.
+    // 运行时按全局 ID 获取地图同步标识, 本服地图副本内容由读取结果更新.
     @NotNull
     CompletableFuture<Integer> receive(int globalId) {
         return this.receive(globalId, null);
@@ -92,7 +92,7 @@ public final class MapReceiver {
                 flight = new Flight(globalId, expectedIdentity);
                 this.flights.put(globalId, flight);
                 Flight admitted = flight;
-                // 任务超时后从登记表移除, 后续原生回调通过任务身份核对放弃迟到结果
+                // 任务超时后从登记表移除, 后续主线程回调通过接收任务引用核对放弃迟到结果
                 flight.result.orTimeout(5, TimeUnit.SECONDS).whenComplete((result, failure) -> {
                     synchronized (this.flights) {
                         this.flights.remove(globalId, admitted);
@@ -101,7 +101,7 @@ public final class MapReceiver {
                 this.read(flight);
             } else if (expectedIdentity != null) {
                 if (flight.expectedIdentity != null && !flight.expectedIdentity.equals(expectedIdentity)) return CompletableFuture.failedFuture(new IllegalArgumentException("conflicting map origin for " + globalId));
-                // 玩家可以加入运行时先发起的读取, 物品来源在原生更新前一并核对.
+                // 玩家可以加入运行时先发起的读取, 物品来源在更新本服 NMS 地图数据前一并核对.
                 flight.expectedIdentity = expectedIdentity;
             }
             return flight.result;
@@ -128,7 +128,7 @@ public final class MapReceiver {
         }
     }
 
-    // 先摘除活动任务, 再在锁外通知等待者失败; 已更新的原生副本继续保留
+    // 先摘除活动任务, 再在锁外通知等待者失败; 已更新的本服地图副本继续保留
     public void close() {
         this.runtime.close();
         ArrayList<Flight> abandoned;
@@ -144,7 +144,7 @@ public final class MapReceiver {
         }
     }
 
-    // 为跨服中转续期共享缓存, 无需重新采集或发布地图内容.
+    // 为跨服中转续期 Redis 地图缓存, 无需重新采集或发布地图内容.
     @NotNull
     public CompletableFuture<Boolean> touch(int globalId) {
         if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map receiver is closed"));
@@ -170,7 +170,7 @@ public final class MapReceiver {
                 return Optional.empty();
             }).thenCompose(found -> found.isPresent() ? CompletableFuture.completedFuture(found) : this.storage.find(id));
         }, this.worker);
-        // 共享记录须对应请求的全局 ID, 原生对象在异步线程独立构造.
+        // 地图存储记录须对应请求的全局 ID, NMS 地图对象在异步线程独立构造.
         read.thenApplyAsync(value -> {
             if (this.closed || flight.result.isDone()) {
                 throw new CancellationException("map read ended");
@@ -198,14 +198,14 @@ public final class MapReceiver {
                 if (flight.expectedIdentity != null && !prepared.map.identity().equals(flight.expectedIdentity)) {
                     throw new IllegalArgumentException("global map origin mismatch: " + id);
                 }
-                // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能回填缓存或原生对象.
+                // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能写入本服 Caffeine 地图缓存或更新本服 NMS 地图数据.
                 localId = this.updateLocalMap(prepared.map, prepared.nativeData);
                 // 缓存命中的重复更新沿用原到期时间, 强制数据库校验会更新缓存内容
                 if (cached == null || database) {
                     this.cache.put(id, prepared.map);
                 }
                 this.flights.remove(id, flight);
-                // 续期不写内容, 失败也不撤销已经更新的原生数据.
+                // 续期不写内容, 失败也不撤销已经更新的 NMS 地图数据.
                 CompletableFuture.completedFuture(null).thenComposeAsync(ignored -> this.closed ? CompletableFuture.completedFuture(false) : this.shared.touch(id), this.worker).exceptionally(failure -> {
                     this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_CACHE_TOUCH_FAILED, String.valueOf(id), String.valueOf(failure));
                     return false;
@@ -232,14 +232,14 @@ public final class MapReceiver {
         });
     }
 
-    // 在主线程选择回源 ID 或更新负数副本, 原图内容由来源世界继续维护.
+    // 在主线程选择返回来源服后使用的地图 ID 或更新本服地图副本, 来源地图内容由来源世界继续维护.
     private int updateLocalMap(StoredMap map, MapItemSavedData prepared) {
         ServerLevel level = this.server.overworld();
         MapIdentity identity = map.identity();
         MapSource source = identity.source();
         if (this.ownerId.equals(source.ownerId())) {
             if (level.getMapData(new MapId(source.id())) != null) {
-                // 已有负数副本仍可能被展示框引用, 更新后登记运行时追踪.
+                // 已有本服地图副本仍可能被展示框引用, 更新后登记该地图, 供后续通知触发更新.
                 if (level.getMapData(new MapId(identity.globalId())) != null) {
                     this.nativeMaps.updateReplica(level, identity, prepared);
                     this.runtime.updated(identity.globalId());
@@ -248,7 +248,7 @@ public final class MapReceiver {
             }
             this.logger.warn(LogCategory.DATA, LogConstants.DATA_MAP_SOURCE_MISSING, this.ownerId, String.valueOf(source.id()), String.valueOf(identity.globalId()));
         }
-        // 外服或回源缺图时保留负数副本, 交给原版保存和显示.
+        // 在外服或返回来源服后找不到来源地图时, 保留本服地图副本, 交给原版保存和显示.
         this.nativeMaps.updateReplica(level, identity, prepared);
         this.runtime.updated(identity.globalId());
         return identity.globalId();

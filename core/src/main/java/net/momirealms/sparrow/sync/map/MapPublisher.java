@@ -21,9 +21,9 @@ public final class MapPublisher {
     private final MapStorage storage;
     private final MapCache shared;
     private final Executor executor;
-    private final ConcurrentHashMap<MapSource, CompletableFuture<StoredMap>> pending = new ConcurrentHashMap<>(); // 每个来源的发布尾任务, 监视器协调入链与关服封口
+    private final ConcurrentHashMap<MapSource, CompletableFuture<StoredMap>> pending = new ConcurrentHashMap<>(); // 每张来源地图最后提交的发布任务, 监视器协调任务入队和停止接受新发布请求
     private final Cache<MapSource, StoredMap> published = Caffeine.newBuilder().maximumSize(1024).expireAfterAccess(Duration.ofMinutes(10)).build(); // 最近成功发布的内容, 供相等比较.
-    private volatile boolean sealed; // 拒绝新发布, 已入链任务仍可继续
+    private volatile boolean sealed; // 拒绝新发布, 已加入发布队列的任务仍可继续
     private volatile boolean closed; // 禁止发布链发起后续步骤, 已提交的外部 I/O 自行结束
 
     public MapPublisher(@NotNull MapStorage storage, @NotNull MapCache shared, @NotNull Executor executor) {
@@ -33,7 +33,7 @@ public final class MapPublisher {
     }
 
     /**
-     * 异步发布已经采集的独立地图内容, 同一来源按提交顺序完成数据库、Redis 和通知.
+     * 发布已采集的地图同步数据, 同一来源按提交顺序完成数据库写入、Redis 缓存更新和失效通知广播.
      *
      * @return 完整发布结果, 失败由物品管线告警并原样同步
      */
@@ -44,7 +44,7 @@ public final class MapPublisher {
             if (this.sealed) return CompletableFuture.failedFuture(new CancellationException("map publisher is sealed"));
             result = this.pending.compute(source, (key, previous) -> {
                 CompletableFuture<?> tail = previous == null ? CompletableFuture.completedFuture(null) : previous;
-                // 当前候选等待前一份发布结束, 前一份失败也允许继续处理
+                // 本次待发布地图数据等待上一项发布任务结束, 前一份失败也允许继续处理
                 return tail.handle((value, failure) -> null)
                         .thenComposeAsync(ignored -> this.publishContent(source, data), this.executor)
                         .whenComplete((value, failure) -> {
@@ -59,11 +59,11 @@ public final class MapPublisher {
         return result;
     }
 
-    // 提交一份已经采集的候选, 失败交给物品管线处理.
+    // 提交一份已经采集的地图同步数据, 失败交给物品管线处理.
     private CompletableFuture<StoredMap> publishContent(MapSource source, MapData data) {
         if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map publisher is closed"));
         StoredMap known = this.published.getIfPresent(source);
-        // 内容相等时续期缓存; 缓存已过期则由来源服重新写入这份已提交内容
+        // 内容相等时续期 Redis 地图缓存; Redis 地图缓存已过期则由来源服重新写入这份已提交内容
         if (known != null && known.data().equals(data)) {
             return this.shared.touch(known.identity().globalId()).thenCompose(exists -> {
                 if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map publisher is closed"));
@@ -79,7 +79,7 @@ public final class MapPublisher {
                     ? CompletableFuture.completedFuture(null)
                     : this.storage.update(current.identity(), data);
             StoredMap latest = new StoredMap(current.identity(), data);
-            // 数据库确认后才允许写共享内容; Redis 和广播也必须完成后才能放行下一候选.
+            // 数据库确认后才更新 Redis 地图缓存并广播失效通知, 这些步骤完成后才开始下一项发布任务.
             return write.thenCompose(ignored -> this.closed ? CompletableFuture.failedFuture(new CancellationException("map publisher is closed")) : this.shared.publish(latest)).thenApply(ignored -> {
                 if (!this.closed) {
                     this.published.put(source, latest);
@@ -89,7 +89,7 @@ public final class MapPublisher {
         });
     }
 
-    // 停止接收新候选并限时等待已入链的发布结束.
+    // 停止接受新地图发布请求, 并限时等待已加入发布队列的任务完成.
     public boolean sealAndAwait(long timeout, @NotNull TimeUnit unit) {
         CompletableFuture<?>[] tails;
         synchronized (this.pending) {
@@ -107,7 +107,7 @@ public final class MapPublisher {
         }
     }
 
-    // 终止后续发布步骤并释放比较缓存, 世界原生地图和数据库记录继续保留
+    // 终止后续发布步骤并释放比较缓存, 世界中的 NMS 地图数据和数据库记录继续保留
     public void close() {
         synchronized (this.pending) {
             this.sealed = true;

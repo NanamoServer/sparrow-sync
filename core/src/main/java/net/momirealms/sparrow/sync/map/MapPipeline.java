@@ -89,7 +89,7 @@ public final class MapPipeline {
         }, LogConstants.DATA_MAP_COMPILE_FAILED);
     }
 
-    // 按物品的来源模式准备接收数据, 等原生副本可用后返回快照.
+    // 按物品的来源模式准备接收数据, 等本服地图副本可用后返回快照.
     @NotNull
     public CompletableFuture<Snapshot> decodeAsync(@NotNull Snapshot snapshot, @NotNull String ownerId) {
         return this.rewriteAsync(snapshot, components -> {
@@ -97,7 +97,7 @@ public final class MapPipeline {
             if (marker == null || !marker.containsKey(MAP_TYPE)) return CompletableFuture.completedFuture(components);
             MapOrigin origin = this.origin(marker);
             return this.handler(origin.type()).decodeAsync(components, origin, ownerId).thenApply(decoded -> {
-                // 只有实际恢复原始 ID 才清理标记, 回源缺图保留负数副本的身份.
+                // 只有实际恢复来源地图 ID 才清理标记, 返回来源服时若找不到来源地图, 则保留本服地图副本的同步标识.
                 if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
                 CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
                 remaining.remove(MAP_TYPE);
@@ -108,7 +108,7 @@ public final class MapPipeline {
         }, LogConstants.DATA_MAP_DECODE_FAILED);
     }
 
-    // 校验并读取物品记录的模式和原图来源.
+    // 校验并读取物品记录的模式和地图来源.
     private MapOrigin origin(CompoundTag marker) {
         if (!(marker.get(MAP_TYPE) instanceof StringTag type) || !(marker.get(ORIGIN_SERVER) instanceof StringTag server) || server.getAsString().isBlank() || !(marker.get(ORIGIN_ID) instanceof IntTag id)) {
             throw new IllegalArgumentException("invalid map origin metadata");

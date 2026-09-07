@@ -42,7 +42,7 @@ public final class NativeMapStorage {
         return value != null && value.orElse(null) instanceof MapItemSavedData data ? data : null;
     }
 
-    /** 沿用原生的压缩检测与数据升级, 返回独立 NBT, 不回填原生缓存. */
+    /** 沿用原版的压缩检测与数据升级, 返回独立 NBT, 不写入 NMS 地图存储缓存. */
     @Nullable
     public CompoundTag read(int mapId) throws IOException {
         SavedDataStorageProxy proxy = SavedDataStorageProxy.INSTANCE;

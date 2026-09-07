@@ -74,7 +74,7 @@ public final class MapSyncService {
 
     /**
      * 在玩家串行线程扫描本次物品副本并采集来源地图, 物品范围固定于本次玩家采集.
-     * 地图模式由保存入口固定; 原图像素以本次异步采集时的内容为准.
+     * 地图模式由保存入口固定; 来源地图像素以本次异步采集时的内容为准.
      */
     @NotNull
     public Capture captureAndPublish(@NotNull PlayerDataPipeline.CaptureResult.Ready captured, @NotNull MapType mode) {
@@ -89,7 +89,7 @@ public final class MapSyncService {
         return new Capture(mode, publications);
     }
 
-    /** 等待本次地图发布结果, 将快照中的地图物品编译为传输形式. */
+    /** 等待本次地图发布结果, 将快照中的地图物品编码为传输形式. */
     @NotNull
     public CompletableFuture<Snapshot> compileAsync(@NotNull Snapshot snapshot, @NotNull Capture captured) {
         return this.pipeline.compileAsync(snapshot, captured.type(), this.ownerId, captured.publications());
@@ -101,7 +101,7 @@ public final class MapSyncService {
         return this.pipeline.decodeAsync(snapshot, this.ownerId);
     }
 
-    // 采集缓冲中的空槽为 null, 嵌套组件继续沿只读原生对象递归.
+    // 采集缓冲中的空槽为 null, 嵌套组件继续沿只读 NMS 物品对象递归.
     private void scan(ItemStack[] items, Map<Integer, CompletableFuture<StoredMap>> publications) {
         for (int slot = 0; slot < items.length; slot++) {
             ItemStack item = items[slot];
@@ -141,7 +141,7 @@ public final class MapSyncService {
         if (container != null) {
             List<?> items = ItemContainerContentsProxy.INSTANCE.getItems(container);
             int size = items.size();
-            // 原生列表按只读访问, 26.1 起空槽由 Optional 表示.
+            // NMS 物品列表按只读访问, 26.1 起空槽由 Optional 表示.
             if (VersionHelper.isOrAbove26_1()) {
                 for (int i = 0; i < size; i++) {
                     Object nested = ((Optional<?>) items.get(i)).orElse(null);
@@ -187,9 +187,9 @@ public final class MapSyncService {
     private boolean marked(Object item) {
         CustomData custom = this.component(item, DataComponents.CUSTOM_DATA);
         if (custom == null) return false;
-        // 只读检查原生来源字段.
+        // 只读检查 NMS 物品组件中的来源字段.
         net.minecraft.nbt.Tag marker = CompoundTagProxy.INSTANCE.getTags(CustomDataProxy.INSTANCE.getTag(custom)).get("sparrow-sync");
-        // 损坏的来源标记也不能被当成本服原图上传, 最终由组件管线统一告警回退.
+        // 损坏的来源标记也不能被当成本服来源地图上传, 最终由组件管线统一告警回退.
         return marker != null && (!(marker instanceof net.minecraft.nbt.CompoundTag compound) || CompoundTagProxy.INSTANCE.getTags(compound).containsKey("map-type"));
     }
 
@@ -210,7 +210,7 @@ public final class MapSyncService {
         this.receiver.close();
     }
 
-    // 限时等待已采集的来源候选结束发布, 随后关闭本服务.
+    // 限时等待已采集的来源地图数据完成发布, 随后关闭本服务.
     public void finishPublishing(long timeout, @NotNull TimeUnit unit) {
         if (!this.publisher.sealAndAwait(timeout, unit)) {
             this.plugin.logger().warn(LogCategory.DATA, LogConstants.DATA_MAP_PUBLISH_UNFINISHED, this.ownerId);
@@ -218,7 +218,7 @@ public final class MapSyncService {
         this.close();
     }
 
-    // 释放待编译快照并停止服务后续工作, 数据库映射和原生副本继续留存
+    // 释放待编码的物品快照并停止服务后续工作, 数据库映射和本服地图副本继续留存
     public void close() {
         this.closed = true;
         this.pipeline.close();
@@ -230,7 +230,7 @@ public final class MapSyncService {
         return this.closed;
     }
 
-    // 保存期间持有的模式与发布任务, 供后续物品编译等待.
+    // 保存期间持有的模式与发布任务, 供后续物品编码等待.
     public record Capture(@NotNull MapType type, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
     }
 }

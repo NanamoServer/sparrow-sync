@@ -103,7 +103,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
                 if (callback == null) {
                     throw new IllegalStateException("AttributeInstance.onDirty callback is unavailable");
                 }
-                // 回调随属性实例存活, 首次采集时才构建脱离值.
+                // 回调随属性实例存活, 首次采集时才构建独立采集数据.
                 AttributeInstanceProxy.INSTANCE.setOnDirty(instance, new CaptureCache(callback));
             } catch (RuntimeException | LinkageError exception) {
                 // 当前项保留普通采集, 其余属性继续安装.
@@ -321,7 +321,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     public record Attributes(@NotNull AttributeValue @NotNull [] values) {
     }
 
-    /** 缓存与在途采集共享此脱离值, 消费方须只读访问 modifiers 数组. */
+    /** 缓存与在途采集共享此独立采集数据, 消费方须只读访问 modifiers 数组. */
     public record AttributeValue(@NotNull NamespacedKey key, double base, @NotNull ModifierValue @NotNull [] modifiers) {
     }
 
@@ -337,7 +337,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     private record CaptureTargets(AttributeOptions options, CaptureTarget[] attributes) {
     }
 
-    /** 单实例缓存, 变更时只丢弃引用, 下一次采集才重建脱离值. */
+    /** 单实例缓存, 变更时只丢弃引用, 下一次采集才重建独立采集数据. */
     private static final class CaptureCache implements Consumer<net.minecraft.world.entity.ai.attributes.AttributeInstance> {
         private final Consumer<net.minecraft.world.entity.ai.attributes.AttributeInstance> delegate;
         private AttributeOptions capturedOptions;
@@ -350,7 +350,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
         @Override
         public void accept(net.minecraft.world.entity.ai.attributes.AttributeInstance instance) {
             // 先失效, 保证原回调重入采集或抛异常时都无法读到旧值.
-            // 部分 NMS 修改还会在回调返回后收尾, 此处只标脏, 不采集或编码.
+            // 部分 NMS 修改还会在回调返回后收尾, 此处只使属性采集缓存失效, 不采集或编码.
             this.value = null;
             this.delegate.accept(instance);
         }

@@ -25,7 +25,7 @@ public final class DebugSaveBinaryCommand extends BukkitCommandFeature {
                 .senderType(Player.class)
                 .handler(context -> {
                     Player player = context.sender();
-                    // 采集必须在玩家的拥有线程上执行
+                    // 采集必须在玩家线程上执行
                     player.getScheduler().run(plugin().javaPlugin(), task -> this.dump(player), null);
                 });
     }

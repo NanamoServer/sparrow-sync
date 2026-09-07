@@ -11,7 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.CompletionStage;
 
 /**
- * 快照完成编码、提交存储前在异步线程派发. 取消后, 这份快照不会提交落库.
+ * 快照完成编码、提交存储前在串行线程派发. 取消后, 这份快照不会提交落库.
  * <p><strong>处理本事件期间不得阻塞等待 {@link #completion()}.</strong>
  */
 public final class SnapshotSaveEvent extends Event implements Cancellable {
@@ -31,7 +31,7 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
     }
 
     /**
-     * 返回保存请求接纳时记录的玩家名.
+     * 返回保存请求接受时记录的玩家名.
      *
      * @return 玩家名
      */

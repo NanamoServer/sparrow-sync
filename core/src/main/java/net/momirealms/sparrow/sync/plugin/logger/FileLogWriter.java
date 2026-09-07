@@ -57,7 +57,7 @@ public final class FileLogWriter implements AutoCloseable {
     private final Thread worker;
     private boolean closed;
 
-    // 以下状态只被 worker 线程触碰
+    // 以下状态只由写日志的异步线程访问
     private BufferedWriter writer;
     private Path writerFile;
     private boolean failureReported;

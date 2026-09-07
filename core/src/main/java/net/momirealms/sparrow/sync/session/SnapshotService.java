@@ -51,7 +51,7 @@ public final class SnapshotService {
     private SnapshotWriter writer;
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
     private final SnapshotHandoffTracker handoffs = new SnapshotHandoffTracker();
-    private final ConcurrentHashMap<UUID, CompletableFuture<Void>> mapSaves = new ConcurrentHashMap<>(); // 同一玩家等待地图后的提交尾任务, 用于衔接异步准备结果
+    private final ConcurrentHashMap<UUID, CompletableFuture<Void>> mapSaves = new ConcurrentHashMap<>(); // 同一玩家最后提交的等待地图完成的保存任务, 用于衔接异步准备结果
     private final ConcurrentHashMap<SaveRequest, PendingMapSnapshot> pendingMapSnapshots = new ConcurrentHashMap<>(); // 尚未交给写入器的原快照, 关服超时后可落入 stash
 
     public SnapshotService(@NotNull SparrowSync plugin) {
@@ -127,7 +127,7 @@ public final class SnapshotService {
     }
 
     /**
-     * 读取玩家最新快照, 等地图原生数据就绪后异步预解码玩家数据.
+     * 读取玩家最新快照, 等 NMS 地图数据就绪后异步预解码玩家数据.
      * 任意线程可调用, 关键数据无法解码时返回失败结果.
      */
     @NotNull
@@ -173,7 +173,7 @@ public final class SnapshotService {
         return request.completion;
     }
 
-    // 在玩家线程采集同步组, 再由玩家串行线程补齐异步组并处理地图、编码保存.
+    // 先在玩家线程完成对应类型的采集, 再由串行线程补齐其余类型并处理地图、编码保存.
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
         SaveRequest request = new SaveRequest();
@@ -225,7 +225,7 @@ public final class SnapshotService {
 
     @NotNull
     private SaveContext newContext(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
-        // 请求接纳时分配逻辑时间戳, 同一玩家在并发调用下仍严格递增.
+        // 请求接受时分配逻辑时间戳, 同一玩家在并发调用下仍严格递增.
         Long ts = this.lastTimestampByPlayer.merge(player.getUniqueId(), System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
         SnapshotMeta snapshotMeta = SnapshotMeta.builder()
                 .player(player.getUniqueId())
@@ -234,12 +234,12 @@ public final class SnapshotService {
                 .server(ServerConfig.serverId())
                 .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
-        // 重载只影响随后开始的保存, 排队中的任务继续使用接纳时的地图模式.
+        // 重载只影响随后开始的保存, 排队中的任务继续使用接受时的地图模式.
         MapType mapType = this.mapSync == null ? null : PluginConfig.synchronization$map().type();
         return new SaveContext(snapshotMeta, player.getName(), retainedData, mapType);
     }
 
-    // 编码独立玩家数据, 等待地图编译后按同一玩家的保存顺序提交快照.
+    // 编码独立玩家数据, 等待地图物品编码后按同一玩家的保存顺序提交快照.
     private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
         MapSyncService.Capture maps = this.captureAndPublishMaps(captured, context);
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
@@ -341,7 +341,7 @@ public final class SnapshotService {
         }
     }
 
-    // 停止接纳新快照并等待已接纳请求完成首次存储提交.
+    // 停止接受新快照并等待已接受请求完成首次存储提交.
     public boolean sealAndAwaitHandoffs(long timeout, @NotNull TimeUnit unit) {
         return this.handoffs.sealAndAwait(timeout, unit);
     }

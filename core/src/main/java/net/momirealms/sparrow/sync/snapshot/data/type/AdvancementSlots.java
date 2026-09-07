@@ -15,7 +15,7 @@ import java.util.function.Supplier;
  */
 final class AdvancementSlots {
     private final Supplier<Map<?, ?>> advancements; // 延迟读取当前服务端 advancement Map
-    private volatile Layout layout = new Layout(null, new Object[0], Map.of()); // 当前已发布布局, source 为 null 表示布局尚未首次编译.
+    private volatile Layout layout = new Layout(null, new Object[0], Map.of()); // 当前索引布局, source 为 null 表示布局尚未首次构建.
 
     AdvancementSlots() {
         this(() -> MinecraftServer.getServer().getAdvancements().advancements);
@@ -26,7 +26,7 @@ final class AdvancementSlots {
     }
 
     /**
-     * 返回与当前 advancement Map 对应的布局, 必要时先完成一次换代编译.
+     * 返回与当前 advancement Map 对应的布局, 必要时先完成一次索引布局重建.
      *
      * @return 稳定布局, 构建期间 Map 连续变化时返回 null
      */
@@ -39,10 +39,10 @@ final class AdvancementSlots {
     }
 
     /**
-     * 从一个稳定的 advancement Map 编译新布局并发布.
+     * 从一个稳定的 advancement Map 构建新索引布局并更新当前布局引用.
      * 新布局继承旧的 ID -> slot 映射, 布局以服务端 advancement Map 的引用身份区分版本.
      *
-     * @return 编译完成的布局, 两次尝试都撞上 Map 换代时返回 null
+     * @return 构建完成的索引布局, 两次尝试都撞上 Map 换代时返回 null
      */
     @Nullable
     private synchronized Layout rebuild() {
@@ -87,7 +87,7 @@ final class AdvancementSlots {
     /**
      * 一次完整的 advancement 布局快照.
      *
-     * @param source 生成此布局的服务端 Map 引用, 初始未编译布局为 null
+     * @param source 生成此布局的服务端 Map 引用, 初始未构建的布局为 null
      * @param holders slot -> 当前 holder, 已删除 ID 的位置为 null
      * @param slots ID -> 生命周期稳定 slot, 包含已经删除的历史 ID
      */

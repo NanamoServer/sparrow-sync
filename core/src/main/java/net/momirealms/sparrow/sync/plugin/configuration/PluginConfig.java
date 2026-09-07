@@ -373,13 +373,13 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MapOptions {
         @Comment({
-                "Enables map compilation and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
+                "Enables map item encoding and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
                 "Because of how Minecraft stores maps, map synchronization is best-effort; enabling it means",
                 "the plugin modifies map items, including updating and reassigning map-id values and recording required data in custom_data",
                 "Uninstalling the plugin cannot fully restore map data components, but we aim to keep maps viewable and functional; this feature comes with these trade-offs"
         })
         @Comment(lang = "zh-CN", value = {
-                "是否启用地图的编译和解码, 修改后需要重启服务器生效; 关闭时插件不处理地图物品和地图数据",
+                "是否启用地图物品的编码和解码, 修改后需要重启服务器生效; 关闭时插件不处理地图物品和地图数据",
                 "注意: 因为 Minecraft 地图存储的特殊性, 我们仍然只能做到尽可能同步地图数据, 这意味着开启同步后",
                 "地图物品会被本插件进行一定程度的修改, 比如更新和重分配 map-id, 在 custom_data 上记录一些必要的数据等, 这意味着卸载插件后无法完整复原最初的地图数据组件",
                 "如果你使用了 \"跨服交易行, 由插件管理的随时背包\" 绕开同步时对地图物品的扫描的话, 插件也无法保证绕过的地图是否存在错误显示的问题",
@@ -396,22 +396,22 @@ public final class PluginConfig {
         @Comment(lang = "zh-CN", value = {
                 "地图数据的同步模式, 可选值: HIDE、SYNC",
                 "HIDE 模式下, 不会同步服务器之间的地图数据, 而是在玩家跨服时移除地图的 map-id 并记录 custom_data, 使地图在跨服后无法继续工作, 这是为了防止玩家通过地图机制窃取其他服务器的地图数据",
-                "SYNC 模式下, 会对所有地图数据进行保存和同步, 被快照捕获的地图会被重新分配 map-id 并记录 custom_data, 然后向数据库保存源地图数据, 并在其他服务器上创建持久化的负 ID 副本",
+                "SYNC 模式下, 会对所有地图数据进行保存和同步, 被快照捕获的地图会被重新分配 map-id 并记录 custom_data, 然后向数据库保存来源地图数据, 并在其他服务器上创建使用负数 ID 的持久化地图副本",
                 "地图处理失败时会输出警告, 并保留原地图数据不变"
         })
         MapType type = MapType.SYNC;
 
         @Comment({
-                "Ownership identifier for this server's map data; supports ${server-id} and ${world-uuid}; changes require a server restart",
+                "Map source ID for this server; supports ${server-id} and ${world-uuid}; changes require a server restart",
                 "server-id is the server ID configured in server.yml",
                 "world-uuid is the UUID of the overworld where the map data belongs",
-                "Maps use this value to determine ownership; changing it makes previously compiled maps count as maps from another server"
+                "Maps use this value to determine ownership; changing it makes previously encoded map items count as maps from another server"
         })
         @Comment(lang = "zh-CN", value = {
-                "本服地图数据的归属标志符, 支持占位符 ${server-id} 和 ${world-uuid}, 修改后需要重启服务器生效",
+                "本服的地图源 ID, 支持占位符 ${server-id} 和 ${world-uuid}, 修改后需要重启服务器生效",
                 "server-id 为 server.yml 配置中的服务器 ID",
                 "world-uuid 为地图数据所属主世界的 UUID",
-                "地图通过这个值来判断地图数据归属, 所有修改此值后, 之前编译的地图会被视为其他服务器的地图"
+                "地图通过这个值来判断地图数据归属, 所以修改此值后, 之前编码的地图物品会被视为其他服务器的地图"
         })
         String mapOwnerId = "${server-id}-${world-uuid}";
 
@@ -826,7 +826,7 @@ public final class PluginConfig {
         }
 
         /**
-         * 将字符串和分段列表编译为不可变路径树, 前缀路径覆盖其全部后代.
+         * 将字符串和分段列表构建为不可变路径树, 前缀路径覆盖其全部后代.
          *
          * @param entries YAML 中的黑名单条目
          * @return 可供采集与合并直接查询的路径树
@@ -990,7 +990,7 @@ public final class PluginConfig {
     }
 
     // 读取一律经这里穿透到当前那份配置, 方法名以 $ 还原配置文件里的层级.
-    // 同一次触发要读取的相关选项编译成一个不可变值, 调用方每次重新取得当前快照
+    // 同一次触发要读取的相关选项组合成一个不可变值, 调用方每次重新取得当前快照
 
     public static boolean checkUpdate() {
         return config.updateChecker;

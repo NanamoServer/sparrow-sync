@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.function.Consumer;
 
 /**
- * 可以在登录 Gate worker 准备原版登录数据的类型.
+ * 可以在登录拦截阶段的异步线程准备登录数据源的类型.
  * 实现不得读取玩家或派发 Bukkit 事件; 所需全局元数据必须通过线程安全的快照读取.
  *
  * @param <T> 解码后的值类型
@@ -21,16 +21,16 @@ public interface NativePlayerDataType<T> extends PlayerDataType<T> {
 
     /**
      * 根据配置、服务端能力和会话绑定的登录连接判断是否执行 applyNative.
-     * <strong>调用期间 Gate 保持拦截状态</strong>, 返回 false 的数据留到 Join 应用.
+     * <strong>调用期间保持登录拦截状态</strong>, 返回 false 的数据留到 Join 应用.
      */
     boolean shouldApply(@NotNull PlayerSession session);
 
     /**
-     * 把本类型安装到原版登录读取的数据源.
+     * 把本类型的数据写入原版登录读取的数据源.
      * <strong>返回 {@link NativeApplyResult#NOT_APPLIED} 或抛出异常时不得留下部分可见的写入</strong>.
      *
-     * @return 应用目标与可选的 Join 回调, 用于更新槽位状态和发布 synthetic player data
-     * @throws IOException 当外部原生数据源写入失败时
+     * @return 应用目标与可选的 Join 回调, 用于更新槽位状态和提供合成登录 NBT
+     * @throws IOException 当外部登录数据源写入失败时
      */
     @NotNull
     NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull T value) throws IOException;

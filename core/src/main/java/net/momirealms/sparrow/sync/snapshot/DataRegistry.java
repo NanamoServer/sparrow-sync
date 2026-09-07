@@ -88,15 +88,13 @@ public final class DataRegistry {
         return this.frozen;
     }
 
-    /** 在线宽松保存中的玩家线程槽位, <strong>返回数组只读</strong>. */
-    @NotNull
-    public int[] syncCaptureSlots() {
+    /** 在线分阶段采集保存中的玩家线程槽位, <strong>返回数组只读</strong>. */
+    public int @NotNull [] syncCaptureSlots() {
         return this.syncCaptureSlots;
     }
 
-    /** 在线宽松保存中的串行线程槽位, <strong>返回数组只读</strong>. */
-    @NotNull
-    public int[] asyncCaptureSlots() {
+    /** 在线分阶段采集保存中的串行线程槽位, <strong>返回数组只读</strong>. */
+    public int @NotNull [] asyncCaptureSlots() {
         return this.asyncCaptureSlots;
     }
 
@@ -118,13 +116,13 @@ public final class DataRegistry {
         return Collections.unmodifiableCollection(this.types.values());
     }
 
-    /** 冻结布局中的数据类型数量. */
+    /** 固定的数据类型索引布局中的数据类型数量. */
     public int size() {
         return this.frozen ? this.orderedTypes.length : this.types.size();
     }
 
     /**
-     * 返回冻结布局中指定槽位的数据标识.
+     * 返回固定的数据类型索引布局中指定槽位的数据标识.
      *
      * @param slot 拓扑顺序槽位
      */
@@ -134,7 +132,7 @@ public final class DataRegistry {
     }
 
     /**
-     * 返回冻结布局中指定槽位的数据类型.
+     * 返回固定的数据类型索引布局中指定槽位的数据类型.
      *
      * @param slot 拓扑顺序槽位
      */
@@ -143,14 +141,14 @@ public final class DataRegistry {
         return this.orderedTypes[slot];
     }
 
-    /** 返回冻结槽位的原生写入实现, join-only 类型返回 null. */
+    /** 返回数据类型槽位的登录数据源写入实现, join-only 类型返回 null. */
     @Nullable
     public NativePlayerDataType<?> nativeTypeAt(int slot) {
         return this.orderedNativeTypes[slot];
     }
 
     /**
-     * 查询数据标识在冻结布局中的槽位, 未注册时返回 {@code -1}.
+     * 查询数据标识在固定的数据类型索引布局中的槽位, 未注册时返回 {@code -1}.
      */
     public int slot(@NotNull DataKey key) {
         Integer slot = this.slots.get(key);

@@ -116,9 +116,9 @@ public final class TestCommand extends BukkitCommandFeature {
         SAVE,       // 立即采集并落库一次, 不用退服
         LOAD,       // 读库最新快照并应用, 不用重进
         BURST,      // 同 tick 连发 count 次保存, 压 timestamp 钳制与提交序
-        CAPTURE_SYNC,    // 玩家线程采集全部类型, 串行 worker 编码
-        CAPTURE_ASYNC,   // 玩家线程采同步组, 串行 worker 补齐异步组并编码
-        CAPTURE_OFFLINE, // 静止测试玩家在串行 worker 采集并编码, 无需真的退出
+        CAPTURE_SYNC,    // 玩家线程采集全部类型, 串行线程编码
+        CAPTURE_ASYNC,   // 先在玩家线程采集对应类型, 再由串行线程补齐其余类型并编码
+        CAPTURE_OFFLINE, // 静止测试玩家在串行线程采集并编码, 无需真的退出
         ATTRIBUTES_HIT,       // 属性缓存全部命中
         ATTRIBUTES_HALF_DIRTY, // 一半属性变脏后采集, 奇数项向上取整
         ATTRIBUTES_ALL_DIRTY, // 全部属性变脏后采集
@@ -138,7 +138,7 @@ public final class TestCommand extends BukkitCommandFeature {
         CommandSender sender = context.sender();
         Player target = target(context);
         if (target == null) return;
-        // 冒烟必须在目标玩家的拥有线程上执行, 控制台命令 (Folia 上为全局线程) 经实体调度器转入
+        // 冒烟必须在目标玩家线程上执行, 控制台调用经实体调度器转入.
         target.getScheduler().run(plugin().javaPlugin(), task -> {
             List<String> report = this.runSmoke(target);
             for (int i = 0; i < report.size(); i++) {

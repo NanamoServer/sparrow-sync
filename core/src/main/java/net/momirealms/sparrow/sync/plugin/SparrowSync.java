@@ -292,7 +292,7 @@ public class SparrowSync implements Plugin {
     public void onPluginDisable() {
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
         if (this.snapshotService != null)       this.snapshotService.stopMapReceiving();
-        if (this.sessionManager != null)        this.sessionManager.shutdown(); // 封口外部保存并为 ACTIVE 会话投递 SHUTDOWN 保存
+        if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
         if (this.snapshotService != null)       this.snapshotService.sealAndAwaitHandoffs(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.snapshotService != null)       this.snapshotService.finishMapPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.playerExecutor != null)        this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);

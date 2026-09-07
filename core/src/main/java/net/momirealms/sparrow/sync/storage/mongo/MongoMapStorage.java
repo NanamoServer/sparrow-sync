@@ -61,7 +61,7 @@ public final class MongoMapStorage implements MapStorage {
         this.executor = executor;
     }
 
-    // 启动时完成索引与序列准备, 全局 ID 使用 Mongo 原生 _id 唯一索引.
+    // 启动时完成索引与序列准备, 全局 ID 使用 MongoDB 的 _id 唯一索引.
     public void initialize() {
         this.maps.createIndex(Indexes.ascending("owner", "origin_id"), new IndexOptions().unique(true).name("map_source"));
         // 多个服务器可同时初始化同一组集合, 已存在计数器沿用原序列
@@ -129,14 +129,14 @@ public final class MongoMapStorage implements MapStorage {
         }, this.executor);
     }
 
-    // 核对本服是否具有这张原图的上传权限.
+    // 核对本服是否具有这张来源地图的上传权限.
     private void checkOwner(MapSource source) {
         if (!this.ownerId.equals(source.ownerId())) {
             throw new IllegalArgumentException("only the origin owner may upload map content");
         }
     }
 
-    // 限定当前集合中的一份原图身份.
+    // 限定当前集合中的一份来源地图标识.
     private Bson sourceFilter(MapSource source) {
         return and(eq("owner", source.ownerId()), eq("origin_id", source.id()));
     }

@@ -10,12 +10,12 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/** 原生地图入库前替换 Codec 遍历的集合, 保留地图、MapView 和像素数组的身份. */
+/** NMS 地图对象写入存储缓存前替换 Codec 遍历的集合, 保留地图、MapView 和像素数组的身份. */
 public final class MapDataCache extends ConcurrentHashMap<Object, Optional<?>> {
 
     public MapDataCache(@NotNull Map<Object, Optional<?>> original) {
         super(original.size());
-        // 启动时已加载的地图与后续原生 get/set 写入走同一个准备入口.
+        // 启动时已加载的地图与后续 NMS get/set 写入走同一个准备入口.
         original.forEach(this::put);
     }
 
@@ -31,7 +31,7 @@ public final class MapDataCache extends ConcurrentHashMap<Object, Optional<?>> {
                 proxy.setFrameMarkers(data, new ConcurrentHashMap<>(proxy.getFrameMarkers(data)));
             }
         }
-        // 发布引用前完成集合替换. 异步侧只读缓存, 不参与原生加载或创建地图.
+        // 写入 NMS 地图存储缓存前完成集合替换. 异步线程只读缓存, 不参与原版加载或创建地图.
         return super.put(key, value);
     }
 }

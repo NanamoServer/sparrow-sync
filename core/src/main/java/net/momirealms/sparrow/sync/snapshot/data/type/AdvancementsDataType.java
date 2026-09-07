@@ -81,7 +81,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
     }
 
     /**
-     * 从当前 PlayerAdvancements 生成只包含实际进度的脱离快照.
+     * 从当前 PlayerAdvancements 生成只包含实际进度的独立数据快照.
      * <strong>返回值可能复用历史采集结果, 数组及其元素须按只读使用
      *
      * @param player 要采集的在线玩家
@@ -117,7 +117,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      * @param progress 当前玩家的 holder -> AdvancementProgress Map
      * @param candidates 本次采集共用的候选位图副本
      * @param layout 当前服务端 advancement 布局
-     * @return 仅包含仍有实际进度的脱离值
+     * @return 仅包含仍有实际进度的独立采集数据
      */
     static Advancements captureSparse(Map<Object, Object> progress, long[] candidates, AdvancementSlots.Layout layout) {
         // 候选是结果容量上界, 预先计数避免使用固定数组
@@ -149,7 +149,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
      * 扫描玩家完整 progress Map, 作为所有安全回退场景的参考采集算法.
      *
      * @param progress 当前玩家的 holder -> AdvancementProgress Map
-     * @return 仅包含至少一个已取得 criterion 的脱离值
+     * @return 仅包含至少一个已取得 criterion 的独立采集数据
      */
     static Advancements captureDense(Map<Object, Object> progress) {
         AdvancementValue[] captured = new AdvancementValue[progress.size()];

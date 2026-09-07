@@ -45,7 +45,7 @@ public final class SyncMapHandler implements MapHandler {
     public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
         if (!(components.get("minecraft:map_id") instanceof IntTag id)) return CompletableFuture.failedFuture(new IllegalArgumentException("SYNC map has no integer global id"));
         MapIdentity identity = new MapIdentity(new MapSource(origin.ownerId(), origin.id()), id.getAsInt());
-        // 接收结果可能是外服负数 ID, 也可能是回源后找到的原始 ID
+        // 接收结果可能是外服负数 ID, 也可能是返回来源服后找到的来源地图 ID
         return this.receiver.receive(identity).thenApply(localId -> localId == identity.globalId() ? components : this.withId(components, localId));
     }
 

@@ -118,10 +118,10 @@ public final class SessionListener implements Listener {
             if (session == null) continue;
             if (VersionHelper.isFolia()) {
                 // Folia 仅在 global tick 的 saveIncrementally(true) 派发定时世界保存事件, 不拥有任何玩家.
-                // 到玩家的 Region 后才接纳保存, SessionManager 会检查通知是否已经过期.
+                // 到玩家的 Region 后才接受保存, SessionManager 会检查通知是否已经过期.
                 this.plugin.scheduler().entity().run(player, () -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {});
             } else {
-                // Paper/Spigot 在主线程派发, 同步组当场采完并入队, 不再延后一 tick.
+                // Paper/Spigot 在主线程派发, 玩家线程采集组当场采完并入队, 不再延后一 tick.
                 this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE);
             }
         }

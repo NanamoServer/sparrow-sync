@@ -29,7 +29,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 
-// 在NMS地图对象与可跨服保存的内容之间转换, 并维护本服负数副本.
+// 在 NMS 地图对象与地图同步数据之间转换, 并维护本服地图副本.
 @ApiStatus.Internal
 public final class NativeMapAdapter {
     private final HolderLookup.Provider registries;
@@ -43,7 +43,7 @@ public final class NativeMapAdapter {
         this.dataVersion = dataVersion;
     }
 
-    // 只读已准备的缓存; 未加载的嵌套地图直接读文件, 不异步触发原生加载事件.
+    // 只读已准备的 NMS 地图存储缓存; 未加载的嵌套地图直接读文件, 不异步触发原版加载事件.
     @Nullable
     public MapData capture(@NotNull NativeMapStorage storage, int mapId) throws IOException {
         MapItemSavedData data = storage.cached(mapId);
@@ -52,7 +52,7 @@ public final class NativeMapAdapter {
         try {
             root = storage.read(mapId);
         } catch (IOException exception) {
-            // 文件读取可能与原生加载后的保存重叠. 已出现内存原图时优先采集它, 不重试文件.
+            // 文件读取可能与原版加载后的保存重叠. 已出现内存来源地图时优先采集它, 不重试文件.
             data = storage.cached(mapId);
             if (data != null) return this.capture(data);
             throw exception;
@@ -68,14 +68,14 @@ public final class NativeMapAdapter {
     }
 
     private MapData capture(MapItemSavedData data) {
-        // 原生写入不获取 data 的监视器. 并发集合保证可遍历, 像素允许采到一次更新中的画面.
+        // 原版更新地图时不获取 data 的监视器. 并发集合保证可遍历, 像素允许采到一次更新中的画面.
         Tag tag = this.codec == null
                 ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
                 : this.codec.encodeStart(this.ops, data).getOrThrow();
         return new MapData(this.dataVersion, (CompoundTag) tag);
     }
 
-    // 将来源内容准备为独立的原生副本, 此阶段可由异步线程调用.
+    // 将地图同步数据转换为独立的 NMS 地图对象, 此阶段可由异步线程调用.
     @NotNull
     public MapItemSavedData prepareReplica(@NotNull MapIdentity identity, @NotNull MapData data) throws IOException {
         if (data.dataVersion() > this.dataVersion) {
@@ -83,7 +83,7 @@ public final class NativeMapAdapter {
         }
         CompoundTag tag = data.getTag();
         if (data.dataVersion() < this.dataVersion) {
-            // SAVED_DATA_MAP_DATA 的升级入口读取外层 data 字段, 这里补齐原生文件结构
+            // SAVED_DATA_MAP_DATA 的升级入口读取外层 data 字段, 这里补齐原版地图文件格式
             CompoundTag root = NBT.createCompound();
             root.put("data", tag);
             Tag fixed = DataFixers.getDataFixer().update(References.SAVED_DATA_MAP_DATA, new Dynamic<>(NBTOps.INSTANCE, root), data.dataVersion(), this.dataVersion).getValue();
@@ -92,7 +92,7 @@ public final class NativeMapAdapter {
             }
             tag = upgraded;
         }
-        // 持久画面归属隔离维度, 展示框和 Bukkit 世界绑定随后由本服建立
+        // 地图数据使用副本专用维度标识, 展示框和 Bukkit 世界绑定随后由本服建立
         tag.putString("dimension", identity.replicaDimension());
         tag.remove("UUIDMost");
         tag.remove("UUIDLeast");
@@ -104,7 +104,7 @@ public final class NativeMapAdapter {
                 .getOrThrow(message -> new IOException("failed to decode map: " + message));
     }
 
-    // 将经 prepareReplica 得到的共享内容写入负数副本, 已有对象的身份与内容一起更新.
+    // 将经 prepareReplica 得到的地图同步数据写入本服地图副本, 已有对象的地图同步标识与内容一起更新.
     @NotNull
     public MapItemSavedData updateReplica(@NotNull ServerLevel level, @NotNull MapIdentity identity, @NotNull MapItemSavedData prepared) {
         MapId id = new MapId(identity.globalId());
@@ -147,7 +147,7 @@ public final class NativeMapAdapter {
                     maxX = Math.max(maxX, x);
                     maxY = i >> 7;
                 }
-                // 原生持有者会将本次矩形与尚未发送的变化合并, 文件脏标记也由此设置.
+                // NMS 地图查看者记录会合并本次与尚未发送的像素变化范围, 同时标记地图文件待保存.
                 proxy.setColorsDirty(target, minX, minY);
                 proxy.setColorsDirty(target, maxX, maxY);
             }
@@ -178,7 +178,7 @@ public final class NativeMapAdapter {
                 }
                 proxy.setTrackedDecorationCount(target, tracked);
             }
-            // 元数据和旗帜可在像素不变时修改, 仍须保存; 包头随原生装饰更新一并发送.
+            // 元数据和旗帜可在像素不变时修改, 仍须保存; 包头随原版装饰更新一并发送.
             if (metadataChanged || bannersChanged) target.setDirty();
             if (headerChanged || decorationsChanged) proxy.setDecorationsDirty(target);
         }

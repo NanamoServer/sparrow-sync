@@ -51,7 +51,7 @@ final class IndexReconciler {
             logger.error(LogCategory.STORAGE, LogConstants.STORAGE_SCHEMA_TOO_NEW, String.valueOf(stored), String.valueOf(SCHEMA_VERSION));
             throw new IllegalStateException("database schema generation " + stored + " is newer than this plugin supports (" + SCHEMA_VERSION + ")");
         }
-        // 版本门禁通过后再整理两个业务集合
+        // 版本检查通过后再整理两个业务集合
         reconcileIndexes(logger, userCollection, USER_INDEXES);
         reconcileIndexes(logger, snapshotCollection, SNAPSHOT_INDEXES);
         // 索引都准备好后再记版本, 中途失败不会留下错误的完成标记

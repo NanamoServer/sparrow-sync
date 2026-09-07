@@ -27,8 +27,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * MongoDB 文档形态的快照编解码, 元数据与 STRUCTURED 数据排布为原生 BSON 字段, BINARY 数据交给 {@link BinarySnapshotCodec} 封为自带版本与压缩标识的字节帧.
- * 文档含原生 UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
+ * MongoDB 文档形态的快照编解码, 元数据与 STRUCTURED 数据排布为 BSON 字段, BINARY 数据交给 {@link BinarySnapshotCodec} 封为自带版本与压缩标识的字节帧.
+ * 文档含 BSON UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
  */
 public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static final String FIELD_ID = "_id";

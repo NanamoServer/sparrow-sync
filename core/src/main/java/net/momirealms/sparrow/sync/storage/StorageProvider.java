@@ -20,7 +20,7 @@ public interface StorageProvider {
 
     void shutdown();
 
-    // 在启动线程完成地图存储初始化, 返回绑定本服来源身份的存储.
+    // 在插件启动时完成地图存储初始化, 返回绑定本服来源身份的存储.
     @NotNull
     MapStorage maps(@NotNull String ownerId);
 
@@ -145,7 +145,7 @@ public interface StorageProvider {
         /**
          * 落库, 但库里已存在逻辑时间戳更晚的快照, 因此它落在历史中段.
          * <p> 预期只有在启动时插回本地留存的快照期间出现本结果.
-         * <p> 如果在运行时出现了这个结果, 则代表: <strong>有人在本次请求之后为同一名玩家接纳并写入了快照</strong>.
+         * <p> 如果在运行时出现了这个结果, 则代表: <strong>同一玩家在本次请求之后接受的保存请求已经写入快照</strong>.
          * <ul>
          *   <li>同一玩家出现第二个写方, 即会话锁失效 —— 误判死亡后的夺锁 (卡住的进程不是死掉的进程,
          *       探测区分不了), Redis 故障转移丢键, 或某条保存路径根本没走锁;</li>

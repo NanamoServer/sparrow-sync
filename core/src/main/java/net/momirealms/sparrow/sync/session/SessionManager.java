@@ -92,10 +92,10 @@ public final class SessionManager {
                 .loadLatest(session.uuid(), session.playerName())
                 .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
 
-        // 两份结果齐全后在 worker 生成最终 tag, 再重验 Session 并一次发布进入世界需要的数据
+        // 两份结果齐全后在异步线程生成最终登录 NBT, 再检查 Session 状态并设置会话加载结果
         return playerData.thenCombineAsync(snapshot, (local, remote) -> {
             long asyncReadNanos = System.nanoTime() - loadStart;
-            // 已结束的登录不再执行原生数据转换
+            // 已结束的登录不再执行登录数据转换
             if (session.state() != SessionState.PREPARING) {
                 return new SessionPrepareResult.Rejected();
             }
@@ -110,7 +110,7 @@ public final class SessionManager {
                 preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session, localData, loadedSnapshot));
                 nativeApplyNanos = System.nanoTime() - nativeApplyStart;
             }
-            // 发布与 abort 共用 Session 监视器, 缓存和快照一起提交
+            // 设置会话加载结果与 abort 共用 Session 监视器, 本服登录数据和快照一起提交
             synchronized (session) {
                 if (session.state() != SessionState.PREPARING) {
                     return new SessionPrepareResult.Rejected();
@@ -120,7 +120,7 @@ public final class SessionManager {
                     LoginDataState failed = session.failLoginData(detail);
                     return new SessionPrepareResult.Failed(failed instanceof LoginDataState.Failed(String failure) ? failure : detail);
                 }
-                // 尝试发布本地数据的缓存到会话并检查
+                // 设置会话加载结果并检查结果状态
                 LoginDataState published = session.publishLoginData(preparedLocal, loadedSnapshot, asyncReadNanos, nativeApplyNanos);
                 if (published instanceof LoginDataState.Failed(String detail)) {
                     return new SessionPrepareResult.Failed(detail);
@@ -197,7 +197,7 @@ public final class SessionManager {
 
     /**
      * 立即采集 ACTIVE 会话的当前状态, 后续阶段进入玩家串行线程.
-     * 会话已经封口或失效时不接纳并返回 null.
+     * 会话已停止接受新保存请求或已失效时返回 null.
      */
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
@@ -208,8 +208,8 @@ public final class SessionManager {
     }
 
     /**
-     * 在玩家线程接纳宽松保存, 同步组采完后提交串行任务.
-     * 会话已经封口或失效时不接纳并返回 null.
+     * 在玩家线程接受分阶段采集保存请求, 玩家线程采集组采完后提交串行任务.
+     * 会话已停止接受新保存请求或已失效时返回 null.
      */
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
@@ -219,7 +219,7 @@ public final class SessionManager {
         }
     }
 
-    /** 读取并在玩家拥有线程应用最新快照, 供恢复命令等即时场景使用. */
+    /** 读取并在玩家线程应用最新快照, 供恢复命令等即时场景使用. */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restoreLatest(@NotNull Player player) {
         PlayerSession session = this.find(player.getUniqueId());
@@ -283,7 +283,7 @@ public final class SessionManager {
         }
     }
 
-    /** 封口玩家会话, 并在退出所在 Region 的下一 tick 提交最终快照. */
+    /** 停止接受该玩家的新保存请求, 并在退出所在 Region 的下一 tick 提交最终快照. */
     public void disconnect(@NotNull PlayerSession session, @NotNull Player player) {
         CloseAction action = this.beginClose(session);
         if (action == CloseAction.IGNORED) return;
@@ -312,7 +312,7 @@ public final class SessionManager {
         return action;
     }
 
-    // 封口与任务启动分离, Quit 事件返回前就停止接纳该玩家的新保存.
+    // 停止接受新保存请求与任务启动分开执行, Quit 事件返回前就停止接受该玩家的新保存.
     private CloseAction beginClose(PlayerSession session) {
         synchronized (session) {
             if (!this.owns(session)) return CloseAction.IGNORED;
@@ -371,7 +371,7 @@ public final class SessionManager {
 
     /** 关服时为 ACTIVE 会话立即采集最终状态, 其余半加载会话直接作废. */
     public void shutdown() {
-        // tryOpen 与这里共享 manager 监视器, 先完成接纳封口再遍历已有会话
+        // tryOpen 与这里共享 manager 监视器, 先停止接受新请求再遍历已有会话
         synchronized (this) {
             this.accepting = false;
         }

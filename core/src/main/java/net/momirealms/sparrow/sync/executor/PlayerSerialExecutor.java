@@ -18,8 +18,8 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 按玩家 UUID 分桶的串行执行器. 同一玩家的任务永远落在同一条 worker 线程上并严格按提交序执行.
- * 任务可以带一个就绪时刻, 没到点的任务不占线程空转, worker 会等到它到点, 期间新任务照常唤醒.
+ * 按玩家 UUID 分桶的串行执行器. 同一玩家的任务永远落在同一条 串行线程上并严格按提交序执行.
+ * 任务可以带一个就绪时刻, 没到点的任务不占线程空转, 串行线程会等到它到点, 期间新任务照常唤醒.
  */
 public final class PlayerSerialExecutor {
     private static final UUID SHUTDOWN_PLAYER = new UUID(0, 0);
@@ -32,7 +32,7 @@ public final class PlayerSerialExecutor {
     private volatile boolean shutdown;
 
     /**
-     * @param workerCount 期望的 worker 数, 会被规范化到最近的不小于它的 2 的幂 (分桶用位运算取模)
+     * @param workerCount 期望的串行线程数, 会被规范化到最近的不小于它的 2 的幂 (分桶用位运算取模)
      */
     public PlayerSerialExecutor(@NotNull PluginLogger logger, int workerCount) {
         this.logger = logger;
@@ -84,7 +84,7 @@ public final class PlayerSerialExecutor {
     }
 
     /**
-     * 关停执行器, 立即拒绝新任务, 在限时内等待各队列排空, 超时后中断 worker.
+     * 关停执行器, 立即拒绝新任务, 在限时内等待各队列排空, 超时后中断串行线程.
      * 满服关服时这里承载全员的最后一次落盘, 超时应按存储写入延迟留足余量.
      *
      * @return 未能执行完的剩余任务数
@@ -98,7 +98,7 @@ public final class PlayerSerialExecutor {
         for (int i = 0; i < this.workers.length; i++) {
             if (!this.awaitWorker(this.workers[i], deadline)) break;
         }
-        // 仍在运行的 worker 强制中断, 剩余任务只统计上报;
+        // 仍在运行的串行线程强制中断, 剩余任务只统计上报;
         // 没保存完的快照由 SnapshotService.stashUnsettled 落盘.
         int remaining = 0;
         for (int i = 0; i < this.workers.length; i++) {

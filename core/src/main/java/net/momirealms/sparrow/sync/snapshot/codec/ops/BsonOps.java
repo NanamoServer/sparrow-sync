@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 /**
  * BSON 域的 DFU DynamicOps, 与 NBTOps 经 {@code convertTo} 互转. 域值为 Document / List / String /
  * Integer / Long / Double / Boolean / Binary, 空值为 null. 窄数值类型向本域升宽 (byte/short -> int32,
- * float -> double), boolean 为原生 BSON 布尔且读取兼容数值 0/1 (NBT 转来的布尔是数值).
+ * float -> double), boolean 为 BSON 布尔且读取兼容数值 0/1 (NBT 转来的布尔是数值).
  * int/long 数组以单键标记文档 {@code {"__i32a": [...]}} / {@code {"__i64a": [...]}} 无损往返,
  * 两个键名为本域保留 (不用 $ 前缀, MongoDB 拒绝存储或查询 $ 开头的字段名).
  * 列表语义只覆盖 List, Binary 与标记文档不参与 {@code getStream}; 生产链路中本域只做 convertTo 结构转换,

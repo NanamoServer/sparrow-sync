@@ -23,7 +23,7 @@ final class SnapshotHandoffTracker {
 
     synchronized boolean sealAndAwait(long timeout, @NotNull TimeUnit unit) {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
-        // seal 与 accept 共用监视器, pending 包含封口前的全部已接纳请求
+        // seal 与 accept 共用监视器, pending 包含停止接受新请求前已接受的全部保存请求
         this.sealed = true;
         while (this.pending > 0) {
             long remaining = deadline - System.nanoTime();

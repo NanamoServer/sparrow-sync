@@ -30,13 +30,13 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
         });
         this.scheduler.setRemoveOnCancelPolicy(true); // 取消任务时自动移除
         this.scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false); // 关闭时不执行已存在的延迟任务
-        // 创建一个并行度为 PARALLELISM 的 ForkJoinPool 作为异步工作线程池, 使用自定义的线程工厂和异常处理器.
+        // 创建一个并行度为 PARALLELISM 的 ForkJoinPool 作为异步线程池, 使用自定义的线程工厂和异常处理器.
         this.worker = new ForkJoinPool(PARALLELISM, new WorkerThreadFactory(), new ExceptionHandler(), false);
     }
 
     /**
      * 获取异步执行器.
-     * 返回内部的 ForkJoinPool, 提交的任务将在工作线程池中并行执行.
+     * 返回内部的 ForkJoinPool, 提交的任务将在异步线程池中并行执行.
      *
      * @return ForkJoinPool 异步执行器实例.
      */
@@ -139,8 +139,8 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
     }
 
     /**
-     * ForkJoinPool 的工作线程工厂.
-     * 为工作线程设置守护线程属性和统一的命名规则.
+     * ForkJoinPool 的异步线程工厂.
+     * 为异步线程设置守护线程属性和统一的命名规则.
      */
     private static final class WorkerThreadFactory implements ForkJoinPool.ForkJoinWorkerThreadFactory {
         private static final AtomicInteger COUNT = new AtomicInteger(0);
@@ -160,8 +160,8 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
     }
 
     /**
-     * 工作线程的未捕获异常处理器.
-     * 当工作线程中发生未捕获的异常时, 将异常信息记录到插件日志中.
+     * 异步线程的未捕获异常处理器.
+     * 当异步线程中发生未捕获的异常时, 将异常信息记录到插件日志中.
      */
     private final class ExceptionHandler implements UncaughtExceptionHandler {
 

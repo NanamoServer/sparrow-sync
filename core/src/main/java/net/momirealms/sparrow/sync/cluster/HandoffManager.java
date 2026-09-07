@@ -75,7 +75,7 @@ public final class HandoffManager {
     // ===== 持有服的应答与记录 =====
 
     /**
-     * 回答一次交接探测, 在消息消费线程上执行.
+     * 在消息回调中回答一次交接探测.
      * 只读内存状态, <strong>不得阻塞在保存或任何 IO 上</strong>.
      */
     @NotNull

@@ -80,7 +80,7 @@ public final class ItemCodec {
         return list;
     }
 
-    /** 把单个物品编码为当前服务端原生玩家文件使用的 NMS compound. */
+    /** 把单个物品编码为当前服务端原版玩家文件使用的 NMS compound. */
     @NotNull
     public static net.minecraft.nbt.CompoundTag saveNativeItem(@NotNull ItemStack item) {
         // 与快照编码保持相同的数量上限, 不修改 OFFLINE 采集借用的物品.

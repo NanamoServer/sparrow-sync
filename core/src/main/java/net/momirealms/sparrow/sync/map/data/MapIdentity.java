@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 
-// 一份可跨服的地图数据的ID
+// 地图同步标识, 包含地图源 ID、来源地图 ID 和全局地图 ID.
 @ApiStatus.Internal
 public record MapIdentity(@NotNull MapSource source, int globalId) {
     public MapIdentity {
@@ -15,10 +15,10 @@ public record MapIdentity(@NotNull MapSource source, int globalId) {
         }
     }
 
-    // 生成副本使用的隔离维度名称.
+    // 生成副本专用维度标识.
     @NotNull
     public String replicaDimension() {
-        // 十六进制保留完整来源身份, 同时满足资源路径的字符限制.
+        // 十六进制保留地图同步标识, 同时满足资源路径的字符限制.
         HexFormat hex = HexFormat.of();
         return "sparrow-sync:map/"
                 + hex.formatHex(this.source.ownerId().getBytes(StandardCharsets.UTF_8)) + "/"

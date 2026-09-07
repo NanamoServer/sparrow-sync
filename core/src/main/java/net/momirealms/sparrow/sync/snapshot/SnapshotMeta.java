@@ -7,11 +7,11 @@ import java.util.UUID;
 
 /**
  * 快照的元数据.
- * timestamp 在保存请求被接纳时分配, 不是落库时刻. <strong>同一玩家的 timestamp 必须严格递增</strong>, 同毫秒的两份快照无法定序;
+ * timestamp 在保存请求被接受时分配, 不是落库时刻. <strong>同一玩家的 timestamp 必须严格递增</strong>, 同毫秒的两份快照无法定序;
  *
  * @param id            快照身份, 落库主键
  * @param player        玩家 UUID
- * @param timestamp    保存请求被接纳时的毫秒时间戳, 快照新旧的唯一裁决依据
+ * @param timestamp    保存请求被接受时的毫秒时间戳, 快照新旧的唯一裁决依据
  * @param cause         保存原因
  * @param pinned        是否固定, 固定快照豁免轮转清理
  * @param server        创建快照的服务器名

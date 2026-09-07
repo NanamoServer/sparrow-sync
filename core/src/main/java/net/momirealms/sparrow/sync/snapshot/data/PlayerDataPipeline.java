@@ -51,8 +51,8 @@ public final class PlayerDataPipeline {
 
     /**
      * 开始一次采集, 创建本次请求独占的槽位缓冲.
-     * SYNC 在玩家拥有线程读取全部类型; OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
-     * ASYNC 表示宽松保存的第一阶段, 本方法仍在玩家线程执行, 只读取不支持在线异步的类型.
+     * SYNC 在玩家线程读取全部类型; OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
+     * ASYNC 表示分阶段采集保存的第一阶段, 本方法仍在玩家线程执行, 只读取不支持在线异步的类型.
      *
      * @param player 本次保存绑定的玩家对象, 第二阶段继续使用同一个对象
      * @param mode 保存场景; ASYNC 不代表本方法已经处于异步线程
@@ -61,9 +61,9 @@ public final class PlayerDataPipeline {
     @NotNull
     public CaptureResult capture(@NotNull Player player, @NotNull CaptureMode mode) {
         CaptureBuffer buffer = new CaptureBuffer(player, this.dataRegistry.size());
-        // null 槽位表代表全类型. 宽松保存先按冻结时编译的同步组读取, 不在热路径重新筛选类型.
+        // null 槽位表代表全类型. 分阶段采集保存先读取注册表冻结时确定的玩家线程采集组, 不在热路径重新筛选类型.
         int[] slots = mode == CaptureMode.ASYNC ? this.dataRegistry.syncCaptureSlots() : null;
-        // 同步组实际运行在玩家拥有线程, 类型收到 SYNC 后必须复制出可跨线程持有的值.
+        // 玩家线程采集组实际运行在玩家线程, 类型收到 SYNC 后必须复制出可跨线程持有的值.
         CaptureResult.Failed failure = this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
         if (failure != null) return failure;
         if (mode == CaptureMode.ASYNC) return new CaptureResult.Pending(buffer);
@@ -71,7 +71,7 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 在玩家串行线程执行, 补齐宽松保存的异步组.
+     * 在玩家串行线程执行, 补齐分阶段采集保存的串行线程采集组.
      * 调用方须等第一阶段返回后再投递此方法; 投递后第一阶段不再访问缓冲.
      * 两个阶段顺序写同一数组, 不需要逐类型 Future、缓冲锁或合并另一份采集结果.
      *
@@ -82,7 +82,7 @@ public final class PlayerDataPipeline {
     @NotNull
     public CaptureResult captureAsync(@NotNull Player player, @NotNull CaptureResult.Pending pending) {
         CaptureBuffer buffer = pending.buffer;
-        // 这些槽位和同步组互斥. 即使期间发生新的同步保存, 它使用的也是另一份 CaptureBuffer.
+        // 这些槽位和玩家线程采集组互斥. 即使期间发生新的同步保存, 它使用的也是另一份 CaptureBuffer.
         CaptureResult.Failed failure = this.captureSlots(player, CaptureMode.ASYNC, this.dataRegistry.asyncCaptureSlots(), buffer);
         if (failure != null) return failure;
         return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
@@ -92,7 +92,7 @@ public final class PlayerDataPipeline {
      * 按指定槽位读取玩家状态, 把结果写到注册表对应的原始下标.
      * 非关键类型失败时该槽位留空并记录 skipped, 其余类型继续; 关键类型失败则立即停止本次采集.
      *
-     * @param slots 冻结的同步组或异步组, null 表示读取全部槽位
+     * @param slots 固定的玩家线程采集组或串行线程采集组, null 表示读取全部槽位
      * @return 关键类型的失败信息, 没有关键失败时返回 null
      */
     @Nullable
@@ -170,7 +170,7 @@ public final class PlayerDataPipeline {
 
         SnapshotApplyContext context = new SnapshotApplyContext(this.dataRegistry, passthrough == null ? Map.of() : passthrough);
         int mcDataVersion = snapshot.meta().mcDataVersion();
-        // 解码值直接进入本次应用 Context, 后续 Native 与 Player 阶段共享这些槽位
+        // 解码值直接进入本次应用 Context, 后续登录数据准备和玩家数据应用阶段共享这些槽位
         for (int i = 0; i < size; i++) {
             Tag data = tags[i];
             if (data == null) continue;
@@ -191,7 +191,7 @@ public final class PlayerDataPipeline {
         return new DecodeResult.Ready(context);
     }
 
-    /** 在 Gate 阶段把可原生表达的 pending 槽位写入原版登录数据源. */
+    /** 在登录拦截阶段把支持写入登录数据源的待应用数据写入对应数据源. */
     @NotNull
     public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
         // 本地 .dat 是写入基底, 本地为空时先建立可丢弃的候选根 tag
@@ -205,7 +205,7 @@ public final class PlayerDataPipeline {
         }
         boolean playerDataApplied = false;
         int size = context.size();
-        // 冻结槽位已经按依赖排序, join-only 与非 pending 类型自然跳过
+        // 数据类型槽位已经按依赖排序, join-only 与非 pending 类型自然跳过
         for (int i = 0; i < size; i++) {
             if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING) continue;
             NativePlayerDataType<?> nativeType = this.dataRegistry.nativeTypeAt(i);
@@ -257,7 +257,7 @@ public final class PlayerDataPipeline {
                 this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_APPLY_SKIPPED, key.asString(), player.getName());
             }
         }
-        // 最终列表由 Context 按冻结槽位顺序物化
+        // 最终列表由 Context 按数据类型槽位顺序生成
         return new ApplyResult.Success(context.applied(), context.skipped(), context.failures());
     }
 
@@ -273,7 +273,7 @@ public final class PlayerDataPipeline {
         type.apply(player, (T) value);
     }
 
-    // Native 类型数组与 Context 共用冻结槽位, 这里恢复 applyNative 所需的 T
+    // 登录数据源写入实现数组与 Context 共用数据类型槽位, 这里恢复 applyNative 所需的 T
     @SuppressWarnings("unchecked")
     private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, PlayerSession session, CompoundTag playerData, Object value) throws IOException {
         return type.applyNative(session, playerData, (T) value);
@@ -293,7 +293,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** Pending 尚待异步组采集, Ready 才可交给编码器. */
+    /** Pending 尚待串行线程采集组采集, Ready 才可交给编码器. */
     public sealed interface CaptureResult {
 
         final class Pending implements CaptureResult {

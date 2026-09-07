@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * 一类玩家数据的声明、采集、编解码与应用, 也是 {@link net.momirealms.sparrow.sync.snapshot.DataRegistry} 唯一接受的注册类型.
- * capture 按采集模式选择读取路径, encode 与 decode 可在任意线程执行, apply 在玩家拥有线程执行.
+ * capture 按采集模式选择读取路径, encode 与 decode 可在任意线程执行, apply 在玩家线程执行.
  * 登录前可异步写入原版数据的类型另行实现 {@link NativePlayerDataType}.
  *
  * @param <T> 采集与解码共享的值类型
@@ -49,7 +49,7 @@ public interface PlayerDataType<T> {
 
     /**
      * 按实际执行条件采集玩家数据.
-     * <strong>SYNC 与 ASYNC 返回脱离值; OFFLINE 可借用 Quit 后已静止的数据</strong>.
+     * <strong>SYNC 与 ASYNC 返回不再引用玩家可变数据的独立采集数据; OFFLINE 可借用 Quit 后已静止的数据</strong>.
      */
     @NotNull
     T capture(@NotNull Player player, @NotNull CaptureMode mode);

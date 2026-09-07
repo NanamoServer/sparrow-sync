@@ -13,13 +13,13 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class SnapshotApplyContext {
-    private final DataRegistry dataRegistry;       // DataKey 与冻结槽位的稳定映射
+    private final DataRegistry dataRegistry;       // DataKey 与数据类型槽位的稳定映射
     private final Object[] values;                 // PENDING 存解码值, APPLIED_NATIVE 存可选的 Join 回调, 消费后释放
     private final ApplyState[] states;             // 每个槽位在本轮解码和应用中的进度
     private final Map<DataKey, Tag> passthrough;   // 未注册类型原样保留到玩家后续保存
     private List<Failure> failures;                // 首次失败时创建, 按发生顺序记录
 
-    // 在 worker 完成解码和 Native 写入后随 Session 发布,
+    // 在异步线程完成解码和登录数据源写入后, 设置为会话加载结果.
     SnapshotApplyContext(@NotNull DataRegistry dataRegistry, @NotNull Map<DataKey, Tag> passthrough) {
         this.dataRegistry = dataRegistry;
         this.values = new Object[dataRegistry.size()];
@@ -28,7 +28,7 @@ public final class SnapshotApplyContext {
         this.passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
     }
 
-    /** 返回仍需通过 Player 路径应用的数据副本. */
+    /** 返回仍需在玩家数据应用阶段处理的数据副本. */
     @NotNull
     public Map<DataKey, Object> pendingValues() {
         Map<DataKey, Object> pending = new LinkedHashMap<>(this.values.length);
@@ -155,10 +155,10 @@ public final class SnapshotApplyContext {
 
     public enum ApplyState {
         ABSENT,          // 快照没有对应数据
-        PENDING,         // 已解码, 等待 Native 或 Player 应用
+        PENDING,         // 已解码, 等待写入登录数据源或在玩家数据应用阶段处理
         DECODE_SKIPPED,  // 解码失败, 允许事件补入合法值
         APPLIED_NATIVE,  // 已写入登录使用的原版数据源
-        APPLIED_PLAYER,  // 已通过 Bukkit Player 路径应用
+        APPLIED_PLAYER,  // 已在玩家数据应用阶段完成应用
         SKIPPED,         // 事件移除或非关键 Player 应用失败
         FAILED           // 关键 Player 应用失败
     }
