@@ -65,8 +65,11 @@ public final class MongoStorageProvider implements StorageProvider {
         this.plugin = plugin;
     }
 
-    public MongoStorageProvider(@NotNull PluginConfig.MongoOptions options, @NotNull DocumentSnapshotCodec codec,
-                                @NotNull PlayerSerialExecutor serialExecutor, @NotNull Executor asyncExecutor, @NotNull SyncLogger logger) {
+    public MongoStorageProvider(@NotNull PluginConfig.MongoOptions options,
+                                @NotNull DocumentSnapshotCodec codec,
+                                @NotNull PlayerSerialExecutor serialExecutor,
+                                @NotNull Executor asyncExecutor,
+                                @NotNull SyncLogger logger) {
         this.plugin = null;
         this.options = options;
         this.codec = codec;

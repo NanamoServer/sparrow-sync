@@ -65,6 +65,7 @@ log.storage.ready: 'Connected to MongoDB (database: <arg:0>)'
 log.storage.mysql_not_implemented: MySQL storage is not implemented yet, set database.type to MONGODB. Player data will NOT be loaded or saved.
 log.storage.setup_failed: Failed to connect the database. Player data will NOT be loaded or saved.
 log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
+log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'
 log.storage.encode_failed: 'Failed to encode the snapshot of <arg:0>, this data cannot reach the database'
 log.storage.oversized: 'The snapshot of <arg:0> carries <arg:1> bytes, over the per-snapshot limit, it cannot be written'
 log.storage.constraint_conflict: 'Writing the snapshot of <arg:0> hit a unique constraint, and that snapshot is not in the database'

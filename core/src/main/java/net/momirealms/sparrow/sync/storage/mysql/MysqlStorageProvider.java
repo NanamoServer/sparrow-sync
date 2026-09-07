@@ -4,16 +4,23 @@ import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
+import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.argument.AbstractArgumentFactory;
 import org.jdbi.v3.core.argument.Argument;
 import org.jdbi.v3.core.config.ConfigRegistry;
@@ -33,21 +40,29 @@ import java.util.concurrent.Executor;
 
 @ApiStatus.Internal
 public final class MysqlStorageProvider {
-    private static final long MIN_PACKET_BYTES = 64L * 1024 * 1024; // 服务端和驱动均须允许至少 64 MiB 的传输包
+    private static final int MAX_PAYLOAD_BYTES = 15 * 1024 * 1024; // 编码后的完整 data 帧上限, 等于上限允许写入
     private static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
     private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
     private static final String NEWEST_FIRST = " ORDER BY `ts` DESC, `id` DESC";
 
     private final PluginConfig.MysqlOptions options;
     private final RowSnapshotCodec codec;
+    private final PlayerSerialExecutor serialExecutor;
     private final Executor asyncExecutor; // JDBC 读取与解码分别提交到插件 worker
+    private final SyncLogger logger;
     private HikariDataSource dataSource;
     private Jdbi jdbi;
 
-    public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options, @NotNull RowSnapshotCodec codec, @NotNull Executor asyncExecutor) {
+    public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options,
+                                @NotNull RowSnapshotCodec codec,
+                                @NotNull PlayerSerialExecutor serialExecutor,
+                                @NotNull Executor asyncExecutor,
+                                @NotNull SyncLogger logger) {
         this.options = options;
         this.codec = codec;
+        this.serialExecutor = serialExecutor;
         this.asyncExecutor = asyncExecutor;
+        this.logger = logger;
     }
 
     // 建立连接池并将数据库升级到当前表版本.
@@ -110,7 +125,6 @@ public final class MysqlStorageProvider {
                     })
                     .registerRowMapper(SnapshotRow.class, new MysqlSnapshotRowMapper())
                     .registerRowMapper(SnapshotMeta.class, (result, context) -> MysqlSnapshotRowMapper.readMeta(result));
-            connected.useHandle(MysqlStorageProvider::validateConnection);
             new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, MIGRATIONS).migrate(connected, this.options.tablePrefix());
             // 所有准备成功后才转交连接池所有权, 此时 Jdbi 对应的表结构已经可用.
             this.dataSource = pool;
@@ -121,20 +135,6 @@ public final class MysqlStorageProvider {
         } finally {
             // 初始化期间发生的连接异常和迁移异常都在此释放本次连接池.
             if (!ready) pool.close();
-        }
-    }
-
-    // 检查实际连接是否具备快照传输所需的数据库、包容量参数.
-    private static void validateConnection(Handle handle) throws SQLException {
-        // 迁移以当前数据库为边界, URL 必须选定业务库.
-        String database = handle.createQuery("SELECT DATABASE()").mapTo(String.class).one();
-        if (database == null || database.isBlank()) throw new IllegalStateException("MySQL URL must select a database");
-        // 大快照受服务端和驱动两端的包容量共同限制.
-        long serverPacket = handle.createQuery("SELECT @@session.max_allowed_packet").mapTo(Long.class).one();
-        var properties = handle.getConnection().unwrap(JdbcConnection.class).getPropertySet();
-        int driverPacket = properties.getMemorySizeProperty(PropertyKey.maxAllowedPacket).getValue();
-        if (serverPacket < MIN_PACKET_BYTES || driverPacket < MIN_PACKET_BYTES) {
-            throw new IllegalStateException("MySQL max_allowed_packet and Connector/J maxAllowedPacket must both be at least " + MIN_PACKET_BYTES + " bytes");
         }
     }
 
@@ -196,6 +196,132 @@ public final class MysqlStorageProvider {
                 return statement.mapTo(SnapshotMeta.class).list();
             });
         }, this.asyncExecutor);
+    }
+
+    @NotNull
+    public CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
+        return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
+    }
+
+    // 编码由通用 worker 执行, 保存立即进入玩家队列, 写库时按请求顺序等待编码结果.
+    @NotNull
+    public CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot) {
+        SnapshotMeta meta = snapshot.meta();
+        CompletableFuture<SnapshotRow> encoded = CompletableFuture.supplyAsync(() -> {
+            try {
+                if (meta.server().codePointCount(0, meta.server().length()) > 255) {
+                    throw new IOException("MySQL snapshot server names must contain at most 255 Unicode code points");
+                }
+                return this.codec.encode(snapshot);
+            } catch (IOException exception) {
+                throw new CompletionException(exception);
+            }
+        }, this.asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> {
+            SnapshotRow row;
+            try {
+                row = encoded.join();
+            } catch (CompletionException exception) {
+                if (!(exception.getCause() instanceof IOException)) {
+                    throw exception;
+                }
+                this.logger.error(LogCategory.STORAGE, meta.player(), null, exception.getCause(), LogConstants.STORAGE_ENCODE_FAILED, meta.player().toString());
+                return new SaveOutcome(SaveResult.REJECTED_MALFORMED, null);
+            }
+            if (row.data().length > MAX_PAYLOAD_BYTES) {
+                this.logger.error(LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OVERSIZED, meta.player().toString(), String.valueOf(row.data().length));
+                return new SaveOutcome(SaveResult.REJECTED_OVERSIZED, null);
+            }
+            return this.insert(row);
+        }, this.serialExecutor.executor(meta.player()));
+    }
+
+    // 使用普通 INSERT 保留已有快照, 写入异常与已提交后的次序诊断分别处理.
+    private SaveOutcome insert(SnapshotRow row) {
+        SnapshotMeta meta = row.meta();
+        try {
+            this.jdbi().useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.options.tablePrefix() + "snapshots` (`id`, `player`, `ts`, `cause`, `pinned`, `server`, `format`, `mc_data`, `data`) VALUES (:id, :player, :ts, :cause, :pinned, :server, :format, :mcData, :data)")
+                    .bind("id", meta.id()).bind("player", meta.player()).bind("ts", meta.timestamp()).bind("cause", meta.cause().name())
+                    .bind("pinned", meta.pinned()).bind("server", meta.server()).bind("format", row.format()).bind("mcData", meta.mcDataVersion()).bind("data", row.data()).execute());
+        } catch (JdbiException exception) {
+            SQLException sql = MysqlFailureClassifier.sqlCause(exception);
+            if (sql != null && sql.getErrorCode() == 1062) {
+                // 唯一键冲突只有在本快照 ID 已存在时才能认定为幂等重放.
+                try {
+                    boolean exists = this.jdbi().withHandle(handle -> handle.createQuery("SELECT 1 FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id").bind("id", meta.id()).mapTo(Integer.class).findOne().isPresent());
+                    if (exists) return new SaveOutcome(SaveResult.DUPLICATE, null);
+                } catch (JdbiException checkFailure) {
+                    return this.failed(meta, checkFailure);
+                }
+            }
+            return this.failed(meta, exception);
+        }
+        // INSERT 已在 autocommit 下完成, 暂时无法查询次序时仍保留已落库结果.
+        Optional<SnapshotMeta> latest;
+        try {
+            latest = this.jdbi()
+                    .withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + " FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
+                    .bind("player", meta.player()).mapTo(SnapshotMeta.class).findOne());
+        } catch (JdbiException exception) {
+            SQLException sql = MysqlFailureClassifier.sqlCause(exception);
+            if (sql == null || MysqlFailureClassifier.classify(sql) != SaveResult.RETRY_LATER) {
+                throw exception;
+            }
+            this.logger.warn(LogCategory.STORAGE, meta.player(), null, exception, LogConstants.STORAGE_ORDER_CHECK_FAILED, meta.id().toString(), meta.player().toString());
+            return new SaveOutcome(SaveResult.SAVED, null);
+        }
+        if (latest.isEmpty() || latest.get().id().equals(meta.id())) return new SaveOutcome(SaveResult.SAVED, null);
+        SnapshotMeta newest = latest.get();
+        this.logger.file(
+                LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OUT_OF_ORDER,
+                meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()), newest.server(), String.valueOf(newest.timestamp())
+        );
+        return new SaveOutcome(SaveResult.SAVED_OUT_OF_ORDER, null);
+    }
+
+    // 确定性失败在存储边界记录, 可重试失败保留原异常供保存链收敛日志.
+    private SaveOutcome failed(SnapshotMeta meta, JdbiException exception) {
+        SQLException sql = MysqlFailureClassifier.sqlCause(exception);
+        if (sql == null) {
+            throw exception;
+        }
+        SaveResult result = MysqlFailureClassifier.classify(sql);
+        if (result == null) {
+            throw exception;
+        }
+        if (result.retriable()) return new SaveOutcome(result, exception);
+        this.logger.error(LogCategory.STORAGE, meta.player(), null, exception, LogConstants.STORAGE_WRITE_REJECTED, meta.player().toString());
+        return new SaveOutcome(result, null);
+    }
+
+    // 轮转与保存共享玩家队列, 同时刻按 id 保留排序靠前的记录.
+    @NotNull
+    public CompletableFuture<Integer> rotate(@NotNull UUID player, int maxUnpinned) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> {
+            String table = "`" + this.options.tablePrefix() + "snapshots`";
+            if (maxUnpinned <= 0) {
+                return handle.createUpdate("DELETE FROM " + table + " WHERE `player` = :player AND `pinned` = FALSE").bind("player", player).execute();
+            }
+            // LIMIT 使边界子查询物化, 可在同一条 DELETE 中读取本表并按当前固定状态删除.
+            return handle.createUpdate("DELETE expired FROM " + table + " AS expired JOIN (SELECT `ts`, `id` FROM " + table
+                            + " WHERE `player` = :player AND `pinned` = FALSE" + NEWEST_FIRST + " LIMIT 1 OFFSET :offset) AS retained"
+                            + " ON (expired.`ts` < retained.`ts` OR (expired.`ts` = retained.`ts` AND expired.`id` < retained.`id`))"
+                            + " WHERE expired.`player` = :player AND expired.`pinned` = FALSE")
+                    .bind("player", player).bind("offset", maxUnpinned - 1).execute();
+        }), this.serialExecutor.executor(player));
+    }
+
+    // 条件中排除已是目标状态的记录, 两种 affected-rows 配置得到相同的布尔结果.
+    @NotNull
+    public CompletableFuture<Boolean> setPinned(@NotNull UUID snapshotId, boolean pinned) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createUpdate("UPDATE `" + this.options.tablePrefix() + "snapshots` SET `pinned` = :pinned WHERE `id` = :id AND `pinned` <> :pinned")
+                .bind("id", snapshotId).bind("pinned", pinned).execute() > 0), this.asyncExecutor);
+    }
+
+    @NotNull
+    public CompletableFuture<Boolean> deleteSnapshot(@NotNull UUID snapshotId) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createUpdate("DELETE FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
+                .bind("id", snapshotId).execute() > 0), this.asyncExecutor);
     }
 
     // 每次会话刷新当前名字和出现时间, 主键保持玩家 UUID.

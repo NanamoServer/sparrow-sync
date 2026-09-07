@@ -4,7 +4,10 @@ import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -14,9 +17,15 @@ import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
+import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
+import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.core.statement.SqlLogger;
+import org.jdbi.v3.core.statement.StatementContext;
+import org.jdbi.v3.core.statement.UnableToExecuteStatementException;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +38,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.sql.DriverManager;
+import java.sql.SQLTransientConnectionException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,6 +67,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named = "SPARROW_TEST_MYSQL_URL", matches = ".+")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MysqlStorageProviderTest {
+    private final QuietLogger console = new QuietLogger();
+    private final SyncLogger logger = new SyncLogger(this.console);
     private final List<MysqlStorageProvider> providers = new ArrayList<>(); // 当前用例需要关闭的实例
     private final RowSnapshotCodec codec = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 真实行写入前后的编码对照
     private Jdbi admin; // 创建和删除临时数据库的入口
@@ -66,6 +78,7 @@ class MysqlStorageProviderTest {
     private String prefix; // 当前用例独占的业务表前缀
     private String username; // 从测试环境读取的数据库账号
     private String password; // 从测试环境读取的认证密码
+    private PlayerSerialExecutor serialExecutor;
 
     /**
      * 读取测试连接参数并创建本轮专用数据库.
@@ -94,6 +107,7 @@ class MysqlStorageProviderTest {
     @BeforeEach
     void prepare() {
         this.prefix = "it_" + UUID.randomUUID().toString().replace("-", "") + "_";
+        this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
     }
 
     /**
@@ -101,6 +115,7 @@ class MysqlStorageProviderTest {
      */
     @AfterEach
     void closeProviders() {
+        this.serialExecutor.shutdown(5, TimeUnit.SECONDS);
         for (int i = 0; i < this.providers.size(); i++) this.providers.get(i).shutdown();
         this.providers.clear();
     }
@@ -349,6 +364,260 @@ class MysqlStorageProviderTest {
         assertThrows(CompletionException.class, () -> provider.listSnapshots(SnapshotQuery.of(player)).join());
         assertThrows(CompletionException.class, () -> provider.ensureUser(player, "Catnies").join());
         assertThrows(CompletionException.class, () -> provider.lookupUser("Catnies").join());
+        assertThrows(CompletionException.class, () -> provider.saveSnapshot(this.snapshot(player, 20, false)).join());
+        assertThrows(CompletionException.class, () -> provider.rotate(player, 1).join());
+        assertThrows(CompletionException.class, () -> provider.setPinned(UUID.randomUUID(), true).join());
+        assertThrows(CompletionException.class, () -> provider.deleteSnapshot(UUID.randomUUID()).join());
+    }
+
+    @Test
+    void savedLateAndDuplicateSnapshotsPreserveTheStoredContent() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot first = this.snapshot(player, 10, false);
+        Snapshot newest = this.snapshot(player, 30, false);
+        Snapshot late = this.snapshot(player, 20, false);
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(first).join());
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(newest).join());
+        assertEquals(SaveResult.SAVED_OUT_OF_ORDER, provider.saveSnapshot(late).join());
+        assertTrue(provider.setPinned(first.meta().id(), true).join());
+        Snapshot replay = new Snapshot(first.meta(), Map.of(DataKey.of("test", "other"), NBT.createString("different")));
+        assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(replay).join());
+        assertEquals(new Snapshot(first.meta().withPinned(true), first.data()), provider.snapshot(first.meta().id()).join().orElseThrow());
+        assertEquals(newest, provider.latestSnapshot(player).join().orElseThrow());
+        assertEquals(3, provider.listSnapshots(SnapshotQuery.of(player)).join().size());
+    }
+
+    @Test
+    void reversedEncodingCompletionPreservesSaveAndRotationOrder() throws Exception {
+        ArrayDeque<Runnable> encodings = new ArrayDeque<>();
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix, encodings::addLast);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot first = this.snapshot(player, 10, false);
+        Snapshot second = this.snapshot(player, 20, false);
+        CompletableFuture<SaveResult> firstSave = provider.saveSnapshot(first);
+        CompletableFuture<Integer> rotation = provider.rotate(player, 0);
+        CompletableFuture<SaveResult> secondSave = provider.saveSnapshot(second);
+        assertEquals(2, encodings.size());
+        // 后一份先编码完成, 写库仍等待第一份及其后的轮转.
+        encodings.removeLast().run();
+        assertFalse(secondSave.isDone());
+        int before = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "snapshots`").mapTo(Integer.class).one());
+        assertEquals(0, before);
+        encodings.removeFirst().run();
+        assertEquals(SaveResult.SAVED, firstSave.get(5, TimeUnit.SECONDS));
+        assertEquals(1, rotation.get(5, TimeUnit.SECONDS));
+        assertEquals(SaveResult.SAVED, secondSave.get(5, TimeUnit.SECONDS));
+        List<Long> timestamps = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT ts FROM `" + this.prefix + "snapshots`").mapTo(Long.class).list());
+        assertEquals(List.of(20L), timestamps);
+    }
+
+    @Test
+    void consecutiveSavesStayInSubmissionOrder() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        List<CompletableFuture<SaveResult>> saves = new ArrayList<>();
+        for (int i = 1; i <= 20; i++) {
+            saves.add(provider.saveSnapshot(this.snapshot(player, i, false)));
+        }
+        CompletableFuture.allOf(saves.toArray(new CompletableFuture[0])).get(10, TimeUnit.SECONDS);
+        for (int i = 0; i < saves.size(); i++) {
+            assertEquals(SaveResult.SAVED, saves.get(i).join());
+        }
+        assertEquals(20, provider.latestSnapshot(player).join().orElseThrow().meta().timestamp());
+    }
+
+    @Test
+    void foreignUniqueConstraintIsNotReportedAsDuplicate() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        Snapshot first = this.snapshot(player, 10, false);
+        Snapshot second = this.snapshot(player, 20, false);
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(first).join());
+        provider.jdbi().useHandle(handle -> handle.execute("CREATE UNIQUE INDEX external_server ON `" + this.prefix + "snapshots` (server)"));
+        assertEquals(SaveResult.REJECTED_MALFORMED, provider.saveSnapshot(second).join());
+        assertEquals(Optional.empty(), provider.snapshot(second.meta().id()).join());
+        assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(first).join());
+    }
+
+    @Test
+    void lockTimeoutKeepsTheSqlFailureAndCanRetry() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.urlWith("sessionVariables=innodb_lock_wait_timeout=1"), this.prefix);
+        provider.initialize();
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+        this.insert(provider.jdbi(), this.codec.encode(snapshot));
+        try (Handle blocker = this.direct.open()) {
+            blocker.begin();
+            blocker.createUpdate("DELETE FROM `" + this.prefix + "snapshots` WHERE id = :id").bind("id", UUIDUtils.toBytes(snapshot.meta().id())).execute();
+            SaveOutcome blocked = provider.saveSnapshotOutcome(snapshot).get(5, TimeUnit.SECONDS);
+            assertEquals(SaveResult.RETRY_LATER, blocked.result());
+            assertEquals(1205, MysqlFailureClassifier.sqlCause(blocked.failure()).getErrorCode());
+            blocker.commit();
+        }
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(snapshot).join());
+    }
+
+    @Test
+    void retryAfterAnUncertainInsertIsIdempotent() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+        AtomicBoolean fail = new AtomicBoolean(true);
+        SQLTransientConnectionException disconnected = new SQLTransientConnectionException("injected lost acknowledgement", "08006");
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logAfterExecution(StatementContext context) {
+                if (context.getRawSql().startsWith("INSERT INTO") && fail.getAndSet(false)) {
+                    throw new UnableToExecuteStatementException(disconnected, context);
+                }
+            }
+        });
+        SaveOutcome uncertain = provider.saveSnapshotOutcome(snapshot).join();
+        assertEquals(SaveResult.RETRY_LATER, uncertain.result());
+        assertSame(disconnected, MysqlFailureClassifier.sqlCause(uncertain.failure()));
+        assertEquals(snapshot, provider.snapshot(snapshot.meta().id()).join().orElseThrow());
+        assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(snapshot).join());
+        assertEquals(1, provider.listSnapshots(SnapshotQuery.of(snapshot.meta().player())).join().size());
+    }
+
+    @Test
+    void aTemporaryOrderCheckFailureKeepsTheCommittedResult() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+        AtomicBoolean fail = new AtomicBoolean(true);
+        int warnings = this.console.warnings.get();
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                if (context.getRawSql().startsWith("SELECT") && context.getRawSql().contains("ORDER BY") && fail.getAndSet(false)) {
+                    throw new UnableToExecuteStatementException(new SQLTransientConnectionException("injected diagnostic failure", "08006"), context);
+                }
+            }
+        });
+        assertEquals(new SaveOutcome(SaveResult.SAVED, null), provider.saveSnapshotOutcome(snapshot).join());
+        assertEquals(warnings + 1, this.console.warnings.get());
+        assertEquals(snapshot, provider.snapshot(snapshot.meta().id()).join().orElseThrow());
+        assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(snapshot).join());
+    }
+
+    @Test
+    void aFailedDuplicateCheckRemainsRetryable() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(snapshot).join());
+        AtomicBoolean fail = new AtomicBoolean(true);
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                if (context.getRawSql().startsWith("SELECT 1 FROM") && fail.getAndSet(false)) {
+                    throw new UnableToExecuteStatementException(new SQLTransientConnectionException("injected duplicate check failure", "08006"), context);
+                }
+            }
+        });
+        SaveOutcome outcome = provider.saveSnapshotOutcome(snapshot).join();
+        assertEquals(SaveResult.RETRY_LATER, outcome.result());
+        assertNotNull(outcome.failure());
+        assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(snapshot).join());
+    }
+
+    @Test
+    void encodingAndSqlConstraintFailuresAreMalformed() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+        SnapshotMeta meta = snapshot.meta();
+        Snapshot tooLong = new Snapshot(new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), false, "😀".repeat(256), 4440), snapshot.data());
+        assertEquals(SaveResult.REJECTED_MALFORMED, provider.saveSnapshot(tooLong).join());
+        Snapshot badEncoding = new Snapshot(meta, Map.of(DataKey.of("test", "long"), NBT.createString("a".repeat(70_000))));
+        assertThrows(IOException.class, () -> this.codec.encode(badEncoding));
+        assertEquals(SaveResult.REJECTED_MALFORMED, provider.saveSnapshot(badEncoding).join());
+        provider.jdbi().useHandle(handle -> handle.execute("ALTER TABLE `" + this.prefix + "snapshots` MODIFY cause VARCHAR(1) NOT NULL"));
+        assertEquals(SaveResult.REJECTED_MALFORMED, provider.saveSnapshot(snapshot).join());
+        assertEquals(Optional.empty(), provider.snapshot(meta.id()).join());
+    }
+
+    @Test
+    void payloadLimitIncludesTheFrameAndAllowsEquality() throws Exception {
+        RowSnapshotCodec uncompressed = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.NONE));
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix, uncompressed, ForkJoinPool.commonPool());
+        provider.initialize();
+        int limit = 15 * 1024 * 1024;
+        DataKey key = DataKey.of("test", "blob");
+        SnapshotMeta meta = this.snapshot(UUID.randomUUID(), 10, false).meta();
+        int overhead = uncompressed.encode(new Snapshot(meta, Map.of(key, NBT.createByteArray(new byte[0])))).data().length;
+        Snapshot exact = new Snapshot(meta, Map.of(key, NBT.createByteArray(new byte[limit - overhead])));
+        assertEquals(limit, uncompressed.encode(exact).data().length);
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(exact).get(10, TimeUnit.SECONDS));
+        int stored = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT OCTET_LENGTH(data) FROM `" + this.prefix + "snapshots`").mapTo(Integer.class).one());
+        assertEquals(limit, stored);
+        Snapshot oversized = new Snapshot(this.snapshot(meta.player(), 20, false).meta(), Map.of(key, NBT.createByteArray(new byte[limit - overhead + 1])));
+        assertEquals(SaveResult.REJECTED_OVERSIZED, provider.saveSnapshot(oversized).get(10, TimeUnit.SECONDS));
+        assertEquals(Optional.empty(), provider.snapshot(oversized.meta().id()).join());
+    }
+
+    @Test
+    void programmingFailuresAreNotConvertedToSaveResults() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        IllegalStateException bug = new IllegalStateException("injected implementation failure");
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                throw bug;
+            }
+        });
+        CompletionException failure = assertThrows(CompletionException.class, () -> provider.saveSnapshot(this.snapshot(UUID.randomUUID(), 10, false)).join());
+        assertSame(bug, failure.getCause());
+    }
+
+    @Test
+    void rotationUsesTheFullBoundaryAndPreservesPinnedAndForeignRows() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        List<UUID> ids = List.of(UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff"), UUID.fromString("80000000-0000-0000-0000-000000000000"), UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+        for (int i = 0; i < ids.size(); i++) {
+            SnapshotMeta meta = new SnapshotMeta(ids.get(i), player, 20, SaveCause.COMMAND, false, "test", 4440);
+            assertEquals(SaveResult.SAVED, provider.saveSnapshot(new Snapshot(meta, Map.of())).join());
+        }
+        Snapshot pinned = this.snapshot(player, 10, true);
+        Snapshot foreign = this.snapshot(UUID.randomUUID(), 5, false);
+        provider.saveSnapshot(pinned).join();
+        provider.saveSnapshot(foreign).join();
+        assertEquals(0, provider.rotate(player, 5).join());
+        assertEquals(0, provider.rotate(player, 3).join());
+        assertEquals(2, provider.rotate(player, 1).join());
+        assertEquals(List.of(ids.get(2), pinned.meta().id()), provider.listSnapshots(SnapshotQuery.of(player)).join().stream().map(SnapshotMeta::id).toList());
+        assertEquals(0, provider.rotate(player, 1).join());
+        assertEquals(1, provider.rotate(player, 0).join());
+        assertEquals(List.of(pinned.meta()), provider.listSnapshots(SnapshotQuery.of(player)).join());
+        assertEquals(Optional.of(foreign), provider.snapshot(foreign.meta().id()).join());
+        assertEquals(0, provider.rotate(player, -1).join());
+    }
+
+    @Test
+    void pinAndDeleteResultsDoNotDependOnAffectedRowsMode() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            MysqlStorageProvider provider = this.provider(this.urlWith("useAffectedRows=" + (i == 1)), this.prefix);
+            provider.initialize();
+            Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
+            UUID id = snapshot.meta().id();
+            assertFalse(provider.setPinned(id, true).join());
+            assertFalse(provider.deleteSnapshot(id).join());
+            assertEquals(SaveResult.SAVED, provider.saveSnapshot(snapshot).join());
+            assertFalse(provider.setPinned(id, false).join());
+            assertTrue(provider.setPinned(id, true).join());
+            assertFalse(provider.setPinned(id, true).join());
+            assertTrue(provider.setPinned(id, false).join());
+            assertTrue(provider.deleteSnapshot(id).join());
+            assertFalse(provider.deleteSnapshot(id).join());
+        }
     }
 
     @Test
@@ -758,6 +1027,10 @@ class MysqlStorageProviderTest {
 
     // 查询阶段测试使用可手动推进的执行器, 普通用例使用真实异步线程.
     private MysqlStorageProvider provider(String url, String prefix, Executor executor) throws Exception {
+        return this.provider(url, prefix, this.codec, executor);
+    }
+
+    private MysqlStorageProvider provider(String url, String prefix, RowSnapshotCodec codec, Executor executor) throws Exception {
         // 复用配置加载器写入的字段, 在测试内构造所需连接参数.
         PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
         for (Map.Entry<String, String> entry : Map.of("url", url, "username", this.username, "password", this.password, "tablePrefix", prefix).entrySet()) {
@@ -765,7 +1038,7 @@ class MysqlStorageProviderTest {
             field.setAccessible(true);
             field.set(options, entry.getValue());
         }
-        MysqlStorageProvider provider = new MysqlStorageProvider(options, this.codec, executor);
+        MysqlStorageProvider provider = new MysqlStorageProvider(options, codec, this.serialExecutor, executor, this.logger);
         this.providers.add(provider);
         return provider;
     }
@@ -833,5 +1106,19 @@ class MysqlStorageProviderTest {
      */
     private String urlWith(String properties) {
         return this.url + (this.url.contains("?") ? "&" : "?") + properties;
+    }
+
+    private Snapshot snapshot(UUID player, long timestamp, boolean pinned) {
+        return new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, timestamp, SaveCause.COMMAND, pinned, "test", 4440), Map.of(DataKey.of("test", "value"), NBT.createLong(timestamp)));
+    }
+
+    private static final class QuietLogger implements PluginLogger {
+        private final AtomicInteger warnings = new AtomicInteger();
+
+        @Override public void info(String message) {}
+        @Override public void warn(String message) { this.warnings.incrementAndGet(); }
+        @Override public void warn(String message, Throwable failure) { this.warnings.incrementAndGet(); }
+        @Override public void error(String message) {}
+        @Override public void error(String message, Throwable failure) {}
     }
 }

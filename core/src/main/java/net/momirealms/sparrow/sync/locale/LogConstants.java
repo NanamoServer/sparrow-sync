@@ -25,6 +25,7 @@ public interface LogConstants {
     String STORAGE_MYSQL_NOT_IMPLEMENTED = "log.storage.mysql_not_implemented";
     String STORAGE_SETUP_FAILED = "log.storage.setup_failed";
     String STORAGE_OUT_OF_ORDER = "log.storage.out_of_order";
+    String STORAGE_ORDER_CHECK_FAILED = "log.storage.order_check_failed";
     String STORAGE_ENCODE_FAILED = "log.storage.encode_failed";
     String STORAGE_OVERSIZED = "log.storage.oversized";
     String STORAGE_CONSTRAINT_CONFLICT = "log.storage.constraint_conflict";
