@@ -90,7 +90,7 @@ class MongoMapStorageTest {
         Document document = this.database.getCollection(this.prefix + "maps").find(eq("_id", winner.identity().globalId())).first();
         assertNotNull(document);
         assertFalse(document.containsKey("global_id"));
-        assertEquals(Set.of("_id_", "map_source"), Set.copyOf(this.database.getCollection(this.prefix + "maps").listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
+        assertEquals(Set.of("_id_", "map_source", "map_updated_at"), Set.copyOf(this.database.getCollection(this.prefix + "maps").listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
         assertEquals(winner, this.source.register(origin, data(99)).join());
         assertEquals(winner, this.receiver.find(winner.identity().globalId()).join().orElseThrow());
     }
@@ -157,6 +157,63 @@ class MongoMapStorageTest {
         assertEquals(a, this.storage(this.prefix).find(a.identity().globalId()).join().orElseThrow());
         this.database.getCollection(this.prefix + "maps").updateOne(eq("_id", a.identity().globalId()), set("data", new Binary(new byte[0])));
         assertThrows(CompletionException.class, () -> this.receiver.find(a.identity().globalId()).join());
+    }
+
+    @Test
+    void timestampsChangeOnlyWhenContentIsWritten() {
+        long before = System.currentTimeMillis();
+        StoredMap stored = this.source.register(new MapSource("time", 1), data(1)).join();
+        var maps = this.database.getCollection(this.prefix + "maps");
+        long created = maps.find(eq("_id", stored.identity().globalId())).first().getLong("updated_at");
+        assertTrue(created >= before && created <= System.currentTimeMillis());
+        maps.updateOne(eq("_id", stored.identity().globalId()), set("updated_at", 5L));
+        assertEquals(stored, this.receiver.find(stored.identity().globalId()).join().orElseThrow());
+        assertEquals(stored, this.source.register(stored.identity().source(), data(2)).join());
+        assertEquals(5L, maps.find(eq("_id", stored.identity().globalId())).first().getLong("updated_at"));
+        MapIdentity wrong = new MapIdentity(new MapSource("wrong", 1), stored.identity().globalId());
+        assertThrows(CompletionException.class, () -> this.source.update(wrong, data(3)).join());
+        assertEquals(5L, maps.find(eq("_id", stored.identity().globalId())).first().getLong("updated_at"));
+        before = System.currentTimeMillis();
+        MapData updated = new MapData(4441, data(4).getTag());
+        this.source.update(stored.identity(), updated).join();
+        long changed = maps.find(eq("_id", stored.identity().globalId())).first().getLong("updated_at");
+        assertTrue(changed >= before && changed <= System.currentTimeMillis());
+        assertEquals(updated, this.receiver.find(stored.identity().globalId()).join().orElseThrow().data());
+    }
+
+    @Test
+    void missingOrWrongTimestampCannotBeReadOrRepairedByAnUpdate() {
+        StoredMap stored = this.source.register(new MapSource("legacy", 1), data(1)).join();
+        var maps = this.database.getCollection(this.prefix + "maps");
+        Object[] invalid = {null, 1, 1.0, "1"};
+        for (int i = 0; i < invalid.length; i++) {
+            maps.updateOne(eq("_id", stored.identity().globalId()), invalid[i] == null ? unset("updated_at") : set("updated_at", invalid[i]));
+            Document original = maps.find(eq("_id", stored.identity().globalId())).first();
+            assertThrows(CompletionException.class, () -> this.source.find(stored.identity().globalId()).join());
+            assertThrows(CompletionException.class, () -> this.source.register(stored.identity().source(), data(2)).join());
+            assertThrows(CompletionException.class, () -> this.source.update(stored.identity(), data(2)).join());
+            assertEquals(original, maps.find(eq("_id", stored.identity().globalId())).first());
+        }
+    }
+
+    @Test
+    void timestampRangeUsesItsIndexAndEncodingFailureKeepsTheRecord() {
+        StoredMap first = this.source.register(new MapSource("range", 1), data(1)).join();
+        StoredMap second = this.source.register(new MapSource("range", 2), data(2)).join();
+        var maps = this.database.getCollection(this.prefix + "maps");
+        maps.updateOne(eq("_id", first.identity().globalId()), set("updated_at", 10L));
+        maps.updateOne(eq("_id", second.identity().globalId()), set("updated_at", 20L));
+        assertEquals(List.of(second.identity().globalId()), maps.find(and(gte("updated_at", 20L), lte("updated_at", 20L))).hintString("map_updated_at")
+                .map(document -> document.getInteger("_id")).into(new ArrayList<>()));
+        CompoundTag tag = data(3).getTag();
+        tag.putString("oversizedString", "a".repeat(70_000));
+        MapData invalid = new MapData(4440, tag);
+        Document original = maps.find(eq("_id", first.identity().globalId())).first();
+        assertThrows(CompletionException.class, () -> this.source.update(first.identity(), invalid).join());
+        assertEquals(original, maps.find(eq("_id", first.identity().globalId())).first());
+        long sequence = this.database.getCollection(this.prefix + "meta").find(eq("_id", "maps")).first().getLong("sequence");
+        assertThrows(CompletionException.class, () -> this.source.register(new MapSource("invalid", 9), invalid).join());
+        assertEquals(sequence, this.database.getCollection(this.prefix + "meta").find(eq("_id", "maps")).first().getLong("sequence"));
     }
 
     private static MapData data(int color) {

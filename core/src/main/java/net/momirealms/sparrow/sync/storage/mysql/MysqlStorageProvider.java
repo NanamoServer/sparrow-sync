@@ -6,6 +6,7 @@ import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -14,11 +15,9 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
-import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
-import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
-import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.argument.AbstractArgumentFactory;
@@ -39,7 +38,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
 @ApiStatus.Internal
-public final class MysqlStorageProvider {
+public final class MysqlStorageProvider implements StorageProvider {
     private static final int MAX_PAYLOAD_BYTES = 15 * 1024 * 1024; // 编码后的完整 data 帧上限, 等于上限允许写入
     private static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
     private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
@@ -52,6 +51,7 @@ public final class MysqlStorageProvider {
     private final SyncLogger logger;
     private HikariDataSource dataSource;
     private Jdbi jdbi;
+    private MysqlMapStorage maps;
 
     public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options,
                                 @NotNull RowSnapshotCodec codec,
@@ -66,6 +66,7 @@ public final class MysqlStorageProvider {
     }
 
     // 建立连接池并将数据库升级到当前表版本.
+    @Override
     public void initialize() {
         if (this.dataSource != null) throw new IllegalStateException("MySQL storage is already initialized");
         // 表名会拼入 DDL, 限定字符集并为最长的业务表名预留长度.
@@ -126,9 +127,11 @@ public final class MysqlStorageProvider {
                     .registerRowMapper(SnapshotRow.class, new MysqlSnapshotRowMapper())
                     .registerRowMapper(SnapshotMeta.class, (result, context) -> MysqlSnapshotRowMapper.readMeta(result));
             new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, MIGRATIONS).migrate(connected, this.options.tablePrefix());
+            MysqlMapStorage mapStorage = new MysqlMapStorage(connected, this.options.tablePrefix(), this.asyncExecutor);
             // 所有准备成功后才转交连接池所有权, 此时 Jdbi 对应的表结构已经可用.
             this.dataSource = pool;
             this.jdbi = connected;
+            this.maps = mapStorage;
             ready = true;
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to initialize MySQL storage", exception);
@@ -138,7 +141,17 @@ public final class MysqlStorageProvider {
         }
     }
 
+    @Override
+    @NotNull
+    public MapStorage maps() {
+        if (this.maps == null) {
+            throw new IllegalStateException("MySQL storage is not initialized");
+        }
+        return this.maps;
+    }
+
     // 完整读取先带回元数据和字节帧, 连接释放后再投递解码.
+    @Override
     @NotNull
     public CompletableFuture<Optional<Snapshot>> latestSnapshot(@NotNull UUID player) {
         return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
@@ -146,6 +159,7 @@ public final class MysqlStorageProvider {
                 .thenApplyAsync(row -> row.map(this::decodeRow), this.asyncExecutor);
     }
 
+    @Override
     @NotNull
     public CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId) {
         return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
@@ -162,6 +176,7 @@ public final class MysqlStorageProvider {
     }
 
     // 组合有效筛选条件, 列表只读取可独立解析的元数据列.
+    @Override
     @NotNull
     public CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query) {
         return CompletableFuture.supplyAsync(() -> {
@@ -198,12 +213,14 @@ public final class MysqlStorageProvider {
         }, this.asyncExecutor);
     }
 
+    @Override
     @NotNull
     public CompletableFuture<SaveResult> saveSnapshot(@NotNull Snapshot snapshot) {
         return this.saveSnapshotOutcome(snapshot).thenApply(SaveOutcome::result);
     }
 
     // 编码由通用 worker 执行, 保存立即进入玩家队列, 写库时按请求顺序等待编码结果.
+    @Override
     @NotNull
     public CompletableFuture<SaveOutcome> saveSnapshotOutcome(@NotNull Snapshot snapshot) {
         SnapshotMeta meta = snapshot.meta();
@@ -295,6 +312,7 @@ public final class MysqlStorageProvider {
     }
 
     // 轮转与保存共享玩家队列, 同时刻按 id 保留排序靠前的记录.
+    @Override
     @NotNull
     public CompletableFuture<Integer> rotate(@NotNull UUID player, int maxUnpinned) {
         return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> {
@@ -312,12 +330,14 @@ public final class MysqlStorageProvider {
     }
 
     // 条件中排除已是目标状态的记录, 两种 affected-rows 配置得到相同的布尔结果.
+    @Override
     @NotNull
     public CompletableFuture<Boolean> setPinned(@NotNull UUID snapshotId, boolean pinned) {
         return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createUpdate("UPDATE `" + this.options.tablePrefix() + "snapshots` SET `pinned` = :pinned WHERE `id` = :id AND `pinned` <> :pinned")
                 .bind("id", snapshotId).bind("pinned", pinned).execute() > 0), this.asyncExecutor);
     }
 
+    @Override
     @NotNull
     public CompletableFuture<Boolean> deleteSnapshot(@NotNull UUID snapshotId) {
         return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createUpdate("DELETE FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
@@ -325,6 +345,7 @@ public final class MysqlStorageProvider {
     }
 
     // 每次会话刷新当前名字和出现时间, 主键保持玩家 UUID.
+    @Override
     @NotNull
     public CompletableFuture<Void> ensureUser(@NotNull UUID player, @NotNull String name) {
         return CompletableFuture.runAsync(() -> {
@@ -335,6 +356,7 @@ public final class MysqlStorageProvider {
     }
 
     // 同名记录取最近会话, 同毫秒时按 UUID 保持稳定顺序.
+    @Override
     @NotNull
     public CompletableFuture<Optional<UUID>> lookupUser(@NotNull String name) {
         return CompletableFuture.supplyAsync(() -> {
@@ -360,7 +382,9 @@ public final class MysqlStorageProvider {
         return this.jdbi;
     }
 
+    @Override
     public void shutdown() {
+        this.maps = null;
         this.jdbi = null;
         if (this.dataSource != null) {
             this.dataSource.close();

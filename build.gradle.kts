@@ -93,6 +93,7 @@ subprojects {
             relocate("io.leangen.geantyref", "$libs.geantyref")
             relocate("org.jdbi", "$libs.jdbi")
             relocate("com.zaxxer.hikari", "$libs.hikari")
+            relocate("com.mysql", "$libs.mysql")
             relocate("ca.spottedleaf.concurrentutil", "$libs.concurrentutil")
             relocate("io.netty.handler.codec.http", "$libs.netty.handler.codec.http")
             relocate("io.netty.handler.codec.rtsp", "$libs.netty.handler.codec.rtsp")

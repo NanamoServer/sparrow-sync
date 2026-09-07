@@ -269,6 +269,7 @@ public final class Dependencies {
             .groupId("com{}mysql")
             .artifactId("mysql-connector-j")
             .version(DependencyVersions.MYSQL_DRIVER)
+            .addRelocation("mysql", "com{}mysql")
             .build();
 
     /**

@@ -4,7 +4,14 @@ import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.map.MapStorage;
+import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.session.SnapshotStash;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -34,9 +41,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.sql.SQLTransientConnectionException;
 import java.util.ArrayDeque;
@@ -79,6 +89,8 @@ class MysqlStorageProviderTest {
     private String username; // 从测试环境读取的数据库账号
     private String password; // 从测试环境读取的认证密码
     private PlayerSerialExecutor serialExecutor;
+    @TempDir
+    Path stashDirectory;
 
     /**
      * 读取测试连接参数并创建本轮专用数据库.
@@ -368,6 +380,191 @@ class MysqlStorageProviderTest {
         assertThrows(CompletionException.class, () -> provider.rotate(player, 1).join());
         assertThrows(CompletionException.class, () -> provider.setPinned(UUID.randomUUID(), true).join());
         assertThrows(CompletionException.class, () -> provider.deleteSnapshot(UUID.randomUUID()).join());
+    }
+
+    @Test
+    void mapsShareThePoolAndRefreshTimeOnlyOnContentWrites() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        assertThrows(IllegalStateException.class, provider::maps);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        assertSame(maps, provider.maps());
+        long before = System.currentTimeMillis();
+        StoredMap stored = maps.register(new MapSource("source", 0), mapData(1)).join();
+        assertEquals(-1, stored.identity().globalId());
+        assertTrue(this.mapTime(-1) >= before && this.mapTime(-1) <= System.currentTimeMillis());
+        assertEquals(stored, maps.find(-1).join().orElseThrow());
+        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = 5 WHERE global_id = -1"));
+        assertEquals(stored, maps.register(stored.identity().source(), mapData(2)).join());
+        assertEquals(stored, maps.find(-1).join().orElseThrow());
+        assertEquals(5, this.mapTime(-1));
+        MapData updated = new MapData(4441, mapData(3).getTag());
+        before = System.currentTimeMillis();
+        maps.update(stored.identity(), updated).join();
+        assertTrue(this.mapTime(-1) >= before && this.mapTime(-1) <= System.currentTimeMillis());
+        assertEquals(updated, maps.find(-1).join().orElseThrow().data());
+        assertNull(updated.getTag().get("updated_at"));
+        provider.shutdown();
+        assertThrows(IllegalStateException.class, provider::maps);
+        assertThrows(CompletionException.class, () -> maps.find(-1).join());
+        provider.initialize();
+        assertEquals(updated, provider.maps().find(-1).join().orElseThrow().data());
+        assertEquals(-2, provider.maps().register(new MapSource("source", 1), mapData(4)).join().identity().globalId());
+        assertEquals(1, this.meta("schema"));
+    }
+
+    @Test
+    void concurrentMapRegistrationReturnsOneCompleteWinner() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        List<CompletableFuture<StoredMap>> registrations = new ArrayList<>();
+        for (int i = 0; i < 32; i++) {
+            registrations.add(maps.register(new MapSource("same", 0), mapData(i)));
+        }
+        CompletableFuture.allOf(registrations.toArray(new CompletableFuture[0])).get(15, TimeUnit.SECONDS);
+        StoredMap winner = registrations.getFirst().join();
+        for (int i = 0; i < registrations.size(); i++) {
+            assertEquals(winner, registrations.get(i).join());
+        }
+        assertEquals(winner, maps.find(winner.identity().globalId()).join().orElseThrow());
+        int count = this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "maps`").mapTo(Integer.class).one());
+        assertEquals(1, count);
+        assertTrue(this.meta("maps") >= 1 && this.meta("maps") <= 32);
+    }
+
+    @Test
+    void mapIdentityAndSourceValidationPreserveDataOnFailure() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.urlWith("useAffectedRows=true"), this.prefix);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        StoredMap stored = maps.register(new MapSource("A", 0), mapData(1)).join();
+        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = 5"));
+        List<MapIdentity> wrong = List.of(new MapIdentity(new MapSource("B", 0), -1), new MapIdentity(new MapSource("A", 1), -1), new MapIdentity(stored.identity().source(), -99));
+        for (int i = 0; i < wrong.size(); i++) {
+            MapIdentity identity = wrong.get(i);
+            assertThrows(CompletionException.class, () -> maps.update(identity, mapData(2)).join());
+        }
+        assertEquals(5, this.mapTime(-1));
+        assertEquals(stored, maps.find(-1).join().orElseThrow());
+        assertTrue(maps.find(-99).join().isEmpty());
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("bad ", 1), mapData(2)).join());
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("😀".repeat(256), 1), mapData(2)).join());
+        assertEquals(1, this.meta("maps"));
+        maps.update(stored.identity(), stored.data()).join();
+        maps.update(stored.identity(), stored.data()).join();
+        assertEquals(stored, maps.find(-1).join().orElseThrow());
+        StoredMap differentCase = maps.register(new MapSource("a", 0), mapData(3)).join();
+        assertNotEquals(stored.identity().globalId(), differentCase.identity().globalId());
+    }
+
+    @Test
+    void mapCounterStopsAtTheMinimumIntAndPreservesFailedAllocationGaps() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        StoredMap first = maps.register(new MapSource("same", 0), mapData(1)).join();
+        this.direct.useHandle(handle -> handle.execute("CREATE UNIQUE INDEX external_owner ON `" + this.prefix + "maps` (owner)"));
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("same", 1), mapData(2)).join());
+        assertEquals(2, this.meta("maps"));
+        assertTrue(maps.find(-2).join().isEmpty());
+        assertEquals(first, maps.find(-1).join().orElseThrow());
+        this.direct.useHandle(handle -> handle.execute("DROP INDEX external_owner ON `" + this.prefix + "maps`"));
+        assertEquals(-3, maps.register(new MapSource("same", 1), mapData(3)).join().identity().globalId());
+        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "meta` SET value = 2147483647 WHERE id = 'maps'"));
+        assertEquals(Integer.MIN_VALUE, maps.register(new MapSource("last", 0), mapData(4)).join().identity().globalId());
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("exhausted", 0), mapData(5)).join());
+        assertEquals(2147483648L, this.meta("maps"));
+    }
+
+    @Test
+    void malformedMapsAndInvalidSequencesFailWithoutRepair() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "meta` SET value = -1 WHERE id = 'maps'"));
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("bad-sequence", 0), mapData(1)).join());
+        this.direct.useHandle(handle -> handle.execute("DELETE FROM `" + this.prefix + "meta` WHERE id = 'maps'"));
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("missing-sequence", 0), mapData(1)).join());
+        this.direct.useHandle(handle -> handle.execute("INSERT INTO `" + this.prefix + "meta` VALUES ('maps', 0)"));
+        StoredMap stored = maps.register(new MapSource("legacy", 0), mapData(1)).join();
+        this.direct.useHandle(handle -> {
+            handle.execute("ALTER TABLE `" + this.prefix + "maps` MODIFY updated_at BIGINT NULL");
+            handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = NULL");
+        });
+        assertThrows(CompletionException.class, () -> maps.find(-1).join());
+        assertThrows(CompletionException.class, () -> maps.register(stored.identity().source(), mapData(2)).join());
+        assertThrows(CompletionException.class, () -> maps.update(stored.identity(), mapData(2)).join());
+        this.direct.useHandle(handle -> {
+            assertTrue(handle.createQuery("SELECT updated_at IS NULL FROM `" + this.prefix + "maps`").mapTo(Boolean.class).one());
+            handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = 5, data = X'00'");
+        });
+        assertThrows(CompletionException.class, () -> maps.find(-1).join());
+    }
+
+    @Test
+    void mapEncodingFailureDoesNotChangeTimeOrAllocateAnId() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        CompoundTag tag = mapData(2).getTag();
+        tag.putString("invalid", "a".repeat(70_000));
+        MapData invalid = new MapData(4440, tag);
+        assertThrows(CompletionException.class, () -> maps.register(new MapSource("bad", 0), invalid).join());
+        assertEquals(0, this.meta("maps"));
+        StoredMap stored = maps.register(new MapSource("good", 0), mapData(1)).join();
+        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = 5"));
+        assertThrows(CompletionException.class, () -> maps.update(stored.identity(), invalid).join());
+        assertEquals(5, this.mapTime(-1));
+        assertEquals(stored, maps.find(-1).join().orElseThrow());
+    }
+
+    @Test
+    void mapTimeIndexAndPrefixesRemainIndependent() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        MysqlStorageProvider other = this.provider(this.url, "other_" + this.prefix);
+        provider.initialize();
+        other.initialize();
+        StoredMap first = provider.maps().register(new MapSource("source", 0), mapData(1)).join();
+        StoredMap second = provider.maps().register(new MapSource("source", 1), mapData(2)).join();
+        assertTrue(other.maps().find(first.identity().globalId()).join().isEmpty());
+        assertEquals(-1, other.maps().register(first.identity().source(), mapData(3)).join().identity().globalId());
+        this.direct.useHandle(handle -> {
+            handle.execute("UPDATE `" + this.prefix + "maps` SET updated_at = CASE WHEN global_id = -1 THEN 10 ELSE 20 END");
+            assertEquals(List.of(second.identity().globalId()), handle.createQuery("SELECT global_id FROM `" + this.prefix + "maps` FORCE INDEX (map_updated_at) WHERE updated_at >= 20 AND updated_at <= 20").mapTo(Integer.class).list());
+        });
+        assertEquals(first, provider.maps().find(-1).join().orElseThrow());
+    }
+
+    @Test
+    void mapPayloadDoesNotUseTheSnapshotFrameLimit() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        CompoundTag tag = mapData(1).getTag();
+        tag.putByteArray("extra", new byte[15 * 1024 * 1024]);
+        MapData large = new MapData(4440, tag);
+        assertTrue(large.encode().length > 15 * 1024 * 1024);
+        StoredMap stored = provider.maps().register(new MapSource("large", 0), large).get(15, TimeUnit.SECONDS);
+        assertEquals(large, provider.maps().find(stored.identity().globalId()).get(15, TimeUnit.SECONDS).orElseThrow().data());
+    }
+
+    @Test
+    void pendingSnapshotsRestoreThroughTheMysqlStorageInterface() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), this.logger);
+        UUID player = UUID.randomUUID();
+        Snapshot old = this.snapshot(player, 10, false);
+        Snapshot latest = this.snapshot(player, 20, false);
+        provider.saveSnapshot(latest).join();
+        stash.stash(old, "Test", SaveResult.RETRY_LATER);
+        stash.stash(latest, "Test", SaveResult.RETRY_LATER);
+        stash.restorePending(provider);
+        assertEquals(latest, provider.latestSnapshot(player).join().orElseThrow());
+        assertEquals(List.of(latest.meta(), old.meta()), provider.listSnapshots(player).join());
+        try (var files = Files.list(this.stashDirectory.resolve("pending"))) {
+            assertEquals(0, files.count());
+        }
     }
 
     @Test
@@ -1106,6 +1303,19 @@ class MysqlStorageProviderTest {
      */
     private String urlWith(String properties) {
         return this.url + (this.url.contains("?") ? "&" : "?") + properties;
+    }
+
+    private long mapTime(int globalId) {
+        return this.direct.withHandle(handle -> handle.createQuery("SELECT updated_at FROM `" + this.prefix + "maps` WHERE global_id = :id").bind("id", globalId).mapTo(Long.class).one());
+    }
+
+    private static MapData mapData(int color) {
+        CompoundTag tag = NBT.createCompound();
+        tag.putString("dimension", "minecraft:overworld");
+        byte[] colors = new byte[MapData.PIXEL_COUNT];
+        colors[0] = (byte) color;
+        tag.putByteArray("colors", colors);
+        return new MapData(4440, tag);
     }
 
     private Snapshot snapshot(UUID player, long timestamp, boolean pinned) {

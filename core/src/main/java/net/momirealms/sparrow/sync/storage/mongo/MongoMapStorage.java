@@ -20,6 +20,7 @@ import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import org.bson.Document;
+import org.bson.BsonType;
 import org.bson.conversions.Bson;
 import org.bson.types.Binary;
 import org.jetbrains.annotations.ApiStatus;
@@ -36,6 +37,7 @@ import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.gte;
 import static com.mongodb.client.model.Filters.lt;
+import static com.mongodb.client.model.Filters.type;
 import static com.mongodb.client.model.Updates.combine;
 import static com.mongodb.client.model.Updates.inc;
 import static com.mongodb.client.model.Updates.set;
@@ -62,6 +64,7 @@ public final class MongoMapStorage implements MapStorage {
     // 启动时完成索引与序列准备, 全局 ID 使用 MongoDB 的 _id 唯一索引.
     public void initialize() {
         this.maps.createIndex(Indexes.ascending("owner", "origin_id"), new IndexOptions().unique(true).name("map_source"));
+        this.maps.createIndex(Indexes.ascending("updated_at"), new IndexOptions().name("map_updated_at"));
         // 多个服务器可同时初始化同一组集合, 已存在计数器沿用原序列
         try {
             this.meta.updateOne(eq("_id", "maps"), setOnInsert("sequence", 0L), new UpdateOptions().upsert(true));
@@ -98,7 +101,7 @@ public final class MongoMapStorage implements MapStorage {
             MapIdentity identity = new MapIdentity(source, globalId);
             Document document = new Document("_id", globalId)
                     .append("owner", source.ownerId()).append("origin_id", source.id())
-                    .append("data_version", initial.dataVersion()).append("data", payload);
+                    .append("data_version", initial.dataVersion()).append("data", payload).append("updated_at", System.currentTimeMillis());
             try {
                 this.maps.insertOne(document);
             } catch (MongoWriteException exception) {
@@ -115,12 +118,13 @@ public final class MongoMapStorage implements MapStorage {
     public CompletableFuture<Void> update(@NotNull MapIdentity identity, @NotNull MapData data) {
         return CompletableFuture.runAsync(() -> {
             // 同时匹配来源和全局 ID, 更新仅作用于已登记的这份身份
+            Binary payload = encode(data);
             long matched = this.maps.updateOne(
-                    and(this.sourceFilter(identity.source()), eq("_id", identity.globalId())),
-                    combine(set("data_version", data.dataVersion()), set("data", encode(data)))
+                    and(this.sourceFilter(identity.source()), eq("_id", identity.globalId()), type("updated_at", BsonType.INT64)),
+                    combine(set("data_version", data.dataVersion()), set("data", payload), set("updated_at", System.currentTimeMillis()))
             ).getMatchedCount();
             if (matched != 1) {
-                throw new IllegalStateException("map identity does not match a registered map");
+                throw new IllegalStateException("map identity does not match a registered map with a supported format");
             }
         }, this.executor);
     }
@@ -135,7 +139,7 @@ public final class MongoMapStorage implements MapStorage {
         if (document == null) return Optional.empty();
         if (!(document.get("owner") instanceof String owner) || !(document.get("origin_id") instanceof Integer originId)
                 || !(document.get("_id") instanceof Integer globalId) || !(document.get("data_version") instanceof Integer dataVersion)
-                || !(document.get("data") instanceof Binary binary)) {
+                || !(document.get("data") instanceof Binary binary) || !(document.get("updated_at") instanceof Long)) {
             throw new IllegalStateException("malformed stored map");
         }
         try {

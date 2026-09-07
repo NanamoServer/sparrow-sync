@@ -60,6 +60,7 @@ public final class MongoStorageProvider implements StorageProvider {
     private MongoDatabase mongoDatabase;
     private volatile MongoCollection<Document> users;
     private volatile MongoCollection<Document> snapshots;
+    private MongoMapStorage maps;
 
     public MongoStorageProvider(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -111,9 +112,13 @@ public final class MongoStorageProvider implements StorageProvider {
             MongoCollection<Document> userCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "users");
             MongoCollection<Document> snapshotCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "snapshots");
             IndexReconciler.reconcile(this.logger, metaCollection, userCollection, snapshotCollection);
+            MongoMapStorage mapStorage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), this.asyncExecutor);
+            mapStorage.initialize();
             this.users = userCollection;
             this.snapshots = snapshotCollection;
+            this.maps = mapStorage;
         } catch (Throwable throwable) {
+            this.shutdown();
             throw new IllegalStateException("Failed to connect mongodb at " + this.options.url(), throwable);
         }
     }
@@ -129,13 +134,10 @@ public final class MongoStorageProvider implements StorageProvider {
     @Override
     @NotNull
     public MapStorage maps() {
-        MongoCollection<Document> collection = this.snapshots;
-        if (collection == null) {
+        if (this.maps == null) {
             throw new IllegalStateException("mongo storage is not initialized");
         }
-        MongoMapStorage storage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), this.asyncExecutor);
-        storage.initialize();
-        return storage;
+        return this.maps;
     }
 
     private MongoCollection<Document> userCollection() {
@@ -148,8 +150,12 @@ public final class MongoStorageProvider implements StorageProvider {
 
     @Override
     public void shutdown() {
+        this.users = null;
+        this.snapshots = null;
+        this.maps = null;
         if (this.mongoClient != null) {
             this.mongoClient.close();
+            this.mongoClient = null;
         }
     }
 

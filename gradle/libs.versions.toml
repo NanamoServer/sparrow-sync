@@ -1,7 +1,7 @@
 [versions]
 project-version = "beta.1"
 config-version = "19"
-lang-version = "16"
+lang-version = "17"
 
 run-task = "3.0.2"
 paperweight = "2.0.0-beta.21"

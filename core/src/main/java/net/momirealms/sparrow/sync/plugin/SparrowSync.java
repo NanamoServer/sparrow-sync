@@ -1,9 +1,11 @@
 package net.momirealms.sparrow.sync.plugin;
 
+import com.mysql.cj.conf.ConnectionUrl;
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
@@ -42,8 +44,8 @@ import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.session.SnapshotStash;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
-import net.momirealms.sparrow.sync.storage.StorageType;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
+import net.momirealms.sparrow.sync.storage.mysql.MysqlStorageProvider;
 import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
@@ -92,7 +94,7 @@ public class SparrowSync implements Plugin {
     private final DataRegistry dataRegistry;
     private final BinarySnapshotCodec binaryCodec;
     private final DocumentSnapshotCodec documentCodec;
-    private final MongoStorageProvider storageProvider;
+    private final StorageProvider storageProvider;
     private final SnapshotStash snapshotStash;
     private final PlayerDataPipeline playerDataPipeline;
     private final SnapshotService snapshotService;
@@ -137,7 +139,11 @@ public class SparrowSync implements Plugin {
         this.dataRegistry = new DataRegistry();
         this.binaryCodec = new BinarySnapshotCodec(this);
         this.documentCodec = new DocumentSnapshotCodec(this);
-        this.storageProvider = new MongoStorageProvider(this);
+        // 配置在构造业务模块前已加载, SnapshotService 绑定时后端已经确定.
+        this.storageProvider = switch (PluginConfig.database$type()) {
+            case MONGODB -> new MongoStorageProvider(PluginConfig.database$mongodb(), this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
+            case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), new RowSnapshotCodec(this.binaryCodec), this.playerExecutor, this.scheduler.async(), this.logger);
+        };
         this.snapshotStash = new SnapshotStash(this);
         this.playerDataPipeline = new PlayerDataPipeline(this);
         this.snapshotService = new SnapshotService(this);
@@ -205,19 +211,18 @@ public class SparrowSync implements Plugin {
             Bukkit.getServer().shutdown();
             return;
         }
-        // 链接持久化存储
+        // 链接持久化存储, 连接失败时仍能报告配置指定的数据库.
+        String database = "";
         try {
-            if (PluginConfig.database$type() != StorageType.MONGODB) {
-                this.logger.error(TranslationManager.console(LogConstants.STORAGE_MYSQL_NOT_IMPLEMENTED));
-                Bukkit.getServer().shutdown();
-                return;
-            }
+            database = this.storageProvider instanceof MysqlStorageProvider
+                    ? ConnectionUrl.getConnectionUrlInstance(PluginConfig.database$mysql().url(), null).getDatabase()
+                    : PluginConfig.database$mongodb().database();
             this.documentCodec.onLoad();
             this.snapshotStash.onLoad();
-            this.storageProvider.onLoad();
-            this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, PluginConfig.database$mongodb().database()));
+            this.storageProvider.initialize();
+            this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, PluginConfig.database$type().name(), database));
         } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED), throwable);
+            this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED, PluginConfig.database$type().name(), database), throwable);
             Bukkit.getServer().shutdown();
             return;
         }

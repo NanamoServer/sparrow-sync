@@ -21,9 +21,8 @@ public interface LogConstants {
     String SERVER_ID_SEIZED = "log.server.id_seized";
 
     String STORAGE_COMPRESSOR_FAILED = "log.storage.compressor_failed";
-    String STORAGE_READY = "log.storage.ready";
-    String STORAGE_MYSQL_NOT_IMPLEMENTED = "log.storage.mysql_not_implemented";
-    String STORAGE_SETUP_FAILED = "log.storage.setup_failed";
+    String STORAGE_READY = "log.storage.backend_ready";
+    String STORAGE_SETUP_FAILED = "log.storage.backend_setup_failed";
     String STORAGE_OUT_OF_ORDER = "log.storage.out_of_order";
     String STORAGE_ORDER_CHECK_FAILED = "log.storage.order_check_failed";
     String STORAGE_ENCODE_FAILED = "log.storage.encode_failed";
