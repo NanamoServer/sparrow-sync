@@ -8,8 +8,6 @@ import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
-import com.mongodb.client.model.IndexOptions;
-import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReturnDocument;
 import com.mongodb.client.model.UpdateOptions;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -61,10 +59,7 @@ public final class MongoMapStorage implements MapStorage {
         this.executor = executor;
     }
 
-    // 启动时完成索引与序列准备, 全局 ID 使用 MongoDB 的 _id 唯一索引.
     public void initialize() {
-        this.maps.createIndex(Indexes.ascending("owner", "origin_id"), new IndexOptions().unique(true).name("map_source"));
-        this.maps.createIndex(Indexes.ascending("updated_at"), new IndexOptions().name("map_updated_at"));
         // 多个服务器可同时初始化同一组集合, 已存在计数器沿用原序列
         try {
             this.meta.updateOne(eq("_id", "maps"), setOnInsert("sequence", 0L), new UpdateOptions().upsert(true));

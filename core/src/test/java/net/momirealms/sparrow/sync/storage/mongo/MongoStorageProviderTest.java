@@ -5,6 +5,9 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
+import com.mongodb.client.model.Collation;
+import com.mongodb.client.model.CollationStrength;
+import com.mongodb.client.model.CreateCollectionOptions;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -113,12 +116,12 @@ class MongoStorageProviderTest {
             var meta = database.getCollection("it_meta");
             var schema = meta.find(new Document("_id", "schema")).first();
             var counter = meta.find(new Document("_id", "maps")).first();
-            assertEquals(1, schema.getInteger("version"));
+            assertEquals(2, schema.getInteger("version"));
             assertEquals(-(long) stored.identity().globalId(), counter.getLong("sequence"));
             assertEquals(Set.of("_id_"), Set.copyOf(meta.listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
             assertFalse(database.listCollectionNames().into(new ArrayList<>()).contains("it_map_counters"));
 
-            IndexReconciler.reconcile(this.logger, meta, database.getCollection("it_users"), database.getCollection("it_snapshots"));
+            IndexReconciler.reconcile(this.logger, database, "it_");
             assertEquals(schema, meta.find(new Document("_id", "schema")).first());
             assertEquals(counter, meta.find(new Document("_id", "maps")).first());
             var next = this.provider.maps().register(new MapSource(owner, 1), stored.data()).join();
@@ -201,9 +204,133 @@ class MongoStorageProviderTest {
                 assertEquals(List.of("_id_", "player_1_ts_-1__id_-1"), names);
                 // 对账完成后本版的 schema 代数被写回, 此后更旧的插件版本连不上这个库
                 Document schema = client.getDatabase(TEST_DATABASE).getCollection("it_meta").find(new Document("_id", "schema")).first();
-                assertEquals(1, schema.getInteger("version"));
+                assertEquals(2, schema.getInteger("version"));
             } finally {
                 upgraded.shutdown();
+            }
+        }
+    }
+
+    @Test
+    void mapIndexesUpgradeTogetherAndKeepExistingRecordsAndSequence() {
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            var database = client.getDatabase(TEST_DATABASE);
+            String prefix = "upgrade_maps_";
+            var meta = database.getCollection(prefix + "meta");
+            var maps = database.getCollection(prefix + "maps");
+            meta.insertOne(new Document("_id", "schema").append("version", 1));
+            Document sequence = new Document("_id", "maps").append("sequence", 42L);
+            meta.insertOne(sequence);
+            Document oldMap = new Document("_id", -42).append("owner", "source").append("origin_id", 1);
+            maps.insertOne(oldMap);
+            maps.createIndex(Indexes.descending("owner"), new IndexOptions().name("map_source"));
+            maps.createIndex(Indexes.ascending("updated_at"), new IndexOptions().name("existing_time"));
+            maps.createIndex(Indexes.ascending("retired"));
+            var options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", prefix);
+            var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
+            try {
+                for (int i = 0; i < 2; i++) {
+                    upgraded.initialize();
+                    assertEquals(2, meta.find(new Document("_id", "schema")).first().getInteger("version"));
+                    assertEquals(sequence, meta.find(new Document("_id", "maps")).first());
+                    assertEquals(oldMap, maps.find().first());
+                    assertEquals(Set.of("_id_", "map_source", "existing_time"), Set.copyOf(maps.listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
+                    Document source = maps.listIndexes().into(new ArrayList<>()).stream().filter(index -> index.getString("name").equals("map_source")).findFirst().orElseThrow();
+                    assertEquals(new Document("owner", 1).append("origin_id", 1), source.get("key"));
+                    assertTrue(source.getBoolean("unique"));
+                    assertEquals(Set.of("_id_"), Set.copyOf(meta.listIndexes().map(index -> index.getString("name")).into(new ArrayList<>())));
+                    upgraded.shutdown();
+                }
+            } finally {
+                upgraded.shutdown();
+            }
+        }
+    }
+
+    @Test
+    void mapIndexOptionsAreReconciledEvenAtTheCurrentVersion() {
+        List<IndexOptions> variants = List.of(
+                new IndexOptions().sparse(true),
+                new IndexOptions().partialFilterExpression(new Document("owner", new Document("$exists", true))),
+                new IndexOptions().hidden(true),
+                new IndexOptions().collation(Collation.builder().locale("en").collationStrength(CollationStrength.SECONDARY).build())
+        );
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            var database = client.getDatabase(TEST_DATABASE);
+            for (int i = 0; i < variants.size(); i++) {
+                String prefix = "map_options_" + i + "_";
+                IndexReconciler.reconcile(this.logger, database, prefix);
+                var maps = database.getCollection(prefix + "maps");
+                maps.dropIndex("map_source");
+                maps.createIndex(Indexes.ascending("owner", "origin_id"), variants.get(i).unique(true).name("map_source"));
+                maps.dropIndex("map_updated_at");
+                maps.createIndex(Indexes.ascending("updated_at"), new IndexOptions().expireAfter(60L, TimeUnit.SECONDS).name("map_updated_at"));
+                IndexReconciler.reconcile(this.logger, database, prefix);
+                List<Document> indexes = maps.listIndexes().into(new ArrayList<>());
+                assertEquals(3, indexes.size());
+                for (Document index : indexes) {
+                    assertFalse(Boolean.TRUE.equals(index.getBoolean("sparse")));
+                    assertFalse(Boolean.TRUE.equals(index.getBoolean("hidden")));
+                    assertFalse(index.containsKey("partialFilterExpression"));
+                    assertFalse(index.containsKey("expireAfterSeconds"));
+                    assertFalse(index.containsKey("collation"));
+                }
+                assertEquals(2, database.getCollection(prefix + "meta").find(new Document("_id", "schema")).first().getInteger("version"));
+            }
+        }
+    }
+
+    @Test
+    void mapIndexesUseTheCollectionsDefaultCollation() {
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            var database = client.getDatabase(TEST_DATABASE);
+            String prefix = "map_collation_";
+            database.createCollection(prefix + "maps", new CreateCollectionOptions().collation(Collation.builder().locale("en").collationStrength(CollationStrength.SECONDARY).build()));
+            var maps = database.getCollection(prefix + "maps");
+            maps.createIndex(Indexes.ascending("owner", "origin_id"), new IndexOptions().unique(true).name("map_source").collation(Collation.builder().locale("simple").build()));
+            IndexReconciler.reconcile(this.logger, database, prefix);
+            List<Document> indexes = maps.listIndexes().into(new ArrayList<>());
+            Document expected = database.listCollections().filter(new Document("name", prefix + "maps")).first().get("options", Document.class).get("collation", Document.class);
+            for (Document index : indexes) {
+                assertEquals(expected, index.get("collation"));
+            }
+            IndexReconciler.reconcile(this.logger, database, prefix);
+            assertEquals(indexes, maps.listIndexes().into(new ArrayList<>()));
+        }
+    }
+
+    @Test
+    void failedMapIndexBuildKeepsThePreviousVersionAndCanResume() {
+        try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
+            var database = client.getDatabase(TEST_DATABASE);
+            for (int version = 0; version <= 1; version++) {
+                String prefix = "failed_maps_" + version + "_";
+                var meta = database.getCollection(prefix + "meta");
+                var maps = database.getCollection(prefix + "maps");
+                Document schema = version == 0 ? null : new Document("_id", "schema").append("version", version);
+                if (schema != null) {
+                    meta.insertOne(schema);
+                }
+                Document sequence = new Document("_id", "maps").append("sequence", 99L);
+                meta.insertOne(sequence);
+                maps.insertMany(List.of(new Document("_id", -1).append("owner", "same").append("origin_id", 1), new Document("_id", -2).append("owner", "same").append("origin_id", 1)));
+                var options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", prefix);
+                var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
+                try {
+                    assertThrows(IllegalStateException.class, upgraded::initialize);
+                    assertThrows(IllegalStateException.class, upgraded::maps);
+                    assertEquals(schema, meta.find(new Document("_id", "schema")).first());
+                    assertEquals(sequence, meta.find(new Document("_id", "maps")).first());
+                    assertEquals(2, maps.countDocuments());
+                    // 测试显式移除制造冲突的记录, 下一次启动重新完成索引对账.
+                    maps.deleteOne(new Document("_id", -2));
+                    upgraded.initialize();
+                    assertEquals(2, meta.find(new Document("_id", "schema")).first().getInteger("version"));
+                    assertEquals(sequence, meta.find(new Document("_id", "maps")).first());
+                    assertEquals(1, maps.countDocuments());
+                } finally {
+                    upgraded.shutdown();
+                }
             }
         }
     }
@@ -222,7 +349,12 @@ class MongoStorageProviderTest {
             DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
             MongoStorageProvider outdated = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
             try {
+                var maps = client.getDatabase(TEST_DATABASE).getCollection("it_maps");
+                maps.createIndex(Indexes.ascending("future_field"), new IndexOptions().name("future_map_index"));
+                List<Document> before = maps.listIndexes().into(new ArrayList<>());
                 assertThrows(IllegalStateException.class, outdated::initialize);
+                assertEquals(before, maps.listIndexes().into(new ArrayList<>()));
+                maps.dropIndex("future_map_index");
             } finally {
                 outdated.shutdown();
                 meta.deleteOne(new Document("_id", "schema"));

@@ -108,10 +108,9 @@ public final class MongoStorageProvider implements StorageProvider {
             this.mongoDatabase = this.mongoClient.getDatabase(this.options.database());
             this.mongoDatabase.runCommand(new Document("ping", 1));
             // 读取文档集合 & 建立索引
-            MongoCollection<Document> metaCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "meta");
             MongoCollection<Document> userCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "users");
             MongoCollection<Document> snapshotCollection = this.mongoDatabase.getCollection(this.options.collectionPrefix() + "snapshots");
-            IndexReconciler.reconcile(this.logger, metaCollection, userCollection, snapshotCollection);
+            IndexReconciler.reconcile(this.logger, this.mongoDatabase, this.options.collectionPrefix());
             MongoMapStorage mapStorage = new MongoMapStorage(this.mongoDatabase, this.options.collectionPrefix(), this.asyncExecutor);
             mapStorage.initialize();
             this.users = userCollection;

@@ -148,7 +148,6 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;
         if (settings.saveBeforeDeath()) this.sessions.captureNowAndSave(session, player, SaveCause.PRE_DEATH);
-        // todo 这里需要强硬手段 把任务用handle压到后面去.
         if (settings.saveAfterDeath()) {
             this.plugin.scheduler().entity().run(player, () -> {
                 if (player.isDead()) this.sessions.captureNowAndSave(session, player, SaveCause.DEATH);

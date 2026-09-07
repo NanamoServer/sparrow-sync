@@ -9,6 +9,8 @@ import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.plugin.logger.JavaPluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.bson.Document;
 import org.bson.types.Binary;
 import org.junit.jupiter.api.AfterAll;
@@ -25,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Logger;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Updates.*;
@@ -32,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MongoMapStorageTest {
+    private final SyncLogger logger = new SyncLogger(new JavaPluginLogger(Logger.getAnonymousLogger()));
     private MongoClient client;
     private MongoDatabase database;
     private ExecutorService executor;
@@ -55,6 +59,7 @@ class MongoMapStorageTest {
     }
 
     private MongoMapStorage storage(String prefix) {
+        IndexReconciler.reconcile(this.logger, this.database, prefix);
         MongoMapStorage result = new MongoMapStorage(this.database, prefix, this.executor);
         result.initialize();
         return result;
@@ -118,6 +123,7 @@ class MongoMapStorageTest {
     void separatesDatabasesWithTheSameCollectionPrefix() {
         MongoDatabase otherDatabase = this.client.getDatabase(this.database.getName() + "_other");
         try {
+            IndexReconciler.reconcile(this.logger, otherDatabase, this.prefix);
             MongoMapStorage other = new MongoMapStorage(otherDatabase, this.prefix, this.executor);
             other.initialize();
             StoredMap stored = this.source.register(new MapSource("A", 0), data(1)).join();
