@@ -1,11 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
-import net.minecraft.core.NonNullList;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.ItemContainerContents;
-import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.CompoundTag;
@@ -61,6 +56,7 @@ import java.util.UUID;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntFunction;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -203,7 +199,7 @@ class CaptureSchedulingTest {
             public MapType type() { return MapType.SYNC; }
             @Override
             @NotNull
-            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> captured) {
                 if (origin.id() == 1) return firstMap;
                 CompoundTag result = components.copy();
                 result.putInt("minecraft:map_id", -2);
@@ -319,23 +315,11 @@ class CaptureSchedulingTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"SYNC", "ASYNC", "OFFLINE"})
-    void mapsScanOnExistingWorkerBeforeEncodingAndKeepRequestMode(String mode) throws Exception {
+    void mapsRunAfterEncodingOnExistingWorkerAndKeepRequestMode(String mode) throws Exception {
         SyncLogger logger = NmsPlayerFixture.allocate(SyncLogger.class);
-        AtomicReference<Thread> scannedOn = new AtomicReference<>();
+        AtomicReference<Thread> processedOn = new AtomicReference<>();
         AtomicReference<Thread> capturedOn = new AtomicReference<>();
-        BukkitProxy.init("1.21.8", List.of("paper"));
-        ItemStack item = new ItemStack(Items.STONE);
-        ItemContainerContents contents = ItemContainerContents.fromItems(List.of(new ItemStack(Items.STONE)));
-        NonNullList<ItemStack> nested = new NonNullList<>(List.of(new ItemStack(Items.STONE)), ItemStack.EMPTY) {
-            @Override
-            public ItemStack get(int index) {
-                scannedOn.set(Thread.currentThread());
-                return super.get(index);
-            }
-        };
-        NmsPlayerFixture.set(ItemContainerContents.class, contents, "items", nested);
-        item.set(DataComponents.CONTAINER, contents);
-        scannedOn.set(null);
+        AtomicReference<Thread> encodedOn = new AtomicReference<>();
         DataRegistry registry = new DataRegistry();
         registry.register(new PlayerDataType<InventoryDataType.Inventory>() {
             @Override
@@ -346,15 +330,23 @@ class CaptureSchedulingTest {
             @NotNull
             public InventoryDataType.Inventory capture(@NotNull Player player, @NotNull CaptureMode captureMode) {
                 capturedOn.set(Thread.currentThread());
-                return new InventoryDataType.Inventory(new ItemStack[]{item}, 0, 0);
+                return new InventoryDataType.Inventory(new ItemStack[0], 0, 0);
             }
 
             @Override
             @NotNull
             public Tag encode(@NotNull InventoryDataType.Inventory value) {
-                assertSame(CaptureSchedulingTest.this.worker.get(), scannedOn.get());
+                assertNull(processedOn.get());
+                encodedOn.set(Thread.currentThread());
                 CompoundTag tag = NBT.createCompound();
-                tag.put("items", NBT.createList());
+                CompoundTag item = NBT.createCompound();
+                item.putString("id", "minecraft:filled_map");
+                CompoundTag components = NBT.createCompound();
+                components.putInt("minecraft:map_id", 1);
+                item.put("components", components);
+                var items = NBT.createList();
+                items.add(item);
+                tag.put("items", items);
                 return tag;
             }
 
@@ -372,7 +364,23 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(SnapshotService.class, this.service, "playerDataPipeline", pipeline);
         MapSyncService maps = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, maps, "ownerId", "A-world");
-        NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", new MapPipeline(registry, List.of(), logger));
+        MapHandler handler = new MapHandler() {
+            @Override
+            @NotNull
+            public MapType type() { return MapType.SYNC; }
+            @Override
+            @NotNull
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> publish) {
+                assertSame(CaptureSchedulingTest.this.worker.get(), encodedOn.get());
+                assertEquals(MapType.SYNC, origin.type());
+                processedOn.set(Thread.currentThread());
+                return CompletableFuture.completedFuture(components);
+            }
+            @Override
+            @NotNull
+            public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String owner) { throw new AssertionError(); }
+        };
+        NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", new MapPipeline(registry, List.of(handler), logger));
         NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", maps);
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         switch (CaptureMode.valueOf(mode)) {
@@ -380,7 +388,7 @@ class CaptureSchedulingTest {
             case ASYNC -> this.service.captureLaterAndSave(this.player, SaveCause.WORLD_SAVE, Map.of());
             case OFFLINE -> this.service.captureOfflineAndSave(this.player, SaveCause.DISCONNECT, Map.of());
         }
-        assertNull(scannedOn.get());
+        assertNull(processedOn.get());
         if (mode.equals("OFFLINE")) {
             assertNull(capturedOn.get());
         } else {
@@ -389,7 +397,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
         this.releaseWorker.countDown();
         assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
-        assertSame(this.worker.get(), scannedOn.get());
+        assertSame(this.worker.get(), processedOn.get());
         assertEquals(1, this.written.size());
         if (mode.equals("OFFLINE")) assertSame(this.worker.get(), capturedOn.get());
     }

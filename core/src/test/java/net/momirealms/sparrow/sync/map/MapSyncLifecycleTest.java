@@ -74,7 +74,7 @@ class MapSyncLifecycleTest {
         CompoundTag inventory = NBT.createCompound();
         inventory.put("items", items);
         Snapshot original = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.SHUTDOWN, false, "A", 4440), Map.of(InventoryDataType.INVENTORY, inventory));
-        CompletableFuture<Snapshot> compiling = maps.compileAsync(original, new MapSyncService.Capture(MapType.SYNC, Map.of(1, publication)));
+        CompletableFuture<Snapshot> compiling = pipeline.encodeAsync(original, MapType.SYNC, "A-world", nativeId -> publication);
         assertFalse(compiling.isDone());
         if (publishedInTime) {
             worker.runAll();

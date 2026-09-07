@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
 
 @ApiStatus.Internal
@@ -65,7 +66,16 @@ public final class MapPipeline {
 
     // 等待地图发布获取到全局唯一ID后生成传输快照.
     @NotNull
-    public CompletableFuture<Snapshot> encodeAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
+    public CompletableFuture<Snapshot> encodeAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull IntFunction<CompletableFuture<StoredMap>> publish) {
+        Map<Integer, CompletableFuture<StoredMap>> publications = new HashMap<>();
+        // 同次保存的来源地图只采集发布一次, 失败结果也由各件物品共用并独立回退.
+        IntFunction<CompletableFuture<StoredMap>> publishOnce = id -> publications.computeIfAbsent(id, nativeId -> {
+            try {
+                return publish.apply(nativeId);
+            } catch (RuntimeException exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        });
         Map<Integer, CompletableFuture<Boolean>> renewals = new HashMap<>();
         return this.rewriteAsync(snapshot, components -> {
             // 已有模式的中转地图交给其处理器续行
@@ -77,7 +87,7 @@ public final class MapPipeline {
             Tag mapId = components.get(MAP_ID);
             if (mapId == null) return CompletableFuture.completedFuture(components);
             return this.handler(type)
-                    .compileAsync(components, new MapOrigin(type, ownerId, ((IntTag) mapId).getAsInt()), publications)
+                    .compileAsync(components, new MapOrigin(type, ownerId, ((IntTag) mapId).getAsInt()), publishOnce)
                     .thenApply(compiled -> {
                         // 在处理器成功后写入地图来源字段, 保留同命名空间的其他业务字段.
                         CompoundTag origin = marker == null ? NBT.createCompound() : new CompoundTag(new HashMap<>(marker.tags));

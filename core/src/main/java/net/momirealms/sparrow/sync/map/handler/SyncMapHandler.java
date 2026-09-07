@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntFunction;
 
 public final class SyncMapHandler implements MapHandler {
     private final MapReceiver receiver;
@@ -28,9 +29,8 @@ public final class SyncMapHandler implements MapHandler {
 
     @Override
     @NotNull
-    public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications) {
-        CompletableFuture<StoredMap> publication = publications.get(origin.id());
-        if (publication == null) return CompletableFuture.failedFuture(new IllegalStateException("no source map publication for " + origin));
+    public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> publish) {
+        CompletableFuture<StoredMap> publication = publish.apply(origin.id());
         // 发布 Future 完成后才写负数引用, 接收服此时已经能查到对应记录
         return publication.thenApply(map -> {
             if (!map.identity().source().equals(new MapSource(origin.ownerId(), origin.id()))) {

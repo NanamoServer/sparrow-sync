@@ -20,11 +20,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -42,7 +40,6 @@ public final class MapReceiver {
     private final SyncLogger logger;
     private final ConcurrentHashMap<Integer, Tracked> tracked = new ConcurrentHashMap<>(); // 已登记接收更新的全局地图 ID, 登记后持续保留条目
     private final Map<Integer, Flight> receiveTasks = new HashMap<>(); // 同图共享任务; 此监视器也保护失效状态与最终更新
-    private final Set<Integer> databaseReads = new HashSet<>(); // 下次读取必须跳过两层缓存的全局 ID, 由 flights 监视器保护
     private final Cache<Integer, StoredMap> localCache = Caffeine.newBuilder().maximumSize(1024).expireAfterWrite(Duration.ofMinutes(5)).build(); // 至多 1024 张, 写入后 5 分钟过期, 读取命中不会推迟到期
     private volatile boolean closed;
 
@@ -100,17 +97,9 @@ public final class MapReceiver {
 
     // 使指定地图的本地缓存过期, 正在读取的任务在更新前补拉.
     public void invalidate(int globalId) {
-        this.invalidate(globalId, false);
-    }
-
-    // 使指定地图重新读取, 并按需要强制核对数据库.
-    public void invalidate(int globalId, boolean database) {
         synchronized (this.receiveTasks) {
             if (this.closed) return;
             this.localCache.invalidate(globalId);
-            if (database) {
-                this.databaseReads.add(globalId);
-            }
             Flight flight = this.receiveTasks.get(globalId);
             if (flight != null) {
                 flight.invalidated = true;
@@ -126,7 +115,6 @@ public final class MapReceiver {
             this.tracked.clear();
             abandoned = new ArrayList<>(this.receiveTasks.values());
             this.receiveTasks.clear();
-            this.databaseReads.clear();
             this.localCache.invalidateAll();
         }
         for (Flight flight : abandoned) {
@@ -143,17 +131,15 @@ public final class MapReceiver {
 
     /**
      * 读取当前任务的一轮内容并完成准备与更新.
-     * <p><strong>发起调用时必须持有 flights 监视器</strong>, 后续回调在各自执行器运行.
+     * <p><strong>发起调用时必须持有 receiveTasks 监视器</strong>, 后续回调在各自执行器运行.
      *
-     * @param flight 仍登记在 flights 中的共享任务
+     * @param flight 仍登记在 receiveTasks 中的共享任务
      */
     private void read(Flight flight) {
         int id = flight.globalId;
-        boolean database = this.databaseReads.remove(id);
         StoredMap cached = this.localCache.getIfPresent(id);
         CompletableFuture<Optional<StoredMap>> read = CompletableFuture.completedFuture(cached).thenComposeAsync(value -> {
             if (this.closed || flight.result.isDone()) return CompletableFuture.failedFuture(new CancellationException("map read ended"));
-            if (database) return this.storage.find(id);
             if (value != null) return CompletableFuture.completedFuture(Optional.of(value));
             return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.redisCache.find(id)).exceptionally(failure -> {
                 this.logger.warnWithFileCause(LogCategory.DATA, null, null, failure, LogConstants.DATA_MAP_CACHE_FAILED, String.valueOf(id), String.valueOf(failure.getMessage()));
@@ -191,8 +177,8 @@ public final class MapReceiver {
                         }
                         // 检查后到更新结束期间不接受失效穿插, 迟到旧结果不能写入本服 Caffeine 地图缓存或更新本服 NMS 地图数据.
                         localId = this.updateLocalMap(prepared.map, prepared.nativeData);
-                        // 缓存命中的重复更新沿用原到期时间, 强制数据库校验会更新缓存内容
-                        if (cached == null || database) {
+                        // 缓存命中的重复更新沿用原到期时间, 失效后读取的内容重新入缓存
+                        if (cached == null) {
                             this.localCache.put(id, prepared.map);
                         }
                         this.receiveTasks.remove(id, flight);
@@ -248,14 +234,14 @@ public final class MapReceiver {
         return identity.globalId();
     }
 
-    // 首次发送负数 ID 地图数据时登记该地图, 按全局地图 ID 查询数据库中的地图同步标识与内容.
+    // 首次发送负数 ID 地图数据时登记该地图, 按全局地图 ID 从缓存或数据库取得地图同步标识与内容.
     public void observe(int globalId) {
         if (this.closed || globalId >= 0 || this.tracked.containsKey(globalId)) return;
         Tracked entry = new Tracked();
         if (this.tracked.putIfAbsent(globalId, entry) != null) return;
         // 在发包回调中登记首见 ID, 接收流程交给异步线程发起.
         try {
-            SparrowSync.instance().scheduler().async().execute(() -> this.refresh(globalId, entry, true));
+            SparrowSync.instance().scheduler().async().execute(() -> this.refresh(globalId, entry));
         } catch (RejectedExecutionException exception) {
             if (!this.closed) {
                 this.failed(globalId, entry, exception);
@@ -269,17 +255,13 @@ public final class MapReceiver {
         this.invalidate(globalId);
         Tracked entry = this.tracked.get(globalId);
         if (entry != null) {
-            this.refresh(globalId, entry, false);
+            this.refresh(globalId, entry);
         }
     }
 
     // 已登记副本的刷新沿用同图接收任务, 成功后结束本轮连续故障告警.
-    private void refresh(int id, Tracked entry, boolean database) {
+    private void refresh(int id, Tracked entry) {
         if (this.closed) return;
-        // 先标记强制读库, 已有接收任务也会在更新前按此要求补拉.
-        if (database) {
-            this.invalidate(id, true);
-        }
         this.receive(id).whenComplete((localId, failure) -> {
             if (this.closed) return;
             if (failure == null) {
@@ -313,9 +295,9 @@ public final class MapReceiver {
      */
     private static final class Flight {
         private final int globalId;
-        private @Nullable MapIdentity expectedIdentity; // 物品请求附带的来源, 运行时单独读取时为空, 由 flights 监视器保护
+        private @Nullable MapIdentity expectedIdentity; // 物品请求附带的来源, 运行时单独读取时为空, 由 receiveTasks 监视器保护
         private final CompletableFuture<Integer> result = new CompletableFuture<>(); // 等待者共用的最终本服 ID, 包含 5 秒超时
-        private boolean invalidated; // 本轮读取开始后收到过通知, 由 flights 监视器保护
+        private boolean invalidated; // 本轮读取开始后收到过通知, 由 receiveTasks 监视器保护
 
         /**
          * 为一张地图建立可共享的接收任务.

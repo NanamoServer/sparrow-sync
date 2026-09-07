@@ -144,16 +144,16 @@ public final class SnapshotService {
                 });
     }
 
-    // 与物品编码在同一玩家串行任务中执行, 不重新读取玩家或回到玩家线程.
-    @Nullable
-    private MapSyncService.Capture captureAndPublishMaps(PlayerDataPipeline.CaptureResult.Ready captured, SaveContext context) {
+    // 在物品编码完成后处理地图, 采集与发布仍由同一玩家串行任务发起.
+    @NotNull
+    private CompletableFuture<Snapshot> encodeMaps(Snapshot snapshot, SaveContext context) {
         MapSyncService maps = this.mapSync;
-        if (maps == null || context.mapType() == null) return null;
+        if (maps == null || context.mapType() == null) return CompletableFuture.completedFuture(snapshot);
         try {
-            return maps.captureAndPublish(captured, context.mapType());
+            return maps.compileAsync(snapshot, context.mapType());
         } catch (RuntimeException exception) {
             this.logger.warnWithFileCause(LogCategory.DATA, context.meta().player(), context.playerName(), exception, LogConstants.DATA_MAP_COMPILE_FAILED, context.playerName(), context.meta().id().toString(), String.valueOf(exception.getMessage()));
-            return null;
+            return CompletableFuture.completedFuture(snapshot);
         }
     }
 
@@ -238,7 +238,6 @@ public final class SnapshotService {
 
     // 编码独立玩家数据, 等待地图物品编码后按同一玩家的保存顺序提交快照.
     private void encodeAndSubmit(SaveContext context, PlayerDataPipeline.CaptureResult.Ready captured, SaveRequest request) {
-        MapSyncService.Capture maps = this.captureAndPublishMaps(captured, context);
         if (!(this.playerDataPipeline.encode(captured) instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
             request.fail(new IllegalStateException("critical data of " + context.playerName() + " could not be encoded"));
             return;
@@ -246,11 +245,11 @@ public final class SnapshotService {
         Snapshot snapshot = new Snapshot(context.meta(), mergeData(context.retainedData(), encoded.data()));
         // 地图等待闭包只持有耗时值, 采集对象的生命周期在本次编码任务内结束.
         long captureNanos = captured.captureNanos();
-        if (maps == null) {
+        if (context.mapType() == null) {
             this.writePrepared(context, snapshot, captureNanos, request);
             return;
         }
-        CompletableFuture<Snapshot> prepared = this.mapSync.compileAsync(snapshot, maps);
+        CompletableFuture<Snapshot> prepared = this.encodeMaps(snapshot, context);
         // 记录尚未交给写入器的原快照, 地图等待超出关服期限时仍有可暂存内容
         this.pendingMapSnapshots.put(request, new PendingMapSnapshot(snapshot, context.playerName()));
         // 地图准备允许并行, 同一玩家提交快照仍沿 encode 的先后顺序衔接, 不阻塞桶内其他玩家.

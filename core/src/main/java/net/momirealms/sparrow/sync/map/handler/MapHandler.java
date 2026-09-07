@@ -8,15 +8,16 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntFunction;
 
 @ApiStatus.Internal
 public interface MapHandler {
     @NotNull
     MapType type();
 
-    /** 等待模式所需的数据准备后编码本服的来源地图物品. <strong>输入只读, 来源标记由管线写入</strong>. */
+    /** 编码本服来源地图物品, 所需内容通过 publish 取得并在本次编码中按 ID 共享. <strong>输入只读, 来源标记由管线写入</strong>. */
     @NotNull
-    CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> publications);
+    CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> publish);
 
     /** 等待接收数据就绪后生成本服组件. <strong>输入只读, 实际恢复来源地图 ID 后由管线清理来源标记</strong>. */
     @NotNull

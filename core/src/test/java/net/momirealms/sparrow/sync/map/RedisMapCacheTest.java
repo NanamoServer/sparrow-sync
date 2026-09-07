@@ -106,7 +106,7 @@ class RedisMapCacheTest {
         });
         MapPublisher publisher = new MapPublisher(storage, this.source, "A-world", ForkJoinPool.commonPool());
         try {
-            receiver.invalidate(-1, true);
+            this.connector.connection().sync().del(this.key(-1));
             receiver.receive(MapFlowTestSupport.IDENTITY).get(3, TimeUnit.SECONDS);
             NmsPlayerFixture.set(MapItemSavedData.class, nativeMaps.replica, "dimension", Level.OVERWORLD);
             nativeMaps.replica.setDirty(false);

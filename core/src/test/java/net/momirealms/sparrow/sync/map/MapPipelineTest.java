@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntFunction;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -70,7 +71,7 @@ class MapPipelineTest {
             }
         };
         Snapshot original = snapshot(item);
-        CompletableFuture<Snapshot> compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, Map.of());
+        CompletableFuture<Snapshot> compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); });
         assertTrue(compiled.isDone());
         assertSame(original, compiled.join());
         assertEquals(1, visits[0]);
@@ -86,14 +87,14 @@ class MapPipelineTest {
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
         CompletableFuture<StoredMap> published = new CompletableFuture<>();
-        CompletableFuture<Snapshot> waiting = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+        CompletableFuture<Snapshot> waiting = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, published).get(nativeMapId));
         assertFalse(waiting.isDone());
         assertEquals(7, components(original).getInt("minecraft:map_id"));
         published.complete(new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
         Snapshot compiled = waiting.join();
         assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
         assertEquals("SYNC", marker(compiled).getString("map-type"));
-        assertSame(compiled, pipeline.encodeAsync(compiled, MapType.HIDE, "B", Map.of()).join());
+        assertSame(compiled, pipeline.encodeAsync(compiled, MapType.HIDE, "B", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
         assertEquals(1, shared.touches);
         assertEquals(0, storage.registrations);
         assertTrue(shared.writes.isEmpty());
@@ -128,7 +129,7 @@ class MapPipelineTest {
         CompoundTag inventory = NBT.createCompound();
         inventory.put("items", list(first, bundle));
         Snapshot original = new Snapshot(meta("B"), Map.of(InventoryDataType.INVENTORY, inventory));
-        CompletableFuture<Snapshot> result = pipeline.encodeAsync(original, MapType.HIDE, "B-world", Map.of());
+        CompletableFuture<Snapshot> result = pipeline.encodeAsync(original, MapType.HIDE, "B-world", nativeMapId -> { throw new AssertionError("unexpected source publication"); });
         assertEquals(List.of(-1, -2), renewed);
         if (!pending.isEmpty()) {
             assertFalse(result.isDone());
@@ -138,10 +139,50 @@ class MapPipelineTest {
         assertEquals("first", first.getCompound("components").getString("minecraft:custom_name"));
         assertEquals("second", second.getCompound("components").getString("minecraft:custom_name"));
         assertEquals(outcome.startsWith("failed") || outcome.equals("throw") ? 2 : 0, warnings.size());
-        CompletableFuture<Snapshot> next = pipeline.encodeAsync(original, MapType.HIDE, "B-world", Map.of());
+        CompletableFuture<Snapshot> next = pipeline.encodeAsync(original, MapType.HIDE, "B-world", nativeMapId -> { throw new AssertionError("unexpected source publication"); });
         assertEquals(List.of(-1, -2, -1, -2), renewed);
         if (pending.size() == 2) pending.getLast().complete(true);
         assertSame(original, next.join());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"success", "failed-future", "throw"})
+    void sourceCopiesShareOnePublicationPerEncodingAndKeepIndependentFallbacks(String outcome) {
+        List<Integer> sampled = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        MapReceiver receiver = this.nativeMaps.receiver(new MapFlowTestSupport.Storage(), new MapFlowTestSupport.Shared(), OWNER, Runnable::run, Runnable::run, LOGGER);
+        MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), MapFlowTestSupport.logger(warnings));
+        CompoundTag first = map(7);
+        CompoundTag second = map(7);
+        first.getCompound("components").putString("minecraft:custom_name", "first");
+        second.getCompound("components").putString("minecraft:custom_name", "second");
+        CompoundTag bundle = item("minecraft:bundle");
+        bundle.getCompound("components").put("minecraft:bundle_contents", list(second, map(8)));
+        CompoundTag inventory = NBT.createCompound();
+        inventory.put("items", list(first, bundle));
+        Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
+        IntFunction<CompletableFuture<StoredMap>> publish = id -> {
+            sampled.add(id);
+            if (id == 7 && outcome.equals("throw")) throw new IllegalStateException("capture failed");
+            if (id == 7 && outcome.equals("failed-future")) return CompletableFuture.failedFuture(new IllegalStateException("publish failed"));
+            return CompletableFuture.completedFuture(new StoredMap(new MapIdentity(new MapSource(OWNER, id), id == 7 ? -1 : -2), MapFlowTestSupport.map(5).data()));
+        };
+        for (int i = 0; i < 2; i++) {
+            Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, publish).join();
+            ListTag contents = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
+            CompoundTag a = contents.getCompound(0).getCompound("components");
+            ListTag nested = contents.getCompound(1).getCompound("components").getList("minecraft:bundle_contents");
+            CompoundTag b = nested.getCompound(0).getCompound("components");
+            assertEquals(outcome.equals("success") ? -1 : 7, a.getInt("minecraft:map_id"));
+            assertEquals(a.getInt("minecraft:map_id"), b.getInt("minecraft:map_id"));
+            assertEquals("first", a.getString("minecraft:custom_name"));
+            assertEquals("second", b.getString("minecraft:custom_name"));
+            assertEquals(-2, nested.getCompound(1).getCompound("components").getInt("minecraft:map_id"));
+            assertEquals(7, first.getCompound("components").getInt("minecraft:map_id"));
+        }
+        assertEquals(List.of(7, 8, 7, 8), sampled);
+        assertEquals(outcome.equals("success") ? 0 : 4, warnings.size());
+        receiver.close();
     }
 
     private CompoundTag transitMap(int globalId, int sourceId, String name) {
@@ -166,7 +207,7 @@ class MapPipelineTest {
         MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, nativeThread, LOGGER);
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
-        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, CompletableFuture.completedFuture(storage.current)).get(nativeMapId)).join();
         CompletableFuture<Snapshot> waiting = pipeline.decodeAsync(compiled, OWNER);
         assertFalse(waiting.isDone());
         nativeThread.runAll();
@@ -189,7 +230,7 @@ class MapPipelineTest {
         inventory.put("items", items);
         Snapshot snapshot = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
         StoredMap success = new StoredMap(new MapIdentity(new MapSource(OWNER, 8), -2), MapFlowTestSupport.map(4).data());
-        Snapshot compiled = pipeline.encodeAsync(snapshot, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.failedFuture(new IllegalStateException("database unavailable")), 8, CompletableFuture.completedFuture(success))).join();
+        Snapshot compiled = pipeline.encodeAsync(snapshot, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, CompletableFuture.failedFuture(new IllegalStateException("database unavailable")), 8, CompletableFuture.completedFuture(success)).get(nativeMapId)).join();
         ListTag result = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
         assertSame(items.get(0), result.get(0));
         assertEquals(-2, result.getCompound(1).getCompound("components").getInt("minecraft:map_id"));
@@ -202,7 +243,7 @@ class MapPipelineTest {
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
         CompletableFuture<StoredMap> storage = new CompletableFuture<>();
-        assertSame(original, pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, storage)).get(7, TimeUnit.SECONDS));
+        assertSame(original, pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, storage).get(nativeMapId)).get(7, TimeUnit.SECONDS));
         assertFalse(storage.isDone());
         storage.complete(new StoredMap(new MapIdentity(new MapSource(OWNER, 7), -1), MapFlowTestSupport.map(5).data()));
         assertEquals(7, components(original).getInt("minecraft:map_id"));
@@ -222,17 +263,17 @@ class MapPipelineTest {
 
         for (int i = 0; i < 5; i++) {
             Snapshot empty = new Snapshot(meta("A"), Map.of());
-            assertSame(empty, pipeline.encodeAsync(empty, MapType.HIDE, OWNER, Map.of()).join());
+            assertSame(empty, pipeline.encodeAsync(empty, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
             assertSame(empty, pipeline.decodeAsync(empty, OWNER).join());
             assertEquals(0, closed.getNumberOfDependents());
 
             Snapshot original = snapshot(map(7));
-            Snapshot hidden = pipeline.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+            Snapshot hidden = pipeline.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
             assertEquals(original.data(), pipeline.decodeAsync(hidden, OWNER).join().data());
             assertEquals(0, closed.getNumberOfDependents());
 
             CompletableFuture<StoredMap> published = new CompletableFuture<>();
-            CompletableFuture<Snapshot> compiling = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+            CompletableFuture<Snapshot> compiling = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, published).get(nativeMapId));
             assertFalse(compiling.isDone());
             assertTrue(closed.getNumberOfDependents() > 0);
             published.complete(storage.current);
@@ -258,9 +299,9 @@ class MapPipelineTest {
         MapReceiver receiver = this.nativeMaps.receiver(storage, new MapFlowTestSupport.Shared(), OWNER, Runnable::run, nativeThread, LOGGER);
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), LOGGER);
         Snapshot original = snapshot(map(7));
-        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, CompletableFuture.completedFuture(storage.current)).get(nativeMapId)).join();
         CompletableFuture<StoredMap> published = new CompletableFuture<>();
-        CompletableFuture<Snapshot> compiling = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of(7, published));
+        CompletableFuture<Snapshot> compiling = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, published).get(nativeMapId));
         CompletableFuture<Snapshot> decoding = pipeline.decodeAsync(compiled, OWNER);
         CompletableFuture<Integer> received = receiver.receive(storage.current.identity());
         assertFalse(compiling.isDone());
@@ -271,7 +312,7 @@ class MapPipelineTest {
         assertSame(compiled, decoding.getNow(null));
         assertFalse(published.isDone());
         assertFalse(received.isDone());
-        assertSame(original, pipeline.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).getNow(null));
+        assertSame(original, pipeline.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).getNow(null));
         assertSame(compiled, pipeline.decodeAsync(compiled, OWNER).getNow(null));
 
         published.complete(storage.current);
@@ -285,7 +326,7 @@ class MapPipelineTest {
     @Test
     void unregisteredSyncModePassesThroughWithoutHalfEncoding() {
         Snapshot original = snapshot(map(7));
-        assertSame(original, PIPELINE.encodeAsync(original, MapType.SYNC, OWNER, Map.of()).join());
+        assertSame(original, PIPELINE.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
     }
 
     @Test
@@ -298,7 +339,7 @@ class MapPipelineTest {
             }
 
             @Override
-            public @NonNull CompletableFuture<CompoundTag> compileAsync(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+            public @NonNull CompletableFuture<CompoundTag> compileAsync(@NonNull CompoundTag components, @NonNull MapOrigin origin, @NonNull IntFunction<CompletableFuture<StoredMap>> captured) {
                 CompoundTag result = components.copy();
                 result.putInt("minecraft:map_id", -1);
                 return CompletableFuture.completedFuture(result);
@@ -311,7 +352,7 @@ class MapPipelineTest {
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
         Snapshot original = snapshot(map(7));
-        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, Map.of()).join();
+        Snapshot compiled = pipeline.encodeAsync(original, MapType.SYNC, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot missing = pipeline.decodeAsync(compiled, OWNER).join();
         assertEquals(-1, components(missing).getInt("minecraft:map_id"));
         assertEquals(OWNER, marker(missing).getString("origin-server"));
@@ -321,9 +362,9 @@ class MapPipelineTest {
 
     @Test
     void existingOriginIsNotRecompiledByAnotherServer() {
-        Snapshot compiled = PIPELINE.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = PIPELINE.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         assertSame(compiled, PIPELINE.decodeAsync(compiled, "B-world-2").join());
-        assertSame(compiled, PIPELINE.encodeAsync(compiled, MapType.HIDE, "B-world-2", Map.of()).join());
+        assertSame(compiled, PIPELINE.encodeAsync(compiled, MapType.HIDE, "B-world-2", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
         assertEquals(OWNER, marker(compiled).getString("origin-server"));
     }
 
@@ -331,7 +372,7 @@ class MapPipelineTest {
     void hideCompilesMapZeroIntoTheSpecifiedSchemaAndLeavesTheSourceUnchanged() {
         Snapshot original = snapshot(map(0));
         CompoundTag expected = firstItem(original).copy();
-        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
 
         assertFalse(components(compiled).containsKey("minecraft:map_id"));
         assertEquals(3, marker(compiled).size());
@@ -345,10 +386,10 @@ class MapPipelineTest {
     @Test
     void hiddenMapsKeepTheirOwnerAcrossHopsAndRemainHiddenAfterAWorldReset() {
         Snapshot original = snapshot(map(42));
-        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot inB = PIPELINE.decodeAsync(compiled, "B-world-2").join();
         Snapshot savedByB = new Snapshot(meta("B"), inB.data());
-        Snapshot inC = PIPELINE.encodeAsync(savedByB, MapType.HIDE, "B-world-2", Map.of()).join();
+        Snapshot inC = PIPELINE.encodeAsync(savedByB, MapType.HIDE, "B-world-2", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
 
         assertSame(savedByB, inC);
         assertSame(inC, PIPELINE.decodeAsync(inC, "C-world-3").join());
@@ -376,7 +417,7 @@ class MapPipelineTest {
         Snapshot original = snapshot(item);
 
         for (MapType type : MapType.values()) {
-            Snapshot compiled = pipeline.encodeAsync(original, type, OWNER, Map.of(7, CompletableFuture.completedFuture(storage.current))).join();
+            Snapshot compiled = pipeline.encodeAsync(original, type, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, CompletableFuture.completedFuture(storage.current)).get(nativeMapId)).join();
             assertEquals(type.name(), marker(compiled).getString("map-type"));
             assertEquals(original.data(), pipeline.decodeAsync(compiled, OWNER).join().data());
         }
@@ -399,7 +440,7 @@ class MapPipelineTest {
         contents.put("items", list(box, crossbow, food));
         Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, contents, EnderChestDataType.ENDER_CHEST, contents));
 
-        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         for (Tag value : compiled.data().values()) {
             ListTag items = ((CompoundTag) value).getList("items");
             CompoundTag hiddenBundle = items.getCompound(0).getCompound("components").getList("minecraft:container").getCompound(0).getCompound("item");
@@ -414,16 +455,16 @@ class MapPipelineTest {
     void disabledTypesAndItemLikeCustomDataAreNotCompiled() {
         Snapshot original = snapshot(map(7));
         MapPipeline disabled = new MapPipeline(new DataRegistry(), List.of(new HideMapHandler()), LOGGER);
-        assertSame(original, disabled.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join());
+        assertSame(original, disabled.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
         Snapshot unknown = new Snapshot(meta("A"), Map.of(DataKey.of("other", "inventory"), original.data(InventoryDataType.INVENTORY)));
-        assertSame(unknown, PIPELINE.encodeAsync(unknown, MapType.HIDE, OWNER, Map.of()).join());
+        assertSame(unknown, PIPELINE.encodeAsync(unknown, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
 
         CompoundTag stone = item("minecraft:stone");
         CompoundTag custom = NBT.createCompound();
         custom.put("display_example", map(7));
         stone.getCompound("components").put("minecraft:custom_data", custom);
         Snapshot customSnapshot = snapshot(stone);
-        assertSame(customSnapshot, PIPELINE.encodeAsync(customSnapshot, MapType.HIDE, OWNER, Map.of()).join());
+        assertSame(customSnapshot, PIPELINE.encodeAsync(customSnapshot, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
     }
 
     @Test
@@ -431,13 +472,13 @@ class MapPipelineTest {
         Snapshot original = snapshot(map(7));
         assertSame(original, PIPELINE.decodeAsync(original, "B-world-2").join());
         Snapshot idless = snapshot(item("minecraft:filled_map"));
-        assertSame(idless, PIPELINE.encodeAsync(idless, MapType.HIDE, OWNER, Map.of()).join());
+        assertSame(idless, PIPELINE.encodeAsync(idless, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join());
         assertSame(idless, PIPELINE.decodeAsync(idless, OWNER).join());
     }
 
     @Test
     void malformedOriginMetadataKeepsTheOriginalMap() {
-        Snapshot compiled = PIPELINE.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = PIPELINE.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         CompoundTag brokenItem = firstItem(compiled).copy();
         brokenItem.getCompound("components").getCompound("minecraft:custom_data").getCompound("sparrow-sync").remove("origin-id");
         Snapshot broken = snapshot(brokenItem);
@@ -456,7 +497,7 @@ class MapPipelineTest {
 
             @Override
             @NotNull
-            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> captured) {
                 calls[0]++;
                 assertEquals(new MapOrigin(MapType.HIDE, OWNER, 7), origin);
                 return new HideMapHandler().compileAsync(components, origin, captured);
@@ -472,8 +513,8 @@ class MapPipelineTest {
             }
         };
         MapPipeline pipeline = new MapPipeline(REGISTRY, List.of(handler), LOGGER);
-        Snapshot compiled = pipeline.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, Map.of()).join();
-        pipeline.encodeAsync(compiled, MapType.HIDE, OWNER, Map.of()).join();
+        Snapshot compiled = pipeline.encodeAsync(snapshot(map(7)), MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
+        pipeline.encodeAsync(compiled, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         pipeline.decodeAsync(compiled, "B-world-2").join();
         assertArrayEquals(new int[]{1, 1}, calls);
         pipeline.decodeAsync(compiled, OWNER).join();
@@ -494,7 +535,7 @@ class MapPipelineTest {
 
             @Override
             @NotNull
-            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull Map<Integer, CompletableFuture<StoredMap>> captured) {
+            public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> captured) {
                 if (origin.id() == 7) {
                     throw new IllegalStateException("compile failure");
                 }
@@ -516,7 +557,7 @@ class MapPipelineTest {
         inventory.put("items", originalItems);
         Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, inventory));
         try {
-            Snapshot compiled = pipeline.encodeAsync(original, MapType.HIDE, OWNER, Map.of()).join();
+            Snapshot compiled = pipeline.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
             ListTag compiledItems = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items");
             assertSame(originalItems.get(0), compiledItems.get(0));
             assertFalse(compiledItems.getCompound(1).getCompound("components").containsKey("minecraft:map_id"));

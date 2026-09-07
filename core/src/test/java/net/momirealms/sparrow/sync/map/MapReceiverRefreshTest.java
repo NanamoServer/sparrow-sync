@@ -84,16 +84,16 @@ class MapReceiverRefreshTest {
         receiver.observe(1);
         receiver.observe(-1);
         receiver.observe(-1);
-        assertEquals(1, this.storage.reads);
-        assertEquals(List.of(map(2)), this.updated);
-        assertEquals(0, this.shared.reads);
+        assertEquals(0, this.storage.reads);
+        assertEquals(List.of(map(1)), this.updated);
+        assertEquals(1, this.shared.reads);
         this.storage.current = map(3);
         receiver.observe(-1);
-        assertEquals(1, this.storage.reads);
-        assertEquals(List.of(map(2)), this.updated);
+        assertEquals(0, this.storage.reads);
+        assertEquals(List.of(map(1)), this.updated);
         this.shared.contents.put(-1, map(3));
         receiver.refresh(-1);
-        assertEquals(List.of(map(2), map(3)), this.updated);
+        assertEquals(List.of(map(1), map(3)), this.updated);
         assertTrue(this.shared.writes.isEmpty());
         assertEquals(0, this.storage.registrations);
         assertTrue(this.storage.writes.isEmpty());
@@ -138,26 +138,26 @@ class MapReceiverRefreshTest {
     }
 
     @Test
-    void firstObservationForcesDatabaseReadInsideAnExistingReceive() {
+    void firstObservationJoinsAnExistingReceiveWithoutInvalidatingItsCache() {
         Tasks worker = new Tasks();
         MapReceiver receiver = this.nativeState.receiver(this.storage, this.shared, "B-world", worker, this.nativeThread, logger(this.warnings));
         this.storage.current = map(2);
         this.shared.contents.put(-1, map(1));
         CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
         worker.runAll();
-        // 首次观察在旧缓存更新前完成, 已有等待者随后取得数据库中的画面.
+        // 首次观察加入已有任务, 继续使用该次读取取得的缓存画面.
         receiver.observe(-1);
         worker.runAll();
         assertSame(waiting, receiver.receive(IDENTITY));
         this.nativeThread.runAll();
-        assertTrue(this.updated.isEmpty());
+        assertEquals(List.of(map(1)), this.updated);
         worker.runAll();
         this.nativeThread.runAll();
         worker.runAll();
         assertEquals(-1, waiting.join());
-        assertEquals(List.of(map(2)), this.updated);
+        assertEquals(List.of(map(1)), this.updated);
         assertEquals(1, this.shared.reads);
-        assertEquals(1, this.storage.reads);
+        assertEquals(0, this.storage.reads);
         assertTrue(this.warnings.isEmpty());
     }
 
@@ -203,7 +203,7 @@ class MapReceiverRefreshTest {
         receiver.observe(-8);
         this.nativeThread.runAll();
         assertEquals(1, this.storage.reads);
-        assertEquals(0, this.shared.reads);
+        assertEquals(1, this.shared.reads);
         assertEquals(1, this.warnings.size());
     }
 

@@ -25,7 +25,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.world.entity.EntityEquipment;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.PlayerEnderChestContainer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.DyeColor;
@@ -55,6 +54,11 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.level.saveddata.maps.Ma
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.SavedDataStorageProxy;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.VersionHelper;
+import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
+import net.minecraft.resources.RegistryOps;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.map.handler.SyncMapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -67,7 +71,6 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.CraftWorld;
@@ -85,7 +88,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -114,6 +116,7 @@ class NativeMapAdapterTest {
     private Object previousBukkit;
     private Object previousConfig;
     private Object previousServerConfig;
+    private Object previousRegistryOps;
     private DimensionDataStorage storage;
     private ServerLevel level;
     private NativeMapAdapter adapter;
@@ -132,6 +135,7 @@ class NativeMapAdapterTest {
     @BeforeEach
     @SuppressWarnings("removal")
     void prepare() throws Exception {
+        this.previousRegistryOps = replaceStatic(MinecraftRegistryOps.class, "sparrowNbt", RegistryOps.create(NBTOps.INSTANCE, registries));
         this.previousConfig = replaceStatic(PluginConfig.class, "config", new PluginConfig.ConfigDefinition());
         this.previousServerConfig = replaceStatic(ServerConfig.class, "config", new ServerConfig.ConfigDefinition());
         DedicatedServer server = NmsPlayerFixture.allocate(DedicatedServer.class);
@@ -164,6 +168,7 @@ class NativeMapAdapterTest {
                 this.storage.close();
             }
         } finally {
+            replaceStatic(MinecraftRegistryOps.class, "sparrowNbt", this.previousRegistryOps);
             replaceStatic(MinecraftServer.class, "SERVER", this.previousMinecraft);
             replaceStatic(Bukkit.class, "server", this.previousBukkit);
             replaceStatic(PluginConfig.class, "config", this.previousConfig);
@@ -180,9 +185,8 @@ class NativeMapAdapterTest {
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
         CraftPlayer player = NmsPlayerFixture.create();
         NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, player.getHandle(), "inventory", new Inventory(player.getHandle(), new EntityEquipment()));
-        MapSyncService.Capture captured = service.captureAndPublish(this.capture(player, registry), MapType.HIDE);
-        assertEquals(MapType.HIDE, captured.type());
-        assertTrue(captured.publications().isEmpty());
+        MapType captured = PluginConfig.synchronization$map().type();
+        assertEquals(MapType.HIDE, captured);
         // 保存已经开始, 配置重载只影响下一次采集.
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         CompoundTag components = NBT.createCompound();
@@ -268,7 +272,7 @@ class NativeMapAdapterTest {
     }
 
     @Test
-    void playerSaveCapturesOnlyEnabledScopesAndDeduplicatesNestedCopiesWithoutMutatingItems() throws Exception {
+    void encodedItemsFixTheScopeAndSamplePixelsWhenCompilationStarts() {
         DataRegistry registry = new DataRegistry();
         registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
         MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
@@ -277,9 +281,7 @@ class NativeMapAdapterTest {
         MapSyncService service = this.service("A-world", registry, publisher);
         CraftPlayer player = NmsPlayerFixture.create();
         Inventory inventory = new Inventory(player.getHandle(), new EntityEquipment());
-        PlayerEnderChestContainer ender = new PlayerEnderChestContainer(player.getHandle());
         NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, player.getHandle(), "inventory", inventory);
-        NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, player.getHandle(), "enderChestInventory", ender);
         MapItemSavedData source = MapItemSavedData.createFresh(0, 0, (byte) 0, true, false, Level.OVERWORLD);
         source.colors[0] = 12;
         this.level.setMapData(new MapId(1), source);
@@ -289,61 +291,45 @@ class NativeMapAdapterTest {
         bundle.set(DataComponents.BUNDLE_CONTENTS, new BundleContents(List.of(map.copy(), map.copy())));
         ItemStack box = new ItemStack(Items.SHULKER_BOX);
         box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(ItemStack.EMPTY, bundle, ItemStack.EMPTY, map.copy())));
-        inventory.setItem(0, map);
-        inventory.setItem(1, box);
-        ItemStack other = map.copy();
-        other.set(DataComponents.MAP_ID, new MapId(2));
-        ender.setItem(0, other);
-        PlayerDataPipeline.CaptureResult.Ready items = this.capture(player, registry);
-        // 交接后在线背包已经变化, 异步扫描仍必须发布副本里的 1 号地图.
-        inventory.clearContent();
-        inventory.setItem(0, other);
-        Map<Integer, CompletableFuture<StoredMap>> captured = CompletableFuture.supplyAsync(() -> service.captureAndPublish(items, MapType.SYNC)).join().publications();
-        assertEquals(java.util.Set.of(1), captured.keySet());
-        inventory.setItem(0, map);
-        inventory.setItem(1, box);
-        source.colors[0] = 15;
-        worker.runAll();
-        assertEquals(12, captured.get(1).join().data().getTag().getByteArray("colors")[0]);
-        assertEquals(1, database.registrations);
-        assertEquals(1, map.get(DataComponents.MAP_ID).id());
-        assertNull(map.get(DataComponents.CUSTOM_DATA));
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
-        assertTrue(service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().isEmpty());
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
-        inventory.setItem(0, ItemStack.EMPTY);
-        assertEquals(java.util.Set.of(1), service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().keySet());
-        inventory.clearContent();
         ItemStack crossbow = new ItemStack(Items.CROSSBOW);
         crossbow.set(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.of(box));
-        inventory.setItem(0, crossbow);
-        assertEquals(java.util.Set.of(1), service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().keySet());
         ItemStack consumable = new ItemStack(Items.STONE);
         consumable.set(DataComponents.USE_REMAINDER, new UseRemainder(crossbow));
-        inventory.setItem(0, consumable);
-        assertEquals(java.util.Set.of(1), service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().keySet());
-        inventory.clearContent();
-        assertTrue(service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().isEmpty());
-        registry.register(NmsPlayerFixture.allocate(EnderChestDataType.class));
-        assertTrue(service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().get(2).isCompletedExceptionally());
-
-        net.minecraft.nbt.CompoundTag marker = new net.minecraft.nbt.CompoundTag();
-        marker.putString("map-type", "SYNC");
-        marker.putString("origin-server", "foreign");
-        marker.putInt("origin-id", 1);
-        net.minecraft.nbt.CompoundTag custom = new net.minecraft.nbt.CompoundTag();
-        custom.put("sparrow-sync", marker);
-        map.set(DataComponents.CUSTOM_DATA, CustomData.of(custom));
-        map.set(DataComponents.MAP_ID, new MapId(-1));
-        ender.clearContent();
         inventory.setItem(0, map);
-        assertTrue(service.captureAndPublish(this.capture(player, registry), PluginConfig.synchronization$map().type()).publications().isEmpty());
+        inventory.setItem(1, consumable);
+        InventoryDataType.Inventory captured = (InventoryDataType.Inventory) this.capture(player, registry).value(InventoryDataType.INVENTORY);
+        // 玩家物品在采集时固定, 来源像素取编码之后开始地图处理时的内容.
+        inventory.clearContent();
+        source.colors[0] = 15;
+        Snapshot snapshot = this.encodedItems(captured.contents());
+        assertEquals(0, database.registrations);
+        source.colors[0] = 18;
+        CompletableFuture<Snapshot> compiled = CompletableFuture.supplyAsync(() -> service.compileAsync(snapshot, MapType.SYNC)).join();
+        source.colors[0] = 21;
+        worker.runAll();
+        assertEquals(18, database.current.data().getTag().getByteArray("colors")[0]);
         assertEquals(1, database.registrations);
+        ListTag encodedItems = ((CompoundTag) compiled.join().data(InventoryDataType.INVENTORY)).getList("items");
+        CompoundTag encoded = encodedItems.getCompound(0).getCompound("components");
+        assertEquals(-1, encoded.getInt("minecraft:map_id"));
+        CompoundTag remainder = encodedItems.getCompound(1).getCompound("components").getCompound("minecraft:use_remainder");
+        CompoundTag loadedBox = remainder.getCompound("components").getList("minecraft:charged_projectiles").getCompound(0);
+        ListTag slots = loadedBox.getCompound("components").getList("minecraft:container");
+        assertEquals(1, slots.getCompound(0).getInt("slot"));
+        assertEquals(3, slots.getCompound(1).getInt("slot"));
+        ListTag bundled = slots.getCompound(0).getCompound("item").getCompound("components").getList("minecraft:bundle_contents");
+        assertEquals(-1, bundled.getCompound(0).getCompound("components").getInt("minecraft:map_id"));
+        assertEquals(-1, bundled.getCompound(1).getCompound("components").getInt("minecraft:map_id"));
+        assertEquals(-1, slots.getCompound(1).getCompound("item").getCompound("components").getInt("minecraft:map_id"));
+        assertEquals(1, map.get(DataComponents.MAP_ID).id());
+        assertNull(map.get(DataComponents.CUSTOM_DATA));
+        assertEquals(1, ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id"));
+        publisher.close();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"foreign", "malformed", "empty-namespace", "unrelated"})
-    void sourceMarkerReadPreservesCustomData(String kind) throws Exception {
+    void encodedSourceMarkersPreserveCustomDataAndControlPublication(String kind) {
         net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
         tag.putByteArray("payload", new byte[65536]);
         tag.putString("other-plugin", "retained");
@@ -361,14 +347,32 @@ class NativeMapAdapterTest {
         CustomData custom = CustomData.of(tag);
         ItemStack map = new ItemStack(Items.FILLED_MAP);
         map.set(DataComponents.CUSTOM_DATA, custom);
-        MapSyncService service = this.service("A-world", new DataRegistry(), null);
-        Method marked = MapSyncService.class.getDeclaredMethod("marked", Object.class);
-        marked.setAccessible(true);
-        assertEquals(kind.equals("foreign") || kind.equals("malformed"), marked.invoke(service, map));
+        map.set(DataComponents.MAP_ID, new MapId(kind.equals("foreign") ? -1 : 1));
+        this.level.setMapData(new MapId(1), MapItemSavedData.createFresh(0, 0, (byte) 0, true, false, Level.OVERWORLD));
+        DataRegistry registry = new DataRegistry();
+        registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
+        MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
+        MapPublisher publisher = new MapPublisher(database, new MapFlowTestSupport.Shared(), "A-world", Runnable::run);
+        MapSyncService service = this.service("A-world", registry, publisher);
+        Snapshot snapshot = this.encodedItems(map);
+        Snapshot compiled = service.compileAsync(snapshot, MapType.SYNC).join();
+        assertEquals(kind.equals("foreign") || kind.equals("malformed") ? 0 : 1, database.registrations);
+        CompoundTag encoded = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getCompound("minecraft:custom_data");
+        assertEquals("retained", encoded.getString("other-plugin"));
+        assertEquals(65536, encoded.getByteArray("payload").length);
         assertSame(custom, map.get(DataComponents.CUSTOM_DATA));
         assertEquals(tag, custom.copyTag());
+        if (kind.equals("foreign") || kind.equals("malformed")) {
+            assertSame(snapshot, compiled);
+        }
+        publisher.close();
     }
 
+    private Snapshot encodedItems(ItemStack... items) {
+        CompoundTag inventory = NBT.createCompound();
+        inventory.put("items", ItemCodec.saveItems(items));
+        return new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.WORLD_SAVE, false, "A", VersionHelper.WORLD_VERSION), Map.of(InventoryDataType.INVENTORY, inventory));
+    }
     private MapSyncService service(String owner, DataRegistry registry, MapPublisher publisher) {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", MapFlowTestSupport.logger(new ArrayList<>()));
@@ -376,10 +380,12 @@ class NativeMapAdapterTest {
         MapSyncService service = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, service, "plugin", plugin);
         NmsPlayerFixture.set(MapSyncService.class, service, "ownerId", owner);
-        NmsPlayerFixture.set(MapSyncService.class, service, "server", this.level.getServer());
         NmsPlayerFixture.set(MapSyncService.class, service, "nativeMaps", this.adapter);
         NmsPlayerFixture.set(MapSyncService.class, service, "nativeStorage", this.nativeStorage);
         NmsPlayerFixture.set(MapSyncService.class, service, "publisher", publisher);
+        MapReceiver receiver = new MapReceiver(new MapFlowTestSupport.Storage(), new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), owner, plugin.logger());
+        NmsPlayerFixture.set(MapSyncService.class, service, "receiver", receiver);
+        NmsPlayerFixture.set(MapSyncService.class, service, "pipeline", new MapPipeline(registry, List.of(new HideMapHandler(), new SyncMapHandler(receiver)), plugin.logger()));
         return service;
     }
 
