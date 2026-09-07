@@ -7,6 +7,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.MapInteractionListener;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -84,6 +85,7 @@ public final class SnapshotService {
         String ownerId = options.resolveOwnerId(ServerConfig.serverId(), worldUuid);
         MapSyncService maps = new MapSyncService(this.plugin, ownerId);
         this.mapSync = maps;
+        new MapInteractionListener().register(this.plugin.javaPlugin());
 
         // 观察原版地图更新包发现负数 ID, 就将其计入服务器观测的地图ID, 包本身继续沿原版发送路径处理.
         SparrowUI.getInstance().networkManager().registerNMSPacketListener(new NMSPacketListener() {

@@ -13,6 +13,8 @@ import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentReader;
 import org.bson.Document;
@@ -22,8 +24,10 @@ import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.types.Binary;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,6 +38,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DocumentSnapshotCodecTest {
     private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+
+    @BeforeAll
+    static void initializeProxy() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+    }
 
     @Test
     void roundTripPreservesSnapshot() throws IOException {

@@ -50,6 +50,10 @@ class MapConfigTest {
         assertTrue(options.enabled());
         assertEquals(MapType.SYNC, options.type());
         assertEquals("${server-id}-${world-uuid}", options.mapOwnerId());
+        assertFalse(options.allowBannerModification());
+        assertFalse(options.allowLock());
+        assertFalse(options.allowScale());
+        assertTrue(options.allowCopy());
         assertEquals("A-" + worldUuid, options.resolveOwnerId("A", worldUuid));
         assertNotEquals(options.resolveOwnerId("A", worldUuid), options.resolveOwnerId("A", UUID.randomUUID()));
         String yaml = Files.readString(this.directory.resolve("config.yml"));
@@ -58,6 +62,10 @@ class MapConfigTest {
         assertTrue(yaml.contains("type: SYNC"), yaml);
         assertTrue(yaml.contains("map-owner-id:"), yaml);
         assertTrue(yaml.contains("${server-id}-${world-uuid}"), yaml);
+        assertTrue(yaml.contains("allow-banner-modification: false"), yaml);
+        assertTrue(yaml.contains("allow-lock: false"), yaml);
+        assertTrue(yaml.contains("allow-scale: false"), yaml);
+        assertTrue(yaml.contains("allow-copy: true"), yaml);
     }
 
     @ParameterizedTest
@@ -104,6 +112,35 @@ class MapConfigTest {
         assertEquals(!enabled, restarted.enabled());
         assertEquals(MapType.SYNC, restarted.type());
         assertEquals("fixed-owner", restarted.resolveOwnerId("B", worldUuid));
+    }
+
+    @Test
+    void interactionOptionsUpgradeAndReloadWithoutChangingTheStartupSettings() throws Exception {
+        Path file = this.directory.resolve("config.yml");
+        Files.writeString(file, """
+                config-version: "18"
+                synchronization:
+                  map:
+                    enabled: true
+                    type: SYNC
+                    map-owner-id: "existing-owner"
+                """);
+        PluginConfig config = this.config();
+        config.reload();
+        String yaml = Files.readString(file);
+        assertTrue(yaml.contains("allow-copy: true"), yaml);
+        assertTrue(yaml.contains("allow-lock: false"), yaml);
+        Files.writeString(file, yaml.replace("allow-banner-modification: false", "allow-banner-modification: true")
+                .replace("allow-lock: false", "allow-lock: true").replace("allow-scale: false", "allow-scale: true")
+                .replace("allow-copy: true", "allow-copy: false"));
+        config.reload();
+        PluginConfig.MapOptions options = PluginConfig.synchronization$map();
+        assertTrue(options.allowBannerModification());
+        assertTrue(options.allowLock());
+        assertTrue(options.allowScale());
+        assertFalse(options.allowCopy());
+        assertEquals("existing-owner", options.mapOwnerId());
+        assertTrue(options.enabled());
     }
 
     @Test

@@ -415,6 +415,22 @@ public final class PluginConfig {
         })
         String mapOwnerId = "${server-id}-${world-uuid}";
 
+        @Comment("Allows adding or removing banner markers on negative-ID maps; reloadable")
+        @Comment(lang = "zh-CN", value = "是否允许对负数 ID 地图添加或移除旗帜标记, 可重载")
+        boolean allowBannerModification = false;
+
+        @Comment({"Allows vanilla locking of negative-ID maps; reloadable", "Creates a new local map ID; this does not repair the derived map's cross-server identity"})
+        @Comment(lang = "zh-CN", value = {"是否允许原版锁定负数 ID 地图的操作, 可重载", "操作会生成本服新地图 ID, 派生地图的跨服身份仍需另行处理"})
+        boolean allowLock = false;
+
+        @Comment({"Allows vanilla scaling of negative-ID maps; reloadable", "Creates a new local map ID; this does not repair the derived map's cross-server identity or dimension"})
+        @Comment(lang = "zh-CN", value = {"是否允许原版缩放负数 ID 地图的操作, 可重载", "操作会生成本服新地图 ID, 派生地图的跨服身份和维度仍需另行处理"})
+        boolean allowScale = false;
+
+        @Comment({"Allows copying negative-ID maps with cartography, crafting, and crafter recipes; reloadable", "Creative cloning and copies made directly by other plugins are outside these controls"})
+        @Comment(lang = "zh-CN", value = {"是否允许通过制图台、工作台和合成器配方复制负数 ID 地图, 可重载", "不限制创造模式克隆和其他插件通过 API 复制物品"})
+        boolean allowCopy = true;
+
         public boolean enabled() {
             return this.enabled;
         }
@@ -427,6 +443,22 @@ public final class PluginConfig {
         @NotNull
         public String mapOwnerId() {
             return this.mapOwnerId;
+        }
+
+        public boolean allowBannerModification() {
+            return this.allowBannerModification;
+        }
+
+        public boolean allowLock() {
+            return this.allowLock;
+        }
+
+        public boolean allowScale() {
+            return this.allowScale;
+        }
+
+        public boolean allowCopy() {
+            return this.allowCopy;
         }
 
         /** 将来源模板中的服务器标识和主世界 UUID 替换为本服值. */

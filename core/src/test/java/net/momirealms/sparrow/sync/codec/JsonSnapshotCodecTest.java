@@ -1,10 +1,15 @@
 package net.momirealms.sparrow.sync.codec;
 
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
+import net.momirealms.sparrow.sync.util.VersionHelper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonSnapshotCodecTest {
     private final JsonSnapshotCodec codec = new JsonSnapshotCodec();
+
+    @BeforeAll
+    static void initializeProxy() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+    }
 
     @Test
     void roundTripKeepsMetaAndData() {

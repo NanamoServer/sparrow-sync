@@ -10,8 +10,7 @@ import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.visitor.CompactStringTagVisitor;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
-import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy1_21_4;
-import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy1_21_5;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -34,7 +33,7 @@ import java.util.UUID;
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     static final String FIELD_FORMAT = "format";    // 树形态的版本在帧头字节里, JSON 形态以顶层字段自述
 
-    private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5() ? TagParserProxy1_21_5.INSTANCE.create(NBTOps.INSTANCE) : null;
+    private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5() ? TagParserProxy.INSTANCE.create(NBTOps.INSTANCE) : null;
     private static final JsonWriterSettings JSON_WRITER = JsonWriterSettings.builder().indent(true).build();
 
     @Override
@@ -111,9 +110,9 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     }
 
     private static Tag parseSnbt(String input) throws CommandSyntaxException {
-        if (SNBT_PARSER != null) return (Tag) TagParserProxy1_21_5.INSTANCE.parseFully(SNBT_PARSER, input);
+        if (SNBT_PARSER != null) return (Tag) TagParserProxy.INSTANCE.parseFully(SNBT_PARSER, input);
         StringReader reader = new StringReader(input);
-        TagParserProxy1_21_4 parser = TagParserProxy1_21_4.INSTANCE;
+        TagParserProxy parser = TagParserProxy.INSTANCE;
         net.minecraft.nbt.Tag nativeTag = (net.minecraft.nbt.Tag) parser.readValue(parser.newInstance(reader));
         reader.skipWhitespace();
         if (reader.canRead()) throw TagParser.ERROR_TRAILING_DATA.createWithContext(reader);
