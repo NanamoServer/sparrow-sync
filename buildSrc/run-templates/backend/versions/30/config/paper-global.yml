@@ -4,6 +4,6 @@ proxies:
     online-mode: true
   proxy-protocol: false
   velocity:
-    enabled: true
+    enabled: false
     online-mode: true
     secret: 'sparrow-sync-local-proxy-forwarding-secret'

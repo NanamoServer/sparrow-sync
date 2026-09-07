@@ -65,6 +65,13 @@ tasks.register<RunVelocity>("runProxyVelocity") {
 /**
  * 配置和注册后端服务器测试.
  */
+tasks.withType<RunServer>().configureEach {
+    if (name == "runServer" || name == "runDevBundleServer") {
+        group = null
+        enabled = false
+    }
+}
+
 val minecraftVersions = listOf("1.21.4", "1.21.8", "1.21.10", "1.21.11", "26.1.2", "26.2")
 val projectJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
 val extraPluginJars = rootProject.fileTree("buildSrc/plugin") {
@@ -108,16 +115,6 @@ fun RunServer.configureServer(
 }
 
 for (minecraftVersion in minecraftVersions) {
-    // 单服任务的运行目录.
-    tasks.register<RunServer>("runPaper_$minecraftVersion") {
-        configureServer("Paper $minecraftVersion", minecraftVersion, "run/paper/$minecraftVersion")
-    }
-
-    tasks.register<RunServer>("runFolia_$minecraftVersion") {
-        configureServer("Folia $minecraftVersion", minecraftVersion, "run/folia/$minecraftVersion")
-        downloadsApiService.set(DownloadsAPIService.folia(project))
-    }
-
     // 代理后端使用独立目录.
     val paperProxyDirectory = rootProject.layout.projectDirectory.dir("run/proxy/paper/$minecraftVersion")
     val foliaProxyDirectory = rootProject.layout.projectDirectory.dir("run/proxy/folia/$minecraftVersion")
@@ -165,5 +162,21 @@ for (minecraftVersion in minecraftVersions) {
         description = "Run the Folia $minecraftVersion proxy backend on port 25567."
         downloadsApiService.set(DownloadsAPIService.folia(project))
         dependsOn(prepareProxyFolia)
+    }
+}
+
+// Spigot
+val spigotJar = rootProject.layout.projectDirectory.file("buildSrc/server-jars/spigot-26.2.jar")
+if (spigotJar.asFile.isFile) {
+    val spigotDirectory = rootProject.layout.projectDirectory.dir("run/proxy/spigot/26.2")
+    val prepareProxySpigot = tasks.register<InitializeRunDirectory>("prepareProxySpigot_26.2") {
+        templateDirectories.from(runTemplatesDirectory.dir("backend/spigot"))
+        targetDirectory.set(spigotDirectory)
+    }
+    tasks.register<RunServer>("runProxySpigot_26.2") {
+        configureServer("Proxy Spigot 26.2", "26.2", "run/proxy/spigot/26.2", "1536M")
+        description = "Run the Spigot 26.2 proxy backend on port 25568."
+        serverJar(spigotJar.asFile)
+        dependsOn(prepareProxySpigot)
     }
 }

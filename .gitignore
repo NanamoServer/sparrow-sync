@@ -51,3 +51,6 @@ bin/
 logs/
 core/logs/
 bukkit-proxy/logs/
+
+### Local server jars ###
+/buildSrc/server-jars/*.jar
