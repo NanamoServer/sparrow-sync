@@ -1,7 +1,10 @@
 [versions]
 project-version = "beta.1"
 config-version = "19"
-lang-version = "17"
+lang-version = "18"
+mongodb-index-version = "2"
+mysql-schema-version = "1"
+snapshot-format-version = "2"
 
 run-task = "3.0.2"
 paperweight = "2.0.0-beta.21"

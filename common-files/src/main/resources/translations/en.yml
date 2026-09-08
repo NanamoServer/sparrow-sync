@@ -62,6 +62,8 @@ log.server.id_duplicate: 'The server-id "<arg:0>" is taken by another live serve
 log.server.id_seized: 'The previous run of this server never unregistered its identity (token <arg:0>), taking it over'
 log.storage.compressor_failed: Failed to load the snapshot compressor. Check that the runtime dependencies are intact and that the temp directory allows executing unpacked native libraries.
 log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'
+log.storage.mysql_schema_initializing: 'Initializing the MySQL schema at v<arg:1> (table prefix: "<arg:0>")'
+log.storage.mysql_schema_migrating: 'Upgrading the MySQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
 log.storage.backend_setup_failed: 'Failed to initialize <arg:0> storage (database: <arg:1>). Player data will NOT be loaded or saved.'
 log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
 log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'

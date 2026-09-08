@@ -26,6 +26,7 @@ import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
+import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.HandleListener;
@@ -61,6 +62,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -68,6 +70,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -123,6 +126,7 @@ class MysqlStorageProviderTest {
     void prepare() {
         this.prefix = "it_" + UUID.randomUUID().toString().replace("-", "") + "_";
         this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
+        this.console.messages.clear();
     }
 
     /**
@@ -166,7 +170,7 @@ class MysqlStorageProviderTest {
         assertEquals(Set.of(this.prefix + "meta", this.prefix + "maps", this.prefix + "snapshots", this.prefix + "users"),
                 Set.copyOf(provider.jdbi().withHandle(handle -> handle.createQuery("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND LEFT(table_name, :length) = :prefix")
                         .bind("length", this.prefix.length()).bind("prefix", this.prefix).mapTo(String.class).list())));
-        assertEquals(1, this.meta("schema"));
+        assertEquals(MysqlSchema.CURRENT_VERSION, this.meta("schema"));
         assertEquals(0, this.meta("maps"));
         assertEquals(List.of("PRIMARY"), provider.jdbi().withHandle(handle -> handle.createQuery("SELECT DISTINCT index_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :table")
                 .bind("table", this.prefix + "meta").mapTo(String.class).list()));
@@ -457,7 +461,7 @@ class MysqlStorageProviderTest {
         provider.initialize();
         assertEquals(updated, provider.maps().find(-1).join().orElseThrow().data());
         assertEquals(-2, provider.maps().register(new MapSource("source", 1), mapData(4)).join().identity().globalId());
-        assertEquals(1, this.meta("schema"));
+        assertEquals(MysqlSchema.CURRENT_VERSION, this.meta("schema"));
     }
 
     @Test
@@ -1034,7 +1038,7 @@ class MysqlStorageProviderTest {
         try (var executor = Executors.newFixedThreadPool(2)) {
             CompletableFuture.allOf(CompletableFuture.runAsync(first::initialize, executor), CompletableFuture.runAsync(second::initialize, executor)).get(15, TimeUnit.SECONDS);
         }
-        assertEquals(1, this.meta("schema"));
+        assertEquals(MysqlSchema.CURRENT_VERSION, this.meta("schema"));
         assertEquals(0, this.pendingCount());
     }
 
@@ -1045,15 +1049,15 @@ class MysqlStorageProviderTest {
      */
     @Test
     void failedInitializationClosesEveryConnection() throws Exception {
-        new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix);
-        this.direct.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "meta` SET value = 2 WHERE id = 'schema'"));
+        new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix);
+        this.direct.useHandle(handle -> handle.createUpdate("UPDATE `" + this.prefix + "meta` SET value = :version WHERE id = 'schema'").bind("version", MysqlSchema.CURRENT_VERSION + 1).execute());
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         assertThrows(IllegalStateException.class, provider::initialize);
         assertThrows(IllegalStateException.class, provider::jdbi);
         int connections = this.admin.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM information_schema.processlist WHERE db = :database")
                 .bind("database", this.database).mapTo(Integer.class).one());
         assertEquals(0, connections);
-        assertEquals(2, this.meta("schema"));
+        assertEquals(MysqlSchema.CURRENT_VERSION + 1, this.meta("schema"));
     }
 
     /**
@@ -1088,6 +1092,130 @@ class MysqlStorageProviderTest {
     }
 
     /**
+     * 验证初始版本包含快照查询与轮转索引, 重启后表结构和数据保持不变.
+     */
+    @Test
+    void initialSchemaIncludesRetentionIndexAndPreservesStoredDataOnRestart() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_INITIALIZING), List.copyOf(this.console.messages));
+        assertEquals(1, this.meta("schema"));
+        this.direct.useHandle(handle -> {
+            String query = "SELECT column_name FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :table AND index_name = :index ORDER BY seq_in_index";
+            assertEquals(List.of("player", "ts", "id"), handle.createQuery(query).bind("table", this.prefix + "snapshots").bind("index", "snapshot_player_time").mapTo(String.class).list());
+            assertEquals(List.of("player", "pinned", "ts", "id"), handle.createQuery(query).bind("table", this.prefix + "snapshots").bind("index", "snapshot_player_pin_time").mapTo(String.class).list());
+        });
+        Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, true);
+        assertEquals(SaveResult.SAVED, provider.saveSnapshot(snapshot).join());
+        provider.ensureUser(snapshot.meta().player(), "Preserved").join();
+        StoredMap map = provider.maps().register(new MapSource("preserved", 0), mapData(1)).join();
+        String expected = this.direct.withHandle(handle -> handle.createQuery("SHOW CREATE TABLE `" + this.prefix + "snapshots`").map((result, context) -> result.getString(2)).one());
+        provider.shutdown();
+        this.console.messages.clear();
+        provider.initialize();
+        assertTrue(this.console.messages.isEmpty());
+        assertEquals(1, this.meta("schema"));
+        assertEquals(0, this.pendingCount());
+        assertEquals(1, this.meta("maps"));
+        assertEquals(Optional.of(snapshot), provider.snapshot(snapshot.meta().id()).join());
+        assertEquals(Optional.of(snapshot.meta().player()), provider.lookupUser("Preserved").join());
+        assertEquals(Optional.of(map), provider.maps().find(map.identity().globalId()).join());
+        assertEquals(expected, this.direct.withHandle(handle -> handle.createQuery("SHOW CREATE TABLE `" + this.prefix + "snapshots`").map((result, context) -> result.getString(2)).one()));
+        assertEquals(List.of(snapshot.meta()), provider.listSnapshots(SnapshotQuery.of(snapshot.meta().player())).join());
+    }
+
+    @Test
+    void longDdlAndConcurrentStartupLogMigrationOnceAndRestoreNetworkTimeouts() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.urlWith("socketTimeout=750"), this.prefix);
+        provider.initialize();
+        this.console.messages.clear();
+        CountDownLatch entered = new CountDownLatch(1);
+        AtomicInteger runs = new AtomicInteger();
+        AtomicReference<JdbcConnection> physical = new AtomicReference<>();
+        MysqlSchemaMigration slow = new MysqlSchemaMigration() {
+            @Override
+            public int targetVersion() {
+                return 2;
+            }
+
+            @Override
+            public void migrate(@NonNull Handle handle, @NonNull String prefix) {
+                runs.incrementAndGet();
+                physical.set(assertDoesNotThrow(() -> handle.getConnection().unwrap(JdbcConnection.class)));
+                int timeout = assertDoesNotThrow(() -> handle.getConnection().getNetworkTimeout());
+                assertEquals(1_800_000, timeout);
+                assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING), List.copyOf(MysqlStorageProviderTest.this.console.messages));
+                entered.countDown();
+                handle.execute("ALTER TABLE `" + prefix + "snapshots` ADD INDEX test_migration_time (ts), ALGORITHM=INPLACE, LOCK=NONE");
+            }
+        };
+        MysqlSchemaMigrator migrator = new MysqlSchemaMigrator(this.logger, 2, MysqlSchema::initialize, List.of(slow));
+        try (var executor = Executors.newFixedThreadPool(2); Handle blocker = this.direct.open()) {
+            blocker.begin();
+            blocker.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "snapshots`").mapTo(Integer.class).one();
+            CompletableFuture<Void> first = CompletableFuture.runAsync(() -> migrator.migrate(provider.jdbi(), this.prefix), executor);
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            CompletableFuture<Void> second = CompletableFuture.runAsync(() -> migrator.migrate(provider.jdbi(), this.prefix), executor);
+            try {
+                // 未提交的读事务持有元数据锁, 让真实 ADD INDEX 持续等待超过旧网络和迁移锁预算.
+                Thread.sleep(6_000);
+                assertFalse(first.isDone());
+                assertFalse(second.isDone());
+            } finally {
+                blocker.commit();
+            }
+            CompletableFuture.allOf(first, second).get(15, TimeUnit.SECONDS);
+        }
+        assertEquals(1, runs.get());
+        assertEquals(2, this.meta("schema"));
+        assertEquals(0, this.pendingCount());
+        assertEquals(750, physical.get().getNetworkTimeout());
+        assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING), List.copyOf(this.console.messages));
+    }
+
+    @Test
+    void failedMigrationRestoresTimeoutAndLogsResumedStep() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.urlWith("socketTimeout=500"), this.prefix);
+        provider.initialize();
+        this.console.messages.clear();
+        AtomicReference<JdbcConnection> physical = new AtomicReference<>();
+        AtomicBoolean failAfterDdl = new AtomicBoolean(true);
+        MysqlSchemaMigration interrupted = new MysqlSchemaMigration() {
+            @Override
+            public int targetVersion() {
+                return 2;
+            }
+
+            @Override
+            public void migrate(@NonNull Handle handle, @NonNull String prefix) {
+                physical.set(assertDoesNotThrow(() -> handle.getConnection().unwrap(JdbcConnection.class)));
+                handle.execute("CREATE TABLE IF NOT EXISTS `" + prefix + "migration_probe` (id INT PRIMARY KEY)");
+                if (failAfterDdl.getAndSet(false)) {
+                    handle.createQuery("SELECT SLEEP(1)").mapTo(Integer.class).one();
+                    throw new IllegalStateException("injected failure after DDL");
+                }
+            }
+        };
+        MysqlSchemaMigrator migrator = new MysqlSchemaMigrator(this.logger, 2, MysqlSchema::initialize, List.of(interrupted));
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> migrator.migrate(provider.jdbi(), this.prefix));
+        assertTrue(failure.getMessage().contains("injected failure"));
+        assertEquals(1, this.meta("schema"));
+        assertEquals(2, this.meta("schema_pending"));
+        assertTrue(this.tableExists(this.prefix + "migration_probe"));
+        assertEquals(500, physical.get().getNetworkTimeout());
+        assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING), List.copyOf(this.console.messages));
+        this.direct.useHandle(handle -> {
+            String lock = handle.createQuery("SELECT SHA2(CONCAT('sparrow-sync-schema:', DATABASE(), ':', :prefix), 256)").bind("prefix", this.prefix).mapTo(String.class).one();
+            assertEquals(1, handle.createQuery("SELECT GET_LOCK(:name, 0)").bind("name", lock).mapTo(Integer.class).one());
+            handle.createQuery("SELECT RELEASE_LOCK(:name)").bind("name", lock).mapTo(Integer.class).one();
+        });
+        migrator.migrate(provider.jdbi(), this.prefix);
+        assertEquals(2, this.meta("schema"));
+        assertEquals(0, this.pendingCount());
+        assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING, LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING), List.copyOf(this.console.messages));
+    }
+
+    /**
      * 验证当前完整建表中断后可以重入, 已分配的地图编号进度得到保留.
      */
     @Test
@@ -1097,9 +1225,9 @@ class MysqlStorageProviderTest {
             handle.execute("UPDATE `" + prefix + "meta` SET value = 97 WHERE id = 'maps'");
             throw new IllegalStateException("injected failure after initial DDL");
         };
-        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, interrupted, List.of()).migrate(this.direct, this.prefix));
+        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, interrupted, List.of()).migrate(this.direct, this.prefix));
         assertEquals(MysqlSchema.CURRENT_VERSION, this.meta("schema_pending"));
-        new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix);
+        new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix);
         assertEquals(MysqlSchema.CURRENT_VERSION, this.meta("schema"));
         assertEquals(97, this.meta("maps"));
         assertEquals(0, this.pendingCount());
@@ -1119,12 +1247,12 @@ class MysqlStorageProviderTest {
         // 在新表接替原表后中断, 此时 DDL 已提交而 schema 尚未更新.
         AtomicBoolean failAfterRename = new AtomicBoolean(true);
         MysqlSchemaMigration rebuild = this.rebuildUsers(failAfterRename);
-        MysqlSchemaMigrator newer = new MysqlSchemaMigrator(2, (handle, prefix) -> fail("Existing schemas must use migrations"), List.of(rebuild));
+        MysqlSchemaMigrator newer = new MysqlSchemaMigrator(this.logger, 2, (handle, prefix) -> fail("Existing schemas must use migrations"), List.of(rebuild));
         assertThrows(IllegalStateException.class, () -> newer.migrate(provider.jdbi(), this.prefix));
         assertEquals(1, this.meta("schema"));
         assertEquals(2, this.meta("schema_pending"));
         assertTrue(this.tableExists(this.prefix + "users_old"));
-        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(1, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix));
+        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(this.logger, 1, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix));
         // 同代迁移根据实际表布局恢复, 完成后清理进度标记和临时表.
         newer.migrate(this.direct, this.prefix);
         assertEquals(2, this.meta("schema"));
@@ -1173,14 +1301,14 @@ class MysqlStorageProviderTest {
                 }
             }
         };
-        MysqlSchemaMigrator migrator = new MysqlSchemaMigrator(2, (handle, prefix) -> fail("Existing schemas must use migrations"), List.of(migration));
+        MysqlSchemaMigrator migrator = new MysqlSchemaMigrator(this.logger, 2, (handle, prefix) -> fail("Existing schemas must use migrations"), List.of(migration));
         try (var executor = Executors.newFixedThreadPool(2)) {
             CompletableFuture<Void> first = CompletableFuture.runAsync(() -> migrator.migrate(provider.jdbi(), this.prefix), executor);
             try {
                 assertTrue(entered.await(3, TimeUnit.SECONDS));
                 CompletableFuture<Void> second = CompletableFuture.runAsync(() -> migrator.migrate(this.direct, this.prefix), executor);
                 // 相同前缀仍在等待, 不同前缀的迁移应当可以完成.
-                new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, "other_" + this.prefix);
+                new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, "other_" + this.prefix);
                 assertFalse(second.isDone());
                 release.countDown();
                 CompletableFuture.allOf(first, second).get(10, TimeUnit.SECONDS);
@@ -1197,16 +1325,16 @@ class MysqlStorageProviderTest {
     @Test
     void rejectsUnversionedTablesAndInvalidMigrationSequences() {
         this.direct.useHandle(handle -> handle.execute("CREATE TABLE `" + this.prefix + "users` (name VARCHAR(16))"));
-        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix));
+        assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix));
         assertEquals(0, this.pendingCount());
         MysqlSchemaMigration second = this.rebuildUsers(new AtomicBoolean());
-        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(0, MysqlSchema::initialize, List.of()));
-        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(3, MysqlSchema::initialize, List.of(second, second)));
-        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(3, MysqlSchema::initialize, List.of(second)));
-        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(1, MysqlSchema::initialize, List.of(second)));
+        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 0, MysqlSchema::initialize, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 3, MysqlSchema::initialize, List.of(second, second)));
+        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 3, MysqlSchema::initialize, List.of(second)));
+        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 1, MysqlSchema::initialize, List.of(second)));
         List<MysqlSchemaMigration> reversed = new ArrayList<>(this.userMigrations(3, new ArrayList<>()));
         Collections.reverse(reversed);
-        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(3, MysqlSchema::initialize, reversed));
+        assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 3, MysqlSchema::initialize, reversed));
     }
 
     // 用测试 V10 对比空库直建和已有 V7 逐级升级, 两条路径的最终 DDL 应相同.
@@ -1215,7 +1343,7 @@ class MysqlStorageProviderTest {
         List<Integer> applied = new ArrayList<>();
         AtomicInteger initializations = new AtomicInteger();
         List<MysqlSchemaMigration> migrations = this.userMigrations(10, applied);
-        MysqlSchemaMigrator latest = new MysqlSchemaMigrator(10, (handle, prefix) -> {
+        MysqlSchemaMigrator latest = new MysqlSchemaMigrator(this.logger, 10, (handle, prefix) -> {
             assertEquals(10L, handle.createQuery("SELECT value FROM `" + prefix + "meta` WHERE id = 'schema_pending'").mapTo(Long.class).one());
             initializations.incrementAndGet();
             this.initializeUsers(handle, prefix, 10);
@@ -1226,7 +1354,7 @@ class MysqlStorageProviderTest {
         assertTrue(applied.isEmpty());
 
         String olderPrefix = "old_" + this.prefix;
-        new MysqlSchemaMigrator(7, (handle, prefix) -> this.initializeUsers(handle, prefix, 7), migrations.subList(0, 6)).migrate(this.direct, olderPrefix);
+        new MysqlSchemaMigrator(this.logger, 7, (handle, prefix) -> this.initializeUsers(handle, prefix, 7), migrations.subList(0, 6)).migrate(this.direct, olderPrefix);
         this.direct.useHandle(handle -> {
             handle.execute("INSERT INTO `" + olderPrefix + "users` (player, name) VALUES (42, 'MiXeD')");
             handle.execute("INSERT INTO `" + olderPrefix + "meta` (id, value) VALUES ('maps', 73)");
@@ -1255,7 +1383,7 @@ class MysqlStorageProviderTest {
         List<Integer> applied = new ArrayList<>();
         List<MysqlSchemaMigration> migrations = this.userMigrations(10, applied);
         AtomicBoolean failBeforeMaps = new AtomicBoolean(true);
-        MysqlSchemaMigrator interrupted = new MysqlSchemaMigrator(10, (handle, prefix) -> {
+        MysqlSchemaMigrator interrupted = new MysqlSchemaMigrator(this.logger, 10, (handle, prefix) -> {
             this.initializeUsers(handle, prefix, 10);
             if (failBeforeMaps.getAndSet(false)) {
                 handle.execute("INSERT INTO `" + prefix + "users` (player, name) VALUES (42, 'preserved')");
@@ -1271,7 +1399,7 @@ class MysqlStorageProviderTest {
         int[] otherVersions = {9, 11};
         for (int i = 0; i < otherVersions.length; i++) {
             int version = otherVersions[i];
-            MysqlSchemaMigrator mismatched = new MysqlSchemaMigrator(version, (handle, prefix) -> fail("A different initialization version must be rejected"), this.userMigrations(version, applied));
+            MysqlSchemaMigrator mismatched = new MysqlSchemaMigrator(this.logger, version, (handle, prefix) -> fail("A different initialization version must be rejected"), this.userMigrations(version, applied));
             IllegalStateException exception = assertThrows(IllegalStateException.class, () -> mismatched.migrate(this.direct, this.prefix));
             assertTrue(exception.getMessage().contains("initialization targets version 10"));
             assertEquals(10, this.meta("schema_pending"));
@@ -1288,8 +1416,8 @@ class MysqlStorageProviderTest {
     @Test
     void rejectsPendingMigrationsThatDoNotFollowTheStoredVersion() {
         List<Integer> applied = new ArrayList<>();
-        new MysqlSchemaMigrator(7, (handle, prefix) -> this.initializeUsers(handle, prefix, 7), this.userMigrations(7, applied)).migrate(this.direct, this.prefix);
-        MysqlSchemaMigrator latest = new MysqlSchemaMigrator(10, (handle, prefix) -> fail("Existing schemas must use migrations"), this.userMigrations(10, applied));
+        new MysqlSchemaMigrator(this.logger, 7, (handle, prefix) -> this.initializeUsers(handle, prefix, 7), this.userMigrations(7, applied)).migrate(this.direct, this.prefix);
+        MysqlSchemaMigrator latest = new MysqlSchemaMigrator(this.logger, 10, (handle, prefix) -> fail("Existing schemas must use migrations"), this.userMigrations(10, applied));
         int[] invalidTargets = {0, 7, 9, 11};
         for (int i = 0; i < invalidTargets.length; i++) {
             int pending = invalidTargets[i];
@@ -1483,8 +1611,9 @@ class MysqlStorageProviderTest {
 
     private static final class QuietLogger implements PluginLogger {
         private final AtomicInteger warnings = new AtomicInteger();
+        private final ConcurrentLinkedQueue<String> messages = new ConcurrentLinkedQueue<>();
 
-        @Override public void info(String message) {}
+        @Override public void info(String message) { this.messages.add(message); }
         @Override public void warn(String message) { this.warnings.incrementAndGet(); }
         @Override public void warn(String message, Throwable failure) { this.warnings.incrementAndGet(); }
         @Override public void error(String message) {}

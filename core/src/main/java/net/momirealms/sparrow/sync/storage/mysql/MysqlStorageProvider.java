@@ -126,7 +126,7 @@ public final class MysqlStorageProvider implements StorageProvider {
                     })
                     .registerRowMapper(SnapshotRow.class, new MysqlSnapshotRowMapper())
                     .registerRowMapper(SnapshotMeta.class, (result, context) -> MysqlSnapshotRowMapper.readMeta(result));
-            new MysqlSchemaMigrator(MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, MIGRATIONS).migrate(connected, this.options.tablePrefix());
+            new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, MIGRATIONS).migrate(connected, this.options.tablePrefix());
             MysqlMapStorage mapStorage = new MysqlMapStorage(connected, this.options.tablePrefix(), this.asyncExecutor);
             // 所有准备成功后才转交连接池所有权, 此时 Jdbi 对应的表结构已经可用.
             this.dataSource = pool;

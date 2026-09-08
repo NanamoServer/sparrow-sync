@@ -6,6 +6,7 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.ReplaceOptions;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.bson.Document;
@@ -18,7 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 
 final class IndexReconciler {
-    private static final int SCHEMA_VERSION = 2; // 三个业务集合的索引声明版本, 改动声明时一起递增
+    private static final int SCHEMA_VERSION = DependencyVersions.MONGODB_INDEX_VERSION; // 三个业务集合共用的索引声明版本
     private static final String SCHEMA_DOCUMENT_ID = "schema";
     private static final String SCHEMA_FIELD_VERSION = "version";
 
