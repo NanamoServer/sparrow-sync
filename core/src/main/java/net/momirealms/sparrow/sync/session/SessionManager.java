@@ -29,13 +29,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
 public final class SessionManager {
     private final SparrowSync plugin;
     private final ConcurrentHashMap<UUID, PlayerSession> sessions = new ConcurrentHashMap<>();
-    private final LongAdder rejectedLogins = new LongAdder();
     private SnapshotService snapshotService;
     private SessionLock sessionLock;
     private HandoffManager handoffs;
@@ -371,15 +369,6 @@ public final class SessionManager {
 
     public int size() {
         return this.sessions.size();
-    }
-
-    /** 本次启动以来, 登录门和 Join 应用阶段主动拒绝连接的次数. */
-    public long rejectedLoginCount() {
-        return this.rejectedLogins.sum();
-    }
-
-    public void recordLoginRejection() {
-        this.rejectedLogins.increment();
     }
 
     @NotNull

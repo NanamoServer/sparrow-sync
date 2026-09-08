@@ -22,16 +22,6 @@ class SessionManagerTest {
     private final Connection connection = ConnectionFixture.create();
 
     @Test
-    void rejectionCounterOnlyCountsExplicitRejections() {
-        this.manager.tryOpen(UUID.randomUUID(), "Steve", this.connection);
-        assertEquals(0, this.manager.rejectedLoginCount());
-        this.manager.recordLoginRejection();
-        this.manager.recordLoginRejection();
-        assertEquals(2, this.manager.rejectedLoginCount());
-        assertTrue(this.manager.onlinePlayers().isEmpty());
-    }
-
-    @Test
     void openRegistersPreparingSession() {
         UUID player = UUID.randomUUID();
 
@@ -40,6 +30,7 @@ class SessionManagerTest {
         assertSame(session, this.manager.find(player));
         assertSame(this.connection, session.connection());
         assertEquals(SessionState.PREPARING, session.state());
+        assertTrue(this.manager.onlinePlayers().isEmpty());
         assertEquals(1, this.manager.size());
     }
 

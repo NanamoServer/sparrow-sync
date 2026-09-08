@@ -86,7 +86,6 @@ public final class SessionListener implements Listener {
     }
 
     private void kick(Player player) {
-        this.sessions.recordLoginRejection();
         player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 

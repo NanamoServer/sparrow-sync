@@ -247,9 +247,11 @@ class CommandFeaturesTest {
         this.manager.handleCommandFeedback(sender(Set.of()), MessageConstants.COMMAND_STATUS_SYSTEM,
                 Component.text("version-must-not-appear"), Component.text("server-version-must-not-appear"),
                 Component.text("survival-01"), Component.text("PostgreSQL"), MessageConstants.COMMAND_CONNECTED.asComponent(),
-                Component.text(4), Component.text(0), Component.text(16), Component.text(0), Component.text(2));
+                Component.text(4), Component.text(0), Component.text(16), Component.text(0));
         assertEquals(5, this.text().lines().count());
         assertFalse(this.text().contains("must-not-appear"));
+        assertFalse(this.text().contains(language.equals("zh") ? "登录拒绝" : "Login rejections"));
+        assertFalse(this.text().contains("<arg:"));
         assertTrue(this.text().contains("PostgreSQL"));
         this.messages.clear();
         this.manager.handleCommandFeedback(sender(Set.of()), MessageConstants.COMMAND_RELOAD_CONFIG_SUCCESS,

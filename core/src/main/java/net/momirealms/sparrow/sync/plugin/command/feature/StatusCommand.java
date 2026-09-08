@@ -72,8 +72,7 @@ public final class StatusCommand extends BukkitCommandFeature {
                 Component.text(this.plugin().playerExecutor().workerCount()),
                 Component.text(this.plugin().playerExecutor().pendingTasks()),
                 Component.text(this.plugin().sessionManager().size()),
-                Component.text(this.plugin().playerExecutor().failureCount()),
-                Component.text(this.plugin().sessionManager().rejectedLoginCount()));
+                Component.text(this.plugin().playerExecutor().failureCount()));
     }
 
     private void showPlayer(CommandContext<CommandSender> context, String input, UUID player) {

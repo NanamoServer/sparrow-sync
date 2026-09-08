@@ -28,7 +28,7 @@ command.status.system: |-
   <color:#C8E4E9>• 节点：</color><color:#F2F4FF><arg:2></color>
   <color:#C8E4E9>• 存储：</color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
   <color:#C8E4E9>• 线程：</color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· 排队：</color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· 会话：</color><color:#F2F4FF><arg:7></color>
-  <color:#C8E4E9>• 任务失败：</color><color:#F2F4FF><arg:8></color> <color:#C8E4E9>· 登录拒绝：</color><color:#FFE08A><arg:9></color>
+  <color:#C8E4E9>• 任务失败：</color><color:#F2F4FF><arg:8></color>
 command.status.unknown: '<color:#FFB6CB>查询失败</color>'
 
 # exception

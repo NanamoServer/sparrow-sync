@@ -28,7 +28,7 @@ command.status.system: |-
   <color:#C8E4E9>• Server: </color><color:#F2F4FF><arg:2></color>
   <color:#C8E4E9>• Storage: </color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
   <color:#C8E4E9>• Workers: </color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· Queued: </color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· Sessions: </color><color:#F2F4FF><arg:7></color>
-  <color:#C8E4E9>• Task failures: </color><color:#F2F4FF><arg:8></color> <color:#C8E4E9>· Login rejections: </color><color:#FFE08A><arg:9></color>
+  <color:#C8E4E9>• Task failures: </color><color:#F2F4FF><arg:8></color>
 command.status.unknown: '<color:#FFB6CB>Query failed</color>'
 
 # exception
