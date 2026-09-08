@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
@@ -400,6 +401,26 @@ class CaptureSchedulingTest {
         assertSame(this.worker.get(), processedOn.get());
         assertEquals(1, this.written.size());
         if (mode.equals("OFFLINE")) assertSame(this.worker.get(), capturedOn.get());
+    }
+
+    @Test
+    void restoreCreatesNewIdentityAndSharesTimestampOrderWithCaptures() throws Exception {
+        Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 0),
+                Map.of(DataKey.of("external", "retained"), NBT.createCompound()));
+        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        this.service.saveRestored(source, this.player.getName());
+        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        this.releaseWorker.countDown();
+        assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));
+        assertEquals(3, this.written.size());
+        Snapshot restored = this.written.get(1);
+        assertEquals(SaveCause.RESTORE, restored.meta().cause());
+        assertNotEquals(source.meta().id(), restored.meta().id());
+        assertFalse(restored.meta().pinned());
+        assertEquals(source.data(), restored.data());
+        assertTrue(this.written.get(0).meta().timestamp() < restored.meta().timestamp());
+        assertTrue(restored.meta().timestamp() < this.written.get(2).meta().timestamp());
+        assertEquals(1, source.meta().timestamp());
     }
 
     @Test

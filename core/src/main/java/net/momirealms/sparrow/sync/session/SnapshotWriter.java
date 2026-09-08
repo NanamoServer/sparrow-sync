@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -64,7 +65,7 @@ final class SnapshotWriter {
             if (result.stored()) {
                 this.logSaved(attempt, result, System.nanoTime() - submittedAt);
                 this.rotateHistory(attempt.player(), attempt.playerName());
-                completion.complete(new SnapshotSaveResult.Settled(result));
+                completion.complete(new SnapshotSaveResult.Settled(result, attempt.snapshot().meta().id()));
                 return;
             }
             if (result.retriable()) {
@@ -140,7 +141,7 @@ final class SnapshotWriter {
     private void stashFailed(WriteAttempt attempt, SaveResult result, @Nullable Throwable failure, CompletableFuture<SnapshotSaveResult> completion) {
         logFinalFailure(this.logger, attempt, result, failure);
         this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
-        completion.complete(new SnapshotSaveResult.Settled(result));
+        completion.complete(new SnapshotSaveResult.Settled(result, attempt.snapshot().meta().id()));
     }
 
     private void rotateHistory(UUID player, String playerName) {
@@ -158,7 +159,7 @@ final class SnapshotWriter {
     void stashUnsettled() {
         for (var entry : this.unsettledWrites.entrySet()) {
             WriteAttempt attempt = entry.getValue();
-            if (entry.getKey().complete(new SnapshotSaveResult.Settled(SaveResult.RETRY_LATER))) {
+            if (entry.getKey().complete(new SnapshotSaveResult.Settled(SaveResult.RETRY_LATER, attempt.snapshot().meta().id()))) {
                 this.stash.stash(attempt.snapshot(), attempt.playerName(), SaveResult.RETRY_LATER);
             }
         }

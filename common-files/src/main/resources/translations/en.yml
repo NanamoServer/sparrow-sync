@@ -6,10 +6,34 @@ command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSy
 command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Query failed. Check the console log.</color>'
 command.unpinned: '<color:#C8E4E9>Unpinned</color>'
 
+# command.exception
+command.exception.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Deleted exception file <arg:0></color>'
+command.exception.not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Exception file <arg:0> was not found</color>'
+
 # command.reload
 command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Reload failed. Check the console log.</color>'
 command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Configuration reloaded</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>Reload in progress, please wait.</color>'
+
+# command.snapshot
+command.snapshot.cancelled: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Operation did not complete: snapshot saving was cancelled</color>'
+command.snapshot.captured: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Saved snapshot <color:#C7BCE7><arg:1></color> for <arg:0></color>'
+command.snapshot.conflict: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Snapshot <color:#C7BCE7><arg:1></color> already exists with different content; nothing was overwritten</color>'
+command.snapshot.dead: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>The player is dead; respawn before requesting a restore</color>'
+command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Deleted snapshot <color:#C7BCE7><arg:1></color>; future logins use the latest remaining snapshot</color>'
+command.snapshot.exported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Exported snapshot <color:#C7BCE7><arg:1></color> to <color:#FFE3A3><arg:2></color></color>'
+command.snapshot.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Operation did not complete; check the server log</color>'
+command.snapshot.imported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Imported snapshot <color:#C7BCE7><arg:1></color>; no live application requested</color>'
+command.snapshot.invalid_file: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Cannot import: the file is not a valid SparrowSync snapshot</color>'
+command.snapshot.not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Snapshot <color:#C7BCE7><arg:1></color> was not found</color>'
+command.snapshot.offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Operation failed: the player is offline or unavailable</color>'
+command.snapshot.pinned: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Pinned snapshot <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.restored: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Restored <arg:0>; new snapshot <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.restored_offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Saved restore snapshot <color:#C7BCE7><arg:1></color> for <arg:0>; applies on next login</color>'
+command.snapshot.unavailable: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No completion acknowledgement from the target server; the result is unknown</color>'
+command.snapshot.unchanged: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Snapshot <color:#C7BCE7><arg:1></color> already has the requested state</color>'
+command.snapshot.unpinned: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Unpinned snapshot <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.wrong_player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Snapshot <color:#C7BCE7><arg:1></color> does not belong to <arg:0></color>'
 
 # command.status
 command.status.no_lock: '<color:#F2F4FF>No lock</color>'
@@ -91,6 +115,7 @@ update.is_latest: You're running the latest version
 # Console messages use forced-locale from config.yml, or the system locale when unset.
 # log.command
 log.command.player_lookup_failed: 'Failed to resolve player identity: <arg:0>'
+log.command.snapshot_failed: 'Snapshot operation failed: <arg:0>'
 log.command.status_query_failed: 'Failed to query player status: <arg:0>'
 
 # log.data

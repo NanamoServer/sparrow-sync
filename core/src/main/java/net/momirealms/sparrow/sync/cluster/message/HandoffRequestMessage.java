@@ -1,10 +1,11 @@
-package net.momirealms.sparrow.sync.cluster;
+package net.momirealms.sparrow.sync.cluster.message;
 
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;
 import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayRequestMessage;
+import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -46,7 +47,7 @@ public final class HandoffRequestMessage extends TwoWayRequestMessage<ByteBuf, H
         return CompletableFuture.completedFuture(service == null ? HandoffResponseMessage.unknown() : service.answer(this.player));
     }
 
-    static void service(@NotNull HandoffManager service) {
+    public static void service(@NotNull HandoffManager service) {
         HandoffRequestMessage.service = service;
     }
 }

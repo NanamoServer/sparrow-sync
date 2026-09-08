@@ -4,7 +4,9 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
+import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.map.MapInteractionListener;
@@ -17,7 +19,10 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.session.operation.*;
 import net.momirealms.sparrow.sync.snapshot.*;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
@@ -33,9 +38,11 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -49,6 +56,9 @@ public final class SnapshotService {
     private PlayerSerialExecutor serialExecutor;
     private StorageProvider storage;
     private SnapshotWriter writer;
+    private SnapshotFiles files;
+    private volatile boolean operationsClosed;
+    private final Set<UUID> offlineRestores = ConcurrentHashMap.newKeySet(); // 持有离线恢复任务的玩家, 供登录和交接查询
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
     private final SnapshotHandoffTracker handoffs = new SnapshotHandoffTracker();
     private final ConcurrentHashMap<UUID, CompletableFuture<Void>> mapSaves = new ConcurrentHashMap<>(); // 同一玩家最后提交的等待地图完成的保存任务, 用于衔接异步准备结果
@@ -64,6 +74,7 @@ public final class SnapshotService {
         this.playerDataPipeline = this.plugin.playerDataPipeline();
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
+        this.files = new SnapshotFiles(this.plugin.dataFolderPath(), this.plugin.binaryCodec());
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);
     }
 
@@ -95,6 +106,197 @@ public final class SnapshotService {
             }
         }, ClientboundMapItemDataPacket.class, PacketFlow.CLIENTBOUND);
         MapInvalidationMessage.listener(maps::invalidate);
+    }
+
+    @NotNull
+    public SnapshotFiles files() {
+        return this.files;
+    }
+
+    public boolean restoringOffline(@NotNull UUID player) {
+        return this.offlineRestores.contains(player);
+    }
+
+    /** 在玩家线程立即采集 ACTIVE 玩家的当前状态, Future 等待保存结果. */
+    @NotNull
+    public CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player) {
+        if (this.operationsClosed) return CompletableFuture.completedFuture(new SnapshotCaptureResult.Offline());
+        CompletableFuture<SnapshotCaptureResult> result = new CompletableFuture<>();
+        Runnable capture = () -> {
+            try {
+                PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
+                if (!player.isOnline() || session == null || session.state() != SessionState.ACTIVE) {
+                    result.complete(new SnapshotCaptureResult.Offline());
+                    return;
+                }
+                CompletableFuture<SnapshotSaveResult> saved = this.plugin.sessionManager().captureNowAndSave(session, player, SaveCause.COMMAND);
+                if (saved == null) {
+                    result.complete(new SnapshotCaptureResult.Offline());
+                    return;
+                }
+                saved.whenComplete((outcome, failure) -> {
+                    if (failure != null) {
+                        result.completeExceptionally(failure);
+                    } else {
+                        result.complete(switch (outcome) {
+                            case SnapshotSaveResult.Cancelled ignored -> new SnapshotCaptureResult.Cancelled();
+                            case SnapshotSaveResult.Settled settled -> settled.result().stored()
+                                    ? new SnapshotCaptureResult.Captured(settled.id()) : new SnapshotCaptureResult.Failed();
+                        });
+                    }
+                });
+            } catch (RuntimeException failure) {
+                result.completeExceptionally(failure);
+            }
+        };
+        if (this.plugin.scheduler().entity().isOwnedByCurrentRegion(player)) {
+            capture.run();
+        } else if (this.plugin.scheduler().entity().run(player, capture, () -> result.complete(new SnapshotCaptureResult.Offline())) == null) {
+            result.complete(new SnapshotCaptureResult.Offline());
+        }
+        return result;
+    }
+
+    /** 读取指定历史快照并覆盖本服在线玩家, 死亡或会话失效时拒绝恢复. */
+    @NotNull
+    public CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull UUID snapshotId) {
+        if (this.operationsClosed) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+        return this.storage.snapshot(snapshotId).thenCompose(found -> {
+            if (found.isEmpty()) return CompletableFuture.completedFuture(new SnapshotRestoreResult.NotFound());
+            if (!found.get().meta().player().equals(player.getUniqueId())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.WrongPlayer());
+            return this.restore(player, found.get());
+        });
+    }
+
+    // 预解码后回到玩家线程, 应用成功才生成 RESTORE 新记录.
+    private CompletableFuture<SnapshotRestoreResult> restore(Player player, Snapshot snapshot) {
+        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
+        if (session == null || session.state() != SessionState.ACTIVE) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+        return this.prepareRestore(snapshot, session.playerName()).thenCompose(loaded -> {
+            if (!(loaded instanceof SnapshotLoadResult.Ready ready)) {
+                return CompletableFuture.completedFuture(new SnapshotRestoreResult.Failed());
+            }
+            CompletableFuture<SnapshotRestoreResult> completion = new CompletableFuture<>();
+            Runnable apply = () -> {
+                try {
+                    SnapshotRestoreApplyResult applied = this.plugin.sessionManager().applyRestoredNow(session, player, ready);
+                    if (applied instanceof SnapshotRestoreApplyResult.Gone) {
+                        completion.complete(new SnapshotRestoreResult.Offline());
+                    } else if (applied instanceof SnapshotRestoreApplyResult.Dead) {
+                        completion.complete(new SnapshotRestoreResult.Dead());
+                    } else if (applied instanceof SnapshotRestoreApplyResult.Applied) {
+                        // 应用与逻辑时间分配处于同一次玩家任务中, 后续退出保存采到的是恢复后的状态.
+                        this.saveRestored(snapshot, session.playerName()).whenComplete((saved, failure) -> {
+                            if (failure != null) {
+                                completion.completeExceptionally(failure);
+                            } else {
+                                completion.complete(switch (saved) {
+                                    case SnapshotSaveResult.Cancelled ignored -> new SnapshotRestoreResult.Cancelled();
+                                    case SnapshotSaveResult.Settled settled -> settled.result().stored()
+                                            ? new SnapshotRestoreResult.Restored(settled.id()) : new SnapshotRestoreResult.Failed();
+                                });
+                            }
+                        });
+                    } else {
+                        completion.complete(new SnapshotRestoreResult.Failed());
+                    }
+                } catch (Throwable failure) {
+                    completion.completeExceptionally(failure);
+                }
+            };
+            if (this.plugin.scheduler().entity().run(player, apply, () -> completion.complete(new SnapshotRestoreResult.Offline())) == null) {
+                completion.complete(new SnapshotRestoreResult.Offline());
+            }
+            return completion;
+        });
+    }
+
+    /** 持有玩家会话锁时写入 RESTORE 新记录, 供离线玩家下次登录加载. */
+    @NotNull
+    public CompletableFuture<SnapshotRestoreResult> restoreOffline(@NotNull PlayerIdentity player, @NotNull UUID snapshotId) {
+        return this.storage.snapshot(snapshotId).thenCompose(found -> {
+            if (found.isEmpty()) return CompletableFuture.completedFuture(new SnapshotRestoreResult.NotFound());
+            if (!found.get().meta().player().equals(player.uuid())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.WrongPlayer());
+            if (this.operationsClosed || !this.offlineRestores.add(player.uuid())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+            // 先登记在途写入, 持锁期间交接探测持续回答 SAVING.
+            return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.plugin.sessionLock().tryAcquire(player.uuid())).thenCompose(acquired -> {
+                if (!(acquired instanceof SessionLock.AcquireOutcome.Acquired lock)) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+                return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.saveRestored(found.get(), player.name()))
+                        .handle((saved, failure) -> new OfflineSave(saved, failure))
+                        .thenCompose(outcome -> this.plugin.sessionLock().release(player.uuid(), lock.value()).thenApply(ignored -> {
+                            if (outcome.failure() != null) throw new CompletionException(outcome.failure());
+                            return (SnapshotRestoreResult) switch (outcome.saved()) {
+                                case SnapshotSaveResult.Cancelled cancelled -> new SnapshotRestoreResult.Cancelled();
+                                case SnapshotSaveResult.Settled settled -> settled.result().stored()
+                                        ? new SnapshotRestoreResult.RestoredOffline(settled.id()) : new SnapshotRestoreResult.Failed();
+                            };
+                        }));
+            }).whenComplete((result, failure) -> this.offlineRestores.remove(player.uuid()));
+        });
+    }
+
+    /** 固定指定快照, 已固定时返回 Unchanged. */
+    @NotNull
+    public CompletableFuture<SnapshotPinResult> pin(@NotNull UUID snapshotId) {
+        return this.storage.setPinned(snapshotId, true).thenCompose(changed -> {
+            if (changed) return CompletableFuture.completedFuture(new SnapshotPinResult.Pinned());
+            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? new SnapshotPinResult.NotFound() : new SnapshotPinResult.Unchanged());
+        });
+    }
+
+    /** 取消固定指定快照, 未固定时返回 Unchanged. */
+    @NotNull
+    public CompletableFuture<SnapshotUnpinResult> unpin(@NotNull UUID snapshotId) {
+        return this.storage.setPinned(snapshotId, false).thenCompose(changed -> {
+            if (changed) return CompletableFuture.completedFuture(new SnapshotUnpinResult.Unpinned());
+            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? new SnapshotUnpinResult.NotFound() : new SnapshotUnpinResult.Unchanged());
+        });
+    }
+
+    /** 删除指定快照, 已固定的快照也可删除. */
+    @NotNull
+    public CompletableFuture<SnapshotDeleteResult> delete(@NotNull UUID snapshotId) {
+        return this.storage.deleteSnapshot(snapshotId).thenApply(deleted -> deleted ? new SnapshotDeleteResult.Deleted() : new SnapshotDeleteResult.NotFound());
+    }
+
+    /** 将指定快照导出到发送者对应的本服目录. */
+    @NotNull
+    public CompletableFuture<SnapshotExportResult> export(@NotNull UUID snapshotId, @NotNull SnapshotFiles.Format format, boolean playerSender) {
+        return this.storage.snapshot(snapshotId).thenApplyAsync(found -> {
+            if (found.isEmpty()) return new SnapshotExportResult.NotFound();
+            Snapshot snapshot = found.get();
+            try {
+                return new SnapshotExportResult.Exported(snapshotId, this.files.export(snapshot, format, playerSender));
+            } catch (IOException failure) {
+                throw new CompletionException(failure);
+            }
+        }, this.plugin.scheduler().async());
+    }
+
+    /** 导入本地快照并保留原身份与时间, 相同 ID 的不同内容返回冲突. */
+    @NotNull
+    public CompletableFuture<SnapshotImportResult> importFile(@NotNull String relative) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return this.files.read(relative);
+            } catch (IOException | IllegalArgumentException failure) {
+                throw new CompletionException(failure);
+            }
+        }, this.plugin.scheduler().async()).thenCompose(decoded -> {
+            if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(new SnapshotImportResult.InvalidFile());
+            Snapshot snapshot = valid.snapshot();
+            UUID snapshotId = snapshot.meta().id();
+            return this.storage.snapshot(snapshotId).thenCompose(existing -> {
+                if (existing.isPresent()) return CompletableFuture.completedFuture(existing.get().equals(snapshot) ? new SnapshotImportResult.Unchanged(snapshotId) : new SnapshotImportResult.Conflict(snapshotId));
+                // 导入保持原身份和时间, 直接入库, 自动轮转属于正常保存流程.
+                return this.storage.saveSnapshot(snapshot).thenCompose(saved -> {
+                    if (saved == StorageProvider.SaveResult.DUPLICATE) {
+                        return this.storage.snapshot(snapshotId).thenApply(current -> current.filter(snapshot::equals).isPresent() ? new SnapshotImportResult.Unchanged(snapshotId) : new SnapshotImportResult.Conflict(snapshotId));
+                    }
+                    return CompletableFuture.completedFuture(saved.stored() ? new SnapshotImportResult.Imported(snapshotId) : new SnapshotImportResult.Failed());
+                });
+            });
+        });
     }
 
     /** 把预解码数据应用到玩家, <strong>必须在玩家线程上调用</strong>. */
@@ -144,6 +346,27 @@ public final class SnapshotService {
                         this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, millis(loadStart, System.nanoTime()), String.valueOf(throwable));
                     }
                 });
+    }
+
+    // 指定历史快照的恢复复用地图准备和数据预解码, 不查询 latest.
+    private CompletableFuture<SnapshotLoadResult> prepareRestore(Snapshot snapshot, String playerName) {
+        long started = System.nanoTime();
+        return this.decodeMaps(snapshot).thenApplyAsync(decoded -> this.decode(snapshot, decoded, snapshot.meta().player(), playerName, started), this.plugin.scheduler().async());
+    }
+
+    /** 将历史内容保存为一份新的 RESTORE 记录, 与普通保存共用逻辑时间及写入队列. */
+    @NotNull
+    public CompletableFuture<SnapshotSaveResult> saveRestored(@NotNull Snapshot source, @NotNull String playerName) {
+        UUID player = source.meta().player();
+        long now = Math.max(System.currentTimeMillis(), source.meta().timestamp() + 1);
+        long timestamp = this.lastTimestampByPlayer.merge(player, now, (last, current) -> Math.max(current, last + 1));
+        SnapshotMeta meta = SnapshotMeta.builder().player(player).timestamp(timestamp).cause(SaveCause.RESTORE)
+                .server(ServerConfig.serverId()).mcDataVersion(source.meta().mcDataVersion()).build();
+        Snapshot restored = new Snapshot(meta, source.data());
+        SaveRequest request = new SaveRequest();
+        SaveContext context = new SaveContext(meta, playerName, Map.of(), null);
+        this.submitSerial(player, () -> this.writePrepared(context, restored, 0, request), request);
+        return request.completion;
     }
 
     // 在物品编码完成后处理地图, 采集与发布仍由同一玩家串行任务发起.
@@ -323,6 +546,11 @@ public final class SnapshotService {
         }
     }
 
+    /** 停止接受主动采集和恢复, 已接受的写入继续完成. */
+    public void stopOperations() {
+        this.operationsClosed = true;
+    }
+
     /**
      * 将写入器和地图等待阶段尚未完成的快照留到本地 pending, 供下次启动继续保存.
      * <p>地图准备中的请求保存输入物品快照, 该快照尚未依赖未完成发布的负数引用.
@@ -335,7 +563,7 @@ public final class SnapshotService {
             PendingMapSnapshot pending = entry.getValue();
             this.plugin.snapshotStash().stash(pending.snapshot(), pending.playerName(), StorageProvider.SaveResult.RETRY_LATER);
             entry.getKey().handedOff();
-            entry.getKey().completion.complete(new SnapshotSaveResult.Settled(StorageProvider.SaveResult.RETRY_LATER));
+            entry.getKey().completion.complete(new SnapshotSaveResult.Settled(StorageProvider.SaveResult.RETRY_LATER, pending.snapshot().meta().id()));
         }
     }
 
@@ -358,6 +586,9 @@ public final class SnapshotService {
         if (maps != null) {
             maps.finishPublishing(timeout, unit);
         }
+    }
+
+    private record OfflineSave(SnapshotSaveResult saved, Throwable failure) {
     }
 
     private static String millis(long fromNanos, long toNanos) {

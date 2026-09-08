@@ -13,6 +13,7 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataStoragePatch;
+import net.momirealms.sparrow.sync.session.operation.*;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.util.EventUtils;
 import org.bukkit.Bukkit;
@@ -221,55 +222,30 @@ public final class SessionManager {
         }
     }
 
-    /** 读取并在玩家线程应用最新快照, 供恢复命令等即时场景使用. */
-    @NotNull
-    public CompletableFuture<SnapshotRestoreResult> restoreLatest(@NotNull Player player) {
-        PlayerSession session = this.find(player.getUniqueId());
-        if (session == null) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Gone());
+    // 在实际应用的玩家线程重新检查状态, 死亡玩家直接拒绝本次恢复.
+    SnapshotRestoreApplyResult applyRestoredNow(PlayerSession session, Player player, SnapshotLoadResult.Ready loaded) {
         synchronized (session) {
-            if (!this.owns(session) || session.state() != SessionState.ACTIVE) {
-                return CompletableFuture.completedFuture(new SnapshotRestoreResult.Gone());
-            }
+            if (!player.isOnline() || !this.owns(session) || session.state() != SessionState.ACTIVE) return new SnapshotRestoreApplyResult.Gone();
         }
-        return this.snapshotService.loadLatest(player.getUniqueId(), player.getName()).thenCompose(result -> switch (result) {
-            case SnapshotLoadResult.Empty ignored -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Empty());
-            case SnapshotLoadResult.Failed failed -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Failed(failed.detail()));
-            case SnapshotLoadResult.Ready ready -> this.applyRestored(session, player, ready);
-        });
-    }
-
-    private CompletableFuture<SnapshotRestoreResult> applyRestored(PlayerSession session, Player player, SnapshotLoadResult.Ready loaded) {
-        CompletableFuture<SnapshotRestoreResult> completion = new CompletableFuture<>();
-        player.getScheduler().run(this.plugin.javaPlugin(), task -> {
-            synchronized (session) {
-                if (!this.owns(session) || session.state() != SessionState.ACTIVE) {
-                    completion.complete(new SnapshotRestoreResult.Gone());
-                    return;
-                }
-            }
-            try {
-                // todo 优化 PreApplyEvent 背后的复制一类的逻辑
-                PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
-                EventUtils.fireAndForget(event);
-                loaded.context().acceptEventValues(event.decoded());
-                switch (this.snapshotService.apply(player, loaded)) {
-                    case SnapshotApplyResult.Applied applied -> {
-                        synchronized (session) {
-                            if (this.owns(session) && session.state() == SessionState.ACTIVE) {
-                                session.retainedData(loaded.context().passthrough());
-                            }
-                        }
-                        EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
-                        completion.complete(new SnapshotRestoreResult.Applied(applied.applied().size(), applied.skipped().size()));
+        if (player.isDead()) return new SnapshotRestoreApplyResult.Dead();
+        // todo 优化 PreApplyEvent 背后的复制一类的逻辑
+        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
+        EventUtils.fireAndForget(event);
+        loaded.context().acceptEventValues(event.decoded());
+        if (player.isDead()) return new SnapshotRestoreApplyResult.Dead();
+        return switch (this.snapshotService.apply(player, loaded)) {
+            case SnapshotApplyResult.Applied applied -> {
+                synchronized (session) {
+                    if (this.owns(session) && session.state() == SessionState.ACTIVE) {
+                        session.retainedData(loaded.context().passthrough());
                     }
-                    case SnapshotApplyResult.Failed failed -> completion.complete(new SnapshotRestoreResult.Failed(failed.detail()));
-                    case SnapshotApplyResult.Rejected ignored -> completion.complete(new SnapshotRestoreResult.Gone());
                 }
-            } catch (Throwable throwable) {
-                completion.completeExceptionally(throwable);
+                EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
+                yield new SnapshotRestoreApplyResult.Applied(applied.applied().size(), applied.skipped().size());
             }
-        }, () -> completion.complete(new SnapshotRestoreResult.Gone()));
-        return completion;
+            case SnapshotApplyResult.Failed failed -> new SnapshotRestoreApplyResult.Failed(failed.detail());
+            case SnapshotApplyResult.Rejected ignored -> new SnapshotRestoreApplyResult.Gone();
+        };
     }
 
     /** 作废尚未激活的会话, 不保存半加载数据. */

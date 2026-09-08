@@ -14,8 +14,7 @@ import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
-import net.momirealms.sparrow.sync.session.SnapshotRestoreResult;
-import net.momirealms.sparrow.sync.session.SnapshotSaveResult;
+import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
@@ -87,8 +86,6 @@ public final class TestCommand extends BukkitCommandFeature {
                     TestArgument argument = context.get("case");
                     switch (argument) {
                         case SMOKE -> this.smokeTest(context);
-                        case SAVE -> this.saveTest(context);
-                        case LOAD -> this.loadTest(context);
                         case BURST -> this.burstTest(context);
                         case CAPTURE_SYNC -> this.captureTest(context, CaptureMode.SYNC);
                         case CAPTURE_ASYNC -> this.captureTest(context, CaptureMode.ASYNC);
@@ -97,8 +94,6 @@ public final class TestCommand extends BukkitCommandFeature {
                         case ATTRIBUTES_HALF_DIRTY -> this.attributesTest(context, 50);
                         case ATTRIBUTES_ALL_DIRTY -> this.attributesTest(context, 100);
                         case LIST -> this.listTest(context);
-                        case PIN -> this.pinTest(context, true);
-                        case UNPIN -> this.pinTest(context, false);
                         case ROTATE -> this.rotateTest(context);
                         case KILL -> this.killTest(context);
                         case REVIVE -> this.reviveTest(context);
@@ -113,8 +108,6 @@ public final class TestCommand extends BukkitCommandFeature {
 
     public enum TestArgument {
         SMOKE,
-        SAVE,       // 立即采集并落库一次, 不用退服
-        LOAD,       // 读库最新快照并应用, 不用重进
         BURST,      // 同 tick 连发 count 次保存, 压 timestamp 钳制与提交序
         CAPTURE_SYNC,    // 玩家线程采集全部类型, 串行线程编码
         CAPTURE_ASYNC,   // 先在玩家线程采集对应类型, 再由串行线程补齐其余类型并编码
@@ -123,8 +116,6 @@ public final class TestCommand extends BukkitCommandFeature {
         ATTRIBUTES_HALF_DIRTY, // 一半属性变脏后采集, 奇数项向上取整
         ATTRIBUTES_ALL_DIRTY, // 全部属性变脏后采集
         LIST,       // 列出最近 count 份快照元数据, 与数据库对照
-        PIN,        // 固定最新一份, 配合 ROTATE 验证豁免
-        UNPIN,
         ROTATE,     // 手动触发一次轮转
         KILL,       // 静默杀死: 纯状态写入不走死亡流程, 构造/演示 Q8 的"快照死"象限
         REVIVE      // 从死亡状态经正常重生流程复活, 便于反复测试
@@ -517,53 +508,6 @@ public final class TestCommand extends BukkitCommandFeature {
                                    int changed, long mutateNanos, long captureNanos, long cleanupNanos) {
     }
 
-    // ---- SAVE / LOAD / BURST / LIST / PIN / ROTATE: 存储纵线的手动触发与验收, 不用退服重进即可对照数据库观察.
-
-    private void saveTest(CommandContext<CommandSender> context) {
-        CommandSender sender = context.sender();
-        Player target = target(context);
-        if (target == null) return;
-        SessionManager sessions = plugin().sessionManager();
-        PlayerSession session = this.readySession(sender, target);
-        if (session == null) return;
-        target.getScheduler().run(plugin().javaPlugin(), task -> {
-            long start = System.nanoTime();
-            CompletableFuture<SnapshotSaveResult> save = sessions.captureNowAndSave(session, target, SaveCause.COMMAND);
-            if (save == null) {
-                send(sender, "[FAIL] synchronization session is not active", false);
-                return;
-            }
-            save.whenComplete((result, throwable) -> {
-                if (throwable != null) {
-                    send(sender, "[FAIL] save: " + throwable, false);
-                    return;
-                }
-                boolean settled = result instanceof SnapshotSaveResult.Settled;
-                send(sender, (settled ? "[PASS] save " : "[FAIL] save ") + result + " in " + elapsed(start), settled);
-            });
-        }, null);
-    }
-
-    private void loadTest(CommandContext<CommandSender> context) {
-        CommandSender sender = context.sender();
-        Player target = target(context);
-        if (target == null) return;
-        long start = System.nanoTime();
-        plugin().sessionManager().restoreLatest(target).whenComplete((outcome, throwable) -> {
-            if (throwable != null) {
-                send(sender, "[FAIL] load: " + throwable, false);
-                return;
-            }
-            switch (outcome) {
-                case SnapshotRestoreResult.Applied applied ->
-                        send(sender, "[PASS] applied " + applied.applied() + " type(s), " + applied.skipped() + " skipped, in " + elapsed(start), true);
-                case SnapshotRestoreResult.Empty ignored -> send(sender, "[PASS] no snapshot in storage, nothing applied", true);
-                case SnapshotRestoreResult.Gone ignored -> send(sender, "[FAIL] player left before the apply stage", false);
-                case SnapshotRestoreResult.Failed failed -> send(sender, "[FAIL] " + failed.detail(), false);
-            }
-        });
-    }
-
     // 同一 tick 内连发 count 份, timestamp 钳制应给出严格递增序, 且没有一份被判乱序
     private void burstTest(CommandContext<CommandSender> context) {
         CommandSender sender = context.sender();
@@ -645,26 +589,6 @@ public final class TestCommand extends BukkitCommandFeature {
                 SnapshotMeta meta = metas.get(i);
                 send(sender, "  " + shortId(meta.id()) + "  " + TIME_FORMAT.format(Instant.ofEpochMilli(meta.timestamp()))
                         + "  " + meta.cause() + "  @" + meta.server() + (meta.pinned() ? "  [PINNED]" : ""), true);
-            }
-        });
-    }
-
-    private void pinTest(CommandContext<CommandSender> context, boolean pinned) {
-        CommandSender sender = context.sender();
-        Player target = target(context);
-        StorageProvider storage = this.readyStorage(sender);
-        if (target == null || storage == null) return;
-        storage.listRecentSnapshots(target.getUniqueId(), 1).thenCompose(metas -> {
-            if (metas.isEmpty()) {
-                send(sender, "[FAIL] no snapshot to " + (pinned ? "pin" : "unpin"), false);
-                return CompletableFuture.completedFuture(null);
-            }
-            UUID id = metas.getFirst().id();
-            return storage.setPinned(id, pinned).thenAccept(changed ->
-                    send(sender, "[PASS] " + (pinned ? "pinned " : "unpinned ") + shortId(id) + " (changed=" + changed + ")", true));
-        }).whenComplete((ignored, throwable) -> {
-            if (throwable != null) {
-                send(sender, "[FAIL] " + (pinned ? "pin" : "unpin") + ": " + throwable, false);
             }
         });
     }

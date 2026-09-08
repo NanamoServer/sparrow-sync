@@ -1,7 +1,7 @@
 [versions]
 project-version = "beta.1"
-config-version = "23"
-lang-version = "26"
+config-version = "24"
+lang-version = "27"
 mongodb-index-version = "2"
 mysql-schema-version = "1"
 postgresql-schema-version = "1"

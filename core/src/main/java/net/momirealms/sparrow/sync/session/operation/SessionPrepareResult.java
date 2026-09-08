@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.session;
+package net.momirealms.sparrow.sync.session.operation;
 
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

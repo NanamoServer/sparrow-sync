@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.cluster;
+package net.momirealms.sparrow.sync.cluster.message;
 
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;

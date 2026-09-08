@@ -22,6 +22,21 @@ import net.momirealms.sparrow.sync.plugin.PaperJavaPlugin;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 
 import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotPinCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotUnpinCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotDeleteCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotExportCommand;
+import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
+import java.util.concurrent.Executor;
+import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.util.VersionHelper;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.util.Map;
 import net.momirealms.sparrow.sync.plugin.configuration.CommandsConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -71,6 +86,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommandFeaturesTest {
+    @TempDir Path directory;
     private SparrowSync plugin;
     private TestManager manager;
     private final List<Component> messages = new ArrayList<>();
@@ -135,7 +151,7 @@ class CommandFeaturesTest {
     void defaultFeaturesOnlyRegisterTheCanonicalRoot() throws Exception {
         CommandsConfig.ConfigDefinition configs = new CommandsConfig.ConfigDefinition();
         AtomicInteger calls = new AtomicInteger();
-        for (String feature : List.of("status", "reload", "test", "debug_save_binary", "debug_save_json", "debug_apply")) {
+        for (String feature : List.of("status", "reload", "test", "snapshot_capture", "snapshot_restore", "snapshot_pin", "snapshot_unpin", "snapshot_delete", "snapshot_export", "snapshot_import", "exception_delete")) {
             CommandConfig config = configs.command(feature);
             for (var builder : this.manager.buildCommandBuilders(config)) {
                 this.manager.getCommandManager().command(builder.handler(context -> calls.incrementAndGet()));
@@ -163,6 +179,62 @@ class CommandFeaturesTest {
         this.execute(sender(Set.of("status")), "ssync status");
         this.execute(sender(Set.of("status")), "sparrow-sync status");
         assertEquals(2, calls.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pin", "unpin", "delete", "export"})
+    void snapshotManagementCommandsUseOnlySnapshotIdAndTheirPermission(String action) throws Exception {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+        UUID player = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "playerDirectory", null);
+        AtomicInteger changes = new AtomicInteger();
+        Snapshot snapshot = new Snapshot(new SnapshotMeta(id, player, 1, SaveCause.COMMAND, false, "origin", 0), Map.of());
+        StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> switch (method.getName()) {
+            case "snapshot" -> {
+                assertEquals(id, args[0]);
+                changes.incrementAndGet();
+                yield CompletableFuture.completedFuture(Optional.of(snapshot));
+            }
+            case "setPinned" -> {
+                assertEquals(id, args[0]);
+                assertEquals(action.equals("pin"), args[1]);
+                changes.incrementAndGet();
+                yield CompletableFuture.completedFuture(true);
+            }
+            case "deleteSnapshot" -> {
+                assertEquals(id, args[0]);
+                changes.incrementAndGet();
+                yield CompletableFuture.completedFuture(true);
+            }
+            default -> throw new AssertionError(method.getName());
+        });
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "dataFolderPath", this.directory);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> {
+            assertEquals("async", method.getName());
+            return (Executor) Runnable::run;
+        }));
+        SnapshotService service = new SnapshotService(this.plugin);
+        service.onLoad();
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotService", service);
+        CommandFeature feature = switch (action) {
+            case "pin" -> new SnapshotPinCommand(this.manager, this.plugin);
+            case "unpin" -> new SnapshotUnpinCommand(this.manager, this.plugin);
+            case "delete" -> new SnapshotDeleteCommand(this.manager, this.plugin);
+            case "export" -> new SnapshotExportCommand(this.manager, this.plugin);
+            default -> throw new AssertionError(action);
+        };
+        this.manager.registerFeature(feature, new CommandsConfig.ConfigDefinition().command("snapshot_" + action));
+        String command = "sparrow-sync snapshot " + action + (action.equals("export") ? " binary " : " ") + id;
+        assertThrows(ExecutionException.class, () -> this.execute(sender(Set.of()), command));
+        assertEquals(0, changes.get());
+        this.execute(sender(Set.of("sparrow_sync.command." + action)), command);
+        assertEquals(1, changes.get());
+        assertFalse(this.text().isBlank());
+        assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, id.toString())));
+        assertFalse(this.text().contains("command.snapshot"));
     }
 
     @Test

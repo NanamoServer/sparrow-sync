@@ -16,7 +16,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionPrepareResult;
+import net.momirealms.sparrow.sync.session.operation.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.ui.SparrowUI;
@@ -148,9 +148,14 @@ public final class ConfigurationPacketGate implements LoginGate {
             }
             // 被别的服持有, 走交接探测
             case SessionLock.AcquireOutcome.Held(String value) -> {
-                // 发现锁值挂着本服 id, 说明是另一台同 id 的服务器在线, 拒绝玩家进服并向发起警告
+                // 同服锁可能由离线恢复持有, 其余同 id 持锁情况按集群身份冲突处理
                 LockValue holder = LockValue.parse(value);
                 if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
+                    // todo 不能直接kick, 要在log记录有这个情况, 这个情况并不非法, 应该继续等待
+                    // 离线回滚期间进入服务器
+                    if (this.plugin.snapshotService().restoringOffline(uuid)) {
+                        yield CompletableFuture.failedFuture(new IllegalStateException("offline snapshot restore is still saving"));
+                    }
                     this.plugin.logger().error(LogCategory.LOCK, uuid, name, LogConstants.LOCK_SELF_CONFLICT, name, value);
                     yield CompletableFuture.failedFuture(new IllegalStateException("session lock is held by a server with the same server-id"));
                 }

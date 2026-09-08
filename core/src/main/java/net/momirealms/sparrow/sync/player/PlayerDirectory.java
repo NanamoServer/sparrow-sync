@@ -171,6 +171,16 @@ public final class PlayerDirectory {
         return this.online.players();
     }
 
+    // 在线操作按玩家名定位来源服, 接收方仍会核对自己的实际会话.
+    @NotNull
+    public synchronized Optional<String> server(@NotNull String name) {
+        String key = name.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, Map<String, PlayerIdentity>> entry : this.servers.entrySet()) {
+            if (entry.getValue().containsKey(key)) return Optional.of(entry.getKey());
+        }
+        return Optional.empty();
+    }
+
     // 按前缀返回已缓存的补全项, 空前缀提供全部在线名字.
     @NotNull
     public List<Suggestion> suggestions(@NotNull String prefix) {

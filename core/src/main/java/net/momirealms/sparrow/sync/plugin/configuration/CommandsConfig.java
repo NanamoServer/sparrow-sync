@@ -72,13 +72,28 @@ public final class CommandsConfig {
         CommandConfig status = new CommandConfig(true, List.of("/sparrow-sync status"), "sparrow_sync.command.status");
 
         @BlankLineBefore
-        CommandConfig debugSaveBinary = new CommandConfig(true, List.of("/sparrow-sync debug save-binary"), "ce.command.debug.save_binary");
+        CommandConfig snapshotCapture = new CommandConfig(true, List.of("/sparrow-sync snapshot capture"), "sparrow_sync.command.capture");
 
         @BlankLineBefore
-        CommandConfig debugSaveJson = new CommandConfig(true, List.of("/sparrow-sync debug save-json"), "ce.command.debug.save_json");
+        CommandConfig snapshotRestore = new CommandConfig(true, List.of("/sparrow-sync snapshot restore"), "sparrow_sync.command.restore");
 
         @BlankLineBefore
-        CommandConfig debugApply = new CommandConfig(true, List.of("/sparrow-sync debug apply"), "ce.command.debug.apply");
+        CommandConfig snapshotPin = new CommandConfig(true, List.of("/sparrow-sync snapshot pin"), "sparrow_sync.command.pin");
+
+        @BlankLineBefore
+        CommandConfig snapshotUnpin = new CommandConfig(true, List.of("/sparrow-sync snapshot unpin"), "sparrow_sync.command.unpin");
+
+        @BlankLineBefore
+        CommandConfig snapshotDelete = new CommandConfig(true, List.of("/sparrow-sync snapshot delete"), "sparrow_sync.command.delete");
+
+        @BlankLineBefore
+        CommandConfig snapshotExport = new CommandConfig(true, List.of("/sparrow-sync snapshot export"), "sparrow_sync.command.export");
+
+        @BlankLineBefore
+        CommandConfig snapshotImport = new CommandConfig(true, List.of("/sparrow-sync snapshot import"), "sparrow_sync.command.import");
+
+        @BlankLineBefore
+        CommandConfig exceptionDelete = new CommandConfig(true, List.of("/sparrow-sync exception delete"), "sparrow_sync.command.exception.delete");
 
         /**
          * 返回指定内置 Feature 的命令配置.
@@ -93,9 +108,14 @@ public final class CommandsConfig {
                 case "test" -> this.test;
                 case "reload" -> this.reload;
                 case "status" -> this.status;
-                case "debug_save_binary" -> this.debugSaveBinary;
-                case "debug_save_json" -> this.debugSaveJson;
-                case "debug_apply" -> this.debugApply;
+                case "snapshot_capture" -> this.snapshotCapture;
+                case "snapshot_restore" -> this.snapshotRestore;
+                case "snapshot_pin" -> this.snapshotPin;
+                case "snapshot_unpin" -> this.snapshotUnpin;
+                case "snapshot_delete" -> this.snapshotDelete;
+                case "snapshot_export" -> this.snapshotExport;
+                case "snapshot_import" -> this.snapshotImport;
+                case "exception_delete" -> this.exceptionDelete;
                 default -> throw new IllegalArgumentException("Unknown default command feature: " + featureID);
             };
         }

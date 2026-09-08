@@ -5,11 +5,15 @@ import net.momirealms.sparrow.redis.messagebroker.Logger;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.player.PlayerPresenceMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureResponseMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreResponseMessage;
 import net.momirealms.sparrow.sync.map.message.MapInvalidationMessage;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.cluster.HandoffRequestMessage;
-import net.momirealms.sparrow.sync.cluster.HandoffResponseMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffResponseMessage;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerProbeMessage;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerProbeResponseMessage;
 import org.jetbrains.annotations.NotNull;
@@ -58,6 +62,10 @@ public final class MessageBrokerManager {
         broker.registry().register(ServerProbeResponseMessage.ID, ServerProbeResponseMessage.CODEC);
         broker.registry().register(MapInvalidationMessage.ID, MapInvalidationMessage.CODEC);
         broker.registry().register(PlayerPresenceMessage.ID, PlayerPresenceMessage.CODEC);
+        broker.registry().register(SnapshotCaptureRequestMessage.ID, SnapshotCaptureRequestMessage.CODEC);
+        broker.registry().register(SnapshotCaptureResponseMessage.ID, SnapshotCaptureResponseMessage.CODEC);
+        broker.registry().register(SnapshotRestoreRequestMessage.ID, SnapshotRestoreRequestMessage.CODEC);
+        broker.registry().register(SnapshotRestoreResponseMessage.ID, SnapshotRestoreResponseMessage.CODEC);
         broker.subscribe();
         this.broker = broker;
     }

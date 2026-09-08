@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.cluster;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
+import net.momirealms.sparrow.sync.cluster.message.HandoffRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffResponseMessage;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.test.RedisTestSupport;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;

@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
+import net.momirealms.sparrow.sync.cluster.message.HandoffRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffResponseMessage;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.jetbrains.annotations.NotNull;
 
@@ -67,7 +69,7 @@ public final class HandoffManager {
     public void onLoad() {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();
-        this.hasSession = uuid -> this.plugin.sessionManager().find(uuid) != null;
+        this.hasSession = uuid -> this.plugin.sessionManager().find(uuid) != null || this.plugin.snapshotService().restoringOffline(uuid);
         this.scheduler = (task, delayMillis) -> this.plugin.scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
         HandoffRequestMessage.service(this);
     }

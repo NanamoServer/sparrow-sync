@@ -2,8 +2,8 @@ package net.momirealms.sparrow.sync.cluster;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import net.momirealms.sparrow.sync.cluster.HandoffRequestMessage;
-import net.momirealms.sparrow.sync.cluster.HandoffResponseMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.HandoffResponseMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;

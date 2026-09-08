@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.plugin.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
+import net.momirealms.sparrow.sync.cluster.RemoteSnapshotManager;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.type.*;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -85,6 +86,7 @@ public class SparrowSync implements Plugin {
     private final ConfigurationManager configurationManager;
     private TranslationManager translationManager;
     private CommandManager commandManager;
+    private RemoteSnapshotManager remoteSnapshotManager;
 
     private JavaPlugin javaPlugin;
     private boolean isInitializing;
@@ -272,6 +274,7 @@ public class SparrowSync implements Plugin {
             return;
         }
         // 命令管理器
+        this.remoteSnapshotManager = new RemoteSnapshotManager(this);
         this.commandManager = new BukkitCommandManager(this);
         this.commandManager.registerDefaultFeatures();
         // 安装 SparrowUI
@@ -292,6 +295,7 @@ public class SparrowSync implements Plugin {
         this.snapshotService.onDelayedEnable();
         this.sessionManager.onDelayedEnable();
         this.playerDirectory.onDelayedEnable();
+        this.remoteSnapshotManager.onDelayedEnable();
         // 注入读取器
         this.injectPlayerDataStorage();
         // 安装进入世界前的数据加载门
@@ -307,6 +311,8 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginDisable() {
+        if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
+        if (this.snapshotService != null)       this.snapshotService.stopOperations();
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
         if (this.snapshotService != null)       this.snapshotService.stopMapReceiving();
@@ -705,6 +711,10 @@ public class SparrowSync implements Plugin {
 
     public BinarySnapshotCodec binaryCodec() {
         return this.binaryCodec;
+    }
+
+    public RemoteSnapshotManager remoteSnapshotManager() {
+        return this.remoteSnapshotManager;
     }
 
     public SessionManager sessionManager() {

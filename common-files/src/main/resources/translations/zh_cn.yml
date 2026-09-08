@@ -6,10 +6,34 @@ command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSy
 command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>查询失败，请查看控制台日志</color>'
 command.unpinned: '<color:#C8E4E9>未固定</color>'
 
+# command.exception
+command.exception.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除异常档案 <arg:0></color>'
+command.exception.not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到异常档案 <arg:0></color>'
+
 # command.reload
 command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>配置重载失败，请查看控制台日志</color>'
 command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>配置已经重载</color><color:#C8E4E9>（异步 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>正在重载，请稍候</color>'
+
+# command.snapshot
+command.snapshot.cancelled: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成：快照保存已被取消</color>'
+command.snapshot.captured: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已保存 <arg:0> 的快照 <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.conflict: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>快照 <color:#C7BCE7><arg:1></color> 已存在且内容不同，未覆盖</color>'
+command.snapshot.dead: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>玩家处于死亡状态，无法恢复快照，请重生后重新执行</color>'
+command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除快照 <color:#C7BCE7><arg:1></color>，后续登录使用剩余的最新快照</color>'
+command.snapshot.exported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导出快照 <color:#C7BCE7><arg:1></color> 至 <color:#FFE3A3><arg:2></color></color>'
+command.snapshot.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成，请查看服务器日志</color>'
+command.snapshot.imported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导入快照 <color:#C7BCE7><arg:1></color>，未主动应用在线玩家</color>'
+command.snapshot.invalid_file: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法导入：文件不是有效的 SparrowSync 快照</color>'
+command.snapshot.not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到指定快照 <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作失败：玩家已离线或当前无法操作</color>'
+command.snapshot.pinned: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已固定快照 <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.restored: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已恢复 <arg:0>，新快照 <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.restored_offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已为 <arg:0> 保存恢复快照 <color:#C7BCE7><arg:1></color>，下次登录生效</color>'
+command.snapshot.unavailable: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未收到目标服务器的完成确认，操作结果未知</color>'
+command.snapshot.unchanged: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>快照 <color:#C7BCE7><arg:1></color> 已处于目标状态，无需修改</color>'
+command.snapshot.unpinned: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已取消固定快照 <color:#C7BCE7><arg:1></color></color>'
+command.snapshot.wrong_player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>快照 <color:#C7BCE7><arg:1></color> 不属于玩家 <arg:0></color>'
 
 # command.status
 command.status.no_lock: '<color:#F2F4FF>无</color>'
@@ -91,6 +115,7 @@ update.is_latest: 你正在使用最新版本
 # 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
 # log.command
 log.command.player_lookup_failed: '解析玩家身份失败：<arg:0>'
+log.command.snapshot_failed: '执行快照操作失败：<arg:0>'
 log.command.status_query_failed: '查询玩家状态失败：<arg:0>'
 
 # log.data
