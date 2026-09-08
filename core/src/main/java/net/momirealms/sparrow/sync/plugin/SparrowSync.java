@@ -17,7 +17,7 @@ import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.session.gate.ConfigurationPacketGate;
 import net.momirealms.sparrow.sync.session.gate.LoginGate;
 import net.momirealms.sparrow.sync.session.gate.PaperEventGate;
-import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
@@ -34,6 +34,7 @@ import net.momirealms.sparrow.sync.plugin.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
+import net.momirealms.sparrow.sync.player.PlayerDirectory;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
@@ -105,6 +106,7 @@ public class SparrowSync implements Plugin {
     private final ServerHeartBeats serverHeartBeats;
     private final HandoffManager handoffManager;
     private final SessionManager sessionManager;
+    private final PlayerDirectory playerDirectory;
     private final LoginGate loginGate;
 
     SparrowSync(PluginLogger logger, Path dataFolderPath, ClassPathAppender sharedClassPathAppender, ClassPathAppender privateClassPathAppender) {
@@ -154,6 +156,7 @@ public class SparrowSync implements Plugin {
         this.messageBrokerManager = new MessageBrokerManager(this);
         this.serverHeartBeats = new ServerHeartBeats(this);
         this.sessionManager = new SessionManager(this);
+        this.playerDirectory = new PlayerDirectory(this);
         this.handoffManager = new HandoffManager(this);
         this.loginGate = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7() ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
     }
@@ -288,6 +291,7 @@ public class SparrowSync implements Plugin {
         // 快照与会话管理器
         this.snapshotService.onDelayedEnable();
         this.sessionManager.onDelayedEnable();
+        this.playerDirectory.onDelayedEnable();
         // 注入读取器
         this.injectPlayerDataStorage();
         // 安装进入世界前的数据加载门
@@ -303,6 +307,7 @@ public class SparrowSync implements Plugin {
 
     @Override
     public void onPluginDisable() {
+        if (this.playerDirectory != null)       this.playerDirectory.shutdown();
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
         if (this.snapshotService != null)       this.snapshotService.stopMapReceiving();
         if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
@@ -704,6 +709,10 @@ public class SparrowSync implements Plugin {
 
     public SessionManager sessionManager() {
         return this.sessionManager;
+    }
+
+    public PlayerDirectory playerDirectory() {
+        return this.playerDirectory;
     }
 
     public LoginGate loginGate() {

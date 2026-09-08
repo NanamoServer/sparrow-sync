@@ -111,7 +111,9 @@ public final class ConfigurationPacketGate implements LoginGate {
         CompletableFuture<Void> userReady = this.plugin.storageProvider().ensureUser(uuid, name).handle((ignored, throwable) -> {
             if (throwable != null) {
                 this.plugin.logger().file(LogCategory.STORAGE, uuid, name, throwable, LogConstants.SYNC_USER_FAILED, name);
+                return null;
             }
+            this.plugin.playerDirectory().remember(uuid, name);
             return null;
         });
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());

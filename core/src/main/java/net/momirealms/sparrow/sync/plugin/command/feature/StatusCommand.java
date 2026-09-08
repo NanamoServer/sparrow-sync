@@ -7,7 +7,7 @@ import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
-import net.momirealms.sparrow.sync.plugin.command.CommandArguments;
+import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
@@ -17,8 +17,6 @@ import net.momirealms.sparrow.sync.storage.StorageType;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.Command;
 import org.incendo.cloud.context.CommandContext;
-import org.incendo.cloud.parser.standard.StringParser;
-import org.incendo.cloud.suggestion.Suggestion;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -41,24 +39,21 @@ public final class StatusCommand extends BukkitCommandFeature {
 
     @Override
     public Command.Builder<? extends CommandSender> assembleCommand(org.incendo.cloud.CommandManager<CommandSender> manager, Command.Builder<CommandSender> builder) {
-        return builder.optional("player", StringParser.stringComponent(StringParser.StringMode.SINGLE)
-                        .suggestionProvider((context, input) -> CompletableFuture.completedFuture(this.plugin().sessionManager().playerNames().stream().map(Suggestion::suggestion).toList())))
+        return builder.optional("player", NetworkPlayerParser.playerParser(this.plugin().playerDirectory()))
                 .handler(context -> {
-                    String input = context.<String>optional("player").orElse(null);
-                    if (input == null) {
+                    String player = context.<String>optional("player").orElse(null);
+                    if (player == null) {
                         this.showSystem(context);
                     } else {
-                        CommandArguments.player(this.plugin().storageProvider(), input).orTimeout(3, TimeUnit.SECONDS)
-                                .whenComplete((player, failure) -> {
-                                    if (failure != null) {
-                                        this.handleFeedback(context, MessageConstants.COMMAND_QUERY_FAILED, Component.text(input));
-                                        this.logFailure(input, failure);
-                                    } else if (player.isEmpty()) {
-                                        this.handleFeedback(context, MessageConstants.COMMAND_PLAYER_NOT_FOUND, Component.text(input));
-                                    } else {
-                                        this.showPlayer(context, input, player.get());
-                                    }
-                                });
+                        this.plugin().playerDirectory().resolve(player).whenComplete((identity, failure) -> {
+                            if (failure != null) {
+                                this.handleFeedback(context, MessageConstants.COMMAND_QUERY_FAILED);
+                            } else if (identity.isEmpty()) {
+                                this.handleFeedback(context, MessageConstants.COMMAND_PLAYER_NOT_FOUND, Component.text(player));
+                            } else {
+                                this.showPlayer(context, identity.get().name(), identity.get().uuid());
+                            }
+                        });
                     }
                 });
     }
@@ -104,7 +99,7 @@ public final class StatusCommand extends BukkitCommandFeature {
             PlayerSession local = this.plugin().sessionManager().find(player);
             Component state = local == null ? MessageConstants.COMMAND_STATUS_NO_SESSION.asComponent() : Component.text(local.state().name());
             this.handleFeedback(context, MessageConstants.COMMAND_STATUS_PLAYER,
-                    Component.text(local == null ? (input.equalsIgnoreCase(player.toString()) ? input.substring(0, 8) : input) : local.playerName())
+                    Component.text(local == null ? input : local.playerName())
                             .hoverEvent(Component.text(player.toString()))
                             .clickEvent(ClickEvent.copyToClipboard(player.toString())),
                     Component.text(player.toString()), state, lock, snapshot);

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
-import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import org.junit.jupiter.api.Test;
 

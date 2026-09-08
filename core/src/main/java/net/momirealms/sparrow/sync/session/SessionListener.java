@@ -80,6 +80,8 @@ public final class SessionListener implements Listener {
         if (result instanceof SnapshotApplyResult.Failed(String detail)) {
             this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), detail);
             this.kick(player);
+        } else if (result instanceof SnapshotApplyResult.Applied) {
+            this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), true);
         }
     }
 
@@ -91,6 +93,7 @@ public final class SessionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), false);
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null) return;
         this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);

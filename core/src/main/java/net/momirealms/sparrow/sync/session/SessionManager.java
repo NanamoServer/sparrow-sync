@@ -22,6 +22,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -381,8 +383,14 @@ public final class SessionManager {
     }
 
     @NotNull
-    public List<String> playerNames() {
-        return this.sessions.values().stream().map(PlayerSession::playerName).sorted().toList();
+    public Map<UUID, String> onlinePlayers() {
+        Map<UUID, String> players = new HashMap<>();
+        for (PlayerSession session : this.sessions.values()) {
+            if (session.state() == SessionState.ACTIVE) {
+                players.put(session.uuid(), session.playerName());
+            }
+        }
+        return players;
     }
 
     /** 关服时为 ACTIVE 会话立即采集最终状态, 其余半加载会话直接作废. */

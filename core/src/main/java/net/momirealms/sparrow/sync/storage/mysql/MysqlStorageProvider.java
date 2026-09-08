@@ -4,7 +4,7 @@ import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
-import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;

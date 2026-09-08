@@ -14,6 +14,7 @@ import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.util.Index;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
+import net.momirealms.sparrow.sync.player.PlayerDirectory;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
@@ -34,6 +35,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.util.UUIDUtils;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.YamlDocument;
 import net.momirealms.sparrow.yaml.route.Route;
@@ -54,6 +56,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -81,6 +84,7 @@ class CommandFeaturesTest {
         NmsPlayerFixture.set(PluginConfig.class, null, "config", new PluginConfig.ConfigDefinition());
         NmsPlayerFixture.set(ServerConfig.class, null, "config", new ServerConfig.ConfigDefinition());
         this.plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "playerDirectory", new PlayerDirectory(this.plugin));
         PaperJavaPlugin javaPlugin = NmsPlayerFixture.allocate(PaperJavaPlugin.class);
         PluginDescriptionFile description = new PluginDescriptionFile(new StringReader("""
                 name: SparrowSync
@@ -165,6 +169,7 @@ class CommandFeaturesTest {
     void statusReadsOnlyLatestMetadataAndDoesNotAcquireTheLock() throws Exception {
         UUID player = UUID.randomUUID();
         UUID id = UUID.randomUUID();
+        this.redisPlayerName(player, "Steve");
         AtomicInteger reads = new AtomicInteger();
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
             if (method.isDefault()) return InvocationHandler.invokeDefault(instance, method, args);
@@ -178,7 +183,7 @@ class CommandFeaturesTest {
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "sessionLock", lock("other-server:token".getBytes(StandardCharsets.UTF_8), null));
         this.manager.registerFeature(new StatusCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("status"));
-        this.execute(sender(Set.of("sparrow_sync.command.status")), "sparrow-sync status " + player);
+        this.execute(sender(Set.of("sparrow_sync.command.status")), "sparrow-sync status Steve");
         assertEquals(1, reads.get());
         assertTrue(this.text().contains("other-server"));
         assertTrue(this.text().contains(id.toString().substring(0, 8)));
@@ -192,6 +197,7 @@ class CommandFeaturesTest {
 
     @Test
     void statusDistinguishesMissingDataFromQueryFailure() throws Exception {
+        this.redisPlayerName(UUID.randomUUID(), "Steve");
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
             if (method.isDefault()) return InvocationHandler.invokeDefault(instance, method, args);
             return CompletableFuture.failedFuture(new IllegalStateException("database offline"));
@@ -199,11 +205,31 @@ class CommandFeaturesTest {
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "sessionLock", lock(null, new IllegalStateException("redis offline")));
         this.manager.registerFeature(new StatusCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("status"));
-        this.execute(sender(Set.of("sparrow_sync.command.status")), "sparrow-sync status " + UUID.randomUUID());
+        this.execute(sender(Set.of("sparrow_sync.command.status")), "sparrow-sync status Steve");
         assertTrue(this.text().contains("Query failed"));
         assertEquals(3, this.text().lines().count());
         assertFalse(this.text().contains("No lock"));
         assertFalse(this.text().contains("No stored snapshot"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void redisPlayerName(UUID uuid, String name) {
+        RedisAsyncCommands<byte[], byte[]> commands = proxy(RedisAsyncCommands.class, (instance, method, args) -> {
+            assertEquals("get", method.getName());
+            String key = new String((byte[]) args[0], StandardCharsets.UTF_8);
+            assertTrue(key.startsWith("ss:user-name:"));
+            assertEquals(name, new String(HexFormat.of().parseHex(key.substring("ss:user-name:".length())), StandardCharsets.UTF_8));
+            AsyncCommand<byte[], byte[], byte[]> response = new AsyncCommand<>(new Command<>(CommandType.GET, new ByteArrayOutput<>(ByteArrayCodec.INSTANCE)));
+            response.complete(UUIDUtils.toBytes(uuid));
+            return response;
+        });
+        StatefulRedisConnection<byte[], byte[]> connection = proxy(StatefulRedisConnection.class, (instance, method, args) -> {
+            assertEquals("async", method.getName());
+            return commands;
+        });
+        RedisConnector connector = NmsPlayerFixture.allocate(RedisConnector.class);
+        NmsPlayerFixture.set(RedisConnector.class, connector, "connection", connection);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "redisConnector", connector);
     }
 
     @Test

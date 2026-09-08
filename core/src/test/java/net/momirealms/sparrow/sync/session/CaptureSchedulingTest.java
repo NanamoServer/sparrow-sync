@@ -12,7 +12,7 @@ import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
-import net.momirealms.sparrow.sync.executor.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;

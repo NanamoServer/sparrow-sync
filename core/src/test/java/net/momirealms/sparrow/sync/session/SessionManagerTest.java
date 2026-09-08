@@ -28,7 +28,7 @@ class SessionManagerTest {
         this.manager.recordLoginRejection();
         this.manager.recordLoginRejection();
         assertEquals(2, this.manager.rejectedLoginCount());
-        assertEquals(List.of("Steve"), this.manager.playerNames());
+        assertTrue(this.manager.onlinePlayers().isEmpty());
     }
 
     @Test

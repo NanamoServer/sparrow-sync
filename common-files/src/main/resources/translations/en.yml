@@ -1,170 +1,211 @@
-command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Query failed. Check the console log.</color>'
+# command
+command.connected: '<color:#C9F2C7>Connected</color>'
+command.disconnected: '<color:#FFB6CB>Disconnected</color>'
+command.pinned: '<color:#FFE08A>※ Pinned</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Player not found: </color><color:#F2F4FF><arg:0></color>'
+command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Query failed. Check the console log.</color>'
+command.unpinned: '<color:#C8E4E9>Unpinned</color>'
+
+# command.reload
+command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Reload failed. Check the console log.</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Configuration reloaded</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
+command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>Reload in progress, please wait.</color>'
+
+# command.status
+command.status.no_lock: '<color:#F2F4FF>No lock</color>'
+command.status.no_session: '<color:#F2F4FF>No local session</color>'
+command.status.no_snapshot: '<color:#F2F4FF>No stored snapshot</color>'
+command.status.player: |-
+  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>
+  <color:#C8E4E9>• Local: </color><color:#C9F2C7><arg:2></color> <color:#C8E4E9>· Lock holder: </color><color:#F2F4FF><arg:3></color>
+  <color:#C8E4E9>• Snapshot: </color><arg:4>
+command.status.snapshot: |-
+  <color:#C7BCE7><arg:0></color> <arg:4>
+  <color:#C8E4E9>• Saved: </color><color:#FFE3A3><arg:1></color>
+  <color:#C8E4E9>• Cause: </color><color:#F2F4FF><arg:2></color> <color:#C8E4E9>· Source: </color><color:#F2F4FF><arg:3></color>
 command.status.system: |-
   <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>System status</color>
   <color:#C8E4E9>• Server: </color><color:#F2F4FF><arg:2></color>
   <color:#C8E4E9>• Storage: </color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
   <color:#C8E4E9>• Workers: </color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· Queued: </color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· Sessions: </color><color:#F2F4FF><arg:7></color>
   <color:#C8E4E9>• Task failures: </color><color:#F2F4FF><arg:8></color> <color:#C8E4E9>· Login rejections: </color><color:#FFE08A><arg:9></color>
-command.connected: '<color:#C9F2C7>Connected</color>'
-command.disconnected: '<color:#FFB6CB>Disconnected</color>'
-command.status.no_lock: '<color:#F2F4FF>No lock</color>'
-command.status.no_snapshot: '<color:#F2F4FF>No stored snapshot</color>'
-command.status.snapshot: |-
-  <color:#C7BCE7><arg:0></color> <arg:4>
-  <color:#C8E4E9>• Saved: </color><color:#FFE3A3><arg:1></color>
-  <color:#C8E4E9>• Cause: </color><color:#F2F4FF><arg:2></color> <color:#C8E4E9>· Source: </color><color:#F2F4FF><arg:3></color>
-command.pinned: '<color:#FFE08A>※ Pinned</color>'
-command.unpinned: '<color:#C8E4E9>Unpinned</color>'
-command.status.no_session: '<color:#F2F4FF>No local session</color>'
-command.status.player: |-
-  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>
-  <color:#C8E4E9>• Local: </color><color:#C9F2C7><arg:2></color> <color:#C8E4E9>· Lock holder: </color><color:#F2F4FF><arg:3></color>
-  <color:#C8E4E9>• Snapshot: </color><arg:4>
 command.status.unknown: '<color:#FFB6CB>Query failed</color>'
-log.command.status_query_failed: 'Failed to query player status: <arg:0>'
 
-exception.invalid_syntax: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid syntax. Correct syntax: <color:#F2F4FF><arg:0></color></color>'
+# exception
 exception.invalid_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid argument. Reason: <color:#F2F4FF><arg:0></color></color>'
 exception.invalid_sender: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB><arg:0> is not allowed to execute that command. Must be of type <arg:1></color>'
-exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>An internal error occurred while attempting to perform this command</color>'
+exception.invalid_syntax: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid syntax. Correct syntax: <color:#F2F4FF><arg:0></color></color>'
 exception.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>I''m sorry, but you do not have permission to perform this command</color>'
 exception.no_such_command: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown command.</color>'
-argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player was found</color>'
+exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>An internal error occurred while attempting to perform this command</color>'
+
+# argument
 argument.entity.notfound.entity: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No entity was found</color>'
-argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid time format</color>'
-argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid material name</color>'
-argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid enchantment</color>'
-argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
-argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
-argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid Minecraft world</color>'
-argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid location. Required format is ''<arg:1> <arg:2> <arg:3></color>'
-argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Cannot mix local and absolute coordinates. (either all coordinates use ''^'' or none do)</color>'
-argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid namespace ''<arg:0>''. Must be [a-z0-9._-]</color>'
-argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid key ''<arg:0>''. Must be [a-z0-9/._-]</color>'
-argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid input ''<arg:0>'', requires an explicit namespace</color>'
+argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player was found</color>'
+argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid component ''<arg:0>'': <arg:1></color>'
+argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing component ''<arg:0>''</color>'
 argument.parse.failure.boolean: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not parse boolean from ''<arg:0>''</color>'
-argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid number in the range <arg:1> to <arg:2></color>'
 argument.parse.failure.char: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid character</color>'
-argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid string of type <arg:1></color>'
-argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid UUID</color>'
-argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not one of the following: <arg:1></color>'
-argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' does not match ''<arg:1>''</color>'
-argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown flag ''<arg:0>''</color>'
-argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Duplicate flag ''<arg:0>''</color>'
-argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No flag started. Don''t know what to do with ''<arg:0>''</color>'
-argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing argument for ''<arg:0>''</color>'
-argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>You don''t have permission to use ''<arg:0>''</color>'
 argument.parse.failure.color: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid color</color>'
 argument.parse.failure.duration: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a duration format</color>'
-argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing component ''<arg:0>''</color>'
-argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid component ''<arg:0>'': <arg:1></color>'
 argument.parse.failure.either: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not resolve <arg:1> or <arg:2> from ''<arg:0>''</color>'
+argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid enchantment</color>'
+argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not one of the following: <arg:1></color>'
+argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Duplicate flag ''<arg:0>''</color>'
+argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing argument for ''<arg:0>''</color>'
+argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No flag started. Don''t know what to do with ''<arg:0>''</color>'
+argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>You don''t have permission to use ''<arg:0>''</color>'
+argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown flag ''<arg:0>''</color>'
+argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid location. Required format is ''<arg:1> <arg:2> <arg:3></color>'
+argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Cannot mix local and absolute coordinates. (either all coordinates use ''^'' or none do)</color>'
+argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid material name</color>'
 argument.parse.failure.namedtextcolor: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a named text color</color>'
-command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>Reload in progress, please wait.</color>'
-command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Reload failed. Check the console log.</color>'
-command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Configuration reloaded</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
-plugin.compatibility: '[Compatibility] Hooked <arg:0>'
-plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
-config.errors_detected: 'Error found in config.yml - <arg:0>'
-update.available: 'New version <arg:0> is available: <arg:1>'
-update.is_latest: You're running the latest version
+argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid key ''<arg:0>''. Must be [a-z0-9/._-]</color>'
+argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid namespace ''<arg:0>''. Must be [a-z0-9._-]</color>'
+argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid input ''<arg:0>'', requires an explicit namespace</color>'
+argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid number in the range <arg:1> to <arg:2></color>'
+argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
+argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
+argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' does not match ''<arg:1>''</color>'
+argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid string of type <arg:1></color>'
+argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid time format</color>'
+argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid UUID</color>'
+argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid Minecraft world</color>'
 
 # Kick messages sent to players.
+# sync
 sync.kick.not_ready: <color:#E75FA8>Your data is not synchronized yet, please reconnect in a moment. Contact an admin if this keeps happening.</color>
 sync.kick.too_fast: <color:#E75FA8>You reconnected too quickly, your previous data is still being saved. Please try again in a moment.</color>
 
-# Console messages. Their language follows forced-locale in config.yml, or the system locale when it is empty.
-log.plugin.reload_at_runtime: Please do not restart plugins at runtime.
-log.plugin.load_failed: Failed to enable the plugin, check the log of the loading stage. Shutting the server down to limit the damage.
-log.plugin.disable_at_runtime: Please do not disable plugins at runtime.
-log.plugin.started: 'SparrowSync started'
-log.plugin.stopped: 'SparrowSync stopped'
-log.plugin.registry_frozen_types: 'Synchronization enabled for <arg:0> data types: <arg:1>'
-log.plugin.reload_failed: Failed to reload the plugin
-log.plugin.player_data_storage_install_failed: Failed to inject the PlayerDataStorage. Shutting the server down.
-log.server.id_missing: server-id is empty in server.yml. Set a unique id for every server sharing the database. Shutting the server down.
-log.server.id_duplicate: 'The server-id "<arg:0>" is taken by another live server in the cluster. Every server sharing the database needs its own id, change server-id in server.yml of this server. Shutting the server down.'
-log.server.id_seized: 'The previous run of this server never unregistered its identity (token <arg:0>), taking it over'
-log.storage.compressor_failed: Failed to load the snapshot compressor. Check that the runtime dependencies are intact and that the temp directory allows executing unpacked native libraries.
-log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'
-log.storage.mysql_schema_initializing: 'Initializing the MySQL schema at v<arg:1> (table prefix: "<arg:0>")'
-log.storage.mysql_schema_migrating: 'Upgrading the MySQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
-log.storage.postgresql_schema_initializing: 'Initializing the PostgreSQL schema at v<arg:1> (table prefix: "<arg:0>")'
-log.storage.postgresql_schema_migrating: 'Upgrading the PostgreSQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
-log.storage.backend_setup_failed: 'Failed to initialize <arg:0> storage (database: <arg:1>). Player data will NOT be loaded or saved.'
-log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
-log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'
-log.storage.encode_failed: 'Failed to encode the snapshot of <arg:0>, this data cannot reach the database'
-log.storage.oversized: 'The snapshot of <arg:0> carries <arg:1> bytes, over the per-snapshot limit, it cannot be written'
-log.storage.constraint_conflict: 'Writing the snapshot of <arg:0> hit a unique constraint, and that snapshot is not in the database'
-log.storage.write_retriable: 'Failed to write the snapshot of <arg:0>, it will be retried once the database recovers'
-log.storage.write_rejected: 'Failed to write the snapshot of <arg:0>, retrying will not help and it needs manual handling'
-log.storage.stale_index_dropped: 'Index layout updated, dropped the old index <arg:0>'
-log.storage.schema_too_new: 'The database schema generation <arg:0> is newer than this plugin supports (<arg:1>). Every server sharing the database must run the same SparrowSync version, update this server first. Shutting the server down.'
-log.redis.ready: 'Connected to Redis'
-log.redis.setup_failed: Failed to connect Redis. Cross server synchronization depends on it, check the redis section. Shutting the server down.
-log.lock.acquired: 'Acquired the session lock of <arg:0>'
-log.lock.waiting: 'The session lock of <arg:0> is held by <arg:1>, probing for handoff'
-log.lock.handoff: 'Session lock handoff of <arg:0> finished (<arg:1>, waited <arg:2> ms)'
-log.lock.released: 'Released the session lock of <arg:0> (<arg:1>)'
-log.lock.swept: 'Startup sweep: removed <arg:0> session lock(s) left over from the previous run'
-log.lock.self_conflict: 'The session lock of <arg:0> is held by a server with the same id (<arg:1>), refused the login. Two servers in the cluster may share one server-id, check server.yml of every server now.'
-log.executor.unfinished_tasks: 'The player serial executor shut down with <arg:0> unfinished task(s)'
-log.executor.draining: 'Draining player tasks, <arg:0> remaining'
-log.executor.task_failed: 'A player task failed on thread <arg:0>'
-log.session.join: Logged in
-log.session.quit: Logged out
-log.gate.held: 'Received a login network connection request, entering data preparation'
-log.gate.released: '<arg:0> finished data preparation'
-log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
-log.sync.load_ready: 'Loaded and pre-decoded the remote snapshot <arg:1> of <arg:0> asynchronously from the database (<arg:2>ms)'
-log.sync.load_empty: 'Queried the database asynchronously but found no snapshot history for <arg:0> (<arg:1>ms), they enter with the local state'
-log.sync.local_data_ready: 'Loaded the local player data of <arg:0> asynchronously (<arg:1>ms)'
-log.sync.local_data_empty: 'Checked the local player data of <arg:0> asynchronously but found no data to load (<arg:1>ms)'
-log.sync.local_data_fallback: 'An error occurred while loading the local player data of <arg:0> asynchronously (<arg:1>ms), continuing with empty data: <arg:2>'
-log.sync.login_complete: '<arg:0> finished login synchronization (async read <arg:1>ms, async native apply <arg:2>ms, synchronous player-thread apply <arg:3>ms)'
-log.sync.apply_started: 'Starting to apply a snapshot to <arg:0> synchronously on the player thread'
-log.sync.save_started: 'Captured the snapshot <arg:2> of <arg:0> (<arg:1>), writing it to the database'
-log.sync.saved: 'Saved a snapshot of <arg:0> (<arg:1>, <arg:2>, capture <arg:3>ms, store <arg:4>ms)'
-log.sync.disconnect_saved: 'Saved the disconnect data of <arg:0> (async capture <arg:1>ms, async store <arg:2>ms)'
-log.sync.shutdown_player_saved: 'Saved the shutdown data of <arg:0> (synchronous capture <arg:1>ms, async store <arg:2>ms)'
-log.sync.save_failed: 'Failed to save a snapshot of <arg:0>'
-log.sync.save_pending_retry: 'The snapshot of <arg:0> cannot reach the database yet (attempt <arg:1>), it stays queued until the database recovers'
-log.sync.save_retries_exhausted: 'The snapshot of <arg:0> (<arg:1>) still could not be stored after <arg:2> attempts, it is written to disk instead'
-log.sync.save_needs_attention: 'The snapshot of <arg:0> (<arg:1>) cannot be written and retrying will not help (attempt <arg:2>), see the error above'
-log.sync.save_cancelled_by_event: 'Snapshot <arg:2> of <arg:0> (<arg:1>) was cancelled by a SnapshotSaveEvent listener'
-log.sync.save_skipped_unsynced: '<arg:0> left before their data finished applying, skipping the save to protect snapshot history'
-log.sync.rotate_failed: 'Failed to rotate the snapshot history of <arg:0>'
-log.sync.applied: 'Applied a snapshot to <arg:0> synchronously on the player thread (<arg:1> data type(s), <arg:2> skipped, preceding async load <arg:3>ms, synchronous apply <arg:4>ms)'
-log.sync.load_failed: 'An error occurred while loading or pre-decoding the remote snapshot of <arg:0> asynchronously (<arg:1>ms): <arg:2>'
-log.sync.user_failed: 'Failed to refresh the name mapping of <arg:0>'
-log.sync.shutdown_saved: 'Shutdown save: storing snapshots of <arg:0> online player(s)'
-log.stash.pending: 'The snapshot of <arg:0> was written to <arg:1>, it will be inserted back on the next startup'
-log.stash.exception: 'The snapshot of <arg:0> was written to <arg:1> and needs manual handling'
-log.stash.write_failed: 'Failed to write the local snapshot file of <arg:0>, this data is lost'
-log.stash.restore_found: 'Found <arg:0> local snapshot(s) that never reached the database, inserting them back'
-log.stash.restore_done: 'Local snapshot restore finished: <arg:0> stored, <arg:1> moved to exception, <arg:2> left for the next startup'
-log.stash.restore_unavailable: 'The database is still unavailable, <arg:0> local snapshot(s) stay for the next startup'
-log.stash.restore_rejected: 'The local snapshot <arg:0> was rejected by the database (<arg:1>) and moved to the exception directory'
-log.stash.restore_failed: 'Failed to process the local snapshot <arg:0>'
-log.stash.corrupted: 'The local snapshot file <arg:0> is corrupted and was moved to exception/corrupted'
-log.data.capture_skipped: 'Failed to capture the non-critical data <arg:0> of <arg:1>, this snapshot goes without it'
-log.data.capture_failed: 'Failed to capture the critical data <arg:0> of <arg:1>, no snapshot is produced this time'
-log.data.encode_skipped: 'Failed to encode the non-critical data <arg:0> of <arg:1>, this snapshot goes without it'
-log.data.encode_failed: 'Failed to encode the critical data <arg:0> of <arg:1>, no snapshot is produced this time'
-log.data.decode_skipped: 'Skipping the non-critical data <arg:0> of the snapshot <arg:1>'
-log.data.map_compile_failed: 'Map item encoding failed for player <arg:0>; syncing that map unchanged (snapshot <arg:1>): <arg:2>'
-log.data.map_decode_failed: 'Map item decoding failed for player <arg:0>; syncing that map unchanged (snapshot <arg:1>): <arg:2>'
-log.data.map_source_missing: 'Source map <arg:0>:<arg:1> is missing; keeping local map replica <arg:2>.'
-log.data.map_cache_failed: 'Redis cache lookup failed for map <arg:0>; reading from the database: <arg:1>'
-log.data.map_cache_touch_failed: 'Redis cache renewal failed for map <arg:0>; keeping the updated local map replica: <arg:1>'
-log.data.map_refresh_failed: 'Map <arg:0> refresh failed; keeping the local map replica and waiting for a subsequent update notification: <arg:1>'
-log.data.map_publish_unfinished: 'Map publication for map source ID <arg:0> did not finish before the shutdown deadline; map data in the world remains under vanilla saving.'
+# plugin
+plugin.compatibility: '[Compatibility] Hooked <arg:0>'
+plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
+
+# config
+config.errors_detected: 'Error found in config.yml - <arg:0>'
+
+# update
+update.available: 'New version <arg:0> is available: <arg:1>'
+update.is_latest: You're running the latest version
+
+# Console messages use forced-locale from config.yml, or the system locale when unset.
+# log.command
+log.command.player_lookup_failed: 'Failed to resolve player identity: <arg:0>'
+log.command.status_query_failed: 'Failed to query player status: <arg:0>'
+
+# log.data
 log.data.advancement_tracker_install_failed: 'Failed to install the advancement progress tracker for <arg:0>; this login has been refused'
-log.data.native_apply_fallback: 'Falling back to join apply after <arg:0> failed to write into the native player data of <arg:1>'
 log.data.apply_failed: 'The critical data <arg:0> failed to apply to <arg:1>'
 log.data.apply_skipped: 'Skipping the non-critical data <arg:0> while applying to <arg:1>'
-log.data.inventory_dropped: 'Dropped <arg:0> overflowing inventory item(s) while applying the snapshot to <arg:1>'
+log.data.capture_failed: 'Failed to capture the critical data <arg:0> of <arg:1>, no snapshot is produced this time'
+log.data.capture_skipped: 'Failed to capture the non-critical data <arg:0> of <arg:1>, this snapshot goes without it'
+log.data.decode_skipped: 'Skipping the non-critical data <arg:0> of the snapshot <arg:1>'
+log.data.encode_failed: 'Failed to encode the critical data <arg:0> of <arg:1>, no snapshot is produced this time'
+log.data.encode_skipped: 'Failed to encode the non-critical data <arg:0> of <arg:1>, this snapshot goes without it'
 log.data.ender_chest_dropped: 'Dropped <arg:0> overflowing ender chest item(s) while applying the snapshot to <arg:1>'
+log.data.inventory_dropped: 'Dropped <arg:0> overflowing inventory item(s) while applying the snapshot to <arg:1>'
+log.data.map_cache_failed: 'Redis cache lookup failed for map <arg:0>; reading from the database: <arg:1>'
+log.data.map_cache_touch_failed: 'Redis cache renewal failed for map <arg:0>; keeping the updated local map replica: <arg:1>'
+log.data.map_compile_failed: 'Map item encoding failed for player <arg:0>; syncing that map unchanged (snapshot <arg:1>): <arg:2>'
+log.data.map_decode_failed: 'Map item decoding failed for player <arg:0>; syncing that map unchanged (snapshot <arg:1>): <arg:2>'
+log.data.map_publish_unfinished: 'Map publication for map source ID <arg:0> did not finish before the shutdown deadline; map data in the world remains under vanilla saving.'
+log.data.map_refresh_failed: 'Map <arg:0> refresh failed; keeping the local map replica and waiting for a subsequent update notification: <arg:1>'
+log.data.map_source_missing: 'Source map <arg:0>:<arg:1> is missing; keeping local map replica <arg:2>.'
+log.data.native_apply_fallback: 'Falling back to join apply after <arg:0> failed to write into the native player data of <arg:1>'
+
+# log.executor
+log.executor.draining: 'Draining player tasks, <arg:0> remaining'
+log.executor.task_failed: 'A player task failed on thread <arg:0>'
+log.executor.unfinished_tasks: 'The player serial executor shut down with <arg:0> unfinished task(s)'
+
+# log.gate
+log.gate.held: 'Received a login network connection request, entering data preparation'
+log.gate.kicked: 'Disconnected <arg:0> (<arg:1>)'
+log.gate.released: '<arg:0> finished data preparation'
+
+# log.locale
 log.locale.missing_file: 'translations/<arg:0>.yml does not exist, falling back to <arg:1>.yml'
+
+# log.lock
+log.lock.acquired: 'Acquired the session lock of <arg:0>'
+log.lock.handoff: 'Session lock handoff of <arg:0> finished (<arg:1>, waited <arg:2> ms)'
+log.lock.released: 'Released the session lock of <arg:0> (<arg:1>)'
+log.lock.self_conflict: 'The session lock of <arg:0> is held by a server with the same id (<arg:1>), refused the login. Two servers in the cluster may share one server-id, check server.yml of every server now.'
+log.lock.swept: 'Startup sweep: removed <arg:0> session lock(s) left over from the previous run'
+log.lock.waiting: 'The session lock of <arg:0> is held by <arg:1>, probing for handoff'
+
+# log.plugin
+log.plugin.disable_at_runtime: Please do not disable plugins at runtime.
+log.plugin.load_failed: Failed to enable the plugin, check the log of the loading stage. Shutting the server down to limit the damage.
+log.plugin.player_data_storage_install_failed: Failed to inject the PlayerDataStorage. Shutting the server down.
+log.plugin.registry_frozen_types: 'Synchronization enabled for <arg:0> data types: <arg:1>'
+log.plugin.reload_at_runtime: Please do not restart plugins at runtime.
+log.plugin.reload_failed: Failed to reload the plugin
+log.plugin.started: 'SparrowSync started'
+log.plugin.stopped: 'SparrowSync stopped'
+
+# log.redis
+log.redis.ready: 'Connected to Redis'
+log.redis.setup_failed: Failed to connect Redis. Cross server synchronization depends on it, check the redis section. Shutting the server down.
+
+# log.server
+log.server.id_duplicate: 'The server-id "<arg:0>" is taken by another live server in the cluster. Every server sharing the database needs its own id, change server-id in server.yml of this server. Shutting the server down.'
+log.server.id_missing: server-id is empty in server.yml. Set a unique id for every server sharing the database. Shutting the server down.
+log.server.id_seized: 'The previous run of this server never unregistered its identity (token <arg:0>), taking it over'
+
+# log.session
+log.session.join: Logged in
+log.session.quit: Logged out
+
+# log.stash
+log.stash.corrupted: 'The local snapshot file <arg:0> is corrupted and was moved to exception/corrupted'
+log.stash.exception: 'The snapshot of <arg:0> was written to <arg:1> and needs manual handling'
+log.stash.pending: 'The snapshot of <arg:0> was written to <arg:1>, it will be inserted back on the next startup'
+log.stash.restore_done: 'Local snapshot restore finished: <arg:0> stored, <arg:1> moved to exception, <arg:2> left for the next startup'
+log.stash.restore_failed: 'Failed to process the local snapshot <arg:0>'
+log.stash.restore_found: 'Found <arg:0> local snapshot(s) that never reached the database, inserting them back'
+log.stash.restore_rejected: 'The local snapshot <arg:0> was rejected by the database (<arg:1>) and moved to the exception directory'
+log.stash.restore_unavailable: 'The database is still unavailable, <arg:0> local snapshot(s) stay for the next startup'
+log.stash.write_failed: 'Failed to write the local snapshot file of <arg:0>, this data is lost'
+
+# log.storage
+log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'
+log.storage.backend_setup_failed: 'Failed to initialize <arg:0> storage (database: <arg:1>). Player data will NOT be loaded or saved.'
+log.storage.compressor_failed: Failed to load the snapshot compressor. Check that the runtime dependencies are intact and that the temp directory allows executing unpacked native libraries.
+log.storage.constraint_conflict: 'Writing the snapshot of <arg:0> hit a unique constraint, and that snapshot is not in the database'
+log.storage.encode_failed: 'Failed to encode the snapshot of <arg:0>, this data cannot reach the database'
+log.storage.mysql_schema_initializing: 'Initializing the MySQL schema at v<arg:1> (table prefix: "<arg:0>")'
+log.storage.mysql_schema_migrating: 'Upgrading the MySQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
+log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'
+log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
+log.storage.oversized: 'The snapshot of <arg:0> carries <arg:1> bytes, over the per-snapshot limit, it cannot be written'
+log.storage.postgresql_schema_initializing: 'Initializing the PostgreSQL schema at v<arg:1> (table prefix: "<arg:0>")'
+log.storage.postgresql_schema_migrating: 'Upgrading the PostgreSQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
+log.storage.schema_too_new: 'The database schema generation <arg:0> is newer than this plugin supports (<arg:1>). Every server sharing the database must run the same SparrowSync version, update this server first. Shutting the server down.'
+log.storage.stale_index_dropped: 'Index layout updated, dropped the old index <arg:0>'
+log.storage.write_rejected: 'Failed to write the snapshot of <arg:0>, retrying will not help and it needs manual handling'
+log.storage.write_retriable: 'Failed to write the snapshot of <arg:0>, it will be retried once the database recovers'
+
+# log.sync
+log.sync.applied: 'Applied a snapshot to <arg:0> synchronously on the player thread (<arg:1> data type(s), <arg:2> skipped, preceding async load <arg:3>ms, synchronous apply <arg:4>ms)'
+log.sync.apply_started: 'Starting to apply a snapshot to <arg:0> synchronously on the player thread'
+log.sync.disconnect_saved: 'Saved the disconnect data of <arg:0> (async capture <arg:1>ms, async store <arg:2>ms)'
+log.sync.load_empty: 'Queried the database asynchronously but found no snapshot history for <arg:0> (<arg:1>ms), they enter with the local state'
+log.sync.load_failed: 'An error occurred while loading or pre-decoding the remote snapshot of <arg:0> asynchronously (<arg:1>ms): <arg:2>'
+log.sync.load_ready: 'Loaded and pre-decoded the remote snapshot <arg:1> of <arg:0> asynchronously from the database (<arg:2>ms)'
+log.sync.local_data_empty: 'Checked the local player data of <arg:0> asynchronously but found no data to load (<arg:1>ms)'
+log.sync.local_data_fallback: 'An error occurred while loading the local player data of <arg:0> asynchronously (<arg:1>ms), continuing with empty data: <arg:2>'
+log.sync.local_data_ready: 'Loaded the local player data of <arg:0> asynchronously (<arg:1>ms)'
+log.sync.login_complete: '<arg:0> finished login synchronization (async read <arg:1>ms, async native apply <arg:2>ms, synchronous player-thread apply <arg:3>ms)'
+log.sync.rotate_failed: 'Failed to rotate the snapshot history of <arg:0>'
+log.sync.save_cancelled_by_event: 'Snapshot <arg:2> of <arg:0> (<arg:1>) was cancelled by a SnapshotSaveEvent listener'
+log.sync.save_failed: 'Failed to save a snapshot of <arg:0>'
+log.sync.save_needs_attention: 'The snapshot of <arg:0> (<arg:1>) cannot be written and retrying will not help (attempt <arg:2>), see the error above'
+log.sync.save_pending_retry: 'The snapshot of <arg:0> cannot reach the database yet (attempt <arg:1>), it stays queued until the database recovers'
+log.sync.save_retries_exhausted: 'The snapshot of <arg:0> (<arg:1>) still could not be stored after <arg:2> attempts, it is written to disk instead'
+log.sync.save_skipped_unsynced: '<arg:0> left before their data finished applying, skipping the save to protect snapshot history'
+log.sync.save_started: 'Captured the snapshot <arg:2> of <arg:0> (<arg:1>), writing it to the database'
+log.sync.saved: 'Saved a snapshot of <arg:0> (<arg:1>, <arg:2>, capture <arg:3>ms, store <arg:4>ms)'
+log.sync.shutdown_player_saved: 'Saved the shutdown data of <arg:0> (synchronous capture <arg:1>ms, async store <arg:2>ms)'
+log.sync.shutdown_saved: 'Shutdown save: storing snapshots of <arg:0> online player(s)'
+log.sync.user_failed: 'Failed to refresh the name mapping of <arg:0>'

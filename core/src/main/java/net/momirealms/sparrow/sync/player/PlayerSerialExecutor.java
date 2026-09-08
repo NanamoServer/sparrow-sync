@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.executor;
+package net.momirealms.sparrow.sync.player;
 
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
