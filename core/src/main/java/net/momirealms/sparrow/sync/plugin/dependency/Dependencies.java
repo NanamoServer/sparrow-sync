@@ -223,21 +223,9 @@ public final class Dependencies {
             .version(DependencyVersions.MONGODB_DRIVER)
             .build();
 
-    public static final Dependency MONGODB_DRIVER_REACTIVESTREAMS = Dependency.builder()
-            .groupId("org{}mongodb")
-            .artifactId("mongodb-driver-reactivestreams")
-            .version(DependencyVersions.MONGODB_DRIVER)
-            .build();
-
     public static final Dependency MONGODB_DRIVER_BSON = Dependency.builder()
             .groupId("org{}mongodb")
             .artifactId("bson")
-            .version(DependencyVersions.MONGODB_DRIVER)
-            .build();
-
-    public static final Dependency MONGODB_DRIVER_KOTLIN_COROUTINE = Dependency.builder()
-            .groupId("org{}mongodb")
-            .artifactId("mongodb-driver-kotlin-coroutine")
             .version(DependencyVersions.MONGODB_DRIVER)
             .build();
 
@@ -270,6 +258,22 @@ public final class Dependencies {
             .artifactId("mysql-connector-j")
             .version(DependencyVersions.MYSQL_DRIVER)
             .addRelocation("mysql", "com{}mysql")
+            .build();
+
+    /**
+     * PostgreSQL
+     */
+    public static final Dependency POSTGRESQL_DRIVER = Dependency.builder()
+            .groupId("org{}postgresql")
+            .artifactId("postgresql")
+            .version(DependencyVersions.POSTGRESQL_DRIVER)
+            .addRelocation("postgresql", "org{}postgresql")
+            .build();
+
+    public static final Dependency CHECKER_QUAL = Dependency.builder()
+            .groupId("org{}checkerframework")
+            .artifactId("checker-qual")
+            .version(DependencyVersions.CHECKER_QUAL)
             .build();
 
     /**

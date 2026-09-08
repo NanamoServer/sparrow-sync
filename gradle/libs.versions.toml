@@ -17,6 +17,8 @@ geantyref = "2.0.1"
 jdbi = "3.54.0"
 hikari-cp = "7.1.0"
 mysql-driver = "9.7.0"
+postgresql-driver = "42.7.13"
+checker-qual = "3.55.1"
 cloud-core = "2.0.0"
 cloud-services = "2.0.0"
 cloud-brigadier = "2.0.0-beta.15"
@@ -56,6 +58,8 @@ mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref 
 jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
 hikari-cp = { module = "com.zaxxer:HikariCP", version.ref = "hikari-cp" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-driver" }
+postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postgresql-driver" }
+checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
 mojang-brigadier = { module = "com.mojang:brigadier", version.ref = "mojang-brigadier" }
@@ -97,6 +101,15 @@ test-paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-a
 
 
 [bundles]
+
+cloud = [
+    "cloud-core",
+    "cloud-services",
+    "cloud-brigadier",
+    "cloud-bukkit",
+    "cloud-paper",
+    "cloud-minecraft-extras",
+]
 
 adventure = [
     "adventure-api",

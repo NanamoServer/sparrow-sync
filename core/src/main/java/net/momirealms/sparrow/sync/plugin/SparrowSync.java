@@ -113,11 +113,11 @@ public class SparrowSync implements Plugin {
         this.privateClassPathAppender = privateClassPathAppender;
 
         this.scheduler = new BukkitSchedulerAdapter(this);
+        this.configurationManager = new ConfigurationManager(this);
+        this.configurationManager.reload();
         this.dependencyManager = new DependencyManager(this);
         this.applyDependencies();
         this.setupProxy();
-        this.configurationManager = new ConfigurationManager(this);
-        this.configurationManager.reload();
         this.translationManager = new TranslationManagerImpl(this);
         this.translationManager.reload();
         // resolve 对绝对路径原样返回, 因此配置里的相对目录落在数据目录下, 绝对目录按原样使用
@@ -436,16 +436,12 @@ public class SparrowSync implements Plugin {
 
     @Override
     public List<Dependency> platformDependencies() {
-        return List.of(
+        List<Dependency> dependencies = new ArrayList<>(List.of(
                 Dependencies.PLUGIN_BUKKIT_PROXY,
                 // Common
                 Dependencies.CAFFEINE,
                 Dependencies.ZSTD_JNI,
-                // MongoDB
-                Dependencies.MONGODB_DRIVER_CORE, Dependencies.MONGODB_DRIVER_SYNC, Dependencies.MONGODB_DRIVER_REACTIVESTREAMS,
-                Dependencies.MONGODB_DRIVER_BSON, Dependencies.MONGODB_DRIVER_KOTLIN_COROUTINE, Dependencies.REACTIVE_STREAMS,
-                // MySQL
-                Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MYSQL_DRIVER,
+                Dependencies.MONGODB_DRIVER_BSON,
                 // Lettuce
                 Dependencies.LETTUCE,
                 Dependencies.REACTOR_CORE, Dependencies.REACTIVE_STREAMS,
@@ -461,7 +457,16 @@ public class SparrowSync implements Plugin {
                 Dependencies.ADVENTURE_KEY, Dependencies.ADVENTURE_API, Dependencies.ADVENTURE_NBT,
                 Dependencies.MINIMESSAGE,
                 Dependencies.TEXT_SERIALIZER_COMMONS, Dependencies.TEXT_SERIALIZER_LEGACY, Dependencies.TEXT_SERIALIZER_GSON, Dependencies.TEXT_SERIALIZER_GSON_LEGACY, Dependencies.TEXT_SERIALIZER_JSON
-        );
+        ));
+        switch (PluginConfig.database$type()) {
+            case MONGODB -> dependencies.addAll(List.of(
+                    Dependencies.MONGODB_DRIVER_CORE, Dependencies.MONGODB_DRIVER_SYNC
+            ));
+            case MYSQL -> dependencies.addAll(List.of(
+                    Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MYSQL_DRIVER
+            ));
+        }
+        return dependencies;
     }
 
     /**

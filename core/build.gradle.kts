@@ -16,14 +16,11 @@ dependencies {
     compileOnly(project(":bukkit-proxy"))
     implementation(project(":common-files"))
 
-    compileOnly(libs.mojang.brigadier)
-    compileOnly(libs.cloud.core)
-    compileOnly(libs.cloud.paper)
-    compileOnly(libs.cloud.minecraft.extras)
-
+    compileOnly(libs.bundles.cloud)
     compileOnly(libs.bundles.adventure)
     implementation(libs.bundles.sparrow)
 
+    compileOnly(libs.mojang.brigadier)
     compileOnly(libs.sparrow.reflection)
     compileOnly(libs.caffeine)
     compileOnly(libs.datafixerupper)
@@ -34,6 +31,7 @@ dependencies {
     compileOnly(libs.mysql.connector.j) {
         exclude(group = "com.google.protobuf", module = "protobuf-java")
     }
+    compileOnly(libs.postgresql.driver)
     compileOnly(libs.zstd.jni)
 
     testImplementation(platform(libs.junit.bom))
@@ -44,6 +42,7 @@ dependencies {
     testImplementation(libs.mysql.connector.j) {
         exclude(group = "com.google.protobuf", module = "protobuf-java")
     }
+    testImplementation(libs.postgresql.driver)
     testImplementation(libs.lettuce.core)
     testImplementation(libs.caffeine)
     testImplementation(libs.datafixerupper)
@@ -78,6 +77,9 @@ buildConfig {
     buildConfigField("JDBI", libs.versions.jdbi.get())
     buildConfigField("HIKARI_CP", libs.versions.hikari.cp.get())
     buildConfigField("MYSQL_DRIVER", libs.versions.mysql.driver.get())
+    // POSTGRESQL
+    buildConfigField("POSTGRESQL_DRIVER", libs.versions.postgresql.driver.get())
+    buildConfigField("CHECKER_QUAL", libs.versions.checker.qual.get())
     // LETTUCE
     buildConfigField("LETTUCE", libs.versions.lettuce.get())
     buildConfigField("JACKSON", libs.versions.jackson.core.get())
