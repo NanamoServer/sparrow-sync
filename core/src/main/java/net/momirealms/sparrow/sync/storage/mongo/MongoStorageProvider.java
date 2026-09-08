@@ -163,7 +163,8 @@ public final class MongoStorageProvider implements StorageProvider {
             // 列表只读元数据, 数据体通常很大, 不从 MongoDB 拉回进程
             FindIterable<Document> found = this.snapshotCollection().find(filterOf(query))
                     .projection(Projections.exclude(DocumentSnapshotCodec.FIELD_DATA))
-                    .sort(NEWEST_FIRST);
+                    .sort(NEWEST_FIRST)
+                    .skip(query.offset());
             if (query.limit() != SnapshotQuery.NO_LIMIT) {
                 found = found.limit(query.limit());
             }
@@ -173,6 +174,12 @@ public final class MongoStorageProvider implements StorageProvider {
             }
             return metas;
         }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Long> countSnapshots(@NotNull SnapshotQuery query) {
+        return CompletableFuture.supplyAsync(() -> this.snapshotCollection().countDocuments(filterOf(query)), this.asyncExecutor);
     }
 
     // UNBOUNDED_* 是 Java 侧哨兵值, 没有边界时不向 MongoDB 添加对应条件

@@ -20,16 +20,18 @@ class SnapshotQueryTest {
         assertEquals(SnapshotQuery.UNBOUNDED_TO, query.to());
         assertEquals(PinFilter.ANY, query.pinned());
         assertEquals(SnapshotQuery.NO_LIMIT, query.limit());
+        assertEquals(0, query.offset());
     }
 
     @Test
     void conditionsCompose() {
-        SnapshotQuery query = SnapshotQuery.of(PLAYER).between(10L, 20L).withPinned(PinFilter.PINNED).withLimit(3);
+        SnapshotQuery query = SnapshotQuery.of(PLAYER).withOffset(6).between(10L, 20L).withPinned(PinFilter.PINNED).withLimit(3);
 
         assertEquals(10L, query.from());
         assertEquals(20L, query.to());
         assertEquals(PinFilter.PINNED, query.pinned());
         assertEquals(3, query.limit());
+        assertEquals(6, query.offset());
     }
 
     @Test
@@ -40,5 +42,10 @@ class SnapshotQueryTest {
     @Test
     void invertedBoundsAreRejected() {
         assertThrows(IllegalArgumentException.class, () -> SnapshotQuery.of(PLAYER).between(20L, 10L));
+    }
+
+    @Test
+    void negativeOffsetIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> SnapshotQuery.of(PLAYER).withOffset(-1));
     }
 }

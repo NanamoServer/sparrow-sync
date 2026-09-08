@@ -12,13 +12,17 @@ import java.util.UUID;
  * @param to      逻辑时间戳上界, 含; {@link #UNBOUNDED_TO} 表示不限
  * @param pinned  固定状态筛选
  * @param limit   最多返回几条; {@link #NO_LIMIT} 表示不限
+ * @param offset  跳过的记录数, 从 0 开始
  */
-public record SnapshotQuery(@NotNull UUID player, long from, long to, @NotNull PinFilter pinned, int limit) {
+public record SnapshotQuery(@NotNull UUID player, long from, long to, @NotNull PinFilter pinned, int limit, int offset) {
     public static final long UNBOUNDED_FROM = Long.MIN_VALUE;
     public static final long UNBOUNDED_TO = Long.MAX_VALUE;
     public static final int NO_LIMIT = 0;
 
     public SnapshotQuery {
+        if (offset < 0) {
+            throw new IllegalArgumentException("snapshot query offset must be non-negative: " + offset);
+        }
         if (from > to) {
             throw new IllegalArgumentException("snapshot query lower bound " + from + " is above upper bound " + to);
         }
@@ -26,22 +30,28 @@ public record SnapshotQuery(@NotNull UUID player, long from, long to, @NotNull P
 
     @NotNull
     public static SnapshotQuery of(@NotNull UUID player) {
-        return new SnapshotQuery(player, UNBOUNDED_FROM, UNBOUNDED_TO, PinFilter.ANY, NO_LIMIT);
+        return new SnapshotQuery(player, UNBOUNDED_FROM, UNBOUNDED_TO, PinFilter.ANY, NO_LIMIT, 0);
     }
 
     @NotNull
     public SnapshotQuery between(long from, long to) {
-        return new SnapshotQuery(this.player, from, to, this.pinned, this.limit);
+        return new SnapshotQuery(this.player, from, to, this.pinned, this.limit, this.offset);
     }
 
     @NotNull
     public SnapshotQuery withPinned(@NotNull PinFilter pinned) {
-        return new SnapshotQuery(this.player, this.from, this.to, pinned, this.limit);
+        return new SnapshotQuery(this.player, this.from, this.to, pinned, this.limit, this.offset);
     }
 
     @NotNull
     public SnapshotQuery withLimit(int limit) {
-        return new SnapshotQuery(this.player, this.from, this.to, this.pinned, Math.max(limit, NO_LIMIT));
+        return new SnapshotQuery(this.player, this.from, this.to, this.pinned, Math.max(limit, NO_LIMIT), this.offset);
+    }
+
+    /** 跳过指定数量的元数据, 保留已有筛选条件与条数限制. */
+    @NotNull
+    public SnapshotQuery withOffset(int offset) {
+        return new SnapshotQuery(this.player, this.from, this.to, this.pinned, this.limit, offset);
     }
 
     public enum PinFilter {

@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.postgresql.upgrade.PostgresSchemaMigration;
+import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.argument.AbstractArgumentFactory;
@@ -166,42 +167,55 @@ public final class PostgresStorageProvider implements StorageProvider {
         throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
     }
 
-    // 组合有效筛选条件, 列表只读取可独立解析的元数据列.
     @Override
     @NotNull
     public CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query) {
-        return CompletableFuture.supplyAsync(() -> {
-            StringBuilder sql = new StringBuilder("SELECT " + META_COLUMNS + " FROM \"" + this.options.tablePrefix() + "snapshots\" WHERE \"player\" = :player");
-            if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
-                sql.append(" AND \"ts\" >= :from");
-            }
-            if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
-                sql.append(" AND \"ts\" <= :to");
-            }
-            if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
-                sql.append(" AND \"pinned\" = :pinned");
-            }
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> this.snapshotQuery(handle, query, false).mapTo(SnapshotMeta.class).list()), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Long> countSnapshots(@NotNull SnapshotQuery query) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> this.snapshotQuery(handle, query, true).mapTo(Long.class).one()), this.asyncExecutor);
+    }
+
+    // 列表与计数共用筛选条件, 只有列表添加排序和页边界.
+    private Query snapshotQuery(Handle handle, SnapshotQuery query, boolean count) {
+        String columns = count ? "COUNT(*)" : META_COLUMNS;
+        StringBuilder sql = new StringBuilder("SELECT " + columns + " FROM \"" + this.options.tablePrefix() + "snapshots\" WHERE \"player\" = :player");
+        if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
+            sql.append(" AND \"ts\" >= :from");
+        }
+        if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
+            sql.append(" AND \"ts\" <= :to");
+        }
+        if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
+            sql.append(" AND \"pinned\" = :pinned");
+        }
+        if (!count) {
             sql.append(NEWEST_FIRST);
             if (query.limit() > SnapshotQuery.NO_LIMIT) {
                 sql.append(" LIMIT :limit");
             }
-            return this.jdbi().withHandle(handle -> {
-                Query statement = handle.createQuery(sql.toString()).bind("player", query.player());
-                if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
-                    statement.bind("from", query.from());
-                }
-                if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
-                    statement.bind("to", query.to());
-                }
-                if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
-                    statement.bind("pinned", query.pinned() == SnapshotQuery.PinFilter.PINNED);
-                }
-                if (query.limit() > SnapshotQuery.NO_LIMIT) {
-                    statement.bind("limit", query.limit());
-                }
-                return statement.mapTo(SnapshotMeta.class).list();
-            });
-        }, this.asyncExecutor);
+            sql.append(" OFFSET :offset");
+        }
+        Query statement = handle.createQuery(sql.toString()).bind("player", query.player());
+        if (query.from() != SnapshotQuery.UNBOUNDED_FROM) {
+            statement.bind("from", query.from());
+        }
+        if (query.to() != SnapshotQuery.UNBOUNDED_TO) {
+            statement.bind("to", query.to());
+        }
+        if (query.pinned() != SnapshotQuery.PinFilter.ANY) {
+            statement.bind("pinned", query.pinned() == SnapshotQuery.PinFilter.PINNED);
+        }
+        if (!count) {
+            if (query.limit() > SnapshotQuery.NO_LIMIT) {
+                statement.bind("limit", query.limit());
+            }
+            statement.bind("offset", query.offset());
+        }
+        return statement;
     }
 
     // 编码由通用 worker 执行, 保存立即进入玩家队列, 写库时按请求顺序等待编码结果.

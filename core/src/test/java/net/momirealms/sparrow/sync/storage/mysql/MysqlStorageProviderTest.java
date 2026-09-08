@@ -246,14 +246,49 @@ class MysqlStorageProviderTest {
                 Map.entry(all.withPinned(SnapshotQuery.PinFilter.UNPINNED), List.of(metas.get(4), metas.get(2), metas.get(0))),
                 Map.entry(all.between(10, 20).withPinned(SnapshotQuery.PinFilter.PINNED).withLimit(1), List.of(metas.get(3))),
                 Map.entry(all.between(10, 20).withPinned(SnapshotQuery.PinFilter.UNPINNED).withLimit(1), List.of(metas.get(2))),
-                Map.entry(all.withLimit(2), List.of(metas.get(5), metas.get(4)))
+                Map.entry(all.withLimit(2), List.of(metas.get(5), metas.get(4))),
+                Map.entry(all.withLimit(2).withOffset(2), List.of(metas.get(3), metas.get(2))),
+                Map.entry(all.withOffset(5), List.of(metas.get(0))),
+                Map.entry(all.withLimit(2).withOffset(6), List.of()),
+                Map.entry(all.between(10, 20).withPinned(SnapshotQuery.PinFilter.PINNED).withLimit(1).withOffset(1), List.of(metas.get(1)))
         );
         for (int i = 0; i < cases.size(); i++) {
             var expected = cases.get(i);
             assertEquals(expected.getValue(), provider.listSnapshots(expected.getKey()).join(), expected.getKey().toString());
+            assertEquals((long) provider.listSnapshots(expected.getKey().withLimit(0).withOffset(0)).join().size(), provider.countSnapshots(expected.getKey()).join());
         }
         assertEquals(List.of(), provider.listSnapshots(SnapshotQuery.of(UUID.randomUUID())).join());
         assertEquals(provider.listSnapshots(all).join(), provider.listSnapshots(all.withLimit(-1)).join());
+    }
+
+    @Test
+    void paginationOnlySelectsTheRequestedMetadataRows() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        UUID player = UUID.randomUUID();
+        List<SnapshotMeta> metas = new ArrayList<>();
+        for (int i = 0; i < 32; i++) {
+            SnapshotMeta meta = new SnapshotMeta(new UUID(0, i + 1), player, 100, SaveCause.COMMAND, true, "lobby", 4440);
+            metas.addFirst(meta);
+            this.insert(provider.jdbi(), new SnapshotRow(meta, 99, new byte[]{0}));
+        }
+        List<String> statements = new ArrayList<>();
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                statements.add(context.getRenderedSql());
+            }
+        });
+        SnapshotQuery query = SnapshotQuery.of(player).withOffset(27).withLimit(27);
+        assertEquals(metas.subList(27, 32), provider.listSnapshots(query).join());
+        assertEquals(32L, provider.countSnapshots(query).join());
+        assertEquals(2, statements.size());
+        assertTrue(statements.getFirst().contains("LIMIT :limit OFFSET :offset"));
+        assertFalse(statements.getFirst().contains("`format`"));
+        assertFalse(statements.getFirst().contains("`data`"));
+        assertTrue(statements.getLast().startsWith("SELECT COUNT(*)"));
+        assertFalse(statements.getLast().contains("LIMIT"));
+        assertFalse(statements.getLast().contains("OFFSET"));
     }
 
     @Test

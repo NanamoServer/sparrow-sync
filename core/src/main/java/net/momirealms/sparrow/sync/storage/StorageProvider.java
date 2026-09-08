@@ -39,10 +39,14 @@ public interface StorageProvider {
     CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId);
 
     /**
-     * 按条件查询快照元数据, 逻辑时间戳降序.
+     * 按条件查询快照元数据, 按 timestamp DESC, id DESC 排序, 在数据库内跳过 offset 并限制条数.
      */
     @NotNull
     CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query);
+
+    // 统计匹配筛选条件的全部记录, 忽略 query 的 offset 与 limit.
+    @NotNull
+    CompletableFuture<Long> countSnapshots(@NotNull SnapshotQuery query);
 
     /**
      * 玩家的全部快照元数据.

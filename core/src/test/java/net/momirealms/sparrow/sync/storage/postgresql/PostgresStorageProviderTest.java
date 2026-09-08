@@ -142,6 +142,44 @@ class PostgresStorageProviderTest {
         assertEquals(List.of(high.meta(), low.meta()), storage.listSnapshots(SnapshotQuery.of(player).between(200, 200)).join());
         assertEquals(List.of(high.meta()), storage.listSnapshots(SnapshotQuery.of(player).withPinned(SnapshotQuery.PinFilter.PINNED).withLimit(1)).join());
         assertEquals(List.of(low.meta()), storage.listSnapshots(SnapshotQuery.of(player).withPinned(SnapshotQuery.PinFilter.UNPINNED).withLimit(1)).join());
+        SnapshotQuery ranged = SnapshotQuery.of(player).between(200, 200).withLimit(1).withOffset(1);
+        assertEquals(List.of(low.meta()), storage.listSnapshots(ranged).join());
+        assertEquals(2L, storage.countSnapshots(ranged).join());
+        assertEquals(1L, storage.countSnapshots(ranged.withPinned(SnapshotQuery.PinFilter.PINNED)).join());
+        assertEquals(1L, storage.countSnapshots(ranged.withPinned(SnapshotQuery.PinFilter.UNPINNED)).join());
+        assertEquals(List.of(older.meta()), storage.listSnapshots(SnapshotQuery.of(player).withOffset(2)).join());
+        assertEquals(List.of(), storage.listSnapshots(ranged.withOffset(2)).join());
+        assertEquals(0L, storage.countSnapshots(SnapshotQuery.of(UUID.randomUUID())).join());
+    }
+
+    @Test
+    void paginationOnlySelectsTheRequestedMetadataRows() throws Exception {
+        PostgresStorageProvider storage = this.open();
+        UUID player = UUID.randomUUID();
+        List<SnapshotMeta> metas = new ArrayList<>();
+        for (int i = 0; i < 32; i++) {
+            Snapshot snapshot = withId(snapshot(player, 100, true), new UUID(0, i + 1));
+            storage.saveSnapshot(snapshot).join();
+            metas.addFirst(snapshot.meta());
+        }
+        storage.jdbi().useHandle(handle -> handle.createUpdate("UPDATE " + this.table("snapshots") + " SET format = 99, data = :data").bind("data", new byte[]{0}).execute());
+        List<String> statements = new ArrayList<>();
+        storage.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                statements.add(context.getRenderedSql());
+            }
+        });
+        SnapshotQuery query = SnapshotQuery.of(player).withOffset(27).withLimit(27);
+        assertEquals(metas.subList(27, 32), storage.listSnapshots(query).join());
+        assertEquals(32L, storage.countSnapshots(query).join());
+        assertEquals(2, statements.size());
+        assertTrue(statements.getFirst().contains("LIMIT :limit OFFSET :offset"));
+        assertFalse(statements.getFirst().contains("\"format\""));
+        assertFalse(statements.getFirst().contains("\"data\""));
+        assertTrue(statements.getLast().startsWith("SELECT COUNT(*)"));
+        assertFalse(statements.getLast().contains("LIMIT"));
+        assertFalse(statements.getLast().contains("OFFSET"));
     }
 
     @Test

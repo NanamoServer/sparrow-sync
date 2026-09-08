@@ -245,6 +245,11 @@ class SnapshotStashTest {
         }
 
         @Override
+        public CompletableFuture<Long> countSnapshots(SnapshotQuery query) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public CompletableFuture<Integer> rotate(UUID player, int maxUnpinned) {
             throw new UnsupportedOperationException();
         }

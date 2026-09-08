@@ -1,6 +1,11 @@
 package net.momirealms.sparrow.sync.storage.mongo;
 
 import com.mongodb.client.MongoClient;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.event.CommandListener;
+import com.mongodb.event.CommandStartedEvent;
+import com.mongodb.event.CommandSucceededEvent;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.IndexOptions;
@@ -27,6 +32,8 @@ import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import org.bson.Document;
+import org.bson.BsonDocument;
+import org.bson.UuidRepresentation;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
@@ -36,6 +43,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
 import java.util.ArrayList;
+import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -387,6 +395,67 @@ class MongoStorageProviderTest {
 
         assertTrue(pending.stream().map(CompletableFuture::join).allMatch(result -> result == SaveResult.SAVED));
         assertEquals(BASE_TIME + 20, this.provider.latestSnapshot(this.player).join().orElseThrow().meta().timestamp());
+    }
+
+    @Test
+    void paginationProjectsOnlyTheRequestedMetadataOnTheWire() throws Exception {
+        List<SnapshotMeta> metas = new ArrayList<>();
+        for (int i = 0; i < 32; i++) {
+            SnapshotMeta meta = new SnapshotMeta(new UUID(0, i + 1), this.player, BASE_TIME, SaveCause.COMMAND, i % 2 == 0, "lobby", 4440);
+            this.provider.saveSnapshot(new Snapshot(meta, Map.of())).join();
+            metas.addFirst(meta);
+        }
+        List<BsonDocument> finds = new ArrayList<>();
+        List<BsonDocument> responses = new ArrayList<>();
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString("mongodb://localhost:27017"))
+                .uuidRepresentation(UuidRepresentation.STANDARD)
+                .addCommandListener(new CommandListener() {
+                    @Override
+                    public void commandStarted(CommandStartedEvent event) {
+                        if (event.getCommandName().equals("find")) {
+                            finds.add(BsonDocument.parse(event.getCommand().toJson()));
+                        }
+                    }
+
+                    @Override
+                    public void commandSucceeded(CommandSucceededEvent event) {
+                        if (event.getCommandName().equals("find")) {
+                            responses.add(BsonDocument.parse(event.getResponse().toJson()));
+                        }
+                    }
+                }).build();
+        Field field = MongoStorageProvider.class.getDeclaredField("snapshots");
+        field.setAccessible(true);
+        Object original = field.get(this.provider);
+        try (MongoClient client = MongoClients.create(settings)) {
+            MongoCollection<Document> collection = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
+            field.set(this.provider, collection);
+            collection.updateMany(new Document("player", this.player), new Document("$set", new Document("data", "invalid payload")));
+            SnapshotQuery query = SnapshotQuery.of(this.player).withOffset(27).withLimit(27);
+            assertEquals(metas.subList(27, 32), this.provider.listSnapshots(query).join());
+            assertEquals(32L, this.provider.countSnapshots(query).join());
+            assertEquals(1, finds.size());
+            BsonDocument find = finds.getFirst();
+            assertEquals(27, find.getNumber("skip").intValue());
+            assertEquals(27, find.getNumber("limit").intValue());
+            assertEquals(0, find.getDocument("projection").getNumber("data").intValue());
+            assertEquals(BsonDocument.parse("{ts: -1, _id: -1}"), find.getDocument("sort"));
+            var batch = responses.getFirst().getDocument("cursor").getArray("firstBatch");
+            assertEquals(5, batch.size());
+            for (int i = 0; i < batch.size(); i++) {
+                assertFalse(batch.get(i).asDocument().containsKey("data"));
+            }
+            SnapshotQuery filtered = query.between(BASE_TIME, BASE_TIME).withPinned(SnapshotQuery.PinFilter.PINNED).withOffset(1).withLimit(1);
+            assertEquals(List.of(metas.get(3)), this.provider.listSnapshots(filtered).join());
+            assertEquals(16L, this.provider.countSnapshots(filtered).join());
+            assertEquals(16L, this.provider.countSnapshots(filtered.withPinned(SnapshotQuery.PinFilter.UNPINNED)).join());
+            assertEquals(List.of(metas.getLast()), this.provider.listSnapshots(query.withLimit(0).withOffset(31)).join());
+            assertEquals(List.of(), this.provider.listSnapshots(query.withOffset(32)).join());
+            assertEquals(0L, this.provider.countSnapshots(query.between(BASE_TIME + 1, BASE_TIME + 2)).join());
+        } finally {
+            field.set(this.provider, original);
+        }
     }
 
     @Test
