@@ -1,5 +1,21 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand;
+import net.momirealms.sparrow.sync.player.PlayerIdentity;
+import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.SnapshotDetails;
+import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
+import net.momirealms.sparrow.sync.snapshot.page.SnapshotPage;
+import net.momirealms.sparrow.sync.util.ChatTextUtils;
+import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.entity.Player;
+import java.nio.file.Files;
+
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.codec.ByteArrayCodec;
@@ -66,6 +82,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.StringReader;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -258,6 +279,7 @@ class CommandFeaturesTest {
         this.execute(sender(Set.of("sparrow_sync.command.status")), "sparrow-sync status Steve");
         assertEquals(1, reads.get());
         assertTrue(this.text().contains("other-server"));
+        assertTrue(this.text().contains(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(1))));
         assertTrue(this.text().contains(id.toString().substring(0, 8)));
         assertFalse(this.text().contains(id.toString()));
         assertEquals(5, this.text().lines().count());
@@ -376,6 +398,349 @@ class CommandFeaturesTest {
         this.manager.getCommandManager().commandExecutor().executeCommand(sender, command).get(5, TimeUnit.SECONDS);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "zh_cn"})
+    void textPanelRendersOneLinePerRecordAndExactPermissionBoundCommands(String language) {
+        this.manager.locale = language.equals("zh_cn") ? Locale.SIMPLIFIED_CHINESE : Locale.ENGLISH;
+        UUID id = UUID.randomUUID();
+        UUID playerId = UUID.randomUUID();
+        this.registerPanelCommands();
+        SnapshotMeta meta = new SnapshotMeta(id, playerId, 1788877230000L, SaveCause.COMMAND, true, "<red>origin", 0);
+        CommandSender viewer = player(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export"));
+        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 12, List.of(meta)));
+        assertEquals(3, this.text().lines().count());
+        assertTrue(this.text().contains("<red>or..."));
+        assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, "<red>origin")));
+        assertTrue(this.text().contains("1/3"));
+        assertFalse(this.text().contains("command.panel"));
+        assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.copyToClipboard(id.toString()))));
+        assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/custom erase " + id))));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom erase " + id)));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export binary " + id)));
+        assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export json " + id)));
+        assertTrue(this.text().contains(language.equals("zh_cn") ? "★ [查] [删] [导]" : "★ [V] [D] [J]"));
+        assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 2")));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 0")));
+        assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 1")));
+        this.assertTranslatedHover(this.messages.getFirst());
+    }
+
+    @Test
+    void textPanelHidesMutationClicksFromViewOnlySendersAndUsesLivePermission() throws Exception {
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, false, "origin", 0)));
+        Set<String> permissions = new HashSet<>(Set.of("sparrow_sync.command.view", "custom.delete"));
+        Player viewer = player(permissions);
+        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
+        assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/custom erase " + id))));
+        permissions.remove("custom.delete");
+        assertThrows(ExecutionException.class, () -> this.execute(viewer, "custom erase " + id));
+        this.messages.clear();
+        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
+        assertFalse(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/custom erase " + id))));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export json " + id)));
+    }
+
+    @Test
+    void consolePanelPrintsFullIdsDatesAndUsableCommandsWithoutEvents() {
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        new SnapshotTextPanel(this.manager).snapshots(sender(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export")),
+                new PlayerIdentity(playerId, "Steve"), new SnapshotPage(1, 5, 6, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, false, "origin", 0))));
+        assertTrue(this.text().contains(id.toString()));
+        assertTrue(this.text().contains(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(1))));
+        assertTrue(this.text().contains("/custom erase " + id));
+        assertTrue(this.text().contains("/custom history Steve 1"));
+        assertTrue(this.text().contains("2/2"));
+        assertFalse(this.text().contains("command.panel"));
+        this.assertNoEvents(this.messages.getFirst());
+    }
+
+    @Test
+    void snapshotListReadsOnlyCurrentPageAndClampsInputUsingPagination() throws Exception {
+        UUID playerId = UUID.randomUUID();
+        this.redisPlayerName(playerId, "Steve");
+        AtomicInteger reads = new AtomicInteger();
+        StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
+            SnapshotQuery query = (SnapshotQuery) args[0];
+            assertEquals(playerId, query.player());
+            return switch (method.getName()) {
+                case "countSnapshots" -> CompletableFuture.completedFuture(8L);
+                case "listSnapshots" -> {
+                    assertEquals(7, query.offset());
+                    assertEquals(7, query.limit());
+                    reads.incrementAndGet();
+                    yield CompletableFuture.completedFuture(List.of(new SnapshotMeta(UUID.randomUUID(), playerId, 1, SaveCause.COMMAND, false, "origin", 0)));
+                }
+                default -> throw new AssertionError(method.getName());
+            };
+        });
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
+        this.manager.registerFeature(new SnapshotListCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("snapshot_list"));
+        CommandSender viewer = sender(Set.of("sparrow_sync.command.view"));
+        assertThrows(ExecutionException.class, () -> this.execute(sender(Set.of()), "sparrow-sync snapshot list Steve 99"));
+        assertThrows(ExecutionException.class, () -> this.execute(viewer, "sparrow-sync snapshot list Steve 0"));
+        this.execute(viewer, "sparrow-sync snapshot list Steve 99");
+        assertEquals(1, reads.get());
+        assertTrue(this.text().contains("2/2"));
+    }
+
+    @Test
+    void snapshotListEmptyAndFailedQueriesHaveDistinctFeedback() throws Exception {
+        this.redisPlayerName(UUID.randomUUID(), "Steve");
+        AtomicBoolean fail = new AtomicBoolean();
+        StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
+            assertEquals("countSnapshots", method.getName());
+            return fail.get() ? CompletableFuture.failedFuture(new IOException("offline")) : CompletableFuture.completedFuture(0L);
+        });
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
+        this.manager.registerFeature(new SnapshotListCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("snapshot_list"));
+        this.execute(sender(Set.of("sparrow_sync.command.view")), "sparrow-sync snapshot list Steve");
+        assertTrue(this.text().contains("1/1"));
+        assertTrue(this.text().contains("No records"));
+        this.messages.clear();
+        fail.set(true);
+        this.execute(sender(Set.of("sparrow_sync.command.view")), "sparrow-sync snapshot list Steve");
+        assertTrue(this.text().contains("Query failed"));
+        assertFalse(this.text().contains("No records"));
+    }
+
+    @Test
+    void exceptionListSeparatesPageFromPlayerAndNeverDecodesBodies() throws Exception {
+        SnapshotFiles files = this.installArchiveService();
+        UUID playerId = UUID.randomUUID();
+        this.redisPlayerName(playerId, "Steve");
+        for (int i = 0; i < 8; i++) {
+            Path body = files.exceptions().resolve("corrupted/archive-" + i + ".snapshot");
+            Files.createDirectories(body.getParent());
+            Files.writeString(body, "not a snapshot");
+            new ExceptionHeader(new SnapshotMeta(UUID.randomUUID(), playerId, i, SaveCause.COMMAND, false, "origin", 0), "Steve").write(body);
+        }
+        Files.writeString(files.exceptions().resolve("corrupted/legacy.snapshot"), "not a snapshot either");
+        this.manager.registerFeature(new ExceptionListCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("exception_list"));
+        CommandSender viewer = sender(Set.of("sparrow_sync.command.view"));
+        this.execute(viewer, "sparrow-sync exception list 2");
+        assertTrue(this.text().contains("2/2"));
+        assertTrue(this.text().contains("legacy.snapshot"));
+        assertTrue(this.text().contains("Unknown player"));
+        assertFalse(this.text().contains("[JSON]"));
+        this.messages.clear();
+        this.execute(viewer, "sparrow-sync exception list Steve 99");
+        assertTrue(this.text().contains("2/2"));
+        assertFalse(this.text().contains("legacy.snapshot"));
+        assertTrue(this.text().contains("Body unchecked"));
+        this.messages.clear();
+        this.execute(viewer, "sparrow-sync exception list 0");
+        assertTrue(this.text().contains("Page must be an integer"));
+        this.messages.clear();
+        this.execute(viewer, "sparrow-sync exception list 9999999999999999999");
+        assertTrue(this.text().contains("Page must be an integer"));
+    }
+
+    @Test
+    void exceptionViewShowsCorruptionAndMissingBodyToConsole() throws Exception {
+        SnapshotFiles files = this.installArchiveService();
+        Path body = files.exceptions().resolve("corrupted/archive.snapshot");
+        Files.createDirectories(body.getParent());
+        Files.writeString(body, "broken");
+        this.manager.registerFeature(new ExceptionViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("exception_view"));
+        CommandSender viewer = sender(Set.of("sparrow_sync.command.view"));
+        this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
+        assertTrue(this.text().contains("Cannot decode body"));
+        assertTrue(this.text().contains("Header missing"));
+        this.messages.clear();
+        Files.delete(body);
+        this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
+        assertTrue(this.text().contains("Body missing"));
+        this.messages.clear();
+        this.execute(player(Set.of("sparrow_sync.command.view")), "sparrow-sync exception view corrupted/archive.snapshot");
+        assertTrue(this.text().contains("detail menu is not available"));
+    }
+
+    private SnapshotFiles installArchiveService() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        ExceptionArchives archives = new ExceptionArchives(files, Runnable::run);
+        SnapshotService service = new SnapshotService(this.plugin);
+        NmsPlayerFixture.set(SnapshotService.class, service, "exceptions", archives);
+        NmsPlayerFixture.set(SnapshotService.class, service, "details", new SnapshotDetails(null, files, archives, new DataRegistry(), Runnable::run));
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotService", service);
+        return files;
+    }
+
+    @Test
+    void exceptionPanelBindsFullPathAndShowsIndependentHeaderAndBodyStates() {
+        this.manager.registerFeature(new ExceptionDeleteCommand(this.manager, this.plugin),
+                new CommandConfig(true, List.of("/archive remove"), "custom.archive"));
+        String path = "corrupted/archive with spaces.snapshot";
+        ExceptionArchives.Entry entry = new ExceptionArchives.Entry(path, "corrupted", null, ExceptionArchives.HeadStatus.UNREADABLE, false);
+        new SnapshotTextPanel(this.manager).exceptions(player(Set.of("custom.archive")), null, new ExceptionArchives.Page(0, 5, 1, 1, List.of(entry)));
+        assertTrue(this.text().contains("Header unreadable"));
+        assertTrue(this.text().contains("Body missing"));
+        assertTrue(this.text().contains("Unknown player"));
+        assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/archive remove " + path))));
+        assertFalse(this.text().contains("[Binary]"));
+        this.assertTranslatedHover(this.messages.getFirst());
+    }
+
+    private void registerPanelCommands() {
+        CommandsConfig.ConfigDefinition defaults = new CommandsConfig.ConfigDefinition();
+        this.manager.registerFeature(new SnapshotListCommand(this.manager, this.plugin), new CommandConfig(true, List.of("/custom history"), "sparrow_sync.command.view"));
+        this.manager.registerFeature(new SnapshotDeleteCommand(this.manager, this.plugin), new CommandConfig(true, List.of("/custom erase"), "custom.delete"));
+        this.manager.registerFeature(new SnapshotExportCommand(this.manager, this.plugin), defaults.command("snapshot_export"));
+        this.manager.registerFeature(new SnapshotPinCommand(this.manager, this.plugin), new CommandConfig(true, List.of("/custom pin"), "custom.pin"));
+        this.manager.registerFeature(new SnapshotUnpinCommand(this.manager, this.plugin), new CommandConfig(true, List.of("/custom unpin"), "custom.unpin"));
+    }
+
+    @Test
+    void textPanelAlignsButtonsAndRetainsFullSourceInteraction() {
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        List<SnapshotMeta> records = List.of(
+                new SnapshotMeta(UUID.fromString("ffffffff-0000-0000-0000-000000000000"), playerId, 1, SaveCause.DISCONNECT, false, "i", 0),
+                new SnapshotMeta(UUID.fromString("aaaaaaaa-0000-0000-0000-000000000000"), playerId, 1, SaveCause.SHUTDOWN, true, "WWWWWWWWWW", 0),
+                new SnapshotMeta(UUID.fromString("ffffaaaa-0000-0000-0000-000000000000"), playerId, 1, SaveCause.WORLD_SAVE, false, "server-name-is-long", 0));
+        new SnapshotTextPanel(this.manager).snapshots(player(Set.of("sparrow_sync.command.view")), new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 3, records));
+        assertEquals(5, this.text().lines().count());
+        assertTrue(this.text().contains("WWWWWWWWWW"));
+        assertTrue(this.text().contains("server-..."));
+        assertFalse(this.text().contains("server-name-is-long"));
+        for (SnapshotMeta meta : records) {
+            assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, meta.server())));
+        }
+        List<Integer> buttonOffsets = new ArrayList<>();
+        collectLineWidths(this.messages.getFirst(), false, new int[1], buttonOffsets, new ArrayList<>());
+        assertEquals(3, buttonOffsets.size());
+        assertEquals(1, buttonOffsets.stream().distinct().count());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1234567890", "12345678901", "测试服务器名字超过十个字符", "abcdef😀ghijkl"})
+    void sourceAbbreviationKeepsTenCodePointsIncludingDotsAndConsoleKeepsFullName(String server) {
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(UUID.randomUUID(), playerId, 1, SaveCause.COMMAND, false, server, 0)));
+        SnapshotTextPanel panel = new SnapshotTextPanel(this.manager);
+        PlayerIdentity identity = new PlayerIdentity(playerId, "Steve");
+        panel.snapshots(player(Set.of()), identity, page);
+        String expected = server.codePointCount(0, server.length()) <= 10 ? server : server.substring(0, server.offsetByCodePoints(0, 7)) + "...";
+        assertTrue(this.text().contains(expected));
+        assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, server)));
+        this.messages.clear();
+        panel.snapshots(sender(Set.of()), identity, page);
+        assertTrue(this.text().contains(server));
+        this.assertNoEvents(this.messages.getFirst());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "zh_cn"})
+    void screenshotRowsFitDefaultChatWidthWithAlignedButtons(String language) {
+        this.manager.locale = language.equals("zh_cn") ? Locale.SIMPLIFIED_CHINESE : Locale.ENGLISH;
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        String[] ids = {"55be881a", "d582f7cc", "b44cdafb", "a9285aab", "60f0ad54"};
+        List<SnapshotMeta> records = new ArrayList<>();
+        for (int i = 0; i < ids.length; i++) {
+            records.add(new SnapshotMeta(UUID.fromString(ids[i] + "-0000-0000-0000-000000000000"), playerId, 1,
+                    i == 1 || i == 4 ? SaveCause.WORLD_SAVE : SaveCause.SHUTDOWN, i == 2, "Paper_26.2", 0));
+        }
+        new SnapshotTextPanel(this.manager).snapshots(player(Set.of("sparrow_sync.command.view")),
+                new PlayerIdentity(playerId, "Catnies"), new SnapshotPage(0, 5, 34, records));
+        List<Integer> offsets = new ArrayList<>();
+        List<Integer> widths = new ArrayList<>();
+        collectLineWidths(this.messages.getFirst(), false, new int[1], offsets, widths);
+        assertEquals(5, offsets.size());
+        assertEquals(1, offsets.stream().distinct().count());
+        assertEquals(6, widths.size());
+        for (int i = 1; i < widths.size(); i++) {
+            assertTrue(widths.get(i) <= 320, "row " + i + " exceeds default chat width: " + widths.get(i));
+        }
+    }
+
+    private static void collectLineWidths(Component component, boolean inheritedBold, int[] pixels, List<Integer> offsets, List<Integer> widths) {
+        boolean bold = switch (component.decoration(TextDecoration.BOLD)) {
+            case TRUE -> true;
+            case FALSE -> false;
+            case NOT_SET -> inheritedBold;
+        };
+        if (component instanceof TextComponent text) {
+            String content = text.content();
+            int length = content.length();
+            for (int i = 0; i < length;) {
+                int character = content.codePointAt(i);
+                if (character == '\n') {
+                    widths.add(pixels[0]);
+                    pixels[0] = 0;
+                } else {
+                    if (character == '☆' || character == '★') {
+                        offsets.add(pixels[0]);
+                    }
+                    pixels[0] += ChatTextUtils.width(new String(Character.toChars(character))) + (bold ? 1 : 0);
+                }
+                i += Character.charCount(character);
+            }
+        }
+        for (Component child : component.children()) collectLineWidths(child, bold, pixels, offsets, widths);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void textPanelAlwaysShowsPinStateAndBindsTheMatchingPermission(boolean pinned) throws Exception {
+        this.registerPanelCommands();
+        UUID playerId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        String action = pinned ? "unpin" : "pin";
+        String opposite = pinned ? "pin" : "unpin";
+        String command = "/custom " + action + " " + id;
+        PlayerIdentity identity = new PlayerIdentity(playerId, "Steve");
+        SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, pinned, "origin", 0)));
+        SnapshotTextPanel panel = new SnapshotTextPanel(this.manager);
+        Set<String> permissions = new HashSet<>(Set.of("sparrow_sync.command.view", "custom." + action));
+        Player viewer = player(permissions);
+        panel.snapshots(viewer, identity, page);
+        assertTrue(this.text().contains(pinned ? "★ [V]" : "☆ [V]"));
+        assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, command)));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom " + opposite + " " + id)));
+        this.assertTranslatedHover(this.messages.getFirst());
+
+        permissions.remove("custom." + action);
+        permissions.add("custom." + opposite);
+        assertThrows(ExecutionException.class, () -> this.execute(viewer, command.substring(1)));
+        this.messages.clear();
+        panel.snapshots(viewer, identity, page);
+        assertTrue(this.text().contains(pinned ? "★ [V]" : "☆ [V]"));
+        assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, command)));
+    }
+
+    private void assertTranslatedHover(Component component) {
+        if (component.hoverEvent() != null && component.hoverEvent().value() instanceof Component hover) {
+            assertFalse(textOf(hover).contains("command.panel"));
+            assertFalse(hover instanceof TranslatableComponent);
+        }
+        for (Component child : component.children()) this.assertTranslatedHover(child);
+    }
+
+    private void assertNoEvents(Component component) {
+        assertNull(component.clickEvent());
+        for (Component child : component.children()) this.assertNoEvents(child);
+    }
+
+    private static boolean hasEvent(Component component, ClickEvent event) {
+        return event.equals(component.clickEvent()) || component.children().stream().anyMatch(child -> hasEvent(child, event));
+    }
+
+    private static Player player(Set<String> permissions) {
+        return proxy(Player.class, (instance, method, args) -> switch (method.getName()) {
+            case "hasPermission" -> permissions.contains(args[0]);
+            case "getName", "toString" -> "Viewer";
+            case "isOp" -> false;
+            default -> null;
+        });
+    }
+
     private String text() {
         return String.join("\n", this.messages.stream().map(CommandFeaturesTest::textOf).toList());
     }
@@ -465,7 +830,7 @@ class CommandFeaturesTest {
 
         @Override
         public Index<String, CommandFeature> features() {
-            return Index.create(CommandFeature::getFeatureID, List.of());
+            return Index.create(CommandFeature::getFeatureID, List.copyOf(this.registeredFeatures));
         }
     }
 }

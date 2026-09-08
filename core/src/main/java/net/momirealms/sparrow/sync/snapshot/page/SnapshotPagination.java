@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
 @ApiStatus.Internal
 public final class SnapshotPagination {
     public static final int UI_PAGE_SIZE = 27;
-    public static final int TEXT_PAGE_SIZE = 5;
+    public static final int TEXT_PAGE_SIZE = 7;
 
     private final StorageProvider storage;
 

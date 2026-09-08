@@ -41,13 +41,13 @@ class SnapshotPaginationTest {
 
     @Test
     void textQueriesOnlyTheRequestedPageAndDoesNotKeepACache() {
-        this.populate(12);
+        this.populate(18);
         SnapshotPage page = this.pagination.load(this.query, 1, SnapshotPagination.TEXT_PAGE_SIZE).join();
         assertEquals(1, page.index());
         assertEquals(3, page.count());
-        assertEquals(12, page.total());
-        assertEquals(this.stored.subList(5, 10), page.content());
-        assertEquals(List.of(this.query.withOffset(5).withLimit(5)), this.reads);
+        assertEquals(18, page.total());
+        assertEquals(this.stored.subList(7, 14), page.content());
+        assertEquals(List.of(this.query.withOffset(7).withLimit(7)), this.reads);
         assertTrue(page.hasPrevious());
         assertTrue(page.hasNext());
         assertThrows(UnsupportedOperationException.class, () -> page.content().clear());

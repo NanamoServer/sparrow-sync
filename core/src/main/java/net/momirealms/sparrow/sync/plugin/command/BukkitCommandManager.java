@@ -12,6 +12,9 @@ import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotDeleteCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotExportCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotImportCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -48,7 +51,10 @@ public final class BukkitCommandManager extends AbstractCommandManager {
                 new SnapshotDeleteCommand(this, plugin),
                 new SnapshotExportCommand(this, plugin),
                 new SnapshotImportCommand(this, plugin),
-                new ExceptionDeleteCommand(this, plugin)
+                new ExceptionDeleteCommand(this, plugin),
+                new SnapshotListCommand(this, plugin),
+                new ExceptionListCommand(this, plugin),
+                new ExceptionViewCommand(this, plugin)
         ));
         final LegacyPaperCommandManager<CommandSender> manager = (LegacyPaperCommandManager<CommandSender>) getCommandManager();
         // 开启 ALLOW_UNSAFE_REGISTRATION, 以允许在部分运行环境中完成命令注册.

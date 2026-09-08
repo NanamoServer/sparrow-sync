@@ -72,6 +72,15 @@ public final class CommandsConfig {
         CommandConfig status = new CommandConfig(true, List.of("/sparrow-sync status"), "sparrow_sync.command.status");
 
         @BlankLineBefore
+        CommandConfig exceptionList = new CommandConfig(true, List.of("/sparrow-sync exception list"), "sparrow_sync.command.view");
+
+        @BlankLineBefore
+        CommandConfig exceptionView = new CommandConfig(true, List.of("/sparrow-sync exception view"), "sparrow_sync.command.view");
+
+        @BlankLineBefore
+        CommandConfig snapshotList = new CommandConfig(true, List.of("/sparrow-sync snapshot list"), "sparrow_sync.command.view");
+
+        @BlankLineBefore
         CommandConfig snapshotCapture = new CommandConfig(true, List.of("/sparrow-sync snapshot capture"), "sparrow_sync.command.capture");
 
         @BlankLineBefore
@@ -108,6 +117,9 @@ public final class CommandsConfig {
                 case "test" -> this.test;
                 case "reload" -> this.reload;
                 case "status" -> this.status;
+                case "snapshot_list" -> this.snapshotList;
+                case "exception_list" -> this.exceptionList;
+                case "exception_view" -> this.exceptionView;
                 case "snapshot_capture" -> this.snapshotCapture;
                 case "snapshot_restore" -> this.snapshotRestore;
                 case "snapshot_pin" -> this.snapshotPin;
