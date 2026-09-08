@@ -51,6 +51,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platformLauncher)
     testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)
+    testImplementation(libs.bundles.cloud)
 }
 
 // Version

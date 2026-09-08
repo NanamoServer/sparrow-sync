@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -19,6 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SessionManagerTest {
     private final SessionManager manager = new SessionManager(null);
     private final Connection connection = ConnectionFixture.create();
+
+    @Test
+    void rejectionCounterOnlyCountsExplicitRejections() {
+        this.manager.tryOpen(UUID.randomUUID(), "Steve", this.connection);
+        assertEquals(0, this.manager.rejectedLoginCount());
+        this.manager.recordLoginRejection();
+        this.manager.recordLoginRejection();
+        assertEquals(2, this.manager.rejectedLoginCount());
+        assertEquals(List.of("Steve"), this.manager.playerNames());
+    }
 
     @Test
     void openRegistersPreparingSession() {

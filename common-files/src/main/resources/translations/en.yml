@@ -1,43 +1,69 @@
-exception.invalid_syntax: '<red>Invalid syntax. Correct syntax: <white><arg:0></white></red>'
-exception.invalid_argument: '<red>Invalid argument. Reason: <white><arg:0></white></red>'
-exception.invalid_sender: <red><arg:0> is not allowed to execute that command. Must be of type <arg:1></red>
-exception.unexpected: <red>An internal error occurred while attempting to perform this command</red>
-exception.no_permission: <red>I'm sorry, but you do not have permission to perform this command</red>
-exception.no_such_command: <red>Unknown command.</red>
-argument.entity.notfound.player: <red>No player was found</red>
-argument.entity.notfound.entity: <red>No entity was found</red>
-argument.parse.failure.time: <red>'<arg:0>' is not a valid time format</red>
-argument.parse.failure.material: <red>'<arg:0>' is not a valid material name</red>
-argument.parse.failure.enchantment: <red>'<arg:0>' is not a valid enchantment</red>
-argument.parse.failure.offlineplayer: <red>No player found for input '<arg:0>'</red>
-argument.parse.failure.player: <red>No player found for input '<arg:0>'</red>
-argument.parse.failure.world: <red>'<arg:0>' is not a valid Minecraft world</red>
-argument.parse.failure.location.invalid_format: <red>'<arg:0>' is not a valid location. Required format is '<arg:1> <arg:2> <arg:3></red>
-argument.parse.failure.location.mixed_local_absolute: <red>Cannot mix local and absolute coordinates. (either all coordinates use '^' or none do)</red>
-argument.parse.failure.namespacedkey.namespace: <red>Invalid namespace '<arg:0>'. Must be [a-z0-9._-]</red>
-argument.parse.failure.namespacedkey.key: <red>Invalid key '<arg:0>'. Must be [a-z0-9/._-]</red>
-argument.parse.failure.namespacedkey.need_namespace: <red>Invalid input '<arg:0>', requires an explicit namespace</red>
-argument.parse.failure.boolean: <red>Could not parse boolean from '<arg:0>'</red>
-argument.parse.failure.number: <red>'<arg:0>' is not a valid number in the range <arg:1> to <arg:2></red>
-argument.parse.failure.char: <red>'<arg:0>' is not a valid character</red>
-argument.parse.failure.string: <red>'<arg:0>' is not a valid string of type <arg:1></red>
-argument.parse.failure.uuid: <red>'<arg:0>' is not a valid UUID</red>
-argument.parse.failure.enum: '<red>''<arg:0>'' is not one of the following: <arg:1></red>'
-argument.parse.failure.regex: <red>'<arg:0>' does not match '<arg:1>'</red>
-argument.parse.failure.flag.unknown: <red>Unknown flag '<arg:0>'</red>
-argument.parse.failure.flag.duplicate_flag: <red>Duplicate flag '<arg:0>'</red>
-argument.parse.failure.flag.no_flag_started: <red>No flag started. Don't know what to do with '<arg:0>'</red>
-argument.parse.failure.flag.missing_argument: <red>Missing argument for '<arg:0>'</red>
-argument.parse.failure.flag.no_permission: <red>You don't have permission to use '<arg:0>'</red>
-argument.parse.failure.color: <red>'<arg:0>' is not a valid color</red>
-argument.parse.failure.duration: <red>'<arg:0>' is not a duration format</red>
-argument.parse.failure.aggregate.missing: <red>Missing component '<arg:0>'</red>
-argument.parse.failure.aggregate.failure: '<red>Invalid component ''<arg:0>'': <arg:1></red>'
-argument.parse.failure.either: <red>Could not resolve <arg:1> or <arg:2> from '<arg:0>'</red>
-argument.parse.failure.namedtextcolor: <red>'<arg:0>' is not a named text color</red>
-command.reload.too_fast: <red>You are reloading the plugin too quickly; the previous reload has not yet completed
-command.reload.config.failure: <red>Failed to reload configs. Please check console logs
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>Configs reloaded <gray>(<color:#2E86C1><arg:0></color> ms)</gray>
+command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Query failed. Check the console log.</color>'
+command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Player not found: </color><color:#F2F4FF><arg:0></color>'
+command.status.system: |-
+  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>System status</color>
+  <color:#C8E4E9>• Server: </color><color:#F2F4FF><arg:2></color>
+  <color:#C8E4E9>• Storage: </color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
+  <color:#C8E4E9>• Workers: </color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· Queued: </color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· Sessions: </color><color:#F2F4FF><arg:7></color>
+  <color:#C8E4E9>• Task failures: </color><color:#F2F4FF><arg:8></color> <color:#C8E4E9>· Login rejections: </color><color:#FFE08A><arg:9></color>
+command.connected: '<color:#C9F2C7>Connected</color>'
+command.disconnected: '<color:#FFB6CB>Disconnected</color>'
+command.status.no_lock: '<color:#F2F4FF>No lock</color>'
+command.status.no_snapshot: '<color:#F2F4FF>No stored snapshot</color>'
+command.status.snapshot: |-
+  <color:#C7BCE7><arg:0></color> <arg:4>
+  <color:#C8E4E9>• Saved: </color><color:#FFE3A3><arg:1></color>
+  <color:#C8E4E9>• Cause: </color><color:#F2F4FF><arg:2></color> <color:#C8E4E9>· Source: </color><color:#F2F4FF><arg:3></color>
+command.pinned: '<color:#FFE08A>※ Pinned</color>'
+command.unpinned: '<color:#C8E4E9>Unpinned</color>'
+command.status.no_session: '<color:#F2F4FF>No local session</color>'
+command.status.player: |-
+  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>
+  <color:#C8E4E9>• Local: </color><color:#C9F2C7><arg:2></color> <color:#C8E4E9>· Lock holder: </color><color:#F2F4FF><arg:3></color>
+  <color:#C8E4E9>• Snapshot: </color><arg:4>
+command.status.unknown: '<color:#FFB6CB>Query failed</color>'
+log.command.status_query_failed: 'Failed to query player status: <arg:0>'
+
+exception.invalid_syntax: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid syntax. Correct syntax: <color:#F2F4FF><arg:0></color></color>'
+exception.invalid_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid argument. Reason: <color:#F2F4FF><arg:0></color></color>'
+exception.invalid_sender: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB><arg:0> is not allowed to execute that command. Must be of type <arg:1></color>'
+exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>An internal error occurred while attempting to perform this command</color>'
+exception.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>I''m sorry, but you do not have permission to perform this command</color>'
+exception.no_such_command: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown command.</color>'
+argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player was found</color>'
+argument.entity.notfound.entity: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No entity was found</color>'
+argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid time format</color>'
+argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid material name</color>'
+argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid enchantment</color>'
+argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
+argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
+argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid Minecraft world</color>'
+argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid location. Required format is ''<arg:1> <arg:2> <arg:3></color>'
+argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Cannot mix local and absolute coordinates. (either all coordinates use ''^'' or none do)</color>'
+argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid namespace ''<arg:0>''. Must be [a-z0-9._-]</color>'
+argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid key ''<arg:0>''. Must be [a-z0-9/._-]</color>'
+argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid input ''<arg:0>'', requires an explicit namespace</color>'
+argument.parse.failure.boolean: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not parse boolean from ''<arg:0>''</color>'
+argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid number in the range <arg:1> to <arg:2></color>'
+argument.parse.failure.char: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid character</color>'
+argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid string of type <arg:1></color>'
+argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid UUID</color>'
+argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not one of the following: <arg:1></color>'
+argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' does not match ''<arg:1>''</color>'
+argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown flag ''<arg:0>''</color>'
+argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Duplicate flag ''<arg:0>''</color>'
+argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No flag started. Don''t know what to do with ''<arg:0>''</color>'
+argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing argument for ''<arg:0>''</color>'
+argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>You don''t have permission to use ''<arg:0>''</color>'
+argument.parse.failure.color: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid color</color>'
+argument.parse.failure.duration: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a duration format</color>'
+argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing component ''<arg:0>''</color>'
+argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid component ''<arg:0>'': <arg:1></color>'
+argument.parse.failure.either: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not resolve <arg:1> or <arg:2> from ''<arg:0>''</color>'
+argument.parse.failure.namedtextcolor: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a named text color</color>'
+command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>Reload in progress, please wait.</color>'
+command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Reload failed. Check the console log.</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Configuration reloaded</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
 plugin.compatibility: '[Compatibility] Hooked <arg:0>'
 plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
 config.errors_detected: 'Error found in config.yml - <arg:0>'
@@ -45,8 +71,8 @@ update.available: 'New version <arg:0> is available: <arg:1>'
 update.is_latest: You're running the latest version
 
 # Kick messages sent to players.
-sync.kick.not_ready: <red>Your data is not synchronized yet, please reconnect in a moment. Contact an admin if this keeps happening.</red>
-sync.kick.too_fast: <red>You reconnected too quickly, your previous data is still being saved. Please try again in a moment.</red>
+sync.kick.not_ready: <color:#E75FA8>Your data is not synchronized yet, please reconnect in a moment. Contact an admin if this keeps happening.</color>
+sync.kick.too_fast: <color:#E75FA8>You reconnected too quickly, your previous data is still being saved. Please try again in a moment.</color>
 
 # Console messages. Their language follows forced-locale in config.yml, or the system locale when it is empty.
 log.plugin.reload_at_runtime: Please do not restart plugins at runtime.

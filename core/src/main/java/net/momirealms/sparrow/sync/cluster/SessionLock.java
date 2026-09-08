@@ -59,6 +59,17 @@ public final class SessionLock {
                 .toCompletableFuture();
     }
 
+    /** 读取锁持有信息, 缺失时返回 empty, Redis 查询失败时异常完成. */
+    @NotNull
+    public CompletableFuture<Optional<LockValue>> holder(@NotNull UUID player) {
+        return this.connector.connection().async().get(this.key(player)).thenApply(raw -> {
+            if (raw == null) return Optional.<LockValue>empty();
+            LockValue value = LockValue.parse(text(raw));
+            if (value == null) throw new IllegalStateException("Invalid session lock value for " + player);
+            return Optional.of(value);
+        }).toCompletableFuture();
+    }
+
     /**
      * 释放自己持有的锁, 值完全一致才删.
      *

@@ -40,7 +40,7 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null) {
             this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), "no session, the login gate did not cover this join");
-            player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
+            this.kick(player);
             return;
         }
 
@@ -84,6 +84,7 @@ public final class SessionListener implements Listener {
     }
 
     private void kick(Player player) {
+        this.sessions.recordLoginRejection();
         player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
     }
 

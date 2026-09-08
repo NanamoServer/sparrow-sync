@@ -156,11 +156,13 @@ public final class PaperEventGate implements LoginGate, Listener {
     }
 
     private void rejectTooFast(PlayerConfigurationConnection connection, UUID uuid, String name, String reason) {
+        this.sessionManager.recordLoginRejection();
         this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, reason);
         connection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
     }
 
     private void refuse(PlayerConfigurationConnection connection, PlayerSession session, String name, String reason) {
+        this.sessionManager.recordLoginRejection();
         this.sessionManager.abort(session);
         this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
         connection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());

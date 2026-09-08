@@ -1,43 +1,69 @@
-exception.invalid_syntax: <red>语法错误。正确语法：<white><arg:0></white></red>
-exception.invalid_argument: <red>参数无效。原因：<white><arg:0></white></red>
-exception.invalid_sender: <red><arg:0>不允许执行此命令。执行者必须是<arg:1></red>
-exception.unexpected: <red>执行此命令时发生内部错误</red>
-exception.no_permission: <red>抱歉，你没有权限执行此命令</red>
-exception.no_such_command: <red>未知的命令</red>
-argument.entity.notfound.player: <red>未找到玩家</red>
-argument.entity.notfound.entity: <red>未找到实体</red>
-argument.parse.failure.time: <red>“<arg:0>”不是有效的时间格式</red>
-argument.parse.failure.material: <red>“<arg:0>”不是有效的材料名称</red>
-argument.parse.failure.enchantment: <red>“<arg:0>”不是有效的魔咒</red>
-argument.parse.failure.offlineplayer: <red>输入的玩家“<arg:0>”已离线</red>
-argument.parse.failure.player: <red>找不到输入的玩家“<arg:0>”</red>
-argument.parse.failure.world: <red>“<arg:0>”不是有效的Minecraft世界</red>
-argument.parse.failure.location.invalid_format: <red>“<arg:0>”不是有效的位置格式。所需格式为“<arg:1> <arg:2> <arg:3>”</red>
-argument.parse.failure.location.mixed_local_absolute: <red>不能混用相对和绝对坐标。（要么所有坐标都使用“^”，要么都不使用）</red>
-argument.parse.failure.namespacedkey.namespace: <red>命名空间“<arg:0>”无效。必须由[a-z0-9._-]组成</red>
-argument.parse.failure.namespacedkey.key: <red>命名空间ID“<arg:0>”无效。必须由[a-z0-9._-]组成</red>
-argument.parse.failure.namespacedkey.need_namespace: <red>输入“<arg:0>”无效，需要显式命名空间</red>
-argument.parse.failure.boolean: <red>无法从“<arg:0>”解析布尔值</red>
-argument.parse.failure.number: <red>“<arg:0>”不在<arg:1>到<arg:2>的范围内</red>
-argument.parse.failure.char: <red>“<arg:0>”不是有效字符</red>
-argument.parse.failure.string: <red>“<arg:0>”不是<arg:1>类型的有效字符串</red>
-argument.parse.failure.uuid: <red>“<arg:0>”不是有效的UUID</red>
-argument.parse.failure.enum: <red>“<arg:0>”不是以下选项之一：<arg:1></red>
-argument.parse.failure.regex: <red>“<arg:0>”与“<arg:1>”不匹配</red>
-argument.parse.failure.flag.unknown: <red>未知的“<arg:0>”标志</red>
-argument.parse.failure.flag.duplicate_flag: <red>重复的“<arg:0>”标志</red>
-argument.parse.failure.flag.no_flag_started: <red>无法识别的短标志组合“<arg:0>”</red>
-argument.parse.failure.flag.missing_argument: <red>缺少“<arg:0>”参数</red>
-argument.parse.failure.flag.no_permission: <red>你没有权限使用“<arg:0>”标志</red>
-argument.parse.failure.color: <red>“<arg:0>”不是有效的颜色</red>
-argument.parse.failure.duration: <red>“<arg:0>”不是时间长度格式</red>
-argument.parse.failure.aggregate.missing: <red>缺少“<arg:0>”组件</red>
-argument.parse.failure.aggregate.failure: <red>无效的“<arg:0>”组件：<arg:1></red>
-argument.parse.failure.either: <red>无法从“<arg:0>”解析出<arg:1>或<arg:2></red>
-argument.parse.failure.namedtextcolor: <red>“<arg:0>”不是命名的文本颜色</red>
-command.reload.too_fast: <red>你重新加载插件的速度太快了，上一次的重新加载还没有完成</red>
-command.reload.config.failure: <red>无法重新加载配置。请检查控制台日志</red>
-command.reload.config.success: <dark_gray>» </dark_gray><gradient:#7FB3D5:#2E86C1><b>SparrowSync</b></gradient> <gray>•</gray> <white>配置文件已重新加载完成</white><gray>（<color:#2E86C1><arg:0></color>毫秒）</gray>
+command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>查询失败，请查看控制台日志</color>'
+command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家 </color><color:#F2F4FF><arg:0></color>'
+command.status.system: |-
+  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>运行状态</color>
+  <color:#C8E4E9>• 节点：</color><color:#F2F4FF><arg:2></color>
+  <color:#C8E4E9>• 存储：</color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
+  <color:#C8E4E9>• 线程：</color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· 排队：</color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· 会话：</color><color:#F2F4FF><arg:7></color>
+  <color:#C8E4E9>• 任务失败：</color><color:#F2F4FF><arg:8></color> <color:#C8E4E9>· 登录拒绝：</color><color:#FFE08A><arg:9></color>
+command.connected: '<color:#C9F2C7>已连接</color>'
+command.disconnected: '<color:#FFB6CB>未连接</color>'
+command.status.no_lock: '<color:#F2F4FF>无</color>'
+command.status.no_snapshot: '<color:#F2F4FF>无存档</color>'
+command.status.snapshot: |-
+  <color:#C7BCE7><arg:0></color> <arg:4>
+  <color:#C8E4E9>• 时间：</color><color:#FFE3A3><arg:1></color>
+  <color:#C8E4E9>• 原因：</color><color:#F2F4FF><arg:2></color> <color:#C8E4E9>· 来源：</color><color:#F2F4FF><arg:3></color>
+command.pinned: '<color:#FFE08A>※ 已固定</color>'
+command.unpinned: '<color:#C8E4E9>未固定</color>'
+command.status.no_session: '<color:#F2F4FF>无会话</color>'
+command.status.player: |-
+  <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>
+  <color:#C8E4E9>• 本服：</color><color:#C9F2C7><arg:2></color> <color:#C8E4E9>· 锁持有服：</color><color:#F2F4FF><arg:3></color>
+  <color:#C8E4E9>• 快照：</color><arg:4>
+command.status.unknown: '<color:#FFB6CB>查询失败</color>'
+log.command.status_query_failed: '查询玩家状态失败：<arg:0>'
+
+exception.invalid_syntax: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>语法错误。正确语法：<color:#F2F4FF><arg:0></color></color>'
+exception.invalid_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>参数无效。原因：<color:#F2F4FF><arg:0></color></color>'
+exception.invalid_sender: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB><arg:0>不允许执行此命令。执行者必须是<arg:1></color>'
+exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>执行此命令时发生内部错误</color>'
+exception.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>抱歉，你没有权限执行此命令</color>'
+exception.no_such_command: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未知的命令</color>'
+argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家</color>'
+argument.entity.notfound.entity: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到实体</color>'
+argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的时间格式</color>'
+argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的材料名称</color>'
+argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的魔咒</color>'
+argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>输入的玩家“<arg:0>”已离线</color>'
+argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>找不到输入的玩家“<arg:0>”</color>'
+argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的Minecraft世界</color>'
+argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的位置格式。所需格式为“<arg:1> <arg:2> <arg:3>”</color>'
+argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>不能混用相对和绝对坐标。（要么所有坐标都使用“^”，要么都不使用）</color>'
+argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>命名空间“<arg:0>”无效。必须由[a-z0-9._-]组成</color>'
+argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>命名空间ID“<arg:0>”无效。必须由[a-z0-9._-]组成</color>'
+argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>输入“<arg:0>”无效，需要显式命名空间</color>'
+argument.parse.failure.boolean: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法从“<arg:0>”解析布尔值</color>'
+argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不在<arg:1>到<arg:2>的范围内</color>'
+argument.parse.failure.char: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效字符</color>'
+argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是<arg:1>类型的有效字符串</color>'
+argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的UUID</color>'
+argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是以下选项之一：<arg:1></color>'
+argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”与“<arg:1>”不匹配</color>'
+argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未知的“<arg:0>”标志</color>'
+argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>重复的“<arg:0>”标志</color>'
+argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法识别的短标志组合“<arg:0>”</color>'
+argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>缺少“<arg:0>”参数</color>'
+argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>你没有权限使用“<arg:0>”标志</color>'
+argument.parse.failure.color: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的颜色</color>'
+argument.parse.failure.duration: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是时间长度格式</color>'
+argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>缺少“<arg:0>”组件</color>'
+argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无效的“<arg:0>”组件：<arg:1></color>'
+argument.parse.failure.either: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法从“<arg:0>”解析出<arg:1>或<arg:2></color>'
+argument.parse.failure.namedtextcolor: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是命名的文本颜色</color>'
+command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>正在重载，请稍候</color>'
+command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>配置重载失败，请查看控制台日志</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>配置已经重载</color><color:#C8E4E9>（异步 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
 plugin.compatibility: '[兼容性] 已挂钩 <arg:0>'
 plugin.compatibility_failed: '[兼容性] 挂钩 <arg:0> 失败'
 config.errors_detected: '在 config.yml 中发现错误 - <arg:0>'
@@ -45,8 +71,8 @@ update.available: '新版本 <arg:0> 已发布：<arg:1>'
 update.is_latest: 你正在使用最新版本
 
 # 踢出消息，发送给玩家。
-sync.kick.not_ready: <red>你的数据尚未同步完成，请稍后重新连接。若多次出现请联系管理员。</red>
-sync.kick.too_fast: <red>你重新连接得太快了，上一次的数据还在保存中，请稍后再试。</red>
+sync.kick.not_ready: <color:#E75FA8>你的数据尚未同步完成，请稍后重新连接。若多次出现请联系管理员。</color>
+sync.kick.too_fast: <color:#E75FA8>你重新连接得太快了，上一次的数据还在保存中，请稍后再试。</color>
 
 # 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
 log.plugin.reload_at_runtime: '请不要在服务器运行时重启插件。'

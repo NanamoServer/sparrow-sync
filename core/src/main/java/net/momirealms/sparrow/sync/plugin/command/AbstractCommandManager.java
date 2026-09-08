@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.plugin.command;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.ComponentLike;
 import net.kyori.adventure.text.TranslatableComponent;
+import net.kyori.adventure.text.renderer.TranslatableComponentRenderer;
 import net.momirealms.sparrow.sync.plugin.configuration.CommandsConfig;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.util.ArrayUtils;
@@ -31,6 +32,13 @@ public abstract class AbstractCommandManager implements CommandManager {
     private final CloudCaptionFormatter captionFormatter;
     private final MinecraftExceptionHandler.Decorator<CommandSender> decorator = (formatter, ctx, msg) -> msg;
     private TriConsumer<CommandSender, String, Component> feedbackConsumer;
+    private final TranslatableComponentRenderer<Locale> feedbackRenderer = new TranslatableComponentRenderer<>() {
+        @Override
+        protected Component renderTranslatable(TranslatableComponent component, Locale locale) {
+            Component rendered = AbstractCommandManager.this.plugin.translationManager().render(component, locale).mergeStyle(component);
+            return this.render(rendered, locale);
+        }
+    };
 
     public AbstractCommandManager(Plugin plugin, org.incendo.cloud.CommandManager<CommandSender> commandManager) {
         this.commandManager = commandManager;
@@ -130,8 +138,9 @@ public abstract class AbstractCommandManager implements CommandManager {
 
     @Override
     public void handleCommandFeedback(CommandSender sender, TranslatableComponent.Builder key, Component... args) {
-        TranslatableComponent component = key.arguments(args).build();
-        this.feedbackConsumer.accept(sender, component.key(), this.plugin.translationManager().render(component, getLocale(sender)));
+        // asComponent 在 Adventure 4/5 中保留相同签名, 参数写入生成的组件, 共享 Builder 保持不变.
+        TranslatableComponent component = ((TranslatableComponent) key.asComponent()).arguments(args);
+        this.feedbackConsumer.accept(sender, component.key(), this.feedbackRenderer.render(component, this.getLocale(sender)));
     }
 
     @Override

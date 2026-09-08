@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
 import net.kyori.adventure.util.Index;
+import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.TestCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.debug.DebugApplyCommand;
@@ -32,6 +33,7 @@ public final class BukkitCommandManager extends AbstractCommandManager {
         // 初始化命令索引
         this.plugin = plugin;
         this.index = Index.create(CommandFeature::getFeatureID, List.of(
+                new StatusCommand(this, plugin),
                 new ReloadCommand(this, plugin),
                 new TestCommand(this, plugin),
                 new DebugSaveBinaryCommand(this, plugin),

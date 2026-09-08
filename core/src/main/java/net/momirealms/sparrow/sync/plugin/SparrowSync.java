@@ -393,8 +393,7 @@ public class SparrowSync implements Plugin {
         CompletableFuture<ReloadResult> future = new CompletableFuture<>();
         // 执行异步重载任务
         asyncExecutor.execute(() -> {
-            long asyncTime = -1;
-            int issues = 0;
+            long asyncTime;
             try {
                 long startTime = System.currentTimeMillis();
                 this.configurationManager.reload();
@@ -404,22 +403,22 @@ public class SparrowSync implements Plugin {
                 this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
                 this.reloading.set(false);
                 future.complete(ReloadResult.failure());
-            } finally {
-                long finalAsyncTime = asyncTime;
-                // 执行同步重载任务
-                syncExecutor.execute(() -> {
-                    try {
-                        long syncStartTime = System.currentTimeMillis();
-                        long syncTime = System.currentTimeMillis() - syncStartTime;
-                        this.reloading.set(false);
-                        future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));
-                    } catch (Throwable e) {
-                        this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
-                        this.reloading.set(false);
-                        future.complete(ReloadResult.failure());
-                    }
-                });
+                return;
             }
+            long finalAsyncTime = asyncTime;
+            // 重载标记持续保留到同步阶段完成.
+            syncExecutor.execute(() -> {
+                try {
+                    long syncStartTime = System.currentTimeMillis();
+                    long syncTime = System.currentTimeMillis() - syncStartTime;
+                    this.reloading.set(false);
+                    future.complete(ReloadResult.success(finalAsyncTime, syncTime, 0));
+                } catch (Throwable e) {
+                    this.logger().warn(TranslationManager.console(LogConstants.PLUGIN_RELOAD_FAILED), e);
+                    this.reloading.set(false);
+                    future.complete(ReloadResult.failure());
+                }
+            });
         });
         return future;
     }

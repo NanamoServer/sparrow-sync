@@ -66,7 +66,10 @@ public final class CommandsConfig {
         CommandConfig test = new CommandConfig(true, List.of("/sparrow-sync test"), "ce.command.admin.test");
 
         @BlankLineBefore
-        CommandConfig reload = new CommandConfig(true, List.of("/sparrow-sync reload"), "ce.command.admin.reload");
+        CommandConfig reload = new CommandConfig(true, List.of("/sparrow-sync reload"), "sparrow_sync.command.reload");
+
+        @BlankLineBefore
+        CommandConfig status = new CommandConfig(true, List.of("/sparrow-sync status"), "sparrow_sync.command.status");
 
         @BlankLineBefore
         CommandConfig debugSaveBinary = new CommandConfig(true, List.of("/sparrow-sync debug save-binary"), "ce.command.debug.save_binary");
@@ -89,6 +92,7 @@ public final class CommandsConfig {
             return switch (featureID) {
                 case "test" -> this.test;
                 case "reload" -> this.reload;
+                case "status" -> this.status;
                 case "debug_save_binary" -> this.debugSaveBinary;
                 case "debug_save_json" -> this.debugSaveJson;
                 case "debug_apply" -> this.debugApply;
