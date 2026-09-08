@@ -53,6 +53,7 @@ import java.sql.SQLTransientConnectionException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -477,6 +478,117 @@ class MysqlStorageProviderTest {
         int count = this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "maps`").mapTo(Integer.class).one());
         assertEquals(1, count);
         assertTrue(this.meta("maps") >= 1 && this.meta("maps") <= 32);
+    }
+
+    @Test
+    void differentMapSourcesAcrossProvidersReceiveUniqueIds() throws Exception {
+        MysqlStorageProvider first = this.provider(this.url, this.prefix);
+        MysqlStorageProvider second = this.provider(this.urlWith("useAffectedRows=true"), this.prefix);
+        first.initialize();
+        second.initialize();
+        List<CompletableFuture<StoredMap>> registrations = new ArrayList<>();
+        for (int i = 0; i < 128; i++) {
+            MapStorage maps = (i & 1) == 0 ? first.maps() : second.maps();
+            registrations.add(maps.register(new MapSource("parallel", i), mapData(i)));
+        }
+        CompletableFuture.allOf(registrations.toArray(new CompletableFuture[0])).get(20, TimeUnit.SECONDS);
+        Set<Integer> ids = new HashSet<>();
+        for (int i = 0; i < registrations.size(); i++) {
+            StoredMap stored = registrations.get(i).join();
+            assertEquals(new MapSource("parallel", i), stored.identity().source());
+            assertTrue(ids.add(stored.identity().globalId()));
+        }
+        assertEquals(-128, Collections.min(ids));
+        assertEquals(-1, Collections.max(ids));
+        assertEquals(128, this.meta("maps"));
+        int storedCount = this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "maps`").mapTo(Integer.class).one());
+        assertEquals(128, storedCount);
+    }
+
+    @Test
+    void mapSequenceCommitsBeforeTheAssignedIdIsRead() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        CountDownLatch beforeRead = new CountDownLatch(1);
+        CountDownLatch resumeRead = new CountDownLatch(1);
+        AtomicBoolean firstRead = new AtomicBoolean(true);
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                if (context.getRawSql().equals("SELECT LAST_INSERT_ID()") && firstRead.getAndSet(false)) {
+                    beforeRead.countDown();
+                    try {
+                        assertTrue(resumeRead.await(10, TimeUnit.SECONDS));
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(exception);
+                    }
+                }
+            }
+        });
+        CompletableFuture<StoredMap> first = provider.maps().register(new MapSource("first", 0), mapData(1));
+        try {
+            assertTrue(beforeRead.await(5, TimeUnit.SECONDS));
+            assertFalse(first.isDone());
+            assertEquals(1, this.meta("maps"));
+            // 第一条连接尚未读取自己的编号, 第二条连接仍能分配并完成登记.
+            StoredMap second = provider.maps().register(new MapSource("second", 0), mapData(2)).get(5, TimeUnit.SECONDS);
+            assertEquals(-2, second.identity().globalId());
+        } finally {
+            resumeRead.countDown();
+        }
+        assertEquals(-1, first.get(5, TimeUnit.SECONDS).identity().globalId());
+        assertEquals(2, this.meta("maps"));
+    }
+
+    @Test
+    void failedMapSequenceResultReadLeavesACommittedGap() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        AtomicBoolean fail = new AtomicBoolean(true);
+        SQLTransientConnectionException disconnected = new SQLTransientConnectionException("injected sequence result failure", "08006");
+        provider.jdbi().setSqlLogger(new SqlLogger() {
+            @Override
+            public void logBeforeExecution(StatementContext context) {
+                if (context.getRawSql().equals("SELECT LAST_INSERT_ID()") && fail.getAndSet(false)) {
+                    throw new UnableToExecuteStatementException(disconnected, context);
+                }
+            }
+        });
+        MapSource source = new MapSource("retry", 0);
+        CompletionException failure = assertThrows(CompletionException.class, () -> provider.maps().register(source, mapData(1)).join());
+        assertSame(disconnected, MysqlFailureClassifier.sqlCause(failure));
+        assertEquals(1, this.meta("maps"));
+        assertEquals(Optional.empty(), provider.maps().find(-1).join());
+        assertEquals(-2, provider.maps().register(source, mapData(2)).join().identity().globalId());
+        assertEquals(2, this.meta("maps"));
+    }
+
+    @Test
+    void unavailableMapSequenceDoesNotReuseAPooledConnectionsPreviousId() throws Exception {
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix);
+        provider.initialize();
+        provider.jdbi().getConfig(Handles.class).addListener(new HandleListener() {
+            @Override
+            public void handleCreated(Handle handle) {
+                handle.createQuery("SELECT LAST_INSERT_ID(777)").mapTo(Long.class).one();
+            }
+        });
+        long[] unavailable = {-1, 2147483648L, 2147483649L};
+        for (int i = 0; i < unavailable.length; i++) {
+            long value = unavailable[i];
+            this.direct.useHandle(handle -> handle.createUpdate("UPDATE `" + this.prefix + "meta` SET `value` = :value WHERE id = 'maps'").bind("value", value).execute());
+            assertThrows(CompletionException.class, () -> provider.maps().register(new MapSource("unavailable", 0), mapData(1)).join());
+            assertEquals(value, this.meta("maps"));
+        }
+        this.direct.useHandle(handle -> handle.execute("DELETE FROM `" + this.prefix + "meta` WHERE id = 'maps'"));
+        assertThrows(CompletionException.class, () -> provider.maps().register(new MapSource("missing", 0), mapData(1)).join());
+        int storedCount = this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "maps`").mapTo(Integer.class).one());
+        assertEquals(0, storedCount);
+        this.direct.useHandle(handle -> handle.execute("INSERT INTO `" + this.prefix + "meta` VALUES ('maps', 2147483647)"));
+        assertEquals(Integer.MIN_VALUE, provider.maps().register(new MapSource("last", 0), mapData(1)).join().identity().globalId());
+        assertThrows(CompletionException.class, () -> provider.maps().register(new MapSource("exhausted", 0), mapData(2)).join());
+        assertEquals(2147483648L, this.meta("maps"));
     }
 
     @Test

@@ -272,11 +272,11 @@ public final class MysqlStorageProvider implements StorageProvider {
             return this.failed(meta, exception);
         }
         // INSERT 已在 autocommit 下完成, 暂时无法查询次序时仍保留已落库结果.
-        Optional<SnapshotMeta> latest;
+        Optional<SnapshotOrder> latest;
         try {
             latest = this.jdbi()
-                    .withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + " FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
-                    .bind("player", meta.player()).mapTo(SnapshotMeta.class).findOne());
+                    .withHandle(handle -> handle.createQuery("SELECT `id`, `ts`, `server` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
+                    .bind("player", meta.player()).map((result, context) -> new SnapshotOrder(UUIDUtils.fromBytes(result.getBytes("id")), result.getLong("ts"), result.getString("server"))).findOne());
         } catch (JdbiException exception) {
             SQLException sql = MysqlFailureClassifier.sqlCause(exception);
             if (sql == null || MysqlFailureClassifier.classify(sql) != SaveResult.RETRY_LATER) {
@@ -286,7 +286,7 @@ public final class MysqlStorageProvider implements StorageProvider {
             return new SaveOutcome(SaveResult.SAVED, null);
         }
         if (latest.isEmpty() || latest.get().id().equals(meta.id())) return new SaveOutcome(SaveResult.SAVED, null);
-        SnapshotMeta newest = latest.get();
+        SnapshotOrder newest = latest.get();
         this.logger.file(
                 LogCategory.STORAGE, meta.player(), null, LogConstants.STORAGE_OUT_OF_ORDER,
                 meta.id().toString(), meta.player().toString(), String.valueOf(meta.timestamp()), newest.server(), String.valueOf(newest.timestamp())
@@ -388,5 +388,8 @@ public final class MysqlStorageProvider implements StorageProvider {
             this.dataSource.close();
             this.dataSource = null;
         }
+    }
+
+    private record SnapshotOrder(UUID id, long timestamp, String server) {
     }
 }

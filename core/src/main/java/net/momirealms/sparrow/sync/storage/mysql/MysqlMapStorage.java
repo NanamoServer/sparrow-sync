@@ -74,16 +74,14 @@ public final class MysqlMapStorage implements MapStorage {
         }, this.executor);
     }
 
-    // 只锁定共用 meta 中的地图序列行, 事务提交后才开始插入地图内容.
+    // 原子递增在单条 UPDATE 中提交, LAST_INSERT_ID 只保存当前连接分配的值.
     private int allocateId() {
-        return this.jdbi.inTransaction(handle -> {
-            long sequence = handle.createQuery("SELECT `value` FROM " + this.meta + " WHERE `id` = 'maps' FOR UPDATE")
-                    .mapTo(Long.class).findOne().orElseThrow(() -> new IllegalStateException("map id sequence is missing"));
-            if (sequence < 0 || sequence >= MAX_SEQUENCE) {
-                throw new IllegalStateException("map id sequence is invalid or exhausted");
-            }
-            long next = sequence + 1;
-            handle.createUpdate("UPDATE " + this.meta + " SET `value` = :next WHERE `id` = 'maps'").bind("next", next).execute();
+        return this.jdbi.withHandle(handle -> {
+            int updated = handle.createUpdate("UPDATE " + this.meta + " SET `value` = LAST_INSERT_ID(`value` + 1) WHERE `id` = 'maps' AND `value` >= 0 AND `value` < :max")
+                    .bind("max", MAX_SEQUENCE).execute();
+            // 未分配成功时不能读取连接池中这条连接上一次留下的值.
+            if (updated != 1) throw new IllegalStateException("map id sequence is missing, invalid or exhausted");
+            long next = handle.createQuery("SELECT LAST_INSERT_ID()").mapTo(Long.class).one();
             return Math.toIntExact(-next);
         });
     }
