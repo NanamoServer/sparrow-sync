@@ -6,6 +6,8 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
+import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.Command;
 import org.incendo.cloud.parser.standard.StringParser;
@@ -15,7 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Stream;
@@ -54,13 +55,12 @@ public final class ExceptionDeleteCommand extends BukkitCommandFeature {
         Path directory = this.plugin().snapshotService().files().exceptions();
         if (!Files.isDirectory(directory)) return List.of();
         try (Stream<Path> files = Files.walk(directory)) {
-            return files.filter(Files::isRegularFile).filter(path -> {
-                        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
-                        return name.endsWith(".snapshot") || name.endsWith(".json");
-                    })
+            return files.filter(Files::isRegularFile)
                     .map(path -> directory.relativize(path).toString().replace('\\', '/'))
+                    .map(path -> path.endsWith(ExceptionHeader.SUFFIX) ? path.substring(0, path.length() - ExceptionHeader.SUFFIX.length()) : path)
+                    .filter(path -> SnapshotFiles.supported(Path.of(path)))
                     .filter(path -> path.regionMatches(true, 0, prefix, 0, prefix.length()))
-                    .sorted().map(Suggestion::suggestion).toList();
+                    .distinct().sorted().map(Suggestion::suggestion).toList();
         } catch (IOException ignored) {
             return List.of();
         }

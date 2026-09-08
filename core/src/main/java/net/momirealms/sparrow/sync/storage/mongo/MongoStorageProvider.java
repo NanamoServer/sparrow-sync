@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import org.bson.Document;
@@ -25,7 +26,6 @@ import org.bson.types.Binary;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -332,7 +332,7 @@ public final class MongoStorageProvider implements StorageProvider {
             return Optional.of(snapshot);
         }
         DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
-        throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
+        throw new CompletionException(new FormatException(invalid.reason(), "stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
     }
 
     private static Bson byPlayer(UUID player) {

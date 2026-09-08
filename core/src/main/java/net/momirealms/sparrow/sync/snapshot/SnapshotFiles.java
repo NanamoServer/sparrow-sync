@@ -3,11 +3,13 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
@@ -73,16 +75,39 @@ public final class SnapshotFiles {
         return this.exceptions;
     }
 
-    /** 按本服档案路径删除正文, 正文损坏也可执行. */
+    /** 按本服档案路径删除正文与伴随头, 只有头的残留档案也可清理. */
     public boolean deleteException(@NotNull String relative) throws IOException {
-        Path file = this.exceptions.resolve(relative).normalize();
-        if (!file.startsWith(this.exceptions) || !supported(file)) throw new IOException("Invalid exception file");
-        if (!Files.isRegularFile(file)) return false;
-        if (!file.toRealPath().startsWith(this.exceptions.toRealPath())) throw new IOException("Exception file is outside the exception directory");
-        return Files.deleteIfExists(file);
+        Path file = this.exceptionFile(relative);
+        boolean deleted = Files.deleteIfExists(file);
+        return Files.deleteIfExists(ExceptionHeader.path(file)) || deleted;
     }
 
-    private static boolean supported(Path path) {
+    /** 只在选中单份异常档案后读取正文, 头文件不参与正文解码. */
+    @NotNull
+    public DecodedSnapshot readException(@NotNull String relative) throws IOException {
+        Path file = this.exceptionFile(relative);
+        return file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")
+                ? this.json.decode(Files.readString(file)) : this.binary.decode(Files.readAllBytes(file));
+    }
+
+    /** 将档案标识限定在本服 exception 目录内, 同时允许正文已缺失的路径. */
+    @NotNull
+    public Path exceptionFile(@NotNull String relative) throws IOException {
+        Path file = this.exceptions.resolve(relative).normalize();
+        if (!file.startsWith(this.exceptions) || !supported(file)) {
+            throw new IOException("Invalid exception file");
+        }
+        if (Files.exists(file.getParent()) && !file.getParent().toRealPath().startsWith(this.exceptions.toRealPath())) {
+            throw new IOException("Exception file is outside the exception directory");
+        }
+        if (Files.isSymbolicLink(file) || (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IOException("Exception body is not a regular file");
+        }
+        return file;
+    }
+
+    /** 判断正文是否使用已支持的二进制或 JSON 后缀. */
+    public static boolean supported(@NotNull Path path) {
         String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
         return name.endsWith(".snapshot") || name.endsWith(".json");
     }

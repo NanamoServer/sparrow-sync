@@ -29,6 +29,7 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import org.bson.Document;
@@ -52,10 +53,12 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -455,6 +458,24 @@ class MongoStorageProviderTest {
             assertEquals(0L, this.provider.countSnapshots(query.between(BASE_TIME + 1, BASE_TIME + 2)).join());
         } finally {
             field.set(this.provider, original);
+        }
+    }
+
+    @Test
+    void singleSnapshotDecodePreservesCorruptionAndFutureFormatReasons() {
+        Snapshot snapshot = snapshot(1, false);
+        this.provider.saveSnapshot(snapshot).join();
+        try (MongoClient client = MongoClients.create(MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString("mongodb://localhost:27017"))
+                .uuidRepresentation(UuidRepresentation.STANDARD).build())) {
+            MongoCollection<Document> collection = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
+            Document filter = new Document("_id", snapshot.meta().id());
+            collection.updateOne(filter, new Document("$set", new Document("data", "broken")));
+            CompletionException corrupted = assertThrows(CompletionException.class, () -> this.provider.snapshot(snapshot.meta().id()).join());
+            assertEquals(FormatException.InvalidReason.CORRUPTED, assertInstanceOf(FormatException.class, corrupted.getCause()).reason());
+            collection.updateOne(filter, new Document("$set", new Document("format", 100)));
+            CompletionException future = assertThrows(CompletionException.class, () -> this.provider.snapshot(snapshot.meta().id()).join());
+            assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(FormatException.class, future.getCause()).reason());
         }
     }
 

@@ -19,6 +19,7 @@ import net.momirealms.sparrow.sync.proxy.minecraft.server.level.ServerPlayerProx
 import net.momirealms.sparrow.sync.session.operation.*;
 import net.momirealms.sparrow.sync.snapshot.*;
 import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
@@ -55,6 +56,8 @@ public final class SnapshotService {
     private StorageProvider storage;
     private SnapshotWriter writer;
     private SnapshotFiles files;
+    private ExceptionArchives exceptions;
+    private SnapshotDetails details;
     private volatile boolean operationsClosed;
     private final Set<UUID> offlineRestores = ConcurrentHashMap.newKeySet(); // 持有离线恢复任务的玩家, 供登录和交接查询
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>();
@@ -73,6 +76,8 @@ public final class SnapshotService {
         this.serialExecutor = this.plugin.playerExecutor();
         this.storage = this.plugin.storageProvider();
         this.files = new SnapshotFiles(this.plugin.dataFolderPath(), this.plugin.binaryCodec());
+        this.exceptions = new ExceptionArchives(this.files, this.plugin.scheduler().async());
+        this.details = new SnapshotDetails(this.storage, this.files, this.exceptions, this.dataRegistry, this.plugin.scheduler().async());
         this.writer = new SnapshotWriter(this.logger, this.storage, this.plugin.snapshotStash(), this.serialExecutor);
     }
 
@@ -569,6 +574,16 @@ public final class SnapshotService {
     @NotNull
     public SnapshotFiles files() {
         return this.files;
+    }
+
+    @NotNull
+    public ExceptionArchives exceptions() {
+        return this.exceptions;
+    }
+
+    @NotNull
+    public SnapshotDetails details() {
+        return this.details;
     }
 
     /** 停止接受主动采集和恢复, 已接受的写入继续完成. */

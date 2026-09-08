@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.storage.mysql;
 
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
+import net.momirealms.sparrow.sync.exception.FormatException;
 
 import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
@@ -302,6 +303,7 @@ class MysqlStorageProviderTest {
         this.insert(provider.jdbi(), new SnapshotRow(broken, 2, new byte[]{0}));
         CompletionException byId = assertThrows(CompletionException.class, () -> provider.snapshot(broken.id()).join());
         assertInstanceOf(IOException.class, byId.getCause());
+        assertEquals(FormatException.InvalidReason.CORRUPTED, assertInstanceOf(FormatException.class, byId.getCause()).reason());
         assertTrue(byId.getCause().getMessage().contains("CORRUPTED"));
         assertThrows(CompletionException.class, () -> provider.latestSnapshot(player).join());
         assertEquals(List.of(broken, valid.meta()), provider.listSnapshots(SnapshotQuery.of(player)).join());
@@ -309,6 +311,7 @@ class MysqlStorageProviderTest {
         provider.jdbi().useHandle(handle -> handle.createUpdate("UPDATE `" + this.prefix + "snapshots` SET format = 99 WHERE id = :id").bind("id", broken.id()).execute());
         CompletionException futureFormat = assertThrows(CompletionException.class, () -> provider.latestSnapshot(player).join());
         assertTrue(futureFormat.getCause().getMessage().contains("UNSUPPORTED_FORMAT"));
+        assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(FormatException.class, futureFormat.getCause()).reason());
     }
 
     @Test

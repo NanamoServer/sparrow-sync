@@ -8,10 +8,12 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -69,7 +71,9 @@ public final class SnapshotStash {
             Path file = directory.resolve(fileNameOf(snapshot.meta(), playerName));
             Path temporary = file.resolveSibling(file.getFileName() + TMP_SUFFIX);
             Files.write(temporary, this.codec.encode(snapshot));
+            Files.deleteIfExists(ExceptionHeader.path(file));
             atomicMove(temporary, file);
+            new ExceptionHeader(snapshot.meta(), playerName).write(file);
             String key = pending ? LogConstants.STASH_PENDING : LogConstants.STASH_EXCEPTION;
             this.logger.warn(LogCategory.STASH, snapshot.meta().player(), playerName, key, playerName, file.toString());
         } catch (Throwable throwable) {
@@ -109,13 +113,13 @@ public final class SnapshotStash {
             decoded = this.codec.decode(Files.readAllBytes(file));
         } catch (IOException exception) {
             this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_CORRUPTED, file.getFileName().toString());
-            this.moveToException(file, "corrupted");
+            this.moveToException(file, "corrupted", null);
             return RestoreOutcome.DISCARDED;
         }
         if (!(decoded instanceof DecodedSnapshot.Valid(Snapshot snapshot))) {
             DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
             this.logger.error(LogCategory.STASH, LogConstants.STASH_CORRUPTED, file.getFileName() + " (" + invalid.reason() + ": " + invalid.detail() + ")");
-            this.moveToException(file, "corrupted");
+            this.moveToException(file, "corrupted", null);
             return RestoreOutcome.DISCARDED;
         }
         SaveOutcome saved;
@@ -138,7 +142,7 @@ public final class SnapshotStash {
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
         this.logger.error(LogCategory.STASH, LogConstants.STASH_RESTORE_REJECTED, file.getFileName().toString(), result.name());
-        this.moveToException(file, directoryOf(result));
+        this.moveToException(file, directoryOf(result), snapshot.meta());
         return RestoreOutcome.DISCARDED;
     }
 
@@ -164,11 +168,29 @@ public final class SnapshotStash {
         return files;
     }
 
-    private void moveToException(Path file, String category) {
+    // 正文先移动, 已知元信息重建头; 正文损坏时保留原头, 无头的旧档案只记录信息不足.
+    private void moveToException(Path file, String category, @Nullable SnapshotMeta meta) {
         try {
             Path directory = this.exceptionDirectory.resolve(category);
             Files.createDirectories(directory);
-            Files.move(file, directory.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            Path target = directory.resolve(file.getFileName());
+            Files.deleteIfExists(ExceptionHeader.path(target));
+            Files.move(file, target, StandardCopyOption.REPLACE_EXISTING);
+            Path sourceHeader = ExceptionHeader.path(file);
+            if (meta != null) {
+                String playerName = null;
+                try {
+                    playerName = ExceptionHeader.read(file).playerName();
+                } catch (IOException ignored) {
+                    // 元信息来自已解码正文, 旧头不可读时玩家名保持未知.
+                }
+                new ExceptionHeader(meta, playerName).write(target);
+                Files.deleteIfExists(sourceHeader);
+            } else if (Files.exists(sourceHeader)) {
+                Files.move(sourceHeader, ExceptionHeader.path(target), StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                new ExceptionHeader(null, null).write(target);
+            }
         } catch (IOException exception) {
             this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.toString());
         }
@@ -177,6 +199,7 @@ public final class SnapshotStash {
     private void delete(Path file) {
         try {
             Files.delete(file);
+            Files.deleteIfExists(ExceptionHeader.path(file));
         } catch (IOException exception) {
             this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.toString());
         }
@@ -201,6 +224,7 @@ public final class SnapshotStash {
                 + "-" + meta.player()
                 + "-" + meta.cause().name()
                 + "-" + TIME_FORMAT.format(Instant.ofEpochMilli(meta.timestamp()))
+                + "-" + meta.id()
                 + FILE_SUFFIX;
     }
 

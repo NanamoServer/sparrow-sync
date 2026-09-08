@@ -12,6 +12,7 @@ import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.jetbrains.annotations.NotNull;
@@ -35,6 +36,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SnapshotStashTest {
@@ -64,6 +66,7 @@ class SnapshotStashTest {
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot.meta(), restored.meta());
         assertEquals(snapshot.data(), restored.data());
+        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(files.getFirst()));
     }
 
     @Test
@@ -95,6 +98,9 @@ class SnapshotStashTest {
 
         assertEquals(List.of(snapshot.meta().id()), storage.savedIds());
         assertTrue(listFiles(dataFolder.resolve("pending")).isEmpty());
+        try (Stream<Path> remaining = Files.list(dataFolder.resolve("pending"))) {
+            assertEquals(0, remaining.count());
+        }
     }
 
     @Test
@@ -123,13 +129,19 @@ class SnapshotStashTest {
 
     @Test
     void rejectedRestoreMovesFileToExceptionDirectory() throws IOException {
-        stash.stash(snapshotAt(1_756_300_000_000L), "Steve", StorageProvider.SaveResult.RETRY_LATER);
+        Snapshot snapshot = snapshotAt(1_756_300_000_000L);
+        stash.stash(snapshot, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.REJECTED_OVERSIZED);
 
         stash.restorePending(storage);
 
         assertTrue(listFiles(dataFolder.resolve("pending")).isEmpty());
         assertEquals(1, listFiles(dataFolder.resolve("exception").resolve("oversized")).size());
+        Path body = listFiles(dataFolder.resolve("exception").resolve("oversized")).getFirst();
+        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(body));
+        try (Stream<Path> remaining = Files.list(dataFolder.resolve("pending"))) {
+            assertEquals(0, remaining.count());
+        }
     }
 
     @Test
@@ -144,6 +156,38 @@ class SnapshotStashTest {
         assertTrue(storage.savedIds().isEmpty());
         assertTrue(listFiles(pending).isEmpty());
         assertEquals(1, listFiles(dataFolder.resolve("exception").resolve("corrupted")).size());
+        assertEquals(new ExceptionHeader(null, null), ExceptionHeader.read(listFiles(dataFolder.resolve("exception/corrupted")).getFirst()));
+    }
+
+    @Test
+    void corruptPendingBodyKeepsItsConfirmedHeaderWhenMoved() throws IOException {
+        Snapshot snapshot = snapshotAt(1_756_300_000_000L);
+        this.stash.stash(snapshot, "Steve", StorageProvider.SaveResult.RETRY_LATER);
+        Path body = listFiles(this.dataFolder.resolve("pending")).getFirst();
+        Files.writeString(body, "damaged");
+        RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.SAVED);
+        this.stash.restorePending(storage);
+        Path moved = listFiles(this.dataFolder.resolve("exception/corrupted")).getFirst();
+        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(moved));
+        assertTrue(storage.savedIds().isEmpty());
+        try (Stream<Path> remaining = Files.list(this.dataFolder.resolve("pending"))) {
+            assertEquals(0, remaining.count());
+        }
+    }
+
+    @Test
+    void headerWriteFailureRetainsTheCompleteBody() throws IOException {
+        Snapshot snapshot = snapshotAt(1_756_300_000_000L);
+        Path body = this.dataFolder.resolve("exception/malformed/failure.snapshot");
+        Files.createDirectories(body.getParent());
+        Files.write(body, this.codec.encode(snapshot));
+        Files.createDirectory(ExceptionHeader.path(body));
+        Files.writeString(ExceptionHeader.path(body).resolve("blocker"), "block header publication");
+        assertThrows(IOException.class, () -> new ExceptionHeader(snapshot.meta(), "Steve").write(body));
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(Files.readAllBytes(body))).snapshot());
+        try (Stream<Path> remaining = Files.list(body.getParent())) {
+            assertTrue(remaining.noneMatch(path -> path.getFileName().toString().endsWith(".tmp")));
+        }
     }
 
     @Test
@@ -189,7 +233,7 @@ class SnapshotStashTest {
     private static List<Path> listFiles(Path directory) throws IOException {
         if (!Files.isDirectory(directory)) return List.of();
         try (Stream<Path> entries = Files.list(directory)) {
-            return entries.toList();
+            return entries.filter(path -> !path.getFileName().toString().endsWith(ExceptionHeader.SUFFIX)).toList();
         }
     }
 

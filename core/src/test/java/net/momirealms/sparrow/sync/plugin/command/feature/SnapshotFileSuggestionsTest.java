@@ -53,5 +53,11 @@ class SnapshotFileSuggestionsTest {
         assertEquals(List.of(Suggestion.suggestion("nested/folder with spaces/one.JSON"), Suggestion.suggestion("nested/folder with spaces/two.snapshot")), suggest.apply("NESTED/"));
         assertEquals(2, suggest.apply("").size());
         assertTrue(suggest.apply("missing/").isEmpty());
+        if (exceptions) {
+            Files.writeString(nested.resolve("two.snapshot.head"), "duplicate header");
+            Files.writeString(nested.resolve("orphan.snapshot.head"), "header without body");
+            assertEquals(3, suggest.apply("").size());
+            assertTrue(suggest.apply("").contains(Suggestion.suggestion("nested/folder with spaces/orphan.snapshot")));
+        }
     }
 }

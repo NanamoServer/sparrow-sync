@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
@@ -177,7 +178,7 @@ public final class MysqlStorageProvider implements StorageProvider {
         DecodedSnapshot decoded = this.codec.decode(row);
         if (decoded instanceof DecodedSnapshot.Valid(Snapshot snapshot)) return snapshot;
         DecodedSnapshot.Invalid invalid = (DecodedSnapshot.Invalid) decoded;
-        throw new CompletionException(new IOException("stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
+        throw new CompletionException(new FormatException(invalid.reason(), "stored snapshot is invalid (" + invalid.reason() + "): " + invalid.detail()));
     }
 
     @Override

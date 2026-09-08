@@ -19,6 +19,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.postgresql.upgrade.PostgresSchemaMigration;
 import org.jdbi.v3.core.Handle;
@@ -124,7 +125,11 @@ class PostgresStorageProviderTest {
         storage.saveSnapshot(snapshot).join();
         storage.jdbi().useHandle(handle -> handle.createUpdate("UPDATE " + this.table("snapshots") + " SET format = -1, data = :data").bind("data", new byte[]{1}).execute());
         assertEquals(List.of(snapshot.meta()), storage.listSnapshots(snapshot.meta().player()).join());
-        assertThrows(CompletionException.class, () -> storage.snapshot(snapshot.meta().id()).join());
+        CompletionException unsupported = assertThrows(CompletionException.class, () -> storage.snapshot(snapshot.meta().id()).join());
+        assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(FormatException.class, unsupported.getCause()).reason());
+        storage.jdbi().useHandle(handle -> handle.execute("UPDATE " + this.table("snapshots") + " SET format = 2"));
+        CompletionException corrupted = assertThrows(CompletionException.class, () -> storage.snapshot(snapshot.meta().id()).join());
+        assertEquals(FormatException.InvalidReason.CORRUPTED, assertInstanceOf(FormatException.class, corrupted.getCause()).reason());
     }
 
     @Test
