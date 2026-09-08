@@ -5,7 +5,6 @@ import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
@@ -142,7 +141,7 @@ public class SparrowSync implements Plugin {
         // 配置在构造业务模块前已加载, SnapshotService 绑定时后端已经确定.
         this.storageProvider = switch (PluginConfig.database$type()) {
             case MONGODB -> new MongoStorageProvider(PluginConfig.database$mongodb(), this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
-            case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), new RowSnapshotCodec(this.binaryCodec), this.playerExecutor, this.scheduler.async(), this.logger);
+            case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
         };
         this.snapshotStash = new SnapshotStash(this);
         this.playerDataPipeline = new PlayerDataPipeline(this);

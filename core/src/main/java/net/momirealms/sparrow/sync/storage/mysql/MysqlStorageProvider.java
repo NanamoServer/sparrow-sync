@@ -13,7 +13,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
@@ -47,19 +47,19 @@ public final class MysqlStorageProvider implements StorageProvider {
     private final PluginConfig.MysqlOptions options;
     private final RowSnapshotCodec codec;
     private final PlayerSerialExecutor serialExecutor;
-    private final Executor asyncExecutor; // JDBC 读取与解码分别提交到插件 worker
+    private final Executor asyncExecutor; // JDBC 读取与连接归还后的解码在同一 worker 任务内完成
     private final SyncLogger logger;
     private HikariDataSource dataSource;
     private Jdbi jdbi;
     private MysqlMapStorage maps;
 
     public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options,
-                                @NotNull RowSnapshotCodec codec,
+                                @NotNull BinarySnapshotCodec codec,
                                 @NotNull PlayerSerialExecutor serialExecutor,
                                 @NotNull Executor asyncExecutor,
                                 @NotNull SyncLogger logger) {
         this.options = options;
-        this.codec = codec;
+        this.codec = new RowSnapshotCodec(codec);
         this.serialExecutor = serialExecutor;
         this.asyncExecutor = asyncExecutor;
         this.logger = logger;
@@ -150,21 +150,25 @@ public final class MysqlStorageProvider implements StorageProvider {
         return this.maps;
     }
 
-    // 完整读取先带回元数据和字节帧, 连接释放后再投递解码.
+    // 完整读取先带回元数据和字节帧, 连接归还后在当前任务中解码.
     @Override
     @NotNull
     public CompletableFuture<Optional<Snapshot>> latestSnapshot(@NotNull UUID player) {
-        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
-                        .bind("player", player).mapTo(SnapshotRow.class).findOne()), this.asyncExecutor)
-                .thenApplyAsync(row -> row.map(this::decodeRow), this.asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> {
+            Optional<SnapshotRow> row = this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `player` = :player" + NEWEST_FIRST + " LIMIT 1")
+                    .bind("player", player).mapTo(SnapshotRow.class).findOne());
+            return row.map(this::decodeRow);
+        }, this.asyncExecutor);
     }
 
     @Override
     @NotNull
     public CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId) {
-        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
-                        .bind("id", snapshotId).mapTo(SnapshotRow.class).findOne()), this.asyncExecutor)
-                .thenApplyAsync(row -> row.map(this::decodeRow), this.asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> {
+            Optional<SnapshotRow> row = this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
+                    .bind("id", snapshotId).mapTo(SnapshotRow.class).findOne());
+            return row.map(this::decodeRow);
+        }, this.asyncExecutor);
     }
 
     // 已存在但损坏的快照以异常交给上层, 保留行编解码器给出的原因.

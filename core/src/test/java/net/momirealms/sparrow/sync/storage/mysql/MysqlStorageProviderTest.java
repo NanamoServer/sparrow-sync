@@ -21,7 +21,6 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
@@ -29,6 +28,8 @@ import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
+import org.jdbi.v3.core.HandleListener;
+import org.jdbi.v3.core.Handles;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.statement.SqlLogger;
 import org.jdbi.v3.core.statement.StatementContext;
@@ -80,7 +81,8 @@ class MysqlStorageProviderTest {
     private final QuietLogger console = new QuietLogger();
     private final SyncLogger logger = new SyncLogger(this.console);
     private final List<MysqlStorageProvider> providers = new ArrayList<>(); // 当前用例需要关闭的实例
-    private final RowSnapshotCodec codec = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 真实行写入前后的编码对照
+    private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+    private final RowSnapshotCodec codec = new RowSnapshotCodec(this.binary); // 真实行写入前后的编码对照
     private Jdbi admin; // 创建和删除临时数据库的入口
     private Jdbi direct; // 绕过被测连接池检查数据库状态的入口
     private String database; // 本轮创建的独立测试数据库名
@@ -267,25 +269,69 @@ class MysqlStorageProviderTest {
     }
 
     @Test
-    void fullSnapshotDecodeIsQueuedAfterTheConnectionIsReleased() throws Exception {
+    void fullSnapshotReadsDecodeAfterConnectionReleaseInOneWorkerTask() throws Exception {
         ArrayDeque<Runnable> tasks = new ArrayDeque<>();
         MysqlStorageProvider provider = this.provider(this.url, this.prefix, tasks::addLast);
         provider.initialize();
         Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 20, SaveCause.COMMAND, false, "", 4440), Map.of(DataKey.of("test", "payload"), NBT.createString("detached row")));
         HikariDataSource pool = this.pool(provider);
+        this.insert(provider.jdbi(), this.codec.encode(snapshot));
+        ArrayDeque<SnapshotRow> rows = new ArrayDeque<>();
+        AtomicInteger released = new AtomicInteger();
+        MysqlSnapshotRowMapper mapper = new MysqlSnapshotRowMapper();
+        provider.jdbi().registerRowMapper(SnapshotRow.class, (result, context) -> {
+            SnapshotRow row = mapper.map(result, context);
+            // 数据帧在连接归还前不可解码, 提前解码会使本次查询失败.
+            row.data()[0] = 0;
+            rows.addLast(row);
+            return row;
+        });
+        provider.jdbi().getConfig(Handles.class).addListener(new HandleListener() {
+            @Override
+            public void handleClosed(Handle handle) {
+                assertEquals(0, pool.getHikariPoolMXBean().getActiveConnections());
+                SnapshotRow row = rows.pollFirst();
+                if (row != null) {
+                    row.data()[0] = 'S';
+                    released.incrementAndGet();
+                }
+            }
+        });
         for (int i = 0; i < 2; i++) {
-            this.insert(provider.jdbi(), this.codec.encode(snapshot));
             CompletableFuture<Optional<Snapshot>> read = i == 0 ? provider.latestSnapshot(snapshot.meta().player()) : provider.snapshot(snapshot.meta().id());
             assertFalse(read.isDone());
             assertEquals(1, tasks.size());
-            // 只执行数据库阶段, 解码仍在队列中, 此时连接已经归还.
             tasks.removeFirst().run();
+            assertTrue(read.isDone());
+            assertEquals(Optional.of(snapshot), read.join());
+            assertEquals(i + 1, released.get());
+            assertTrue(tasks.isEmpty());
+        }
+        CompletableFuture<Optional<Snapshot>> missing = provider.snapshot(UUID.randomUUID());
+        assertEquals(1, tasks.size());
+        tasks.removeFirst().run();
+        assertTrue(missing.isDone());
+        assertEquals(Optional.empty(), missing.join());
+        assertTrue(tasks.isEmpty());
+    }
+
+    @Test
+    void mapReadsCompleteInOneWorkerTask() throws Exception {
+        ArrayDeque<Runnable> tasks = new ArrayDeque<>();
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix, tasks::addLast);
+        provider.initialize();
+        MapStorage maps = provider.maps();
+        CompletableFuture<StoredMap> registration = maps.register(new MapSource("source", 1), mapData(1));
+        tasks.removeFirst().run();
+        StoredMap stored = registration.join();
+        for (int i = 0; i < 2; i++) {
+            CompletableFuture<Optional<StoredMap>> read = maps.find(i == 0 ? stored.identity().globalId() : -100);
             assertFalse(read.isDone());
             assertEquals(1, tasks.size());
-            assertEquals(0, pool.getHikariPoolMXBean().getActiveConnections());
-            provider.jdbi().useHandle(handle -> handle.execute("DELETE FROM `" + this.prefix + "snapshots`"));
             tasks.removeFirst().run();
-            assertEquals(Optional.of(snapshot), read.join());
+            assertTrue(read.isDone());
+            assertEquals(i == 0 ? Optional.of(stored) : Optional.empty(), read.join());
+            assertEquals(0, this.pool(provider).getHikariPoolMXBean().getActiveConnections());
             assertTrue(tasks.isEmpty());
         }
     }
@@ -741,8 +787,9 @@ class MysqlStorageProviderTest {
 
     @Test
     void payloadLimitIncludesTheFrameAndAllowsEquality() throws Exception {
-        RowSnapshotCodec uncompressed = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.NONE));
-        MysqlStorageProvider provider = this.provider(this.url, this.prefix, uncompressed, ForkJoinPool.commonPool());
+        BinarySnapshotCodec uncompressedBinary = new BinarySnapshotCodec(CompressorRegistry.NONE);
+        RowSnapshotCodec uncompressed = new RowSnapshotCodec(uncompressedBinary);
+        MysqlStorageProvider provider = this.provider(this.url, this.prefix, uncompressedBinary, ForkJoinPool.commonPool());
         provider.initialize();
         int limit = 15 * 1024 * 1024;
         DataKey key = DataKey.of("test", "blob");
@@ -1224,10 +1271,10 @@ class MysqlStorageProviderTest {
 
     // 查询阶段测试使用可手动推进的执行器, 普通用例使用真实异步线程.
     private MysqlStorageProvider provider(String url, String prefix, Executor executor) throws Exception {
-        return this.provider(url, prefix, this.codec, executor);
+        return this.provider(url, prefix, this.binary, executor);
     }
 
-    private MysqlStorageProvider provider(String url, String prefix, RowSnapshotCodec codec, Executor executor) throws Exception {
+    private MysqlStorageProvider provider(String url, String prefix, BinarySnapshotCodec codec, Executor executor) throws Exception {
         // 复用配置加载器写入的字段, 在测试内构造所需连接参数.
         PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
         for (Map.Entry<String, String> entry : Map.of("url", url, "username", this.username, "password", this.password, "tablePrefix", prefix).entrySet()) {

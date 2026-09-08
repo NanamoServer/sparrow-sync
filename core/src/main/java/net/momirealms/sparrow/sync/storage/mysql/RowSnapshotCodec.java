@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.snapshot.codec;
+package net.momirealms.sparrow.sync.storage.mysql;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -7,17 +7,19 @@ import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
-import net.momirealms.sparrow.sync.storage.mysql.SnapshotRow;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public final class RowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
+final class RowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
     private final BinarySnapshotCodec binary;
 
-    public RowSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
+    RowSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
         this.binary = binary;
     }
 

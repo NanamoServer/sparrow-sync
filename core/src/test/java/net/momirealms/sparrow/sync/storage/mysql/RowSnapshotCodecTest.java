@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.codec;
+package net.momirealms.sparrow.sync.storage.mysql;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -7,9 +7,8 @@ import net.momirealms.sparrow.sync.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.RowSnapshotCodec;
+import net.momirealms.sparrow.sync.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
-import net.momirealms.sparrow.sync.storage.mysql.SnapshotRow;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.junit.jupiter.api.Test;

@@ -40,9 +40,11 @@ public final class MysqlMapStorage implements MapStorage {
     @Override
     @NotNull
     public CompletableFuture<Optional<StoredMap>> find(int globalId) {
-        return CompletableFuture.supplyAsync(() -> this.jdbi.withHandle(handle -> handle.createQuery("SELECT " + COLUMNS + " FROM " + this.maps + " WHERE `global_id` = :id")
-                        .bind("id", globalId).map((result, context) -> readRow(result)).findOne()), this.executor)
-                .thenApplyAsync(row -> row.map(MysqlMapStorage::decode), this.executor);
+        return CompletableFuture.supplyAsync(() -> {
+            Optional<Row> row = this.jdbi.withHandle(handle -> handle.createQuery("SELECT " + COLUMNS + " FROM " + this.maps + " WHERE `global_id` = :id")
+                    .bind("id", globalId).map((result, context) -> readRow(result)).findOne());
+            return row.map(MysqlMapStorage::decode);
+        }, this.executor);
     }
 
     // 首份内容编码完成后分配全局 ID, 已提交的序列进度在后续插入失败时保留.

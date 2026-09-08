@@ -13,11 +13,11 @@ import java.util.Map;
 import java.util.UUID;
 
 // 编解码测试共享的标准快照
-final class SnapshotFixtures {
+public final class SnapshotFixtures {
     static final DataKey INVENTORY = DataKey.of("sparrow", "inventory");
     static final DataKey HEALTH = DataKey.of("sparrow", "health");
     static final DataKey UNKNOWN_BLOB = DataKey.of("other", "blob");
-    static final DataKey UNKNOWN_DOC = DataKey.of("other", "doc");
+    public static final DataKey UNKNOWN_DOC = DataKey.of("other", "doc");
 
     static final UUID PLAYER = UUID.fromString("7f2b3c1d-0a9e-4b8c-9d6f-112233445566");
     static final UUID SNAPSHOT_ID = UUID.fromString("11112222-3333-4444-5555-666677778888");
@@ -25,7 +25,7 @@ final class SnapshotFixtures {
     private SnapshotFixtures() {
     }
 
-    static SnapshotMeta meta() {
+    public static SnapshotMeta meta() {
         return SnapshotMeta.builder()
                 .player(PLAYER)
                 .id(SNAPSHOT_ID)
@@ -37,7 +37,7 @@ final class SnapshotFixtures {
     }
 
     // 覆盖嵌套物品数据, 普通数值和外部类型的数据, 总大小超过压缩阈值
-    static Snapshot snapshot() {
+    public static Snapshot snapshot() {
         return new Snapshot(meta(), Map.of(
                 INVENTORY, inventoryTag(),
                 HEALTH, healthTag(),
