@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.plugin.configuration;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
-import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -14,7 +14,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Proxy;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
@@ -173,13 +172,15 @@ class MapConfigTest {
                     enabled: false
                 """.formatted(DependencyVersions.CONFIG_VERSION));
         this.config().reload();
-        SnapshotService service = new SnapshotService(null);
+        MapSyncService service = new MapSyncService(null);
+        service.onDelayedEnable();
+        assertNull(service.mode());
         SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1L, SaveCause.DISCONNECT, false, "A", 0);
         Snapshot snapshot = new Snapshot(meta, Map.of());
         // 启动时未创建地图服务, 保存和加载沿用原始物品快照.
-        Method prepare = SnapshotService.class.getDeclaredMethod("decodeMaps", Snapshot.class);
-        prepare.setAccessible(true);
-        CompletableFuture<?> result = (CompletableFuture<?>) prepare.invoke(service, snapshot);
+        CompletableFuture<?> result = service.decodeAsync(snapshot);
+        service.stopReceiving();
+        service.finishPublishing(0, java.util.concurrent.TimeUnit.NANOSECONDS);
         assertSame(snapshot, result.join());
     }
 

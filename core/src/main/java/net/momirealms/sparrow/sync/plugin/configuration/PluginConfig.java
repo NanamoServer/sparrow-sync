@@ -346,6 +346,11 @@ public final class PluginConfig {
         DataTypes dataTypes = new DataTypes();
 
         @BlankLineBefore
+        @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
+        @Comment(lang = "zh-CN", value = "在线回滚快照时可以选择不同步部分数据, 不影响登录同步")
+        OnlineRestoreOptions onlineRestore = new OnlineRestoreOptions();
+
+        @BlankLineBefore
         @Comment("Map synchronization and origin settings")
         @Comment(lang = "zh-CN", value = "地图同步和来源设置")
         MapOptions map = new MapOptions();
@@ -398,6 +403,25 @@ public final class PluginConfig {
 
         @YamlIgnore
         SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class OnlineRestoreOptions {
+        @Comment("Restores health online; life transitions use the server's normal death and respawn flow")
+        @Comment(lang = "zh-CN", value = "在线回滚时同步血量, 生死切换使用服务端原生死亡和重生流程")
+        boolean syncHealth = false;
+
+        @Comment("Restores location online; teleport events and plugin restrictions still apply")
+        @Comment(lang = "zh-CN", value = "在线回滚时同步位置, 传送事件和其他插件的限制仍然生效")
+        boolean syncLocation = false;
+
+        public boolean syncHealth() {
+            return this.syncHealth;
+        }
+
+        public boolean syncLocation() {
+            return this.syncLocation;
+        }
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -1135,6 +1159,12 @@ public final class PluginConfig {
     public static DataTypes synchronization$dataTypes() {
         return config.synchronization.dataTypes;
     }
+
+    @NotNull
+    public static OnlineRestoreOptions synchronization$onlineRestore() {
+        return config.synchronization.onlineRestore;
+    }
+
 
     @NotNull
     public static AttributeOptions synchronization$attributes() {

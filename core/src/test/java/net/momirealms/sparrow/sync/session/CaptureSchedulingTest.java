@@ -127,6 +127,7 @@ class CaptureSchedulingTest {
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", NmsPlayerFixture.allocate(MapSyncService.class));
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (proxy, method, args) -> {
             if (!method.getName().equals("saveSnapshotOutcome")) throw new AssertionError(method.getName());
             this.written.add((Snapshot) args[0]);
@@ -216,7 +217,7 @@ class CaptureSchedulingTest {
         MapSyncService mapSync = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "pipeline", maps);
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "ownerId", "A-world");
-        NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", mapSync);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, data, "mapSync", mapSync);
         Class<?> contextType = Class.forName(SnapshotService.class.getName() + "$SaveContext");
         Constructor<?> context = contextType.getDeclaredConstructors()[0];
         context.setAccessible(true);
@@ -362,6 +363,7 @@ class CaptureSchedulingTest {
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", NmsPlayerFixture.allocate(MapSyncService.class));
         NmsPlayerFixture.set(SnapshotService.class, this.service, "playerDataPipeline", pipeline);
         MapSyncService maps = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, maps, "ownerId", "A-world");
@@ -382,7 +384,7 @@ class CaptureSchedulingTest {
             public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String owner) { throw new AssertionError(); }
         };
         NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", new MapPipeline(registry, List.of(handler), logger));
-        NmsPlayerFixture.set(SnapshotService.class, this.service, "mapSync", maps);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", maps);
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         switch (CaptureMode.valueOf(mode)) {
             case SYNC -> this.service.captureNowAndSave(this.player, SaveCause.DEATH, Map.of());
@@ -408,7 +410,9 @@ class CaptureSchedulingTest {
         Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 0),
                 Map.of(DataKey.of("external", "retained"), NBT.createCompound()));
         this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
-        this.service.saveRestored(source, this.player.getName());
+        java.lang.reflect.Method saveRestored = SnapshotService.class.getDeclaredMethod("saveRestored", Snapshot.class, String.class);
+        saveRestored.setAccessible(true);
+        saveRestored.invoke(this.service, source, this.player.getName());
         this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
         this.releaseWorker.countDown();
         assertTrue(this.service.sealAndAwaitHandoffs(2, TimeUnit.SECONDS));

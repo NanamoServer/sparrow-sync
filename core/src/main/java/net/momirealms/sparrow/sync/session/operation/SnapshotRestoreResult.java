@@ -26,10 +26,6 @@ public sealed interface SnapshotRestoreResult {
     record Offline() implements SnapshotRestoreResult {
     }
 
-    /** 玩家处于死亡状态, 本次恢复被拒绝. */
-    record Dead() implements SnapshotRestoreResult {
-    }
-
     /** RESTORE 记录的保存被事件监听器取消. */
     record Cancelled() implements SnapshotRestoreResult {
     }

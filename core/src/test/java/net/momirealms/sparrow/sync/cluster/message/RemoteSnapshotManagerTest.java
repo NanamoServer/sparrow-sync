@@ -166,7 +166,6 @@ class RemoteSnapshotManagerTest {
                 new SnapshotRestoreResult.NotFound(),
                 new SnapshotRestoreResult.WrongPlayer(),
                 new SnapshotRestoreResult.Offline(),
-                new SnapshotRestoreResult.Dead(),
                 new SnapshotRestoreResult.Cancelled(),
                 new SnapshotRestoreResult.Failed(),
                 new SnapshotRestoreResult.Unavailable());

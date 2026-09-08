@@ -3,6 +3,9 @@ package net.momirealms.sparrow.sync.snapshot.data;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.locale.TranslationManager;
+import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -23,7 +26,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
@@ -31,16 +36,34 @@ public final class PlayerDataPipeline {
     private final SparrowSync plugin;
     private SyncLogger logger;
     private DataRegistry dataRegistry;
+    private MapSyncService mapSync;
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
         // 运行期组件由插件生命周期创建, onLoad 再接入同一份共享状态
         this.plugin = plugin;
     }
 
-    /** 绑定数据类型注册表与日志出口. */
+    /** 绑定共享注册表、地图服务与日志出口. */
     public void onLoad() {
         this.dataRegistry = this.plugin.dataRegistry();
         this.logger = this.plugin.logger();
+        this.mapSync = this.plugin.mapSyncService();
+    }
+
+    // 注册完成后冻结槽位, 地图管线和玩家管线共同使用这一份顺序.
+    public void onDelayedEnable() {
+        this.dataRegistry.freeze();
+        StringJoiner activeTypes = new StringJoiner(", ");
+        List<DataKey> order = this.applyOrder();
+        for (int i = 0; i < order.size(); i++) {
+            activeTypes.add(order.get(i).asString());
+        }
+        this.logger.info(TranslationManager.console(LogConstants.PLUGIN_REGISTRY_FROZEN, String.valueOf(order.size()), activeTypes.toString()));
+    }
+
+    @Nullable
+    public MapType mapMode() {
+        return this.mapSync.mode();
     }
 
     /** 返回启动期固定的数据应用顺序. */
@@ -149,6 +172,19 @@ public final class PlayerDataPipeline {
             }
         }
         return new EncodeResult.Ready(this.dataRegistry, tags, skipped);
+    }
+
+    /** 在普通编码完成后处理地图物品, <strong>必须由玩家串行线程发起</strong>; 调用方保留输入快照供暂存. */
+    @NotNull
+    public CompletableFuture<Snapshot> prepareForStorage(@NotNull Snapshot snapshot, @NotNull MapType mode, @NotNull String playerName) {
+        // 从玩家串行线程发起地图采集, Future 只表示后续发布和物品改写完成.
+        return this.mapSync.compileAsync(snapshot, mode, playerName);
+    }
+
+    /** 先准备本服地图物品, 再在异步执行器解码所有已装配类型. */
+    @NotNull
+    public CompletableFuture<DecodeResult> decodeAsync(@NotNull Snapshot snapshot) {
+        return this.mapSync.decodeAsync(snapshot).thenApplyAsync(this::decode, this.plugin.scheduler().async());
     }
 
     /** 解码快照中全部已装配类型的数据, 可在任意线程调用. */

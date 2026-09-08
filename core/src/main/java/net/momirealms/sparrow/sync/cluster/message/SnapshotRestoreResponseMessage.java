@@ -27,7 +27,6 @@ public final class SnapshotRestoreResponseMessage extends TwoWayResponseMessage<
             case 2 -> new SnapshotRestoreResult.NotFound();
             case 3 -> new SnapshotRestoreResult.WrongPlayer();
             case 4 -> new SnapshotRestoreResult.Offline();
-            case 5 -> new SnapshotRestoreResult.Dead();
             case 6 -> new SnapshotRestoreResult.Cancelled();
             case 7 -> new SnapshotRestoreResult.Failed();
             case 8 -> new SnapshotRestoreResult.Unavailable();
@@ -52,7 +51,6 @@ public final class SnapshotRestoreResponseMessage extends TwoWayResponseMessage<
             case SnapshotRestoreResult.NotFound ignored -> buffer.writeByte(2);
             case SnapshotRestoreResult.WrongPlayer ignored -> buffer.writeByte(3);
             case SnapshotRestoreResult.Offline ignored -> buffer.writeByte(4);
-            case SnapshotRestoreResult.Dead ignored -> buffer.writeByte(5);
             case SnapshotRestoreResult.Cancelled ignored -> buffer.writeByte(6);
             case SnapshotRestoreResult.Failed ignored -> buffer.writeByte(7);
             case SnapshotRestoreResult.Unavailable ignored -> buffer.writeByte(8);

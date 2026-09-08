@@ -199,7 +199,7 @@ class NativeMapAdapterTest {
         CompoundTag inventory = NBT.createCompound();
         inventory.put("items", items);
         Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player.getUniqueId(), 1, SaveCause.WORLD_SAVE, false, "A", VersionHelper.WORLD_VERSION), Map.of(InventoryDataType.INVENTORY, inventory));
-        Snapshot compiled = service.compileAsync(snapshot, captured).join();
+        Snapshot compiled = service.compileAsync(snapshot, captured, player.getName()).join();
         CompoundTag encoded = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components");
         assertNull(encoded.get("minecraft:map_id"));
         assertEquals("HIDE", encoded.getCompound("minecraft:custom_data").getCompound("sparrow-sync").getString("map-type"));
@@ -304,7 +304,7 @@ class NativeMapAdapterTest {
         Snapshot snapshot = this.encodedItems(captured.contents());
         assertEquals(0, database.registrations);
         source.colors[0] = 18;
-        CompletableFuture<Snapshot> compiled = CompletableFuture.supplyAsync(() -> service.compileAsync(snapshot, MapType.SYNC)).join();
+        CompletableFuture<Snapshot> compiled = CompletableFuture.supplyAsync(() -> service.compileAsync(snapshot, MapType.SYNC, snapshot.meta().player().toString())).join();
         source.colors[0] = 21;
         worker.runAll();
         assertEquals(18, database.current.data().getTag().getByteArray("colors")[0]);
@@ -355,7 +355,7 @@ class NativeMapAdapterTest {
         MapPublisher publisher = new MapPublisher(database, new MapFlowTestSupport.Shared(), "A-world", Runnable::run);
         MapSyncService service = this.service("A-world", registry, publisher);
         Snapshot snapshot = this.encodedItems(map);
-        Snapshot compiled = service.compileAsync(snapshot, MapType.SYNC).join();
+        Snapshot compiled = service.compileAsync(snapshot, MapType.SYNC, snapshot.meta().player().toString()).join();
         assertEquals(kind.equals("foreign") || kind.equals("malformed") ? 0 : 1, database.registrations);
         CompoundTag encoded = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getCompound("minecraft:custom_data");
         assertEquals("retained", encoded.getString("other-plugin"));

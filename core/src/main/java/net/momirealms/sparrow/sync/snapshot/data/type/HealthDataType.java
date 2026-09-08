@@ -44,7 +44,7 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Health value) {
         CraftPlayer craft = (CraftPlayer) player;
-        // 快照死
+        // 零血量作为快照状态写入, 登录应用只写入状态.
         if (value.health() <= 0.0) {
             craft.setRealHealth(0.0);
             craft.updateScaledHealth(true);
@@ -53,14 +53,14 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
         AttributeInstance maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
         double max = maxHealth == null ? 20.0 : maxHealth.getValue();
         double target = Math.min(value.health(), max);
-        // 本地死 + 快照活就原地复活
+        // 活快照清除登录数据中的死亡计时.
         if (player.getHealth() <= 0.0) {
             craft.setRealHealth(target);
             craft.updateScaledHealth(true);
             craft.getHandle().deathTime = 0;
             return;
         }
-        // 本地活 + 快照活走正常规路径
+        // 正血量沿用 Bukkit 的范围检查.
         player.setHealth(target);
     }
 

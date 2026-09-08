@@ -91,6 +91,22 @@ public final class SnapshotApplyContext {
         return this.failures == null ? List.of() : List.copyOf(this.failures);
     }
 
+    /** 取出交给在线阶段单独应用的值, 未完成应用前计入跳过项. */
+    @Nullable
+    public Object takePending(@NotNull DataKey key) {
+        int slot = this.dataRegistry.slot(key);
+        if (slot < 0 || this.states[slot] != ApplyState.PENDING) return null;
+        Object value = this.values[slot];
+        this.values[slot] = null;
+        this.states[slot] = ApplyState.SKIPPED;
+        return value;
+    }
+
+    /** 记录在线阶段单独应用的数据, key 必须来自本次取出的 pending 值. */
+    public void appliedPlayer(@NotNull DataKey key) {
+        this.appliedPlayer(this.dataRegistry.slot(key));
+    }
+
     int size() {
         return this.values.length;
     }

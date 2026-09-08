@@ -181,7 +181,7 @@ public final class SessionManager {
             result = new SnapshotApplyResult.Applied(List.of(), List.of(), List.of());
         } else {
             long syncApplyStart = System.nanoTime();
-            result = this.snapshotService.apply(player, loaded);
+            result = this.snapshotService.applyOnJoin(player, loaded);
             syncApplyNanos = System.nanoTime() - syncApplyStart;
         }
         if (result instanceof SnapshotApplyResult.Applied applied) {
@@ -220,32 +220,6 @@ public final class SessionManager {
             if (!this.accepting || !this.owns(session) || session.state() != SessionState.ACTIVE) return null;
             return this.snapshotService.captureLaterAndSave(player, cause, session.retainedData());
         }
-    }
-
-    // 在实际应用的玩家线程重新检查状态, 死亡玩家直接拒绝本次恢复.
-    SnapshotRestoreApplyResult applyRestoredNow(PlayerSession session, Player player, SnapshotLoadResult.Ready loaded) {
-        synchronized (session) {
-            if (!player.isOnline() || !this.owns(session) || session.state() != SessionState.ACTIVE) return new SnapshotRestoreApplyResult.Gone();
-        }
-        if (player.isDead()) return new SnapshotRestoreApplyResult.Dead();
-        // todo 优化 PreApplyEvent 背后的复制一类的逻辑
-        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
-        EventUtils.fireAndForget(event);
-        loaded.context().acceptEventValues(event.decoded());
-        if (player.isDead()) return new SnapshotRestoreApplyResult.Dead();
-        return switch (this.snapshotService.apply(player, loaded)) {
-            case SnapshotApplyResult.Applied applied -> {
-                synchronized (session) {
-                    if (this.owns(session) && session.state() == SessionState.ACTIVE) {
-                        session.retainedData(loaded.context().passthrough());
-                    }
-                }
-                EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
-                yield new SnapshotRestoreApplyResult.Applied(applied.applied().size(), applied.skipped().size());
-            }
-            case SnapshotApplyResult.Failed failed -> new SnapshotRestoreApplyResult.Failed(failed.detail());
-            case SnapshotApplyResult.Rejected ignored -> new SnapshotRestoreApplyResult.Gone();
-        };
     }
 
     /** 作废尚未激活的会话, 不保存半加载数据. */

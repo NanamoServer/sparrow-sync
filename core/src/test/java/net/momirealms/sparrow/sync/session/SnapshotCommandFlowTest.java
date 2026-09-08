@@ -35,6 +35,13 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
+import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
+import net.momirealms.sparrow.sync.event.PreApplyEvent;
+import org.bukkit.World;
+import java.util.ArrayList;
+import java.util.function.Consumer;
 import net.momirealms.sparrow.sync.cluster.RemoteSnapshotManager;
 import net.kyori.adventure.text.TranslatableComponent;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
@@ -80,7 +87,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -92,6 +98,11 @@ class SnapshotCommandFlowTest {
     private final AtomicReference<String> value = new AtomicReference<>("live");
     private final AtomicBoolean online = new AtomicBoolean(true);
     private final AtomicBoolean dead = new AtomicBoolean();
+    private final AtomicReference<Double> health = new AtomicReference<>(20.0);
+    private final List<String> actions = new ArrayList<>();
+    private final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
+    private Consumer<PreApplyEvent> onPreApply = event -> {};
+    private Runnable onRespawn = () -> {};
     private final AtomicInteger respawns = new AtomicInteger();
     private final AtomicBoolean locked = new AtomicBoolean();
     private final BlockingQueue<Runnable> entityTasks = new LinkedBlockingQueue<>();
@@ -126,24 +137,42 @@ class SnapshotCommandFlowTest {
             case "getName" -> "Steve";
             case "isOnline" -> this.online.get();
             case "isDead" -> this.dead.get();
+            case "getHealth" -> this.dead.get() ? 0.0 : this.health.get();
+            case "setHealth" -> {
+                double health = (double) args[0];
+                this.actions.add("health:" + health);
+                this.health.set(health);
+                this.dead.set(health <= 0);
+                yield null;
+            }
+            case "getServer" -> Bukkit.getServer();
+            case "teleportAsync" -> {
+                this.actions.add("location");
+                yield this.teleport;
+            }
+            case "getWorld" -> null;
             case "spigot" -> new Player.Spigot() {
                 @Override
                 public void respawn() {
+                    SnapshotCommandFlowTest.this.actions.add("respawn");
                     SnapshotCommandFlowTest.this.respawns.incrementAndGet();
                     SnapshotCommandFlowTest.this.dead.set(false);
                     SnapshotCommandFlowTest.this.value.set("respawn reset");
+                    SnapshotCommandFlowTest.this.onRespawn.run();
                 }
             };
             default -> throw new AssertionError(method.getName());
         });
         PluginManager events = proxy(PluginManager.class, (instance, method, args) -> {
             assertEquals("callEvent", method.getName());
+            if (args[0] instanceof PreApplyEvent event) this.onPreApply.accept(event);
             return null;
         });
         this.oldBukkit = replace(Bukkit.class, "server", proxy(Server.class, (instance, method, args) -> switch (method.getName()) {
             case "getPlayer" -> this.online.get() && this.uuid.equals(args[0]) ? player : null;
             case "getPlayerExact" -> this.online.get() && "Steve".equalsIgnoreCase((String) args[0]) ? player : null;
             case "getPluginManager" -> events;
+            case "getWorld" -> proxy(World.class, (world, call, values) -> null);
             default -> throw new AssertionError(method.getName());
         }));
         this.player = player;
@@ -168,10 +197,12 @@ class SnapshotCommandFlowTest {
         DataRegistry registry = new DataRegistry();
         registry.register(new RecordingType());
         registry.register(new HealthType());
+        registry.register(new LocationType());
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(plugin);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", new MapSyncService(plugin));
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
             if (method.isDefault()) return InvocationHandler.invokeDefault(instance, method, args);
             return switch (method.getName()) {
@@ -331,19 +362,20 @@ class SnapshotCommandFlowTest {
     }
 
     @Test
-    void deadPlayerIsRejectedWithoutRespawnApplicationOrPersistence() throws Exception {
-        Snapshot original = this.source(this.uuid);
-        Snapshot source = new Snapshot(original.meta(), Map.of(this.key, NBT.createString("history"), HealthDataType.HEALTH, NBT.createDouble(20)));
-        this.stored.put(source.meta().id(), source);
+    void deadPlayerCanRestoreOtherDataWithoutHealthOrRespawn() throws Exception {
+        Snapshot source = this.source(this.uuid);
         this.dead.set(true);
         CompletableFuture<SnapshotRestoreResult> completion = this.service.restore(this.player, source.meta().id());
         Runnable task = this.entityTasks.poll(2, TimeUnit.SECONDS);
         assertNotNull(task);
         task.run();
-        assertInstanceOf(SnapshotRestoreResult.Dead.class, completion.get(2, TimeUnit.SECONDS));
         assertEquals(0, this.respawns.get());
-        assertEquals("live", this.value.get());
-        assertTrue(this.writes.isEmpty());
+        assertTrue(this.dead.get());
+        assertEquals("history", this.value.get());
+        Write write = this.nextWrite();
+        assertFalse(completion.isDone());
+        write.complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, completion.get(2, TimeUnit.SECONDS));
     }
 
     @Test
@@ -431,6 +463,106 @@ class SnapshotCommandFlowTest {
         }
     }
 
+    @Test
+    void onlineDefaultsIgnoreHealthAndLocationEvenWhenEventAddsThemBack() throws Exception {
+        Snapshot source = this.sourceWithHealth(0);
+        this.onPreApply = event -> {
+            assertFalse(event.decoded().containsKey(HealthDataType.HEALTH));
+            assertFalse(event.decoded().containsKey(LocationDataType.LOCATION));
+            event.decoded().put(HealthDataType.HEALTH, new HealthDataType.Health(0));
+            event.decoded().put(LocationDataType.LOCATION, new LocationType().capture(this.player, CaptureMode.SYNC));
+        };
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(source);
+        assertEquals(List.of("data"), this.actions);
+        assertFalse(this.dead.get());
+        assertEquals(20.0, this.health.get());
+        this.nextWrite().complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void respawnCompletesBeforeDataHealthAndLocationAndSaveWaitsForTeleport() throws Exception {
+        this.onlineOptions(true, true);
+        this.dead.set(true);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
+        assertEquals(List.of("respawn", "data", "health:18.0", "location"), this.actions);
+        assertEquals("history", this.value.get());
+        assertEquals(1, this.respawns.get());
+        assertTrue(this.writes.isEmpty());
+        assertFalse(result.isDone());
+        this.teleport.complete(true);
+        this.nextWrite().complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void nativeDeathRunsAfterDataAndSuccessfulLocation() throws Exception {
+        this.onlineOptions(true, true);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
+        assertEquals(List.of("data", "location"), this.actions);
+        assertFalse(this.dead.get());
+        this.teleport.complete(true);
+        assertEquals(List.of("data", "location", "health:0.0"), this.actions);
+        assertTrue(this.dead.get());
+        this.nextWrite().complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void rejectedLocationDoesNotKillOrSaveThePlayer() throws Exception {
+        this.onlineOptions(true, true);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
+        this.teleport.complete(false);
+        assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS));
+        assertFalse(this.dead.get());
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void removingHealthFromEventKeepsDeadPlayerDead() throws Exception {
+        this.onlineOptions(true, false);
+        this.dead.set(true);
+        this.onPreApply = event -> event.decoded().remove(HealthDataType.HEALTH);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
+        assertEquals(List.of("data"), this.actions);
+        assertEquals(0, this.respawns.get());
+        assertTrue(this.dead.get());
+        this.nextWrite().complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void disconnectDuringNativeRespawnStopsApplicationAndSave() throws Exception {
+        this.onlineOptions(true, false);
+        this.dead.set(true);
+        this.onRespawn = () -> this.online.set(false);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
+        assertInstanceOf(SnapshotRestoreResult.Offline.class, result.get(2, TimeUnit.SECONDS));
+        assertEquals(List.of("respawn"), this.actions);
+        assertTrue(this.writes.isEmpty());
+    }
+
+    private void onlineOptions(boolean health, boolean location) {
+        NmsPlayerFixture.set(PluginConfig.OnlineRestoreOptions.class, PluginConfig.synchronization$onlineRestore(), "syncHealth", health);
+        NmsPlayerFixture.set(PluginConfig.OnlineRestoreOptions.class, PluginConfig.synchronization$onlineRestore(), "syncLocation", location);
+    }
+
+    private Snapshot sourceWithHealth(double health) {
+        Snapshot original = this.source(this.uuid);
+        Snapshot snapshot = new Snapshot(original.meta(), Map.of(this.key, NBT.createString("history"),
+                HealthDataType.HEALTH, NBT.createDouble(health), LocationDataType.LOCATION, NBT.createString("world")));
+        this.stored.put(snapshot.meta().id(), snapshot);
+        return snapshot;
+    }
+
+    private CompletableFuture<SnapshotRestoreResult> restoreAndRun(Snapshot snapshot) throws Exception {
+        CompletableFuture<SnapshotRestoreResult> result = this.service.restore(this.player, snapshot.meta().id());
+        Runnable task = this.entityTasks.poll(2, TimeUnit.SECONDS);
+        assertNotNull(task);
+        task.run();
+        return result;
+    }
+
     private final class RecordingType implements PlayerDataType<String> {
         @Override
         @NotNull
@@ -466,6 +598,7 @@ class SnapshotCommandFlowTest {
         @Override
         public void apply(@NotNull Player player, @NotNull String value) {
             assertSame(SnapshotCommandFlowTest.this.entityThread, Thread.currentThread());
+            SnapshotCommandFlowTest.this.actions.add("data");
             SnapshotCommandFlowTest.this.value.set(value);
         }
     }
@@ -497,6 +630,28 @@ class SnapshotCommandFlowTest {
         }
         @Override
         public void apply(@NotNull Player player, @NotNull HealthDataType.Health value) {
+            player.setHealth(value.health());
+        }
+    }
+
+    private static final class LocationType implements PlayerDataType<LocationDataType.PlayerLocation> {
+        @Override
+        @NotNull
+        public DataKey key() { return LocationDataType.LOCATION; }
+        @Override
+        @NotNull
+        public LocationDataType.PlayerLocation capture(@NotNull Player player, @NotNull CaptureMode mode) {
+            return new LocationDataType.PlayerLocation("world", 10, 64, 20, 0, 0);
+        }
+        @Override
+        @NotNull
+        public Tag encode(@NotNull LocationDataType.PlayerLocation value) { return NBT.createString(value.world()); }
+        @Override
+        @NotNull
+        public LocationDataType.PlayerLocation decode(@NotNull Tag value, int version) { return new LocationDataType.PlayerLocation("world", 10, 64, 20, 0, 0); }
+        @Override
+        public void apply(@NotNull Player player, @NotNull LocationDataType.PlayerLocation value) {
+            throw new AssertionError("online location must use its async completion");
         }
     }
 

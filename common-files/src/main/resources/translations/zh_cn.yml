@@ -19,7 +19,6 @@ command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSyn
 command.snapshot.cancelled: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成：快照保存已被取消</color>'
 command.snapshot.captured: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已保存 <arg:0> 的快照 <color:#C7BCE7><arg:1></color></color>'
 command.snapshot.conflict: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>快照 <color:#C7BCE7><arg:1></color> 已存在且内容不同，未覆盖</color>'
-command.snapshot.dead: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>玩家处于死亡状态，无法恢复快照，请重生后重新执行</color>'
 command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除快照 <color:#C7BCE7><arg:1></color>，后续登录使用剩余的最新快照</color>'
 command.snapshot.exported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导出快照 <color:#C7BCE7><arg:1></color> 至 <color:#FFE3A3><arg:2></color></color>'
 command.snapshot.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成，请查看服务器日志</color>'

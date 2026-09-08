@@ -47,7 +47,6 @@ public final class SnapshotRestoreCommand extends AbstractSnapshotCommand {
                             case SnapshotRestoreResult.NotFound ignored -> "not_found";
                             case SnapshotRestoreResult.WrongPlayer ignored -> "wrong_player";
                             case SnapshotRestoreResult.Offline ignored -> "offline";
-                            case SnapshotRestoreResult.Dead ignored -> "dead";
                             case SnapshotRestoreResult.Cancelled ignored -> "cancelled";
                             case SnapshotRestoreResult.Failed ignored -> "failed";
                             case SnapshotRestoreResult.Unavailable ignored -> "unavailable";

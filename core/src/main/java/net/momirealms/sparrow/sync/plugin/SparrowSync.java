@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.plugin;
 import com.mysql.cj.conf.ConnectionUrl;
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
@@ -57,6 +58,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.postgresql.ds.PGSimpleDataSource;
 
@@ -100,6 +102,7 @@ public class SparrowSync implements Plugin {
     private final DocumentSnapshotCodec documentCodec;
     private final StorageProvider storageProvider;
     private final SnapshotStash snapshotStash;
+    private final MapSyncService mapSyncService;
     private final PlayerDataPipeline playerDataPipeline;
     private final SnapshotService snapshotService;
     private final RedisConnector redisConnector;
@@ -151,6 +154,7 @@ public class SparrowSync implements Plugin {
             case POSTGRESQL -> new PostgresStorageProvider(PluginConfig.database$postgresql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
         };
         this.snapshotStash = new SnapshotStash(this);
+        this.mapSyncService = new MapSyncService(this);
         this.playerDataPipeline = new PlayerDataPipeline(this);
         this.snapshotService = new SnapshotService(this);
         this.redisConnector = new RedisConnector(this);
@@ -291,8 +295,9 @@ public class SparrowSync implements Plugin {
     public void onServerLoaded() {
         // 集成插件管理器
         this.compatibilityManager.onDelayedEnable();
-        // 快照与会话管理器
-        this.snapshotService.onDelayedEnable();
+        // 冻结数据类型后启动地图同步, 随后开启会话与登录入口.
+        this.playerDataPipeline.onDelayedEnable();
+        this.mapSyncService.onDelayedEnable();
         this.sessionManager.onDelayedEnable();
         this.playerDirectory.onDelayedEnable();
         this.remoteSnapshotManager.onDelayedEnable();
@@ -315,10 +320,10 @@ public class SparrowSync implements Plugin {
         if (this.snapshotService != null)       this.snapshotService.stopOperations();
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
-        if (this.snapshotService != null)       this.snapshotService.stopMapReceiving();
+        if (this.mapSyncService != null)        this.mapSyncService.stopReceiving();
         if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
         if (this.snapshotService != null)       this.snapshotService.sealAndAwaitHandoffs(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-        if (this.snapshotService != null)       this.snapshotService.finishMapPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.mapSyncService != null)        this.mapSyncService.finishPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.playerExecutor != null)        this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
         if (this.scheduler != null)             this.scheduler.shutdownScheduler();
@@ -695,6 +700,11 @@ public class SparrowSync implements Plugin {
 
     public PlayerSerialExecutor playerExecutor() {
         return this.playerExecutor;
+    }
+
+    @NotNull
+    public MapSyncService mapSyncService() {
+        return this.mapSyncService;
     }
 
     public PlayerDataPipeline playerDataPipeline() {

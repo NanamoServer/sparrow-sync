@@ -8,7 +8,6 @@ import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.map.handler.SyncMapHandler;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
@@ -54,13 +53,11 @@ class MapSyncLifecycleTest {
         NmsPlayerFixture.set(MapSyncService.class, maps, "receiver", receiver);
         NmsPlayerFixture.set(MapSyncService.class, maps, "publisher", publisher);
         NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", pipeline);
-        SnapshotService snapshots = new SnapshotService(plugin);
-        NmsPlayerFixture.set(SnapshotService.class, snapshots, "mapSync", maps);
 
         CompletableFuture<Integer> receiving = receiver.receive(IDENTITY);
         worker.runAll();
         assertFalse(receiving.isDone());
-        snapshots.stopMapReceiving();
+        maps.stopReceiving();
         assertTrue(receiving.isCompletedExceptionally());
         // 最终保存仍可在停接收后发布来源内容, 编译等待完整发布链.
         CompletableFuture<StoredMap> publication = publisher.publish(SOURCE, map(2).data());
@@ -80,7 +77,7 @@ class MapSyncLifecycleTest {
             worker.runAll();
             assertEquals(map(2), publication.join());
         }
-        snapshots.finishMapPublishing(0, TimeUnit.NANOSECONDS);
+        maps.finishPublishing(0, TimeUnit.NANOSECONDS);
         Snapshot compiled = compiling.join();
         if (publishedInTime) {
             CompoundTag encoded = ((CompoundTag) compiled.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components");
@@ -101,8 +98,8 @@ class MapSyncLifecycleTest {
         nativeThread.runAll();
         assertTrue(nativeMaps.updates.isEmpty());
         assertEquals(publishedInTime ? map(2) : map(1), storage.current);
-        snapshots.stopMapReceiving();
-        snapshots.finishMapPublishing(0, TimeUnit.NANOSECONDS);
+        maps.stopReceiving();
+        maps.finishPublishing(0, TimeUnit.NANOSECONDS);
         assertEquals(publishedInTime ? 0 : 1, warnings.size());
     }
 }
