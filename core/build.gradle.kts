@@ -63,6 +63,7 @@ buildConfig {
     buildConfigField("LANG_VERSION", libs.versions.lang.version.get())
     buildConfigField("MONGODB_INDEX_VERSION", libs.versions.mongodb.index.version.get().toInt())
     buildConfigField("MYSQL_SCHEMA_VERSION", libs.versions.mysql.schema.version.get().toInt())
+    buildConfigField("POSTGRESQL_SCHEMA_VERSION", libs.versions.postgresql.schema.version.get().toInt())
     buildConfigField("SNAPSHOT_FORMAT_VERSION", libs.versions.snapshot.format.version.get().toInt())
     // ASM
     buildConfigField("ASM", libs.versions.asm.get())

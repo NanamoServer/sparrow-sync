@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.storage.mysql;
+package net.momirealms.sparrow.sync.storage.postgresql;
 
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 
@@ -28,8 +28,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 验证行快照的数据保真、元信息独立性和无效内容的错误分类.
  */
-class RowSnapshotCodecTest {
-    private final RowSnapshotCodec codec = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 统一使用的读取入口, 用于验证不同写入压缩方式的兼容性
+class PostgresRowSnapshotCodecTest {
+    private final PostgresRowSnapshotCodec codec = new PostgresRowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 统一使用的读取入口, 用于验证不同写入压缩方式的兼容性
 
     /**
      * 验证读取压缩方式取自帧头, 可以读取由不同压缩器写出的快照.
@@ -41,7 +41,7 @@ class RowSnapshotCodecTest {
     @EnumSource(CompressorRegistry.class)
     void everyCompressorCanBeReadByTheSameDecoder(CompressorRegistry compressor) throws IOException {
         Snapshot snapshot = SnapshotFixtures.snapshot();
-        SnapshotRow row = new RowSnapshotCodec(new BinarySnapshotCodec(compressor)).encode(snapshot);
+        SnapshotRow row = new PostgresRowSnapshotCodec(new BinarySnapshotCodec(compressor)).encode(snapshot);
         assertSame(snapshot.meta(), row.meta());
         assertEquals(SnapshotCodec.CURRENT_VERSION, row.format());
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());

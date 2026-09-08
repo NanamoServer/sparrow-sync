@@ -1,9 +1,10 @@
 [versions]
 project-version = "beta.1"
-config-version = "19"
-lang-version = "18"
+config-version = "20"
+lang-version = "19"
 mongodb-index-version = "2"
 mysql-schema-version = "1"
+postgresql-schema-version = "1"
 snapshot-format-version = "2"
 
 run-task = "3.0.2"

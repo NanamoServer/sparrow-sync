@@ -153,13 +153,17 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DatabaseOptions {
-        @Comment("Storage backend for player data snapshots, available values: MONGODB, MYSQL")
-        @Comment(lang = "zh-CN", value = "玩家数据快照所使用的存储方式, 可选值: MONGODB、MYSQL")
+        @Comment("Storage backend for player data snapshots, available values: MONGODB, MYSQL, POSTGRESQL")
+        @Comment(lang = "zh-CN", value = "玩家数据快照所使用的存储方式, 可选值: MONGODB、MYSQL、POSTGRESQL")
         StorageType type = StorageType.MONGODB;
 
         @Comment("MYSQL database settings")
         @Comment(lang = "zh-CN", value = "MYSQL 数据库设置")
         MysqlOptions mysql = new MysqlOptions();
+
+        @Comment("POSTGRESQL database settings")
+        @Comment(lang = "zh-CN", value = "POSTGRESQL 数据库设置")
+        PostgresOptions postgresql = new PostgresOptions();
 
         @Comment("MONGODB database settings")
         @Comment(lang = "zh-CN", value = "MONGODB 数据库设置")
@@ -241,19 +245,45 @@ public final class PluginConfig {
 
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class PostgresOptions {
+        String url = "jdbc:postgresql://localhost:5432/minecraft?connectTimeout=5&socketTimeout=10"; // pgJDBC 超时单位为秒
+        String username = "postgres";
+        String password = "";
+        @Comment("Up to 40 lowercase ASCII letters, digits or underscores; leave room for PostgreSQL index names")
+        @Comment(lang = "zh-CN", value = "最多 40 个小写 ASCII 字母、数字或下划线, 为 PostgreSQL 索引名预留长度")
+        String tablePrefix = "sparrow_sync_";
+
+        public String url() {
+            return this.url;
+        }
+
+        public String username() {
+            return this.username;
+        }
+
+        public String password() {
+            return this.password;
+        }
+
+        public String tablePrefix() {
+            return this.tablePrefix;
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SynchronizationOptions {
         @Comment({
                 "Number of serial executor threads for player data tasks, rounded up to a power of two",
                 "Recommended values based on basic testing:",
-                "For <= 200 players online on this server, set this to 2.",
-                "For >= 200 players online on this server, set this to 4.",
+                "For <= 150 players online on this server, set this to 2.",
+                "For >= 150 players online on this server, set this to 4.",
                 "For >= 600 players online on this server, set this to 8."
         })
         @Comment(lang = "zh-CN", value = {
                 "处理玩家数据任务的串行线程数, 向上取整到 2 的幂",
                 "经过一些简单测试的推荐值: ",
-                "当前单服务器在线玩家数 <= 200 人时, 推荐设置为 2.",
-                "当前单服务器在线玩家数 >= 200 人时, 推荐设置为 4.",
+                "当前单服务器在线玩家数 <= 150 人时, 推荐设置为 2.",
+                "当前单服务器在线玩家数 >= 150 人时, 推荐设置为 4.",
                 "当前单服务器在线玩家数 >= 600 人时, 推荐设置为 8.",
         })
         int workerThreads = 4;
@@ -1128,6 +1158,11 @@ public final class PluginConfig {
     @NotNull
     public static MysqlOptions database$mysql() {
         return config.database.mysql;
+    }
+
+    @NotNull
+    public static PostgresOptions database$postgresql() {
+        return config.database.postgresql;
     }
 
     @NotNull

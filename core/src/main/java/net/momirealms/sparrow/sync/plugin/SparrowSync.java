@@ -45,6 +45,7 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.MysqlStorageProvider;
+import net.momirealms.sparrow.sync.storage.postgresql.PostgresStorageProvider;
 import net.momirealms.sparrow.sync.util.CharacterUtils;
 import net.momirealms.sparrow.sync.util.ExceptionCollector;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
@@ -55,6 +56,7 @@ import org.apache.logging.log4j.core.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
+import org.postgresql.ds.PGSimpleDataSource;
 
 import java.io.*;
 import java.net.URL;
@@ -142,6 +144,7 @@ public class SparrowSync implements Plugin {
         this.storageProvider = switch (PluginConfig.database$type()) {
             case MONGODB -> new MongoStorageProvider(PluginConfig.database$mongodb(), this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
             case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
+            case POSTGRESQL -> new PostgresStorageProvider(PluginConfig.database$postgresql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
         };
         this.snapshotStash = new SnapshotStash(this);
         this.playerDataPipeline = new PlayerDataPipeline(this);
@@ -213,9 +216,15 @@ public class SparrowSync implements Plugin {
         // 链接持久化存储, 连接失败时仍能报告配置指定的数据库.
         String database = "";
         try {
-            database = this.storageProvider instanceof MysqlStorageProvider
-                    ? ConnectionUrl.getConnectionUrlInstance(PluginConfig.database$mysql().url(), null).getDatabase()
-                    : PluginConfig.database$mongodb().database();
+            database = switch (PluginConfig.database$type()) {
+                case MYSQL -> ConnectionUrl.getConnectionUrlInstance(PluginConfig.database$mysql().url(), null).getDatabase();
+                case POSTGRESQL -> {
+                    PGSimpleDataSource source = new PGSimpleDataSource();
+                    source.setUrl(PluginConfig.database$postgresql().url());
+                    yield source.getDatabaseName();
+                }
+                case MONGODB -> PluginConfig.database$mongodb().database();
+            };
             this.documentCodec.onLoad();
             this.snapshotStash.onLoad();
             this.storageProvider.initialize();
@@ -464,6 +473,9 @@ public class SparrowSync implements Plugin {
             ));
             case MYSQL -> dependencies.addAll(List.of(
                     Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MYSQL_DRIVER
+            ));
+            case POSTGRESQL -> dependencies.addAll(List.of(
+                    Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.POSTGRESQL_DRIVER, Dependencies.CHECKER_QUAL
             ));
         }
         return dependencies;

@@ -64,6 +64,8 @@ log.storage.compressor_failed: '加载快照压缩器时发生错误。请检查
 log.storage.backend_ready: '已连接 <arg:0>（数据库：<arg:1>）'
 log.storage.mysql_schema_initializing: '正在初始化 MySQL 表结构至 v<arg:1>（表前缀："<arg:0>"）'
 log.storage.mysql_schema_migrating: '正在升级 MySQL 表结构 v<arg:1> → v<arg:2>（表前缀："<arg:0>"）'
+log.storage.postgresql_schema_initializing: '正在初始化 PostgreSQL 表结构至 v<arg:1>（表前缀："<arg:0>"）'
+log.storage.postgresql_schema_migrating: '正在升级 PostgreSQL 表结构 v<arg:1> → v<arg:2>（表前缀："<arg:0>"）'
 log.storage.backend_setup_failed: '初始化 <arg:0> 存储时发生错误（数据库：<arg:1>），玩家数据将不会被加载或保存。'
 log.storage.out_of_order: '<arg:1> 的快照 <arg:0>（采集于 <arg:2>）落在了来自 <arg:3>、采集于 <arg:4> 的更新快照之后'
 log.storage.order_check_failed: '<arg:1> 的快照 <arg:0> 已落库，但本次未能确认它在历史记录中的次序'

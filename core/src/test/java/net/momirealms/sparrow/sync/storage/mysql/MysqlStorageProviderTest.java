@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.sync.storage.mysql;
 
+import net.momirealms.sparrow.sync.storage.SnapshotRow;
+import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
+
 import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
 import com.zaxxer.hikari.HikariDataSource;
@@ -283,7 +286,7 @@ class MysqlStorageProviderTest {
         this.insert(provider.jdbi(), this.codec.encode(snapshot));
         ArrayDeque<SnapshotRow> rows = new ArrayDeque<>();
         AtomicInteger released = new AtomicInteger();
-        MysqlSnapshotRowMapper mapper = new MysqlSnapshotRowMapper();
+        SnapshotRowMapper mapper = new SnapshotRowMapper();
         provider.jdbi().registerRowMapper(SnapshotRow.class, (result, context) -> {
             SnapshotRow row = mapper.map(result, context);
             // 数据帧在连接归还前不可解码, 提前解码会使本次查询失败.

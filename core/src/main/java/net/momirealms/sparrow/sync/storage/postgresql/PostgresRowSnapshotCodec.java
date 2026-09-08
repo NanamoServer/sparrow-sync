@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.storage.mysql;
+package net.momirealms.sparrow.sync.storage.postgresql;
 
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 
@@ -18,10 +18,10 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class RowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
+final class PostgresRowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
     private final BinarySnapshotCodec binary;
 
-    RowSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
+    PostgresRowSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
         this.binary = binary;
     }
 

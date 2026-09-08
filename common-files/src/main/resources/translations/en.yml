@@ -64,6 +64,8 @@ log.storage.compressor_failed: Failed to load the snapshot compressor. Check tha
 log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'
 log.storage.mysql_schema_initializing: 'Initializing the MySQL schema at v<arg:1> (table prefix: "<arg:0>")'
 log.storage.mysql_schema_migrating: 'Upgrading the MySQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
+log.storage.postgresql_schema_initializing: 'Initializing the PostgreSQL schema at v<arg:1> (table prefix: "<arg:0>")'
+log.storage.postgresql_schema_migrating: 'Upgrading the PostgreSQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
 log.storage.backend_setup_failed: 'Failed to initialize <arg:0> storage (database: <arg:1>). Player data will NOT be loaded or saved.'
 log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
 log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'
