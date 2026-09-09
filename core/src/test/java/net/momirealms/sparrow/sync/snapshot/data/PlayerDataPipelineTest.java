@@ -164,9 +164,9 @@ class PlayerDataPipelineTest {
 
         Optional<CompoundTag> resultTag = pipeline.applyNative(this.session, Optional.of(local), context);
 
-        assertSame(local, resultTag.orElseThrow());
+        assertFalse(local.contains(ALPHA.asString()));
         assertEquals(List.of(ALPHA), this.nativeApplied);
-        assertEquals(ALPHA.asString(), assertInstanceOf(StringTag.class, local.get(ALPHA.asString())).value());
+        assertEquals(ALPHA.asString(), assertInstanceOf(StringTag.class, resultTag.orElseThrow().get(ALPHA.asString())).value());
         assertEquals(Set.of(BRAVO), context.pendingValues().keySet());
 
         Map<DataKey, Object> eventData = new LinkedHashMap<>(context.pendingValues());
@@ -179,13 +179,37 @@ class PlayerDataPipelineTest {
     }
 
     @Test
+    void nativeConversionPreservesUnknownDataAndDoesNotShareMutableTags() {
+        PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, false, Set.of()));
+        CompoundTag nested = new CompoundTag();
+        nested.putByteArray("bytes", new byte[]{1, 2, 3});
+        nested.putIntArray("ints", new int[]{4, 5});
+        nested.putLongArray("longs", new long[]{6, 7});
+        nested.putString("marker", "local");
+        CompoundTag local = new CompoundTag();
+        local.put("unknown", nested);
+        CompoundTag before = local.copy();
+
+        CompoundTag result = pipeline.applyNative(this.session, Optional.of(local), context(pipeline, snapshotWith(ALPHA))).orElseThrow();
+
+        assertEquals(before, local);
+        assertEquals(nested, result.get("unknown"));
+        CompoundTag resultNested = assertInstanceOf(CompoundTag.class, result.get("unknown"));
+        resultNested.putString("marker", "changed");
+        resultNested.getByteArray("bytes").orElseThrow()[0] = 9;
+        resultNested.getIntArray("ints").orElseThrow()[0] = 9;
+        resultNested.getLongArray("longs").orElseThrow()[0] = 9;
+        assertEquals(before, local);
+    }
+
+    @Test
     void nativeNotAppliedStaysPendingWithoutFailure() {
         PlayerDataPipeline pipeline = this.createPipeline(new NativeFakeType(ALPHA, false, Set.of()).unsupportedNative());
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
         CompoundTag local = new CompoundTag();
         local.putString("local", "kept");
 
-        pipeline.applyNative(this.session, Optional.of(local), context);
+        assertSame(local, pipeline.applyNative(this.session, Optional.of(local), context).orElseThrow());
 
         assertFalse(local.contains(ALPHA.asString()));
         assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
@@ -519,7 +543,7 @@ class PlayerDataPipelineTest {
 
         @Override
         @NotNull
-        public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull String value) {
+        public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.momirealms.sparrow.nbt.CompoundTag playerData, @NotNull String value) {
             assertSame(PlayerDataPipelineTest.this.session, session);
             PlayerDataPipelineTest.this.nativeAttempts.add(this.key());
             if (this.nativeFails) throw new IllegalStateException("native failed");

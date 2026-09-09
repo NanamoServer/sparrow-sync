@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
-import net.minecraft.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
@@ -27,6 +27,7 @@ public interface NativePlayerDataType<T> extends PlayerDataType<T> {
 
     /**
      * 把本类型的数据写入原版登录读取的数据源.
+     * playerData 是各类型共用的 SparrowNBT 工作副本, 流水线完成后转为原版 NBT.
      * <strong>返回 {@link NativeApplyResult#NOT_APPLIED} 或抛出异常时不得留下部分可见的写入</strong>.
      *
      * @return 应用目标与可选的 Join 回调, 用于更新槽位状态和提供合成登录 NBT

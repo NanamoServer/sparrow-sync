@@ -1,6 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -225,12 +228,14 @@ public final class PlayerDataPipeline {
      */
     @NotNull
     public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
-        // 本地 .dat 是写入基底, 本地为空时先建立可丢弃的候选根 tag
-        CompoundTag working = playerData.orElseGet(CompoundTag::new);
+        // 各类型共用 SparrowNBT 工作副本, 整份 .dat 只在流水线入口与出口转换.
+        net.momirealms.sparrow.nbt.CompoundTag working = playerData
+                .map(tag -> (net.momirealms.sparrow.nbt.CompoundTag) NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, tag))
+                .orElseGet(NBT::createCompound);
         boolean synthetic = playerData.isEmpty();
         if (synthetic) {
             working.putInt("DataVersion", VersionHelper.WORLD_VERSION);
-            CompoundTag bukkit = new CompoundTag();
+            net.momirealms.sparrow.nbt.CompoundTag bukkit = NBT.createCompound();
             bukkit.putLong("firstPlayed", System.currentTimeMillis());
             working.put("bukkit", bukkit);
         }
@@ -253,9 +258,9 @@ public final class PlayerDataPipeline {
                 this.logger.warn(LogCategory.DATA, session.uuid(), session.playerName(), throwable, LogConstants.DATA_NATIVE_APPLY_FALLBACK, this.dataRegistry.keyAt(i).asString(), session.playerName());
             }
         }
-        // 没有 .dat 字段成功写入时丢弃候选根 tag, 玩家仍保持原版的新玩家语义
-        if (synthetic && !playerDataApplied) return Optional.empty();
-        return synthetic ? Optional.of(working) : playerData;
+        // 没有 .dat 字段成功写入时保留原输入, 本地文件缺失仍按新玩家处理.
+        if (!playerDataApplied) return playerData;
+        return Optional.of((CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, working));
     }
 
     /** 在玩家线程按拓扑序应用 pending 数据或消费 Native 交接回调. */
@@ -306,7 +311,7 @@ public final class PlayerDataPipeline {
 
     // 登录数据源写入实现数组与 Context 共用数据类型槽位, 这里恢复 applyNative 所需的 T
     @SuppressWarnings("unchecked")
-    private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, PlayerSession session, CompoundTag playerData, Object value) throws IOException {
+    private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, PlayerSession session, net.momirealms.sparrow.nbt.CompoundTag playerData, Object value) throws IOException {
         return type.applyNative(session, playerData, (T) value);
     }
 

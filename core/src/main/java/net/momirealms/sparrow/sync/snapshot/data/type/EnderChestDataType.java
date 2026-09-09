@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.inventory.PlayerEnderChestContainer;
 import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -96,9 +97,9 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull ItemCodec.LoadedItems value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull ItemCodec.LoadedItems value) {
         if (value.items().length != FALLBACK_SIZE || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;
-        net.minecraft.nbt.ListTag items = ItemCodec.saveNativeItems(value.items());
+        ListTag items = ItemCodec.saveNativeItems(value.items());
         playerData.put("EnderItems", items);
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }

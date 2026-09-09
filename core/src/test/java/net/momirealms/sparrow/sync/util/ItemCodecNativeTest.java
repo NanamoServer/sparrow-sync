@@ -9,7 +9,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -56,7 +55,6 @@ class ItemCodecNativeTest {
     private static HolderLookup.Provider registries;
 
     private Object previousSparrowOps;
-    private Object previousNativeOps;
 
     @BeforeAll
     static void bootstrap() {
@@ -70,36 +68,22 @@ class ItemCodecNativeTest {
     void bindRegistries() throws Exception {
         // 数据生成注册表使用独立 Holder owner, 必须由 provider 提供匹配的序列化上下文.
         this.previousSparrowOps = replaceOps("sparrowNbt", registries.createSerializationContext(NBTOps.INSTANCE));
-        this.previousNativeOps = replaceOps("nativeNbt", null);
     }
 
     @AfterEach
     void restoreRegistries() throws Exception {
-        replaceOps("nativeNbt", this.previousNativeOps);
         replaceOps("sparrowNbt", this.previousSparrowOps);
     }
 
     @Test
-    void nativeOpsAreCachedAndKeepTheSparrowRegistryContext() {
-        RegistryOps<net.momirealms.sparrow.nbt.Tag> sparrow = MinecraftRegistryOps.sparrowNbt();
-        RegistryOps<net.minecraft.nbt.Tag> nativeOps = MinecraftRegistryOps.nativeNbt();
-
-        assertSame(nativeOps, MinecraftRegistryOps.nativeNbt());
-        assertSame(sparrow, MinecraftRegistryOps.sparrowNbt());
-        assertEquals(sparrow.withParent(NbtOps.INSTANCE), nativeOps);
-        assertEquals(legacyNative(this.complexItem()), ItemCodec.saveNativeItem(this.complexItem()));
-    }
-
-    @Test
-    void nativeEncodingMatchesLegacyOutputForComponentsAndNestedItems() {
+    void convertedEncodingRoundTripsComponentsAndNestedItems() {
         ItemStack sword = this.complexItem();
         ItemStack box = new ItemStack(Items.SHULKER_BOX);
         box.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(List.of(sword, ItemStack.EMPTY, new ItemStack(Items.DIAMOND, 64))));
 
         for (ItemStack item : new ItemStack[]{new ItemStack(Items.STONE, 32), sword, box}) {
-            CompoundTag nativeTag = ItemCodec.saveNativeItem(item);
-            assertEquals(legacyNative(item), nativeTag);
-            ItemStack decoded = ItemStack.CODEC.parse(MinecraftRegistryOps.nativeNbt(), nativeTag).getOrThrow();
+            CompoundTag nativeTag = convertedNative(item);
+            ItemStack decoded = ItemStack.CODEC.parse(MinecraftRegistryOps.sparrowNbt().withParent(NbtOps.INSTANCE), nativeTag).getOrThrow();
             assertTrue(ItemStack.matches(item, decoded));
         }
     }
@@ -110,27 +94,23 @@ class ItemCodecNativeTest {
         item.setCount(128);
         ItemStack before = item.copy();
 
-        CompoundTag nativeTag = ItemCodec.saveNativeItem(item);
+        CompoundTag nativeTag = convertedNative(item);
 
         assertEquals(99, nativeTag.getInt("count").orElseThrow());
-        assertEquals(legacyNative(item), nativeTag);
         assertTrue(ItemStack.matches(before, item));
         assertEquals(128, item.getCount());
     }
 
     @Test
-    void invalidItemStillFailsWithTheSameExceptionContract() {
-        IllegalStateException legacy = assertThrows(IllegalStateException.class, () -> legacyNative(ItemStack.EMPTY));
-        IllegalStateException nativeFailure = assertThrows(IllegalStateException.class, () -> ItemCodec.saveNativeItem(ItemStack.EMPTY));
-
-        assertEquals(legacy.getMessage(), nativeFailure.getMessage());
+    void emptyItemEncodingFails() {
+        assertThrows(IllegalStateException.class, () -> ItemCodec.saveItem(ItemStack.EMPTY));
     }
 
     @Test
     void nativeResultsDoNotShareMutableTagsWithSourceOrOtherEncodings() {
         ItemStack item = this.complexItem();
-        CompoundTag first = ItemCodec.saveNativeItem(item);
-        CompoundTag second = ItemCodec.saveNativeItem(item);
+        CompoundTag first = convertedNative(item);
+        CompoundTag second = convertedNative(item);
         CompoundTag expected = second.copy();
 
         first.getCompoundOrEmpty("components").getCompoundOrEmpty("minecraft:custom_data")
@@ -138,7 +118,7 @@ class ItemCodecNativeTest {
         first.putInt("count", 17);
         assertNotEquals(expected, first);
         assertEquals(expected, second);
-        assertEquals(expected, ItemCodec.saveNativeItem(item));
+        assertEquals(expected, convertedNative(item));
 
         // 直接改源组件的底层 Tag, 验证编码结果没有借用它; 不依赖替换组件后的 COW.
         item.get(DataComponents.CUSTOM_DATA).getUnsafe().getCompoundOrEmpty("nested").putString("marker", "changed-source");
@@ -150,14 +130,14 @@ class ItemCodecNativeTest {
     void nativeListKeepsSparseSlotsAndByteSlotTags() {
         ItemStack[] items = {null, this.complexItem(), ItemStack.EMPTY, new ItemStack(Items.DIAMOND, 12)};
         ListTag expected = new ListTag();
-        CompoundTag sword = legacyNative(items[1]);
+        CompoundTag sword = convertedNative(items[1]);
         sword.putByte("Slot", (byte) 1);
         expected.add(sword);
-        CompoundTag diamond = legacyNative(items[3]);
+        CompoundTag diamond = convertedNative(items[3]);
         diamond.putByte("Slot", (byte) 3);
         expected.add(diamond);
 
-        assertEquals(expected, ItemCodec.saveNativeItems(items));
+        assertEquals(expected, NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, ItemCodec.saveNativeItems(items)));
     }
 
     @Test
@@ -171,22 +151,23 @@ class ItemCodecNativeTest {
         inventory[40] = new ItemStack(Items.SHIELD);
         ItemStack[] enderChest = new ItemStack[27];
         enderChest[26] = this.complexItem();
-        CompoundTag playerData = new CompoundTag();
+        net.momirealms.sparrow.nbt.CompoundTag working = net.momirealms.sparrow.nbt.NBT.createCompound();
 
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, inventoryType.applyNative(session, playerData, new InventoryDataType.Inventory(inventory, 7, 0)));
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, enderChestType.applyNative(session, playerData, new ItemCodec.LoadedItems(enderChest, 0)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, inventoryType.applyNative(session, working, new InventoryDataType.Inventory(inventory, 7, 0)));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, enderChestType.applyNative(session, working, new ItemCodec.LoadedItems(enderChest, 0)));
 
+        CompoundTag playerData = (CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, working);
         ListTag expectedInventory = new ListTag();
-        CompoundTag sword = legacyNative(inventory[0]);
+        CompoundTag sword = convertedNative(inventory[0]);
         sword.putByte("Slot", (byte) 0);
         expectedInventory.add(sword);
         assertEquals(expectedInventory, playerData.get("Inventory"));
         CompoundTag expectedEquipment = new CompoundTag();
-        expectedEquipment.put("head", legacyNative(inventory[39]));
-        expectedEquipment.put("offhand", legacyNative(inventory[40]));
+        expectedEquipment.put("head", convertedNative(inventory[39]));
+        expectedEquipment.put("offhand", convertedNative(inventory[40]));
         assertEquals(expectedEquipment, playerData.get("equipment"));
         ListTag expectedEnderChest = new ListTag();
-        CompoundTag enderItem = legacyNative(enderChest[26]);
+        CompoundTag enderItem = convertedNative(enderChest[26]);
         enderItem.putByte("Slot", (byte) 26);
         expectedEnderChest.add(enderItem);
         assertEquals(expectedEnderChest, playerData.get("EnderItems"));
@@ -232,11 +213,12 @@ class ItemCodecNativeTest {
         assertEquals(hidden.data(EnderChestDataType.ENDER_CHEST), enderChestType.encode(decodedEnder));
 
         PlayerSession session = new SessionManager(null).tryOpen(meta.player(), "Steve", ConnectionFixture.create());
-        CompoundTag playerData = new CompoundTag();
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, inventoryType.applyNative(session, playerData, decodedInventory));
-        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, enderChestType.applyNative(session, playerData, decodedEnder));
+        net.momirealms.sparrow.nbt.CompoundTag working = net.momirealms.sparrow.nbt.NBT.createCompound();
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, inventoryType.applyNative(session, working, decodedInventory));
+        assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, enderChestType.applyNative(session, working, decodedEnder));
+        CompoundTag playerData = (CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, working);
         CompoundTag nativeMap = playerData.getListOrEmpty("Inventory").getCompoundOrEmpty(0);
-        ItemStack loadedMap = ItemStack.CODEC.parse(MinecraftRegistryOps.nativeNbt(), nativeMap).getOrThrow();
+        ItemStack loadedMap = ItemStack.CODEC.parse(MinecraftRegistryOps.sparrowNbt().withParent(NbtOps.INSTANCE), nativeMap).getOrThrow();
         assertNull(loadedMap.get(DataComponents.MAP_ID));
         assertEquals("HIDE", loadedMap.get(DataComponents.CUSTOM_DATA).copyTag().getCompoundOrEmpty("sparrow-sync").getString("map-type").orElseThrow());
 
@@ -272,7 +254,7 @@ class ItemCodecNativeTest {
         return item;
     }
 
-    private static CompoundTag legacyNative(ItemStack item) {
+    private static CompoundTag convertedNative(ItemStack item) {
         return (CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, ItemCodec.saveItem(item));
     }
 

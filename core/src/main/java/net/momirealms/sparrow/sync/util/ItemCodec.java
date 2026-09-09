@@ -66,33 +66,6 @@ public final class ItemCodec {
         return compound;
     }
 
-    /** 把标准容器编码为原版 {@code ItemStackWithSlot} 使用的稀疏列表. */
-    @NotNull
-    public static net.minecraft.nbt.ListTag saveNativeItems(@Nullable ItemStack @NotNull [] items) {
-        net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
-        for (int i = 0; i < items.length; i++) {
-            ItemStack item = items[i];
-            if (item == null || item.isEmpty()) continue;
-            net.minecraft.nbt.CompoundTag compound = saveNativeItem(item);
-            compound.putByte("Slot", (byte) i);
-            list.add(compound);
-        }
-        return list;
-    }
-
-    /** 把单个物品编码为当前服务端原版玩家文件使用的 NMS compound. */
-    @NotNull
-    public static net.minecraft.nbt.CompoundTag saveNativeItem(@NotNull ItemStack item) {
-        // 与快照编码保持相同的数量上限, 不修改 OFFLINE 采集借用的物品.
-        ItemStack encoded = item.getCount() > MAX_CODEC_COUNT ? item.copyWithCount(MAX_CODEC_COUNT) : item;
-        net.minecraft.nbt.Tag tag = ItemStack.CODEC.encodeStart(MinecraftRegistryOps.nativeNbt(), encoded)
-                .getOrThrow(message -> new IllegalStateException("failed to encode item " + item.getItem() + ": " + message));
-        if (!(tag instanceof net.minecraft.nbt.CompoundTag compound)) {
-            throw new IllegalStateException("item " + item.getItem() + " encoded to non-compound native tag");
-        }
-        return compound;
-    }
-
     /**
      * 把物品数组编码为稀疏物品列表, null 与空气槽位不落盘.
      */
@@ -104,6 +77,20 @@ public final class ItemCodec {
             if (item == null || item.isEmpty()) continue;
             CompoundTag compound = saveItem(item);
             compound.putInt(SLOT_KEY, i);
+            list.add(compound);
+        }
+        return list;
+    }
+
+    /** 把标准容器编码为原版 {@code ItemStackWithSlot} 使用的稀疏列表. */
+    @NotNull
+    public static ListTag saveNativeItems(@Nullable ItemStack @NotNull [] items) {
+        ListTag list = NBT.createList();
+        for (int i = 0; i < items.length; i++) {
+            ItemStack item = items[i];
+            if (item == null || item.isEmpty()) continue;
+            CompoundTag compound = saveItem(item);
+            compound.putByte("Slot", (byte) i);
             list.add(compound);
         }
         return list;

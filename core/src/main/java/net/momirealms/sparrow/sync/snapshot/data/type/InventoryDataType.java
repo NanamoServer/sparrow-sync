@@ -6,6 +6,7 @@ import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -13,7 +14,6 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -27,7 +27,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * 背包同步: 全部槽位 (含盔甲、副手及 1.21.5 起的 body/saddle) 与手持槽位.
@@ -131,27 +130,26 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Inventory value) {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Inventory value) {
         boolean equipmentFormat = VersionHelper.isOrAbove1_21_5();
         int expectedSize = equipmentFormat ? EQUIPMENT_SIZE : LEGACY_SIZE;
         if (value.contents().length != expectedSize || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;
 
-        net.minecraft.nbt.ListTag inventory = new net.minecraft.nbt.ListTag();
+        ListTag inventory = NBT.createList();
         for (int i = 0; i < STORAGE_SIZE; i++) {
             addNativeItem(inventory, value.contents()[i], i);
         }
         // 1.21.5 把盔甲、副手、body 和 saddle 从 Inventory 的 100/150 槽迁到了 equipment map.
         if (equipmentFormat) {
-            net.minecraft.nbt.Tag current = playerData.get("equipment");
-            net.minecraft.nbt.CompoundTag equipment = current instanceof net.minecraft.nbt.CompoundTag compound
-                    ? compound.copy()
-                    : new net.minecraft.nbt.CompoundTag();
-            Map<String, net.minecraft.nbt.Tag> equipmentTags = CompoundTagProxy.INSTANCE.getTags(equipment);
-            equipmentTags.remove("mainhand");
-            for (int i = 0; i < EQUIPMENT_KEYS.length; i++) equipmentTags.remove(EQUIPMENT_KEYS[i]);
+            Tag current = playerData.get("equipment");
+            CompoundTag equipment = current instanceof CompoundTag compound
+                    ? compound.deepClone()
+                    : NBT.createCompound();
+            equipment.remove("mainhand");
+            for (int i = 0; i < EQUIPMENT_KEYS.length; i++) equipment.remove(EQUIPMENT_KEYS[i]);
             for (int i = 0; i < EQUIPMENT_KEYS.length; i++) {
                 ItemStack item = value.contents()[STORAGE_SIZE + i];
-                if (item != null && !item.isEmpty()) equipment.put(EQUIPMENT_KEYS[i], ItemCodec.saveNativeItem(item));
+                if (item != null && !item.isEmpty()) equipment.put(EQUIPMENT_KEYS[i], ItemCodec.saveItem(item));
             }
             playerData.put("Inventory", inventory);
             playerData.put("equipment", equipment);
@@ -164,9 +162,9 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
-    private static void addNativeItem(net.minecraft.nbt.ListTag target, @Nullable ItemStack item, int slot) {
+    private static void addNativeItem(ListTag target, @Nullable ItemStack item, int slot) {
         if (item == null || item.isEmpty()) return;
-        net.minecraft.nbt.CompoundTag encoded = ItemCodec.saveNativeItem(item);
+        CompoundTag encoded = ItemCodec.saveItem(item);
         encoded.putByte("Slot", (byte) slot);
         target.add(encoded);
     }

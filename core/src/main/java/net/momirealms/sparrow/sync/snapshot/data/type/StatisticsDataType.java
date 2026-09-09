@@ -164,7 +164,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Statistics value) throws IOException {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Statistics value) throws IOException {
         if (!PlayerJsonStorage.materialize(session.uuid(), PlayerJsonFile.STATISTICS, encodeNativeJson(value))) {
             throw new IOException("atomic statistics JSON replacement failed or is not supported");
         }

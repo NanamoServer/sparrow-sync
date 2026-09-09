@@ -5,12 +5,10 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.NbtOps;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -202,14 +200,14 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Attributes attributes) {
-        net.minecraft.nbt.Tag merged = mergeNative(playerData.get("attributes"), attributes, PluginConfig.synchronization$attributes());
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Attributes attributes) {
+        Tag merged = mergeNative(playerData.get("attributes"), attributes, PluginConfig.synchronization$attributes());
         playerData.put("attributes", merged);
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
     @NotNull
-    static net.minecraft.nbt.Tag mergeNative(net.minecraft.nbt.Tag current, @NotNull Attributes attributes, @NotNull AttributeOptions options) {
+    static Tag mergeNative(Tag current, @NotNull Attributes attributes, @NotNull AttributeOptions options) {
         ListTag merged = nativeAttributes(current);
         AttributeValue[] values = attributes.values();
         for (int i = 0; i < values.length; i++) {
@@ -218,14 +216,12 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
             if (!options.attributeAllowed(attributeId)) continue;
             mergeAttribute(merged, value, options);
         }
-        return NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, merged);
+        return merged;
     }
 
     @NotNull
-    private static ListTag nativeAttributes(net.minecraft.nbt.Tag current) {
-        if (current == null) return NBT.createList();
-        Tag converted = NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, current);
-        return converted instanceof ListTag list ? list.deepClone() : NBT.createList();
+    private static ListTag nativeAttributes(Tag current) {
+        return current instanceof ListTag list ? list.deepClone() : NBT.createList();
     }
 
     private static void mergeAttribute(ListTag attributes, AttributeValue value, AttributeOptions options) {

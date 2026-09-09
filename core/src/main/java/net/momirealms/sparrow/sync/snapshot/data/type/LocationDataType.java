@@ -2,9 +2,10 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.nbt.*;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
@@ -15,7 +16,6 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
 import java.util.Set;
 
 public final class LocationDataType extends CodecDataType<LocationDataType.PlayerLocation> implements NativePlayerDataType<LocationDataType.PlayerLocation> {
@@ -60,19 +60,18 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull PlayerLocation value) {
         if (value.world().isEmpty() || !Double.isFinite(value.x()) || !Double.isFinite(value.y()) || !Double.isFinite(value.z()) || !Float.isFinite(value.yaw()) || !Float.isFinite(value.pitch())) return NativeApplyResult.NOT_APPLIED;
 
-        ListTag position = new ListTag();
-        position.add(DoubleTag.valueOf(value.x()));
-        position.add(DoubleTag.valueOf(value.y()));
-        position.add(DoubleTag.valueOf(value.z()));
-        ListTag rotation = new ListTag();
-        rotation.add(FloatTag.valueOf(value.yaw()));
-        rotation.add(FloatTag.valueOf(value.pitch()));
+        ListTag position = NBT.createList();
+        position.add(NBT.createDouble(value.x()));
+        position.add(NBT.createDouble(value.y()));
+        position.add(NBT.createDouble(value.z()));
+        ListTag rotation = NBT.createList();
+        rotation.add(NBT.createFloat(value.yaw()));
+        rotation.add(NBT.createFloat(value.pitch()));
 
         // Paper 优先读取 UUID, world 分支会按当前服务器的同名世界解析目标维度.
-        Map<String, Tag> tags = CompoundTagProxy.INSTANCE.getTags(playerData);
-        tags.remove("Dimension");
-        tags.remove("WorldUUIDMost");
-        tags.remove("WorldUUIDLeast");
+        playerData.remove("Dimension");
+        playerData.remove("WorldUUIDMost");
+        playerData.remove("WorldUUIDLeast");
         playerData.putString("world", value.world());
         playerData.put("Pos", position);
         playerData.put("Rotation", rotation);

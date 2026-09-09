@@ -1,13 +1,12 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
@@ -61,8 +60,39 @@ class NativeDataTypeTest {
     }
 
     @Test
+    void nativePdcMergesIntoSparrowTagWithoutChangingSourceTrees() throws Exception {
+        CompoundTag local = NBT.createCompound();
+        local.putString("local", "kept");
+        local.putString("shared", "old");
+        CompoundTag playerData = NBT.createCompound();
+        playerData.put("BukkitValues", local);
+        net.minecraft.nbt.CompoundTag remote = new net.minecraft.nbt.CompoundTag();
+        remote.putString("shared", "new");
+        net.minecraft.nbt.CompoundTag remoteNested = new net.minecraft.nbt.CompoundTag();
+        remoteNested.putString("marker", "remote");
+        remote.put("nested", remoteNested);
+
+        Field configField = PluginConfig.class.getDeclaredField("config");
+        configField.setAccessible(true);
+        Object previous = configField.get(null);
+        configField.set(null, new PluginConfig.ConfigDefinition());
+        try {
+            assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new PDCDataType().applyNative(this.session, playerData, remote));
+
+            CompoundTag merged = playerData.getCompound("BukkitValues");
+            assertEquals("kept", merged.getString("local"));
+            assertEquals("new", merged.getString("shared"));
+            assertEquals("old", local.getString("shared"));
+            merged.getCompound("nested").putString("marker", "changed");
+            assertEquals("remote", remoteNested.getString("marker").orElseThrow());
+        } finally {
+            configField.set(null, previous);
+        }
+    }
+
+    @Test
     void scalarTypesWriteVanillaFields() {
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         playerData.putInt("foodTickTimer", 17);
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new ExperienceDataType().applyNative(this.session, playerData, new Experience(1200, 31, 1.5f)));
@@ -70,7 +100,7 @@ class NativeDataTypeTest {
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new HungerDataType().applyNative(this.session, playerData, new Hunger(18, 4.5f, 0.75f, 43)));
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, new GameModeDataType().applyNative(this.session, playerData, GameMode.CREATIVE));
 
-        CompoundTag stored = compound(playerData);
+        CompoundTag stored = playerData;
         assertEquals(1200, stored.getInt("XpTotal"));
         assertEquals(31, stored.getInt("XpLevel"));
         assertEquals(1.0f, stored.getFloat("XpP"));
@@ -84,23 +114,23 @@ class NativeDataTypeTest {
 
     @Test
     void zeroEnchantmentSeedFallsBackWithoutChangingTheTag() {
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         playerData.putInt("XpSeed", 42);
 
         assertEquals(NativeApplyResult.NOT_APPLIED, new EnchantmentSeedDataType().applyNative(this.session, playerData, 0));
 
-        assertEquals(42, compound(playerData).getInt("XpSeed"));
+        assertEquals(42, playerData.getInt("XpSeed"));
     }
 
     @Test
     void healthWritesVanillaState() {
         HealthDataType type = new HealthDataType();
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         playerData.putShort("DeathTime", (short) 19);
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new Health(16.5)));
 
-        CompoundTag stored = compound(playerData);
+        CompoundTag stored = playerData;
         assertEquals(16.5f, stored.getFloat("Health"));
         assertEquals(0, stored.getShort("DeathTime"));
     }
@@ -119,35 +149,35 @@ class NativeDataTypeTest {
     @Test
     void emptyPotionSnapshotExplicitlyClearsTheNativeList() {
         PotionEffectsDataType type = allocateWithoutConstructor(PotionEffectsDataType.class);
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, List.of()));
 
-        assertEquals(0, assertInstanceOf(ListTag.class, sparrow(playerData.get("active_effects"))).size());
+        assertEquals(0, assertInstanceOf(ListTag.class, playerData.get("active_effects")).size());
     }
 
     @Test
     void standardEnderChestUsesNativeListAndExpandedChestFallsBack() {
         EnderChestDataType type = allocateWithoutConstructor(EnderChestDataType.class);
-        net.minecraft.nbt.CompoundTag standard = new net.minecraft.nbt.CompoundTag();
+        CompoundTag standard = NBT.createCompound();
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, standard, new ItemCodec.LoadedItems(new ItemStack[27], 0)));
-        assertEquals(0, assertInstanceOf(ListTag.class, sparrow(standard.get("EnderItems"))).size());
+        assertEquals(0, assertInstanceOf(ListTag.class, standard.get("EnderItems")).size());
 
-        net.minecraft.nbt.CompoundTag expanded = new net.minecraft.nbt.CompoundTag();
+        CompoundTag expanded = NBT.createCompound();
         expanded.putInt("marker", 1);
         assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, expanded, new ItemCodec.LoadedItems(new ItemStack[54], 0)));
         assertNull(expanded.get("EnderItems"));
-        assertEquals(1, compound(expanded).getInt("marker"));
+        assertEquals(1, expanded.getInt("marker"));
     }
 
     @Test
     void inventoryOnlyUsesNativeLayoutWhenCapacityMatchesThisVersion() {
         InventoryDataType type = allocateWithoutConstructor(InventoryDataType.class);
         int nativeSize = VersionHelper.isOrAbove1_21_5() ? 43 : 41;
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         if (VersionHelper.isOrAbove1_21_5()) {
-            net.minecraft.nbt.CompoundTag equipment = new net.minecraft.nbt.CompoundTag();
+            CompoundTag equipment = NBT.createCompound();
             equipment.putString("mainhand", "local-mainhand");
             equipment.putString("feet", "local-feet");
             equipment.putString("plugin-data", "kept");
@@ -156,7 +186,7 @@ class NativeDataTypeTest {
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new Inventory(new ItemStack[nativeSize], 6, 0)));
 
-        CompoundTag stored = compound(playerData);
+        CompoundTag stored = playerData;
         assertEquals(0, stored.getList("Inventory").size());
         assertEquals(6, stored.getInt("SelectedItemSlot"));
         if (VersionHelper.isOrAbove1_21_5()) {
@@ -166,7 +196,7 @@ class NativeDataTypeTest {
             assertEquals("kept", equipment.getString("plugin-data"));
         }
 
-        net.minecraft.nbt.CompoundTag mismatched = new net.minecraft.nbt.CompoundTag();
+        CompoundTag mismatched = NBT.createCompound();
         assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, mismatched, new Inventory(new ItemStack[nativeSize == 43 ? 41 : 43], 0, 0)));
         assertNull(mismatched.get("Inventory"));
     }
@@ -196,9 +226,9 @@ class NativeDataTypeTest {
             encoded.putInt("heldSlot", heldSlot);
             assertEquals(expected, type.decode(encoded, 0).heldSlot());
 
-            net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+            CompoundTag playerData = NBT.createCompound();
             assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, value));
-            assertEquals(expected, compound(playerData).getInt("SelectedItemSlot"));
+            assertEquals(expected, playerData.getInt("SelectedItemSlot"));
         }
     }
 
@@ -224,8 +254,8 @@ class NativeDataTypeTest {
                 new ModifierValue[]{new ModifierValue(NamespacedKey.fromString("example:remote"), 2.0, Operation.ADD_NUMBER, EquipmentSlotGroup.ANY)}
         )});
 
-        net.minecraft.nbt.Tag mergedNative = AttributesDataType.mergeNative(nativeTag(local), remote, options);
-        ListTag merged = assertInstanceOf(ListTag.class, sparrow(mergedNative));
+        Tag mergedNative = AttributesDataType.mergeNative(local, remote, options);
+        ListTag merged = assertInstanceOf(ListTag.class, mergedNative);
         CompoundTag mergedHealth = merged.getCompound(0);
         assertEquals(40.0, mergedHealth.getDouble("base"));
         ListTag modifiers = mergedHealth.getList("modifiers");
@@ -238,14 +268,14 @@ class NativeDataTypeTest {
     @Test
     void locationWritesWorldNameAndClearsCompetingWorldIdentity() {
         LocationDataType type = new LocationDataType();
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         playerData.putString("Dimension", "minecraft:overworld");
         playerData.putLong("WorldUUIDMost", 12L);
         playerData.putLong("WorldUUIDLeast", 34L);
 
         assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, new PlayerLocation("target", 12.5, 70.0, -4.25, 90.0f, -15.0f)));
 
-        CompoundTag stored = compound(playerData);
+        CompoundTag stored = playerData;
         assertEquals("target", stored.getString("world"));
         assertEquals(List.of(12.5, 70.0, -4.25), List.of(stored.getList("Pos").getDouble(0), stored.getList("Pos").getDouble(1), stored.getList("Pos").getDouble(2)));
         assertEquals(90.0f, stored.getList("Rotation").getFloat(0));
@@ -259,11 +289,11 @@ class NativeDataTypeTest {
     void locationRejectsInvalidValuesWithoutChangingPlayerData() {
         LocationDataType type = new LocationDataType();
 
-        net.minecraft.nbt.CompoundTag playerData = new net.minecraft.nbt.CompoundTag();
+        CompoundTag playerData = NBT.createCompound();
         playerData.putInt("marker", 1);
         assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, playerData, new PlayerLocation("target", Double.NaN, 0.0, 0.0, 0.0f, 0.0f)));
         assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, playerData, new PlayerLocation("", 0.0, 0.0, 0.0, 0.0f, 0.0f)));
-        assertEquals(1, compound(playerData).getInt("marker"));
+        assertEquals(1, playerData.getInt("marker"));
         assertNull(playerData.get("world"));
         assertNull(playerData.get("Pos"));
     }
@@ -274,18 +304,6 @@ class NativeDataTypeTest {
         modifier.putDouble("amount", amount);
         modifier.putString("operation", "add_value");
         return modifier;
-    }
-
-    private static CompoundTag compound(net.minecraft.nbt.CompoundTag tag) {
-        return assertInstanceOf(CompoundTag.class, sparrow(tag));
-    }
-
-    private static Tag sparrow(net.minecraft.nbt.Tag tag) {
-        return NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, tag);
-    }
-
-    private static net.minecraft.nbt.Tag nativeTag(Tag tag) {
-        return NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, tag);
     }
 
     // Native 分支不读取 logger, 测试直接反射分配实例, 不给生产类型增加注入构造器.

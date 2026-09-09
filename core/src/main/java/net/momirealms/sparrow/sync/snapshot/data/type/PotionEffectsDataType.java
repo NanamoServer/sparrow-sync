@@ -1,9 +1,10 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
@@ -55,10 +56,10 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
-        net.minecraft.nbt.Tag effects = value.isEmpty()
-                ? new net.minecraft.nbt.ListTag()
-                : NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, this.encode(value));
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
+        Tag effects = value.isEmpty()
+                ? NBT.createList()
+                : this.encode(value);
         // 空列表也必须显式写入, 否则本服 .dat 中的旧效果会在 vanilla load 时复活.
         playerData.put("active_effects", effects);
         return NativeApplyResult.APPLIED_PLAYER_DATA;

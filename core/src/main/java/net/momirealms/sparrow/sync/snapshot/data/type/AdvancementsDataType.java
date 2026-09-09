@@ -384,7 +384,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
 
     @Override
     @NotNull
-    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.minecraft.nbt.CompoundTag playerData, @NotNull Advancements value) throws IOException {
+    public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Advancements value) throws IOException {
         AdvancementSlots.Layout layout = null;
         // 如果获取不到 Layout 就回退到普通 Apply
         if (PluginConfig.synchronization$advancements().keepUnknownAdvancements()) {
