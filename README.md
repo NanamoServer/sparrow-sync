@@ -19,7 +19,7 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 - **📦 Compressed Snapshots**: Store player data using Sparrow NBT, with **Zstd**, Deflate, and uncompressed formats available.
 - **🖥️ Snapshot Management GUI**: Browse saved snapshots, inspect their contents, restore earlier data, pin records, and export snapshots through an in-game menu.
 - **🗺️ Map Synchronization**: Share map data between servers, with configurable synchronization modes and interaction controls.
-- **🛟 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
+- **🔧 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
 
 ---
 
