@@ -9,25 +9,29 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-/** 负责快照落库、重试、轮转和关服留存. */
 final class SnapshotWriter {
     private final SyncLogger logger;
     private final StorageProvider storage;
-    private final SnapshotStash stash;
+    private final SnapshotStash stash; // 完整正文的 pending 或异常档案写入入口
     private final PlayerSerialExecutor serialExecutor;
-    private final ConcurrentHashMap<CompletableFuture<SnapshotSaveResult>, WriteAttempt> unsettledWrites = new ConcurrentHashMap<>();
+    private final Set<SaveRequest> pending = new HashSet<>(); // 已接收但尚未完成的保存请求, 用 pending 自身当锁协调并发访问
+    private boolean sealed; // 在集合监视器内读写, 为 true 时拒绝新请求而继续已有保存
 
     SnapshotWriter(@NotNull SyncLogger logger, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PlayerSerialExecutor serialExecutor) {
         this.logger = logger;
@@ -36,52 +40,79 @@ final class SnapshotWriter {
         this.serialExecutor = serialExecutor;
     }
 
-    /** 开始写入已经编码完成的快照, 并收敛到调用方提供的完成结果. */
-    void write(@NotNull Snapshot snapshot, @NotNull String playerName, long captureNanos, @NotNull CompletableFuture<SnapshotSaveResult> completion) {
-        this.logger.file(LogCategory.SAVE, snapshot.meta().player(), playerName, LogConstants.SYNC_SAVE_STARTED, playerName, snapshot.meta().cause().name(), snapshot.meta().id().toString());
-        WriteAttempt attempt = WriteAttempt.first(snapshot, playerName, PluginConfig.synchronization$maxSaveRetries(), captureNanos);
-        this.unsettledWrites.put(completion, attempt);
-        completion.whenComplete((result, throwable) -> this.unsettledWrites.remove(completion));
-        this.write(attempt, completion);
+    // 在采集或投递任务前登记请求, 使停服等待包含尚未生成正文的保存.
+    void register(@NotNull SaveRequest request) {
+        synchronized (this.pending) {
+            if (this.sealed) throw new RejectedExecutionException("snapshot writer is sealed");
+            this.pending.add(request);
+        }
+        request.completion().whenComplete((result, failure) -> {
+            synchronized (this.pending) {
+                this.pending.remove(request);
+            }
+        });
     }
 
-    // 失败且允许重试时, 同一份快照重新排到玩家队尾; 不占住玩家 lane 等待数据库恢复.
-    private void write(WriteAttempt attempt, CompletableFuture<SnapshotSaveResult> completion) {
+    /**
+     * 接收已通过保存事件检查的完整快照, 并启动第一次存储写入.
+     * <p>request 必须持有已完成地图处理、可直接写入存储的 Snapshot. 此方法只发起写入，不等待最终保存结果。</p>
+     *
+     * @param request 已完成准备的在途保存请求
+     */
+    void write(@NotNull SaveRequest request) {
+        if (request.finishing()) return;
+        this.logger.file(LogCategory.SAVE, request.meta().player(), request.playerName(), LogConstants.SYNC_SAVE_STARTED, request.playerName(), request.meta().cause().name(), request.meta().id().toString());
+        this.write(WriteAttempt.first(request, PluginConfig.synchronization$maxSaveRetries()));
+    }
+
+    // 执行一次写入, 根据存储结果继续重试或取得最终收尾权.
+    private void write(WriteAttempt attempt) {
+        SaveRequest request = attempt.request();
+        if (request.finishing()) return;
         long submittedAt = System.nanoTime();
         CompletableFuture<SaveOutcome> save;
         try {
-            save = this.storage.saveSnapshotOutcome(attempt.snapshot());
+            save = this.storage.saveSnapshotOutcome(request.snapshot());
         } catch (RejectedExecutionException exception) {
-            this.stashFailed(attempt, SaveResult.RETRY_LATER, null, completion);
+            this.stashFailed(attempt, SaveResult.RETRY_LATER, null);
             return;
+        } catch (RuntimeException | Error failure) {
+            // 重试任务也可能在提交阶段失败, 请求回执在此结束, 原异常继续交给执行器报告.
+            request.fail(failure);
+            throw failure;
         }
         save.whenComplete((outcome, throwable) -> {
+            if (request.finishing()) return;
             if (throwable != null) {
-                this.logger.error(LogCategory.SAVE, attempt.player(), attempt.playerName(), throwable, LogConstants.SYNC_SAVE_FAILED, attempt.playerName());
-                completion.completeExceptionally(throwable);
+                if (request.beginFinish()) {
+                    this.logger.error(LogCategory.SAVE, attempt.player(), request.playerName(), throwable, LogConstants.SYNC_SAVE_FAILED, request.playerName());
+                    request.completion().completeExceptionally(throwable);
+                }
                 return;
             }
             SaveResult result = outcome.result();
             if (result.stored()) {
+                if (!request.beginFinish()) return;
                 this.logSaved(attempt, result, System.nanoTime() - submittedAt);
-                this.rotateHistory(attempt.player(), attempt.playerName());
-                completion.complete(new SnapshotSaveResult.Settled(result, attempt.snapshot().meta().id()));
+                this.rotateHistory(attempt.player(), request.playerName());
+                request.completion().complete(new SnapshotSaveResult.Settled(result, request.meta().id()));
                 return;
             }
             if (result.retriable()) {
                 logRetry(this.logger, attempt, outcome.failure());
                 if (attempt.canRetry()) {
-                    this.retryLater(attempt.next(), completion);
+                    this.retryLater(attempt.next());
                     return;
                 }
             }
-            this.stashFailed(attempt, result, outcome.failure(), completion);
+            this.stashFailed(attempt, result, outcome.failure());
         });
     }
 
+    // 按保存原因和日志配置报告已经确认的存储结果.
     private void logSaved(WriteAttempt attempt, SaveResult result, long storeNanos) {
-        SaveCause cause = attempt.snapshot().meta().cause();
-        String captureMillis = millis(0, attempt.captureNanos());
+        SaveCause cause = attempt.request().meta().cause();
+        String captureMillis = millis(0, attempt.request().captureNanos());
         String storeMillis = millis(0, storeNanos);
         if (cause == SaveCause.DISCONNECT) {
             if (PluginConfig.logging$consoleSave(cause)) {
@@ -110,6 +141,7 @@ final class SnapshotWriter {
         }
     }
 
+    // 在首次失败及指定重试次数报告进度, 首次失败保留完整原因.
     static void logRetry(@NotNull SyncLogger logger, @NotNull WriteAttempt attempt, @Nullable Throwable failure) {
         if (!attempt.canRetry() || !attempt.shouldLog()) return;
         if (attempt.number() == 1 && failure != null) {
@@ -119,6 +151,7 @@ final class SnapshotWriter {
         logger.warn(LogCategory.RETRY, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
     }
 
+    // 报告重试耗尽或永久拒绝的分类, 随后由持有收尾权的调用方暂存正文.
     static void logFinalFailure(@NotNull SyncLogger logger, @NotNull WriteAttempt attempt, @NotNull SaveResult result, @Nullable Throwable failure) {
         String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
         if (failure != null) {
@@ -128,22 +161,26 @@ final class SnapshotWriter {
         logger.error(LogCategory.RETRY, attempt.player(), attempt.playerName(), key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
     }
 
-    // 延迟任务携带就绪时刻回到玩家队尾, 冷却期间不占 worker.
-    private void retryLater(WriteAttempt attempt, CompletableFuture<SnapshotSaveResult> completion) {
+    // 按原退避规则把下一次尝试排入玩家队列, 冷却期间释放 worker.
+    private void retryLater(WriteAttempt attempt) {
+        if (attempt.request().finishing()) return;
         try {
-            this.serialExecutor.submitDelayed(attempt.player(), () -> this.write(attempt, completion), attempt.retryDelayMillis(), TimeUnit.MILLISECONDS);
+            this.serialExecutor.submitDelayed(attempt.player(), () -> this.write(attempt), attempt.retryDelayMillis(), TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException exception) {
-            this.stashFailed(attempt, SaveResult.RETRY_LATER, null, completion);
+            this.stashFailed(attempt, SaveResult.RETRY_LATER, null);
         }
     }
 
-    // 无法继续写入的快照落到本地, 等下次启动重放或由管理员处理.
-    private void stashFailed(WriteAttempt attempt, SaveResult result, @Nullable Throwable failure, CompletableFuture<SnapshotSaveResult> completion) {
+    // 按存储分类尝试本地留存, 文件写入尝试结束后完成最终回执.
+    private void stashFailed(WriteAttempt attempt, SaveResult result, @Nullable Throwable failure) {
+        SaveRequest request = attempt.request();
+        if (!request.beginFinish()) return;
         logFinalFailure(this.logger, attempt, result, failure);
-        this.stash.stash(attempt.snapshot(), attempt.playerName(), result);
-        completion.complete(new SnapshotSaveResult.Settled(result, attempt.snapshot().meta().id()));
+        this.stash.stash(request.snapshot(), request.playerName(), result);
+        request.completion().complete(new SnapshotSaveResult.Settled(result, request.meta().id()));
     }
 
+    // 成功写入后发起历史轮转, 保存回执不等待轮转完成.
     private void rotateHistory(UUID player, String playerName) {
         try {
             this.storage.rotate(player, PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, throwable) -> {
@@ -155,12 +192,57 @@ final class SnapshotWriter {
         }
     }
 
-    /** 执行器排空超时后, 把尚未 settle 的快照留到本地 pending. */
+    /**
+     * 封闭接收入口并限时等待当前所有请求的最终结果, 期间允许已有请求继续写入和重试.
+     *
+     * @param timeout 调用方剩余的停服等待预算
+     * @param unit 预算的时间单位
+     * @return 是否等到了整批请求结束, 单份请求异常结束也计为结束
+     */
+    boolean sealAndAwaitSaves(long timeout, @NotNull TimeUnit unit) {
+        CompletableFuture<?>[] completions;
+        synchronized (this.pending) {
+            this.sealed = true;
+            completions = new CompletableFuture<?>[this.pending.size()];
+            int index = 0;
+            for (SaveRequest request : this.pending) {
+                completions[index++] = request.completion();
+            }
+        }
+        // 接收已封口, 锁外等待固定批次; 超时只结束等待, 原始保存回执仍由业务收尾完成.
+        try {
+            CompletableFuture.allOf(completions).get(Math.max(0, timeout), unit);
+            return true;
+        } catch (ExecutionException exception) {
+            return true;
+        } catch (TimeoutException exception) {
+            return false;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * 执行器结束后暂存仍未结束的完整正文, 尚未生成正文的请求以超时失败结束.
+     * <p>正在进行最终文件写入的请求由原收尾方继续完成, 重复清理不会再次取得处理权.
+     */
     void stashUnsettled() {
-        for (var entry : this.unsettledWrites.entrySet()) {
-            WriteAttempt attempt = entry.getValue();
-            if (entry.getKey().complete(new SnapshotSaveResult.Settled(SaveResult.RETRY_LATER, attempt.snapshot().meta().id()))) {
-                this.stash.stash(attempt.snapshot(), attempt.playerName(), SaveResult.RETRY_LATER);
+        SaveRequest[] requests;
+        synchronized (this.pending) {
+            requests = this.pending.toArray(SaveRequest[]::new);
+        }
+        for (int i = 0; i < requests.length; i++) {
+            SaveRequest request = requests[i];
+            if (!request.beginFinish()) continue;
+            Snapshot snapshot = request.snapshot();
+            if (snapshot == null) {
+                TimeoutException failure = new TimeoutException("snapshot was not encoded before shutdown timeout: " + request.meta().id());
+                this.logger.error(LogCategory.SAVE, request.meta().player(), request.playerName(), failure, LogConstants.SYNC_SAVE_FAILED, request.playerName());
+                request.completion().completeExceptionally(failure);
+            } else {
+                this.stash.stash(snapshot, request.playerName(), SaveResult.RETRY_LATER);
+                request.completion().complete(new SnapshotSaveResult.Settled(SaveResult.RETRY_LATER, request.meta().id()));
             }
         }
     }
@@ -169,26 +251,44 @@ final class SnapshotWriter {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
-    /** 一次快照写入尝试. */
-    record WriteAttempt(@NotNull Snapshot snapshot, @NotNull String playerName, int number, int maxRetries, long captureNanos) {
-        private static final int FREE_ATTEMPTS = 5;
-        private static final long RETRY_DELAY_STEP_MILLIS = 100;
-        private static final long MAX_RETRY_DELAY_MILLIS = 1000;
-        private static final int LOG_INTERVAL = 10;
+    /**
+     * 一次写入的重试进度, 正文和最终结果始终由同一份请求持有.
+     *
+     * @param request 本次尝试所属的保存请求
+     * @param number 从一开始的尝试次数
+     * @param maxRetries 首次实际写入时固定的最大重试次数, 负数表示不限次数
+     */
+    record WriteAttempt(@NotNull SaveRequest request, int number, int maxRetries) {
+        private static final int FREE_ATTEMPTS = 5; // 前五次尝试立即执行
+        private static final long RETRY_DELAY_STEP_MILLIS = 100; // 后续每次增加的等待毫秒数
+        private static final long MAX_RETRY_DELAY_MILLIS = 1000; // 单次重试等待上限, 单位为毫秒
+        private static final int LOG_INTERVAL = 10; // 首次之外每十次尝试记录一次进度
 
+        /**
+         * 固定一份已准备请求的重试策略并创建首次尝试.
+         *
+         * @param request 正文已准备的保存请求
+         * @param maxRetries 首次写入时的重试配置
+         * @return 从第一次开始的写入尝试
+         */
         @NotNull
-        static WriteAttempt first(@NotNull Snapshot snapshot, @NotNull String playerName, int maxRetries, long captureNanos) {
-            return new WriteAttempt(snapshot, playerName, 1, maxRetries, captureNanos);
+        static WriteAttempt first(@NotNull SaveRequest request, int maxRetries) {
+            return new WriteAttempt(request, 1, maxRetries);
         }
 
         @NotNull
         String cause() {
-            return this.snapshot.meta().cause().name();
+            return this.request.meta().cause().name();
         }
 
         @NotNull
         UUID player() {
-            return this.snapshot.meta().player();
+            return this.request.meta().player();
+        }
+
+        @NotNull
+        String playerName() {
+            return this.request.playerName();
         }
 
         boolean canRetry() {
@@ -204,9 +304,10 @@ final class SnapshotWriter {
             return this.number == 1 || this.number % LOG_INTERVAL == 0;
         }
 
+        // todo 其实这个类换成普通类会不会好点, 每次 new 和字段自增哪个开销小?
         @NotNull
         WriteAttempt next() {
-            return new WriteAttempt(this.snapshot, this.playerName, this.number + 1, this.maxRetries, this.captureNanos);
+            return new WriteAttempt(this.request, this.number + 1, this.maxRetries);
         }
     }
 }

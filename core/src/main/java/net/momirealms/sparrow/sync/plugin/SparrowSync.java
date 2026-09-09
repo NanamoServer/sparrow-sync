@@ -43,7 +43,7 @@ import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SnapshotService;
-import net.momirealms.sparrow.sync.session.SnapshotStash;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
@@ -235,7 +235,7 @@ public class SparrowSync implements Plugin {
                 case MONGODB -> PluginConfig.database$mongodb().database();
             };
             this.documentCodec.onLoad();
-            this.snapshotStash.onLoad();
+            this.snapshotStash.onLoad(this.snapshotService.files());
             this.storageProvider.initialize();
             this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, PluginConfig.database$type().name(), database));
         } catch (Throwable throwable) {
@@ -314,6 +314,11 @@ public class SparrowSync implements Plugin {
     public void onPluginReload() {
     }
 
+    /**
+     * 在共享等待预算内完成最终会话保存、地图发布和玩家队列排空, 随后暂存剩余完整快照.
+     * <p>先停止管理操作, 待 ACTIVE 会话提交 SHUTDOWN 请求后才封闭保存入口.
+     * 依赖在保存收尾之后关闭, 初始化中途失败时仅处理已经装配的对象.
+     */
     @Override
     public void onPluginDisable() {
         if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
@@ -322,7 +327,7 @@ public class SparrowSync implements Plugin {
         long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
         if (this.mapSyncService != null)        this.mapSyncService.stopReceiving();
         if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
-        if (this.snapshotService != null)       this.snapshotService.sealAndAwaitHandoffs(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.snapshotService != null)       this.snapshotService.sealAndAwaitSaves(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.mapSyncService != null)        this.mapSyncService.finishPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.playerExecutor != null)        this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回

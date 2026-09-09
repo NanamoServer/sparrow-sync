@@ -34,6 +34,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.map.MapSyncService;
@@ -201,6 +202,7 @@ class SnapshotCommandFlowTest {
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(plugin);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", new MapSyncService(plugin));
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
@@ -463,8 +465,13 @@ class SnapshotCommandFlowTest {
         }
     }
 
+    /**
+     * 默认过滤后允许事件主动补回血量与位置, 零血量及 RESTORE 写入等待传送成功.
+     *
+     * @throws Exception 测试玩家调度或异步结果未能完成
+     */
     @Test
-    void onlineDefaultsIgnoreHealthAndLocationEvenWhenEventAddsThemBack() throws Exception {
+    void onlineDefaultsAllowEventToRestoreHealthAndLocation() throws Exception {
         Snapshot source = this.sourceWithHealth(0);
         this.onPreApply = event -> {
             assertFalse(event.decoded().containsKey(HealthDataType.HEALTH));
@@ -473,9 +480,14 @@ class SnapshotCommandFlowTest {
             event.decoded().put(LocationDataType.LOCATION, new LocationType().capture(this.player, CaptureMode.SYNC));
         };
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(source);
-        assertEquals(List.of("data"), this.actions);
+        // 默认配置先过滤历史值, 事件补回的值继续参与本次应用.
+        assertEquals(List.of("data", "location"), this.actions);
         assertFalse(this.dead.get());
         assertEquals(20.0, this.health.get());
+        assertTrue(this.writes.isEmpty());
+        this.teleport.complete(true);
+        assertEquals(List.of("data", "location", "health:0.0"), this.actions);
+        assertTrue(this.dead.get());
         this.nextWrite().complete();
         assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
     }

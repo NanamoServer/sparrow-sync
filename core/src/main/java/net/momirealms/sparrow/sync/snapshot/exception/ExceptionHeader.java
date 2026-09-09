@@ -25,7 +25,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
         return body.resolveSibling(body.getFileName() + SUFFIX);
     }
 
-    // 头文件独立发布, 写失败时已落盘的正文仍然可用.
+    // 快照头文件单独写入, 写入失败时已保存的快照数据仍然可用.
     public void write(@NotNull Path body) throws IOException {
         Path target = path(body);
         Path temporary = Files.createTempFile(body.getParent(), ".header-", ".tmp");
@@ -57,7 +57,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
         }
     }
 
-    // 只解析定长字段和有长度上限的 UTF 字段, 不读取快照正文.
+    // 只解析定长字段和有长度上限的 UTF 字段, 不读取快照数据.
     @NotNull
     public static ExceptionHeader read(@NotNull Path body) throws IOException {
         Path header = path(body);

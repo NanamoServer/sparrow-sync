@@ -14,7 +14,7 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.session.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.session.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.session.operation.SnapshotUnpinResult;
-import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
@@ -23,7 +23,6 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.util.ItemUtils;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
@@ -77,7 +76,7 @@ public final class SnapshotDetailGui {
 
     private final String playerName;
     private final @Nullable UUID snapshotId;
-    private final @Nullable String archivePath;   // 本服异常档案相对路径, 数据库来源为 null
+    private final @Nullable String archivePath;   // 本服异常快照相对路径, 数据库来源为 null
     private final @Nullable Runnable refreshParent; // 管理完成后的上级刷新动作, 根窗口为 null
     private final Pane inventoryPane = Pane.empty(9, 5); // 主背包、快捷栏与装备区域
     private final Pane enderPane = Pane.empty(9, 5);     // 末影箱固定 27 格内容区域
@@ -88,7 +87,7 @@ public final class SnapshotDetailGui {
     private SnapshotContents contents;            // 本次读取的原始物品, 用于容器初始化和完整打包
     private final MutableSignal<SnapshotMeta> meta = Signal.of(null); // 固定按钮与元信息依赖此状态
     private PlayerIdentity player;                // 快照所属玩家, 恢复操作的实际目标
-    private ExceptionArchives.Entry archive;      // 异常头与路径, 正文损坏时仍可展示
+    private SnapshotFiles.ExceptionEntry archive;      // 异常快照头文件信息及路径, 异常快照数据损坏时仍可展示
     private VirtualInventory inventory;           // 本次打开的背包内容, 切换 Tab 时保留修改
     private VirtualInventory enderChest;          // 本次打开的末影箱内容, 切换 Tab 时保留修改
 
@@ -265,7 +264,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 创建删除当前数据库快照或本服异常档案的按钮.
+     * 创建删除当前数据库快照或本服异常快照的按钮.
      *
      * @return 放入对应布局槽位的 Item
      */
@@ -326,10 +325,10 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 创建损坏或不可读取异常档案的头信息说明.
-     * 正文不可用时仍展示路径、类别和已经读取到的快照头.
+     * 为损坏或无法读取的异常快照生成说明.
+     * 异常快照数据不可用时仍展示路径、类别和异常快照头文件中的元信息.
      *
-     * @return 可供管理员定位档案的元信息 Item
+     * @return 可供管理员定位异常快照的元信息 Item
      */
     private Item buildArchiveInfo() {
         List<Component> lore = new ArrayList<>();
@@ -347,9 +346,9 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 把明确的正文无效原因放入状态说明的 Lore.
+     * 把明确的快照数据无效原因放入状态说明的 Lore.
      *
-     * @param invalid 详情加载器报告的正文无效结果
+     * @param invalid 详情加载器报告的快照数据无效结果
      * @return 展示失败原因与细节的状态 Item
      */
     private Item buildInvalidInfo(SnapshotDetailResult.Invalid invalid) {
@@ -401,9 +400,9 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 把快照头格式化为 ID、完整时间、原因、来源服和固定状态.
+     * 将快照元信息格式化为 ID、完整时间、原因、来源服和固定状态.
      *
-     * @param meta 原快照的元信息头
+     * @param meta 原快照的元信息
      * @return 采用项目语义配色的元信息说明行
      */
     private List<Component> metadata(SnapshotMeta meta) {
@@ -413,8 +412,8 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 异步读取选定快照或异常正文, 准备物品副本并核对目标玩家.
-     * 成功后首次显示背包 Tab, 失败与无效正文分别进入对应反馈状态.
+     * 异步读取选定快照或异常快照数据, 准备物品副本并核对目标玩家.
+     * 成功后首次显示背包 Tab, 失败与无效快照数据分别进入对应反馈状态.
      */
     private void load() {
         this.status("loading");
@@ -434,7 +433,7 @@ public final class SnapshotDetailGui {
                         this.failedContent(failure);
                         return;
                     }
-                    // 异常档案即使正文损坏也保留已读取的头, 供错误详情和删除使用.
+                    // 异常快照数据损坏时仍保留异常快照头文件中的元信息, 用于显示错误详情和删除操作.
                     Loaded detail = resolved.detail();
                     this.archive = detail.archive();
                     if (detail.result() instanceof SnapshotDetailResult.Ready value) {
@@ -460,13 +459,13 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 把成功的解码预览转为独立物品源, 同时保留异常档案头.
+     * 将解码成功的预览转为独立物品源, 同时保留异常快照头文件中的元信息.
      *
      * @param result 底层详情加载器返回的结果
-     * @param archive 异常档案索引项, 数据库来源为 null
+     * @param archive 异常快照索引项, 数据库来源为 null
      * @return 用于装配菜单的快照预览与物品副本
      */
-    private static Loaded prepare(SnapshotDetailResult result, @Nullable ExceptionArchives.Entry archive) {
+    private static Loaded prepare(SnapshotDetailResult result, @Nullable SnapshotFiles.ExceptionEntry archive) {
         return new Loaded(result, archive, result instanceof SnapshotDetailResult.Ready ready ? SnapshotContents.prepare(ready) : null);
     }
 
@@ -524,7 +523,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 切换数据库快照固定状态, 成功后更新详情头与上级列表.
+     * 切换数据库快照固定状态, 成功后更新详情中的元信息与上级列表.
      * 业务结果报告记录不存在时返回上一级.
      */
     private void pin() {
@@ -630,7 +629,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 删除当前数据库快照或本服异常档案.
+     * 删除当前数据库快照或本服异常快照.
      * 完成后刷新上级并返回, 根详情直接关闭.
      */
     private void delete() {
@@ -671,7 +670,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 展示正文不可用的具体状态, 异常来源仍保留档案头与删除入口.
+     * 展示快照数据不可用的具体状态, 异常来源仍保留异常快照头文件与删除入口.
      *
      * @param result 失败、无效或不存在的详情结果
      */
@@ -763,11 +762,11 @@ public final class SnapshotDetailGui {
     /**
      * 单份详情加载后已准备好的内容.
      *
-     * @param result 正文加载与类型预览结果
-     * @param archive 异常档案头, 数据库来源为 null
-     * @param contents 原始物品源, 正文不可用时为 null
+     * @param result 快照数据加载与类型预览结果
+     * @param archive 异常快照的列表信息, 数据库来源为 null
+     * @param contents 原始物品源, 快照数据不可用时为 null
      */
-    private record Loaded(SnapshotDetailResult result, @Nullable ExceptionArchives.Entry archive, @Nullable SnapshotContents contents) {
+    private record Loaded(SnapshotDetailResult result, @Nullable SnapshotFiles.ExceptionEntry archive, @Nullable SnapshotContents contents) {
     }
 
     /**

@@ -37,20 +37,19 @@ public final class PlayerDataPipeline {
     private SyncLogger logger;
     private DataRegistry dataRegistry;
     private MapSyncService mapSync;
+    private SnapshotDecoder decoder;
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
-        // 运行期组件由插件生命周期创建, onLoad 再接入同一份共享状态
         this.plugin = plugin;
     }
 
-    /** 绑定共享注册表、地图服务与日志出口. */
     public void onLoad() {
         this.dataRegistry = this.plugin.dataRegistry();
+        this.decoder = new SnapshotDecoder(this.dataRegistry);
         this.logger = this.plugin.logger();
         this.mapSync = this.plugin.mapSyncService();
     }
 
-    // 注册完成后冻结槽位, 地图管线和玩家管线共同使用这一份顺序.
     public void onDelayedEnable() {
         this.dataRegistry.freeze();
         StringJoiner activeTypes = new StringJoiner(", ");
@@ -66,7 +65,6 @@ public final class PlayerDataPipeline {
         return this.mapSync.mode();
     }
 
-    /** 返回启动期固定的数据应用顺序. */
     @NotNull
     public List<DataKey> applyOrder() {
         return this.dataRegistry.applyOrder();
@@ -74,8 +72,9 @@ public final class PlayerDataPipeline {
 
     /**
      * 开始一次采集, 创建本次请求独占的槽位缓冲.
-     * SYNC 在玩家线程读取全部类型; OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
+     * SYNC 在玩家线程读取全部类型;
      * ASYNC 表示分阶段采集保存的第一阶段, 本方法仍在玩家线程执行, 只读取不支持在线异步的类型.
+     * OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
      *
      * @param player 本次保存绑定的玩家对象, 第二阶段继续使用同一个对象
      * @param mode 保存场景; ASYNC 不代表本方法已经处于异步线程
@@ -94,8 +93,7 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 在玩家串行线程执行, 补齐分阶段采集保存的串行线程采集组.
-     * 调用方须等第一阶段返回后再投递此方法; 投递后第一阶段不再访问缓冲.
+     * 在玩家串行线程执行采集, 调用方须等第一阶段返回后再投递此方法.
      * 两个阶段顺序写同一数组, 不需要逐类型 Future、缓冲锁或合并另一份采集结果.
      *
      * @param player 第一阶段使用的玩家对象
@@ -146,7 +144,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** 把一次采集的全部值编码为快照 NBT, 可在任意线程调用. */
+    /** 把一次采集的全部值编码为快照 NBT. */
     @NotNull
     public EncodeResult encode(@NotNull CaptureResult.Ready captured) {
         // 输入值与输出 tag 保持槽位对齐
@@ -174,10 +172,17 @@ public final class PlayerDataPipeline {
         return new EncodeResult.Ready(this.dataRegistry, tags, skipped);
     }
 
-    /** 在普通编码完成后处理地图物品, <strong>必须由玩家串行线程发起</strong>; 调用方保留输入快照供暂存. */
+    /**
+     * 在普通编码完成后处理地图物品, <strong>必须由玩家串行线程发起</strong>.
+     * <p>保存请求先持有未处理地图物品的快照, 如果必须停服时则会暂存到本地, 当前 worker 可中断地等待地图结果后继续提交.
+     *
+     * @param snapshot 已完成类型编码的完整正文
+     * @param mode 请求接受时固定的地图模式
+     * @param playerName 请求接受时的玩家名
+     * @return 整批地图发布和物品改写的结果, 逐项失败及关闭回退由地图管线处理
+     */
     @NotNull
     public CompletableFuture<Snapshot> prepareForStorage(@NotNull Snapshot snapshot, @NotNull MapType mode, @NotNull String playerName) {
-        // 从玩家串行线程发起地图采集, Future 只表示后续发布和物品改写完成.
         return this.mapSync.compileAsync(snapshot, mode, playerName);
     }
 
@@ -187,47 +192,37 @@ public final class PlayerDataPipeline {
         return this.mapSync.decodeAsync(snapshot).thenApplyAsync(this::decode, this.plugin.scheduler().async());
     }
 
-    /** 解码快照中全部已装配类型的数据, 可在任意线程调用. */
+    /**
+     * 解码正式加载的类型数据, 将成功值交给玩家应用状态.
+     *
+     * @param snapshot 已完成地图准备的快照
+     * @return 待应用 Context, 或首个关键类型的失败
+     */
     @NotNull
     public DecodeResult decode(@NotNull Snapshot snapshot) {
-        // 已注册数据进入固定槽位, 未安装的类型作为 passthrough 留给下次保存
-        int size = this.dataRegistry.size();
-        Tag[] tags = new Tag[size];
-        Map<DataKey, Tag> passthrough = null;
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
-            int slot = this.dataRegistry.slot(entry.getKey());
-            if (slot < 0) {
-                if (passthrough == null) passthrough = new LinkedHashMap<>();
-                passthrough.put(entry.getKey(), entry.getValue());
-            } else {
-                tags[slot] = entry.getValue();
-            }
-        }
-
-        SnapshotApplyContext context = new SnapshotApplyContext(this.dataRegistry, passthrough == null ? Map.of() : passthrough);
-        int mcDataVersion = snapshot.meta().mcDataVersion();
-        // 解码值直接进入本次应用 Context, 后续登录数据准备和玩家数据应用阶段共享这些槽位
-        for (int i = 0; i < size; i++) {
-            Tag data = tags[i];
-            if (data == null) continue;
+        DecodedSnapshotData decoded = this.decoder.decodeForApply(snapshot);
+        DataKey critical = decoded.criticalFailure();
+        // 注册表顺序也决定非关键失败日志的顺序, 关键失败后的类型尚未执行.
+        for (int i = 0; i < this.dataRegistry.size(); i++) {
             DataKey key = this.dataRegistry.keyAt(i);
-            PlayerDataType<?> type = this.dataRegistry.typeAt(i);
-            try {
-                context.decoded(i, type.decode(data, mcDataVersion));
-            } catch (Throwable throwable) {
-                // 关键类型解码失败时不允许应用这份快照的任何数据
-                if (type.critical()) {
-                    return new DecodeResult.Failed(key, String.valueOf(throwable.getMessage()));
-                }
-                // 槽位保留为可恢复状态, PreApplyEvent 仍可为它补入合法值
-                context.decodeSkipped(i, throwable);
-                this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, throwable, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
+            Throwable failure = decoded.failure(key);
+            if (failure == null) continue;
+            if (key.equals(critical)) {
+                return new DecodeResult.Failed(key, String.valueOf(failure.getMessage()));
             }
+            this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, failure, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
         }
-        return new DecodeResult.Ready(context);
+        return new DecodeResult.Ready(decoded.intoApplyContext());
     }
 
-    /** 在登录拦截阶段把支持写入登录数据源的待应用数据写入对应数据源. */
+    /**
+     * 在登录 Gate 阶段把支持写入登录数据源的待应用数据写入对应数据源.
+     *
+     * @param session 玩家会话
+     * @param playerData 玩家数据, 若本地不存在则为空
+     * @param context 应用数据上下文
+     * @return 最终交给 NMS 加载的数据
+     */
     @NotNull
     public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
         // 本地 .dat 是写入基底, 本地为空时先建立可丢弃的候选根 tag

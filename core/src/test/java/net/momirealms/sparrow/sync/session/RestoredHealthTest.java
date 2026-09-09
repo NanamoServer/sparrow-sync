@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
@@ -74,6 +75,7 @@ class RestoredHealthTest {
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
         PluginLogger logger = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (instance, method, args) -> null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", new SyncLogger(logger));
         return pipeline;

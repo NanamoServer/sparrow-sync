@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.plugin.command.feature;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.session.operation.SnapshotExportResult;
-import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;

@@ -5,7 +5,7 @@ import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import net.momirealms.sparrow.sync.session.operation.*;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -29,7 +30,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import net.momirealms.sparrow.sync.session.operation.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SnapshotManagementTest {

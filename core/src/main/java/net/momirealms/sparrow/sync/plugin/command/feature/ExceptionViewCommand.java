@@ -9,7 +9,7 @@ import net.momirealms.sparrow.sync.plugin.command.CommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
-// 查看本服异常档案, 玩家进入快照菜单, 控制台接收文字详情.
+// 查看本服异常快照, 玩家进入快照菜单, 控制台接收文字详情.
 public final class ExceptionViewCommand extends AbstractSnapshotCommand {
     private static final DateTimeFormatter FULL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault());
 
@@ -41,7 +41,7 @@ public final class ExceptionViewCommand extends AbstractSnapshotCommand {
                         .thenCompose(Window::open), result -> {});
                 return;
             }
-            // 控制台等待档案正文读取完成后输出详情, 读取异常在命令边界记录一次.
+            // 控制台等待异常快照数据读取完成后输出详情, 读取异常在命令边界记录一次.
             this.finish(context, this.plugin().snapshotService().details().loadException(context.get("file")), archive -> {
                 if (archive.result() instanceof SnapshotDetailResult.Failed(Throwable failure)) {
                     this.plugin().logger().warn(TranslationManager.console("log.command.snapshot_failed", this.getFeatureID()), failure);
@@ -58,13 +58,13 @@ public final class ExceptionViewCommand extends AbstractSnapshotCommand {
     }
 
     /**
-     * 向控制台发送异常档案详情与正文读取结果, 所有标识均保留完整文本.
+     * 向控制台发送异常快照详情与快照数据读取结果, 所有标识均保留完整文本.
      *
      * @param sender 通过命令入口进入文字详情的非玩家发送者
-     * @param archive 档案条目及正文读取结果
+     * @param archive 异常快照条目及快照数据读取结果
      */
     private void renderArchive(@NotNull CommandSender sender, @NotNull SnapshotDetailResult.Archive archive) {
-        ExceptionArchives.Entry entry = archive.entry();
+        SnapshotFiles.ExceptionEntry entry = archive.entry();
         SnapshotMeta meta = entry.informationAvailable() ? entry.header().meta() : null;
         Component time = meta == null ? this.tr("unknown_time") : Component.text(FULL_TIME.format(Instant.ofEpochMilli(meta.timestamp())));
         Component player = this.tr("unknown_player");
@@ -72,9 +72,9 @@ public final class ExceptionViewCommand extends AbstractSnapshotCommand {
             String name = entry.header().playerName() == null ? meta.player().toString() : entry.header().playerName();
             player = Component.text(name + " (" + meta.player() + ")");
         }
-        // 档案头与正文的状态分别显示, 即使头损坏也保留完整路径和删除入口.
+        // 分别显示异常快照头文件与异常快照数据的状态, 头文件损坏时仍提供路径和删除入口.
         Component status = this.tr("exception.head_" + entry.headStatus().name().toLowerCase(Locale.ROOT));
-        if (!entry.informationAvailable() && entry.headStatus() == ExceptionArchives.HeadStatus.AVAILABLE) {
+        if (!entry.informationAvailable() && entry.headStatus() == SnapshotFiles.HeadStatus.AVAILABLE) {
             status = this.tr("exception.information_missing");
         }
         status = status.append(Component.space()).append(this.tr(entry.bodyPresent() ? "exception.body_unchecked" : "exception.body_missing"));
@@ -83,7 +83,7 @@ public final class ExceptionViewCommand extends AbstractSnapshotCommand {
         Component panel = this.tr("exception.detail", Component.text(entry.path())).append(Component.newline())
                 .append(this.tr("exception.row", Component.text(entry.path()), time, player, Component.text(entry.category()),
                         meta == null ? this.tr("unknown_server") : Component.text(meta.server()), status, actions));
-        // 这里报告实际正文读取结果, 可读正文使用其自身元数据, 与上方独立读取的档案头区分.
+        // 这里报告实际快照数据读取结果, 可读快照数据使用其自身元数据, 与上方独立读取的异常快照头文件区分.
         Component result = switch (archive.result()) {
             case SnapshotDetailResult.Ready ready -> {
                 SnapshotMeta contents = ready.snapshot().meta();

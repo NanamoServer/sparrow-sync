@@ -11,6 +11,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 
+/**
+ * 跟踪一份已解码快照的 Native、Join 或在线应用进度, 每个请求独占值缓冲.
+ * 解码结果移交后由此处消费和释放值, 未注册类型的 Tag 保留供下次保存.
+ */
 @ApiStatus.Internal
 public final class SnapshotApplyContext {
     private final DataRegistry dataRegistry;       // DataKey 与数据类型槽位的稳定映射
@@ -19,12 +23,20 @@ public final class SnapshotApplyContext {
     private final Map<DataKey, Tag> passthrough;   // 未注册类型原样保留到玩家后续保存
     private List<Failure> failures;                // 首次失败时创建, 按发生顺序记录
 
-    // 在异步线程完成解码和登录数据源写入后, 设置为会话加载结果.
-    SnapshotApplyContext(@NotNull DataRegistry dataRegistry, @NotNull Map<DataKey, Tag> passthrough) {
+    /**
+     * 接管当前请求的解码值, 按槽位建立本次应用进度.
+     *
+     * @param dataRegistry 已冻结的类型布局
+     * @param passthrough 未注册类型的原始数据
+     * @param values 当前请求移交的值缓冲, 后续由本 Context 独占
+     */
+    SnapshotApplyContext(@NotNull DataRegistry dataRegistry, @NotNull Map<DataKey, Tag> passthrough, Object @NotNull [] values) {
         this.dataRegistry = dataRegistry;
-        this.values = new Object[dataRegistry.size()];
-        this.states = new ApplyState[dataRegistry.size()];
-        Arrays.fill(this.states, ApplyState.ABSENT);
+        this.values = values;
+        this.states = new ApplyState[values.length];
+        for (int i = 0; i < values.length; i++) {
+            this.states[i] = values[i] == null ? ApplyState.ABSENT : ApplyState.PENDING;
+        }
         this.passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
     }
 
@@ -119,11 +131,6 @@ public final class SnapshotApplyContext {
     @NotNull
     Object valueAt(int slot) {
         return this.values[slot];
-    }
-
-    void decoded(int slot, @NotNull Object value) {
-        this.values[slot] = value;
-        this.states[slot] = ApplyState.PENDING;
     }
 
     void decodeSkipped(int slot, @NotNull Throwable throwable) {

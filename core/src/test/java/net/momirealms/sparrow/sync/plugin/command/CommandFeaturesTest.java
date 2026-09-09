@@ -7,17 +7,14 @@ import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
-import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotDetails;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.snapshot.page.SnapshotPage;
 import net.momirealms.sparrow.sync.util.ChatTextUtils;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.entity.Player;
-import java.nio.file.Files;
-
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.codec.ByteArrayCodec;
@@ -38,14 +35,12 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.tag.IndexedArgumentTag;
 import net.momirealms.sparrow.sync.plugin.PaperJavaPlugin;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-
 import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotPinCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotUnpinCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotDeleteCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotExportCommand;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
-import java.util.concurrent.Executor;
 import net.momirealms.sparrow.sync.session.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
@@ -53,8 +48,6 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.junit.jupiter.api.io.TempDir;
-import java.nio.file.Path;
-import java.util.Map;
 import net.momirealms.sparrow.sync.plugin.configuration.CommandsConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -83,6 +76,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.nio.file.Files;
+import java.util.concurrent.Executor;
+import java.nio.file.Path;
+import java.util.Map;
 import java.io.StringReader;
 import java.io.IOException;
 import java.time.Instant;
@@ -594,10 +591,10 @@ class CommandFeaturesTest {
     private SnapshotFiles installArchiveService() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
         SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
-        ExceptionArchives archives = new ExceptionArchives(files, Runnable::run);
         SnapshotService service = new SnapshotService(this.plugin);
-        NmsPlayerFixture.set(SnapshotService.class, service, "exceptions", archives);
-        NmsPlayerFixture.set(SnapshotService.class, service, "details", new SnapshotDetails(null, files, archives, new DataRegistry(), Runnable::run));
+        NmsPlayerFixture.set(SnapshotService.class, service, "files", files);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> (Executor) Runnable::run));
+        NmsPlayerFixture.set(SnapshotService.class, service, "details", new SnapshotDetails(null, files, new DataRegistry(), Runnable::run));
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotService", service);
         return files;
     }
@@ -607,8 +604,8 @@ class CommandFeaturesTest {
         this.manager.registerFeature(new ExceptionDeleteCommand(this.manager, this.plugin),
                 new CommandConfig(true, List.of("/archive remove"), "custom.archive"));
         String path = "corrupted/archive with spaces.snapshot";
-        ExceptionArchives.Entry entry = new ExceptionArchives.Entry(path, "corrupted", null, ExceptionArchives.HeadStatus.UNREADABLE, false);
-        this.showExceptions(player(Set.of("custom.archive")), null, new ExceptionArchives.Page(0, 5, 1, 1, List.of(entry)));
+        SnapshotFiles.ExceptionEntry entry = new SnapshotFiles.ExceptionEntry(path, "corrupted", null, SnapshotFiles.HeadStatus.UNREADABLE, false);
+        this.showExceptions(player(Set.of("custom.archive")), null, new SnapshotFiles.ExceptionPage(0, 5, 1, 1, List.of(entry)));
         assertTrue(this.text().contains("Header unreadable"));
         assertTrue(this.text().contains("Body missing"));
         assertTrue(this.text().contains("Unknown player"));
@@ -628,9 +625,9 @@ class CommandFeaturesTest {
         }
     }
 
-    private void showExceptions(CommandSender sender, String player, ExceptionArchives.Page page) {
+    private void showExceptions(CommandSender sender, String player, SnapshotFiles.ExceptionPage page) {
         try {
-            var render = ExceptionListCommand.class.getDeclaredMethod("renderPage", CommandSender.class, String.class, ExceptionArchives.Page.class);
+            var render = ExceptionListCommand.class.getDeclaredMethod("renderPage", CommandSender.class, String.class, SnapshotFiles.ExceptionPage.class);
             render.setAccessible(true);
             render.invoke(new ExceptionListCommand(this.manager, this.plugin), sender, player, page);
         } catch (ReflectiveOperationException failure) {

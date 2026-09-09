@@ -8,7 +8,7 @@ import net.momirealms.sparrow.sync.plugin.command.CommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.page.SnapshotPagination;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-// 查询本服异常档案索引并输出分页文字列表, 支持按玩家筛选.
+// 查询本服异常快照索引并输出分页文字列表, 支持按玩家筛选.
 public final class ExceptionListCommand extends AbstractSnapshotCommand {
     private static final DateTimeFormatter FULL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault());
     private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault());
@@ -49,7 +49,7 @@ public final class ExceptionListCommand extends AbstractSnapshotCommand {
         return "exception_list";
     }
 
-    // 解析异常档案列表的玩家筛选和页码, 然后发起对应查询.
+    // 解析异常快照列表的玩家筛选和页码, 然后发起对应查询.
     private void list(@NotNull CommandContext<CommandSender> context) {
         // 单个数字参数表示页码, 数字玩家名可通过显式追加页码查询.
         String input = context.<String>optional("player").orElse(null);
@@ -71,9 +71,9 @@ public final class ExceptionListCommand extends AbstractSnapshotCommand {
         }
     }
 
-    // 异步读取本服异常档案的当前页并发送列表.
+    // 异步读取本服异常快照的当前页并发送列表.
     private void show(@NotNull CommandContext<CommandSender> context, @Nullable UUID player, @Nullable String name, int page) {
-        this.finish(context, this.plugin().snapshotService().exceptions().load(player, null, page - 1, SnapshotPagination.TEXT_PAGE_SIZE),
+        this.finish(context, this.plugin().snapshotService().listExceptions(player, null, page - 1, SnapshotPagination.TEXT_PAGE_SIZE),
                 result -> this.renderPage(context.sender(), name, result));
     }
 
@@ -84,7 +84,7 @@ public final class ExceptionListCommand extends AbstractSnapshotCommand {
      * @param player 筛选玩家的显示名, 空值表示全部玩家
      * @param page 包含实际页码、总数和当前页记录的查询结果
      */
-    private void renderPage(@NotNull CommandSender sender, @Nullable String player, @NotNull ExceptionArchives.Page page) {
+    private void renderPage(@NotNull CommandSender sender, @Nullable String player, @NotNull SnapshotFiles.ExceptionPage page) {
         Component title = this.tr("exception.title", player == null ? this.tr("all_players") : Component.text(player));
         Component panel = this.tr("header", title, Component.text(page.index() + 1), Component.text(page.count()), Component.text(page.total()));
         int size = page.content().size();
@@ -105,19 +105,19 @@ public final class ExceptionListCommand extends AbstractSnapshotCommand {
     }
 
     /**
-     * 构建异常档案记录, 同时展示档案头状态、正文是否存在和可用操作.
+     * 构建异常快照记录, 展示异常快照头文件状态、异常快照数据是否存在及可用操作.
      *
      * @param sender 接收记录的玩家或控制台
-     * @param entry 本服异常档案索引记录
+     * @param entry 本服异常快照索引记录
      * @return 包含标识、元数据、状态和操作的记录行
      */
     @NotNull
-    private Component exceptionRow(@NotNull CommandSender sender, @NotNull ExceptionArchives.Entry entry) {
+    private Component exceptionRow(@NotNull CommandSender sender, @NotNull SnapshotFiles.ExceptionEntry entry) {
         SnapshotMeta meta = entry.informationAvailable() ? entry.header().meta() : null;
         Component time = meta == null ? this.tr("unknown_time") : Component.text((sender instanceof Player ? SHORT_TIME : FULL_TIME).format(Instant.ofEpochMilli(meta.timestamp())));
         Component player = this.tr("unknown_player");
         Component source = this.tr("unknown_server");
-        // 可读的档案头提供玩家身份与来源服, 缺失的信息仍以占位文本展示.
+        // 可读的异常快照头文件提供玩家身份与来源服, 缺失的信息仍以占位文本展示.
         if (meta != null) {
             String name = entry.header().playerName() == null ? meta.player().toString() : entry.header().playerName();
             player = Component.text(name + " (" + meta.player() + ")");
@@ -130,9 +130,9 @@ public final class ExceptionListCommand extends AbstractSnapshotCommand {
                 source = Component.text(shortName).hoverEvent(Component.text(server)).clickEvent(ClickEvent.copyToClipboard(server));
             }
         }
-        // 列表只读取档案头, 正文存在时标记为待检查, 具体读取结果由查看命令提供.
+        // 列表只读取异常快照头文件, 异常快照数据存在时标记为待检查, 具体读取结果由查看命令提供.
         Component status = this.tr("exception.head_" + entry.headStatus().name().toLowerCase(Locale.ROOT));
-        if (!entry.informationAvailable() && entry.headStatus() == ExceptionArchives.HeadStatus.AVAILABLE) {
+        if (!entry.informationAvailable() && entry.headStatus() == SnapshotFiles.HeadStatus.AVAILABLE) {
             status = this.tr("exception.information_missing");
         }
         status = status.append(Component.space()).append(this.tr(entry.bodyPresent() ? "exception.body_unchecked" : "exception.body_missing"));

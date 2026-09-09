@@ -1,20 +1,22 @@
-package net.momirealms.sparrow.sync.session;
+package net.momirealms.sparrow.sync.snapshot.local;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.MapStorage;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -105,7 +107,7 @@ class SnapshotStashTest {
 
     @Test
     void duplicateOnRestoreStillDeletesTheFile() throws IOException {
-        // 上次其实写进去了只是没等到回执, 幂等重放后文件同样功成身退
+        // 上次写入数据库后未收到回执, 再次插入得到幂等结果后同样删除本地快照文件
         stash.stash(snapshotAt(1_756_300_000_000L), "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.DUPLICATE);
 
@@ -142,6 +144,37 @@ class SnapshotStashTest {
         try (Stream<Path> remaining = Files.list(dataFolder.resolve("pending"))) {
             assertEquals(0, remaining.count());
         }
+    }
+
+    /**
+     * 通过共享文件对象把失败留存、启动拒绝、异常快照查询、快照数据读取及双侧删除连成一次流程.
+     *
+     * @throws IOException 本地文件操作失败
+     */
+    @Test
+    void sharedFilesExposeRejectedReplayForInspectionAndDeletion() throws IOException {
+        SnapshotFiles files = new SnapshotFiles(this.dataFolder, this.codec);
+        SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", new SyncLogger(new QuietLogger()));
+        SnapshotStash stash = new SnapshotStash(plugin);
+        stash.onLoad(files);
+        Snapshot snapshot = snapshotAt(1_756_300_000_000L);
+
+        stash.stash(snapshot, "Steve", StorageProvider.SaveResult.RETRY_LATER);
+        assertEquals(2, files.pendingEntries().size());
+        RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.REJECTED_OVERSIZED);
+        stash.restorePending(storage);
+
+        assertEquals(List.of(snapshot.meta().id()), storage.savedIds());
+        assertTrue(files.pendingEntries().isEmpty());
+        SnapshotFiles.ExceptionPage page = files.listExceptions(PLAYER, "oversized", 0, 5);
+        assertEquals(1, page.total());
+        SnapshotFiles.ExceptionEntry entry = page.content().getFirst();
+        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), entry.header());
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, files.readException(entry.path())).snapshot());
+        assertTrue(files.deleteException(entry.path()));
+        assertTrue(files.listExceptions(null, null, 0, 5).content().isEmpty());
+        assertTrue(listFiles(files.exceptions().resolve("oversized")).isEmpty());
     }
 
     @Test

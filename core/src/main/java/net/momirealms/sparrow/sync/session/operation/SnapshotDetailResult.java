@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.session.operation;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -23,7 +23,7 @@ public sealed interface SnapshotDetailResult {
     record Failed(@NotNull Throwable failure) implements SnapshotDetailResult {
     }
 
-    record Archive(@NotNull ExceptionArchives.Entry entry, @NotNull SnapshotDetailResult result) {
+    record Archive(@NotNull SnapshotFiles.ExceptionEntry entry, @NotNull SnapshotDetailResult result) {
     }
 
     sealed interface Preview {

@@ -101,9 +101,9 @@ class SnapshotPreparationTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "mapSyncService", maps);
         PlayerDataPipeline pipeline = new PlayerDataPipeline(plugin);
         pipeline.onLoad();
-        SnapshotService service = new SnapshotService(plugin);
-        NmsPlayerFixture.set(SnapshotService.class, service, "logger", logger);
-        NmsPlayerFixture.set(SnapshotService.class, service, "playerDataPipeline", pipeline);
+        SnapshotApplier service = new SnapshotApplier(plugin);
+        NmsPlayerFixture.set(SnapshotApplier.class, service, "logger", logger);
+        NmsPlayerFixture.set(SnapshotApplier.class, service, "playerDataPipeline", pipeline);
         CompoundTag origin = NBT.createCompound();
         origin.putString("map-type", "SYNC");
         origin.putString("origin-server", "remote");
@@ -121,7 +121,7 @@ class SnapshotPreparationTest {
         CompoundTag inventory = NBT.createCompound();
         inventory.put("items", items);
         Snapshot original = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.COMMAND, false, "remote", 0), Map.of(InventoryDataType.INVENTORY, inventory));
-        Method prepare = SnapshotService.class.getDeclaredMethod("prepareSnapshot", Snapshot.class, String.class);
+        Method prepare = SnapshotApplier.class.getDeclaredMethod("prepareSnapshot", Snapshot.class, String.class);
         prepare.setAccessible(true);
         CompletableFuture<?> result = (CompletableFuture<?>) prepare.invoke(service, original, "Steve");
         assertFalse(result.isDone());

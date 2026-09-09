@@ -1,22 +1,25 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.sync.exception.FormatException;
-import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult.Preview;
+import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.data.DecodedSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.NoSuchFileException;
@@ -28,23 +31,29 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
+// 负责读取并整理一份快照详情用于GUI展示
 @ApiStatus.Internal
 public final class SnapshotDetails {
     private final StorageProvider storage;
     private final SnapshotFiles files;
-    private final ExceptionArchives archives;
     private final DataRegistry registry;
+    private final SnapshotDecoder decoder;
     private final Executor executor;
 
-    public SnapshotDetails(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull ExceptionArchives archives, @NotNull DataRegistry registry, @NotNull Executor executor) {
+    public SnapshotDetails(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull DataRegistry registry, @NotNull Executor executor) {
         this.storage = storage;
         this.files = files;
-        this.archives = archives;
         this.registry = registry;
+        this.decoder = new SnapshotDecoder(registry);
         this.executor = executor;
     }
 
-    // 按明确 ID 读取一份, 预览解码始终投递异步执行器, 不触发玩家应用管线.
+    /**
+     * 异步读取明确 ID 的快照, 并仅解码详情支持的类型.
+     *
+     * @param id 明确选定的快照 ID
+     * @return 单份快照数据与预览状态
+     */
     @NotNull
     public CompletableFuture<SnapshotDetailResult> load(@NotNull UUID id) {
         return this.storage.snapshot(id).handleAsync((snapshot, failure) -> {
@@ -53,12 +62,17 @@ public final class SnapshotDetails {
         }, this.executor);
     }
 
-    // 档案头随详情结果返回, 正文缺失或解码失败时仍可展示已确认的元信息.
+    /**
+     * 读取异常快照头文件和异常快照数据, 数据读取失败时仍返回头文件中的元信息.
+     *
+     * @param path 选定异常快照的相对路径
+     * @return 包含异常快照元信息和异常快照数据读取状态的详情
+     */
     @NotNull
     public CompletableFuture<SnapshotDetailResult.Archive> loadException(@NotNull String path) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                ExceptionArchives.Entry entry = this.archives.entry(path);
+                SnapshotFiles.ExceptionEntry entry = this.files.exceptionEntry(path);
                 SnapshotDetailResult result;
                 try {
                     result = switch (this.files.readException(path)) {
@@ -75,28 +89,35 @@ public final class SnapshotDetails {
         }, this.executor);
     }
 
-    // 每类预览独立解码, 一类损坏仍可查看其他内容; 未适配类型保留在原快照中.
-    private SnapshotDetailResult.Ready prepare(Snapshot snapshot) {
+    // 将选择性解码结果组合为详情, 原快照继续保存全部类型的 Tag.
+    @NotNull
+    private SnapshotDetailResult.Ready prepare(@NotNull Snapshot snapshot) {
+        DecodedSnapshotData decoded = this.decoder.decodeSelected(snapshot, SnapshotDetails::supportsPreview);
         Map<DataKey, Preview> previews = new LinkedHashMap<>();
         for (var entry : snapshot.data().entrySet()) {
             PlayerDataType<?> type = this.registry.type(entry.getKey());
-            if (!(type instanceof InventoryDataType || type instanceof EnderChestDataType
-                    || type instanceof ExperienceDataType || type instanceof HealthDataType
-                    || type instanceof HungerDataType || type instanceof GameModeDataType || type instanceof EnchantmentSeedDataType
-                    || type instanceof LocationDataType)) {
+            if (!supportsPreview(type)) {
                 previews.put(entry.getKey(), new Preview.Unsupported(type != null));
                 continue;
             }
-            try {
-                previews.put(entry.getKey(), new Preview.Ready(type.decode(entry.getValue(), snapshot.meta().mcDataVersion())));
-            } catch (IOException | RuntimeException failure) {
-                previews.put(entry.getKey(), new Preview.Failed(String.valueOf(failure.getMessage())));
-            }
+            Throwable failure = decoded.failure(entry.getKey());
+            previews.put(entry.getKey(), failure == null
+                    ? new Preview.Ready(decoded.value(entry.getKey())) : new Preview.Failed(String.valueOf(failure.getMessage())));
         }
         return new SnapshotDetailResult.Ready(snapshot, Collections.unmodifiableMap(previews));
     }
 
-    private SnapshotDetailResult failure(Throwable failure) {
+    // 声明当前详情展示已经适配的类型, 本服未注册类型保持未适配状态.
+    private static boolean supportsPreview(@Nullable PlayerDataType<?> type) {
+        return type instanceof InventoryDataType || type instanceof EnderChestDataType
+                || type instanceof ExperienceDataType || type instanceof HealthDataType
+                || type instanceof HungerDataType || type instanceof GameModeDataType
+                || type instanceof EnchantmentSeedDataType || type instanceof LocationDataType;
+    }
+
+    // 将读取错误转换为详情状态, 保留格式错误的结构化原因.
+    @NotNull
+    private SnapshotDetailResult failure(@NotNull Throwable failure) {
         while (failure instanceof CompletionException && failure.getCause() != null) {
             failure = failure.getCause();
         }

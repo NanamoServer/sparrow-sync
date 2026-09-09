@@ -32,6 +32,7 @@ import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -201,6 +202,7 @@ class NmsCaptureTest {
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
         PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", new SyncLogger(console));
         PlayerDataPipeline.CaptureResult.Pending pending = assertInstanceOf(PlayerDataPipeline.CaptureResult.Pending.class, pipeline.capture(this.player, CaptureMode.ASYNC));

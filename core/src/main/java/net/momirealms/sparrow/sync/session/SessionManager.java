@@ -4,7 +4,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
-import net.momirealms.sparrow.sync.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -243,7 +242,7 @@ public final class SessionManager {
         Location location = player.getLocation();
         this.plugin.scheduler().sync().runLater(() -> {
             if (action == CloseAction.SAVE_ACCEPTED) {
-                this.closeAfterSave(session, this.snapshotService.captureOfflineAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
+                this.closeAfterSave(session, this.snapshotService.captureLogoutAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
             } else {
                 this.releaseSession(session);
             }

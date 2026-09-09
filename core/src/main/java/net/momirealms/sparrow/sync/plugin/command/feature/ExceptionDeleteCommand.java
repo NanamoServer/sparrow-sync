@@ -6,7 +6,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.Command;

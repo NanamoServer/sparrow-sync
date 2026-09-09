@@ -11,8 +11,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.CompletionStage;
 
 /**
- * 快照完成编码、提交存储前在串行线程派发. 取消后, 这份快照不会提交落库.
- * <p><strong>处理本事件期间不得阻塞等待 {@link #completion()}.</strong>
+ * 快照完成编码与地图准备后、提交存储前在玩家串行线程派发.
+ * 监听器返回后确认的取消会结束保存请求, 停服超时已先取得收尾权时, 完整快照可能已决定暂存, 此时迟到的取消事件不会撤销保存.
  */
 public final class SnapshotSaveEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
@@ -51,8 +51,8 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
     }
 
     /**
-     * 返回本次保存的完成阶段.
-     * 保存操作会在全部监听器返回后继续.
+     * 返回本次保存的最终完成结果, 表示“这次保存请求已经有最终结果”, 不表示“数据库已经完成保存”.
+     * <p><strong>处理本事件期间不得阻塞等待 {@link #completion()}.</strong>
      *
      * @return 只读的保存完成阶段
      */

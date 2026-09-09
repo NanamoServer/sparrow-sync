@@ -18,8 +18,8 @@ import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -174,7 +174,7 @@ class SnapshotDetailsTest {
         }
         Files.writeString(body.resolveSibling("unselected.snapshot"), "corrupt");
         var result = this.details(Runnable::run).loadException("malformed/" + body.getFileName()).join();
-        assertEquals(ExceptionArchives.HeadStatus.MISSING, result.entry().headStatus());
+        assertEquals(SnapshotFiles.HeadStatus.MISSING, result.entry().headStatus());
         assertEquals(snapshot, assertInstanceOf(SnapshotDetailResult.Ready.class, result.result()).snapshot());
         assertTrue(this.reads.isEmpty());
     }
@@ -204,6 +204,7 @@ class SnapshotDetailsTest {
     }
 
     private SnapshotDetails details(Executor executor) {
+        this.registry.freeze();
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (instance, method, args) -> {
             assertEquals("snapshot", method.getName());
             UUID id = (UUID) args[0];
@@ -211,7 +212,7 @@ class SnapshotDetailsTest {
             return this.reader.apply(id);
         });
         SnapshotFiles files = new SnapshotFiles(this.directory, this.binary);
-        return new SnapshotDetails(storage, files, new ExceptionArchives(files, executor), this.registry, executor);
+        return new SnapshotDetails(storage, files, this.registry, executor);
     }
 
     private Snapshot snapshot(Map<DataKey, Tag> data) {

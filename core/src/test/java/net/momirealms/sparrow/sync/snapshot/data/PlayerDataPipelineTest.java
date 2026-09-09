@@ -366,6 +366,7 @@ class PlayerDataPipelineTest {
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         setField(pipeline, "dataRegistry", registry);
+        setField(pipeline, "decoder", new SnapshotDecoder(registry));
         setField(pipeline, "logger", this.logger);
         return pipeline;
     }

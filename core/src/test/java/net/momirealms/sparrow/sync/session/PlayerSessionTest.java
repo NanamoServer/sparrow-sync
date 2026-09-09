@@ -234,9 +234,9 @@ class PlayerSessionTest {
 
     private static SnapshotApplyContext newApplyContext(DataRegistry registry, Map<DataKey, Tag> passthrough) {
         try {
-            Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, Map.class);
+            Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, Map.class, Object[].class);
             constructor.setAccessible(true);
-            return constructor.newInstance(registry, passthrough);
+            return constructor.newInstance(registry, passthrough, new Object[registry.size()]);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

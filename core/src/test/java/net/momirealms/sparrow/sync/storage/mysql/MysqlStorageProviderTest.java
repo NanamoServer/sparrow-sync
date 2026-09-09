@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.storage.mysql;
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
 import net.momirealms.sparrow.sync.exception.FormatException;
-
 import com.mysql.cj.conf.PropertyKey;
 import com.mysql.cj.jdbc.JdbcConnection;
 import com.zaxxer.hikari.HikariDataSource;
@@ -15,7 +14,7 @@ import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
-import net.momirealms.sparrow.sync.session.SnapshotStash;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
