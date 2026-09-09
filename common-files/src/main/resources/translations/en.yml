@@ -96,6 +96,7 @@ command.connected: '<color:#C9F2C7>Connected</color>'
 command.disconnected: '<color:#FFB6CB>Disconnected</color>'
 command.pinned: '<color:#FFE08A>※ Pinned</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Player not found: </color><color:#F2F4FF><arg:0></color>'
+command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No data was found for this player. They may never have joined this server.</color>'
 command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Query failed. Check the console log.</color>'
 command.unpinned: '<color:#C8E4E9>Unpinned</color>'
 

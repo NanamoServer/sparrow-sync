@@ -6,6 +6,7 @@ import net.kyori.adventure.text.TranslatableComponent;
 public interface MessageConstants {
     TranslatableComponent.Builder COMMAND_QUERY_FAILED = Component.translatable().key("command.query_failed");
     TranslatableComponent.Builder COMMAND_PLAYER_NOT_FOUND = Component.translatable().key("command.player_not_found");
+    TranslatableComponent.Builder COMMAND_GUI_PLAYER_NOT_FOUND = Component.translatable().key("command.gui.player_not_found");
     TranslatableComponent.Builder COMMAND_STATUS_SYSTEM = Component.translatable().key("command.status.system");
     TranslatableComponent.Builder COMMAND_CONNECTED = Component.translatable().key("command.connected");
     TranslatableComponent.Builder COMMAND_DISCONNECTED = Component.translatable().key("command.disconnected");

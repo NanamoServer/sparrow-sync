@@ -313,7 +313,7 @@ class CommandFeaturesTest {
             assertTrue(key.startsWith("ss:user-name:"));
             assertEquals(name, new String(HexFormat.of().parseHex(key.substring("ss:user-name:".length())), StandardCharsets.UTF_8));
             AsyncCommand<byte[], byte[], byte[]> response = new AsyncCommand<>(new Command<>(CommandType.GET, new ByteArrayOutput<>(ByteArrayCodec.INSTANCE)));
-            response.complete(UUIDUtils.toBytes(uuid));
+            response.complete(uuid == null ? null : UUIDUtils.toBytes(uuid));
             return response;
         });
         StatefulRedisConnection<byte[], byte[]> connection = proxy(StatefulRedisConnection.class, (instance, method, args) -> {
@@ -563,6 +563,7 @@ class CommandFeaturesTest {
 
     @Test
     void guiCommandsRequirePlayerAndViewPermissionAndPreserveSnapshotId() throws Exception {
+        this.redisPlayerName(UUID.randomUUID(), "TestPlayer");
         AtomicInteger scheduled = this.installGuiScheduler();
         this.manager.registerFeature(new GuiCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("gui"));
         this.manager.registerFeature(new SnapshotViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("snapshot_view"));
@@ -578,6 +579,48 @@ class CommandFeaturesTest {
         SnapshotMeta meta = new SnapshotMeta(UUID.fromString("12345678-1234-1234-1234-123456789abc"), UUID.randomUUID(), 1, SaveCause.COMMAND, false, "server", 1);
         this.showSnapshots(allowed, new PlayerIdentity(meta.player(), "TestPlayer"), new SnapshotPage(0, 7, 1, List.of(meta)));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot view TestPlayer " + meta.id())));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "zh_cn"})
+    void guiWaitsForPlayerLookupAndReportsMissingDataWithoutOpeningMenu(String language) throws Exception {
+        this.manager.locale = language.equals("zh_cn") ? Locale.SIMPLIFIED_CHINESE : Locale.ENGLISH;
+        this.redisPlayerName(null, "UnknownPlayer");
+        CompletableFuture<Optional<UUID>> lookup = new CompletableFuture<>();
+        StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
+            assertEquals("lookupUser", method.getName());
+            assertEquals("UnknownPlayer", args[0]);
+            return lookup;
+        });
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
+        AtomicInteger scheduled = this.installGuiScheduler();
+        this.manager.registerFeature(new GuiCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("gui"));
+
+        this.execute(player(Set.of("sparrow_sync.command.view")), "sparrow-sync gui UnknownPlayer");
+        assertEquals(0, scheduled.get());
+        assertTrue(this.messages.isEmpty());
+        lookup.complete(Optional.empty());
+
+        assertEquals(0, scheduled.get());
+        assertEquals(1, this.messages.size());
+        assertTrue(this.text().contains(language.equals("zh_cn")
+                ? "未找到该玩家的数据，它可能从未登录过本服务器。"
+                : "No data was found for this player. They may never have joined this server."));
+    }
+
+    @Test
+    void guiReportsLookupFailureWithoutOpeningMenu() throws Exception {
+        this.redisPlayerName(null, "TestPlayer");
+        StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> CompletableFuture.failedFuture(new IllegalStateException("database offline")));
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "storageProvider", storage);
+        AtomicInteger scheduled = this.installGuiScheduler();
+        this.manager.registerFeature(new GuiCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("gui"));
+
+        this.execute(player(Set.of("sparrow_sync.command.view")), "sparrow-sync gui TestPlayer");
+
+        assertEquals(0, scheduled.get());
+        assertEquals(1, this.messages.size());
+        assertTrue(this.text().contains("Query failed"));
     }
 
     private AtomicInteger installGuiScheduler() {

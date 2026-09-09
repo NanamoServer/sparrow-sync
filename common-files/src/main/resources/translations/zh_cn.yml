@@ -96,6 +96,7 @@ command.connected: '<color:#C9F2C7>已连接</color>'
 command.disconnected: '<color:#FFB6CB>未连接</color>'
 command.pinned: '<color:#FFE08A>※ 已固定</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家 </color><color:#F2F4FF><arg:0></color>'
+command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到该玩家的数据，它可能从未登录过本服务器。</color>'
 command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>查询失败，请查看控制台日志</color>'
 command.unpinned: '<color:#C8E4E9>未固定</color>'
 
