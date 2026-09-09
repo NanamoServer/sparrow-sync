@@ -165,7 +165,7 @@ class SnapshotDetailsTest {
     @EnumSource(SnapshotFiles.Format.class)
     void archiveDetailsReadOnlySelectedBodyWithoutRequiringAHeader(SnapshotFiles.Format format) throws Exception {
         Snapshot snapshot = this.snapshot(Map.of(DataKey.of("unknown", "data"), NBT.createString("retained")));
-        Path body = this.directory.resolve("exception/malformed/selected" + (format == SnapshotFiles.Format.JSON ? ".json" : ".snapshot"));
+        Path body = this.directory.resolve("snapshot/exception/malformed/selected" + (format == SnapshotFiles.Format.JSON ? ".json" : ".snapshot"));
         Files.createDirectories(body.getParent());
         if (format == SnapshotFiles.Format.JSON) {
             Files.writeString(body, new JsonSnapshotCodec().encode(snapshot));
@@ -182,7 +182,7 @@ class SnapshotDetailsTest {
     @Test
     void invalidAndMissingArchiveBodiesKeepTheirHeader() throws Exception {
         Snapshot snapshot = this.snapshot(Map.of());
-        Path body = this.directory.resolve("exception/corrupted/selected.snapshot");
+        Path body = this.directory.resolve("snapshot/exception/corrupted/selected.snapshot");
         Files.createDirectories(body.getParent());
         Files.writeString(body, "broken");
         ExceptionHeader header = new ExceptionHeader(snapshot.meta(), "Steve");

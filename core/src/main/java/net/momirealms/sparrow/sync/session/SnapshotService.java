@@ -182,12 +182,11 @@ public final class SnapshotService {
      *
      * @param snapshotId 明确选定的快照 ID
      * @param format 导出文件格式
-     * @param playerSender 是否使用玩家专用输出目录
      * @return 导出的快照 ID 与路径, 或不存在结果
      */
     @NotNull
-    public CompletableFuture<SnapshotExportResult> export(@NotNull UUID snapshotId, @NotNull SnapshotFiles.Format format, boolean playerSender) {
-        return this.transfer.export(snapshotId, format, playerSender);
+    public CompletableFuture<SnapshotExportResult> export(@NotNull UUID snapshotId, @NotNull SnapshotFiles.Format format) {
+        return this.transfer.export(snapshotId, format);
     }
 
     /**

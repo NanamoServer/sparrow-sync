@@ -317,7 +317,7 @@ class CaptureSchedulingTest {
             assertInstanceOf(SnapshotSaveResult.Settled.class, first.get(2, TimeUnit.SECONDS));
             assertInstanceOf(java.util.concurrent.TimeoutException.class, assertThrows(ExecutionException.class, () -> second.get(2, TimeUnit.SECONDS)).getCause());
             assertTrue(this.service.sealAndAwaitSaves(0, TimeUnit.NANOSECONDS));
-            try (var files = Files.list(this.directory.resolve("pending"))) {
+            try (var files = Files.list(this.directory.resolve("snapshot/pending"))) {
                 List<Path> allFiles = files.toList();
                 List<Path> pending = allFiles.stream().filter(path -> path.toString().endsWith(".snapshot")).sorted().toList();
                 assertEquals(2, allFiles.size());
@@ -362,7 +362,7 @@ class CaptureSchedulingTest {
         if (outcome.equals("chainFailure")) {
             assertThrows(ExecutionException.class, () -> first.get(2, TimeUnit.SECONDS));
             this.service.stashUnsettled();
-            assertFalse(Files.exists(this.directory.resolve("pending")), "地图整体异常不得在关服时补写");
+            assertFalse(Files.exists(this.directory.resolve("snapshot/pending")), "地图整体异常不得在关服时补写");
         }
         assertEquals(expected, this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
     }
@@ -582,7 +582,7 @@ class CaptureSchedulingTest {
         }
         assertTrue(this.written.isEmpty());
         this.service.stashUnsettled();
-        assertFalse(Files.exists(this.directory.resolve("pending")));
+        assertFalse(Files.exists(this.directory.resolve("snapshot/pending")));
     }
 
     /**
@@ -676,7 +676,7 @@ class CaptureSchedulingTest {
         this.service.stashUnsettled();
         assertTrue(this.written.isEmpty());
         assertTrue(this.events.getFirst().isCancelled());
-        try (var paths = Files.list(this.directory.resolve("pending"))) {
+        try (var paths = Files.list(this.directory.resolve("snapshot/pending"))) {
             assertEquals(2, paths.count(), "迟到取消不得撤回或重复发布正文与头");
         }
     }

@@ -275,7 +275,7 @@ class SnapshotSaveLifecycleTest {
         assertEquals(result.stored() ? 0 : 1, this.bodies().size());
         if (!result.stored()) {
             String path = this.directory.relativize(this.bodies().getFirst()).toString().replace('\\', '/');
-            assertTrue(path.startsWith(result.retriable() ? "pending/" : "exception/"));
+            assertTrue(path.startsWith(result.retriable() ? "snapshot/pending/" : "snapshot/exception/"));
         }
     }
 
@@ -404,7 +404,8 @@ class SnapshotSaveLifecycleTest {
      */
     @Test
     void failedStashIsReportedBeforeFinalCompletion() throws Exception {
-        Files.writeString(this.directory.resolve("pending"), "not a directory");
+        Files.createDirectories(this.directory.resolve("snapshot"));
+        Files.writeString(this.directory.resolve("snapshot/pending"), "not a directory");
         SaveRequest request = this.accept(true);
         this.writer.stashUnsettled();
         assertEquals(SaveResult.RETRY_LATER, assertInstanceOf(SnapshotSaveResult.Settled.class, request.completion().join()).result());

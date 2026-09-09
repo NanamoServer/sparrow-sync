@@ -764,7 +764,7 @@ class MysqlStorageProviderTest {
         stash.restorePending(provider);
         assertEquals(latest, provider.latestSnapshot(player).join().orElseThrow());
         assertEquals(List.of(latest.meta(), old.meta()), provider.listSnapshots(player).join());
-        try (var files = Files.list(this.stashDirectory.resolve("pending"))) {
+        try (var files = Files.list(this.stashDirectory.resolve("snapshot/pending"))) {
             assertEquals(0, files.count());
         }
     }

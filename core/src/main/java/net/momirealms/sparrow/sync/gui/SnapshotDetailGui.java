@@ -79,7 +79,8 @@ public final class SnapshotDetailGui {
     private final @Nullable String archivePath;   // 本服异常快照相对路径, 数据库来源为 null
     private final @Nullable Runnable refreshParent; // 管理完成后的上级刷新动作, 根窗口为 null
     private final Pane inventoryPane = Pane.empty(9, 5); // 主背包、快捷栏与装备区域
-    private final Pane enderPane = Pane.empty(9, 5);     // 末影箱固定 27 格内容区域
+    private final Pane enderPane = Pane.empty(9, 5);     // 末影箱每页 36 格
+    private int enderPage;
     private final Tab<Boolean> tabs = Tab.of(Map.of(false, this.inventoryPane, true, this.enderPane), false); // false 为背包, true 为末影箱
     private final Pane statusPane = Pane.empty(9, 5); // 加载与失败状态的内容区
     private final MutableSignal<Boolean> showingContents = Signal.of(false); // 是否展示已加载的容器
@@ -152,7 +153,7 @@ public final class SnapshotDetailGui {
 
     /**
      * 在快照加载后建立容器的固定槽位映射, 后续 Tab 切换复用此 Pane.
-     * 背包使用 27 格主背包、9 格快捷栏和底行装备副手; 末影箱使用前 27 格.
+     * 背包使用 27 格主背包、9 格快捷栏和底行装备副手; 末影箱每页显示 36 格, 翻页复用完整容器.
      *
      * @param inventory 本次打开的容器副本
      * @param ender 是否建立末影箱布局
@@ -161,7 +162,7 @@ public final class SnapshotDetailGui {
         Pane body = ender ? this.enderPane : this.inventoryPane;
         body.fill(Item.empty());
         // 主背包和快捷栏按原版顺序映射, 坐骑等额外槽位不参与展示.
-        List<Integer> mapping = SnapshotContents.slots(inventory.size(), ender);
+        List<Integer> mapping = SnapshotContents.slots(inventory.size(), ender, ender ? this.enderPage : 0);
         for (int i = 0; i < mapping.size(); i++) {
             if (mapping.get(i) >= 0) {
                 body.setElement(i, Element.inventory(inventory, mapping.get(i)));
@@ -180,6 +181,18 @@ public final class SnapshotDetailGui {
         }
         if (ender) {
             body.setItem(36, this.buildCapacityInfo());
+            int pages = Math.max(1, (inventory.size() + 35) / 36);
+            if (pages > 1) {
+                body.setItem(37, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.previous")).addClickHandler(click -> {
+                    this.enderPage = Math.max(0, this.enderPage - 1);
+                    this.buildContent(this.enderChest, true);
+                }).build());
+                body.setItem(38, Item.simple(this.icon(Material.PAPER, this.text("info.page", this.enderPage + 1, pages), false, List.of())));
+                body.setItem(39, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.next")).addClickHandler(click -> {
+                    this.enderPage = Math.min(pages - 1, this.enderPage + 1);
+                    this.buildContent(this.enderChest, true);
+                }).build());
+            }
         }
     }
 
@@ -446,7 +459,8 @@ public final class SnapshotDetailGui {
                         this.meta.set(value.snapshot().meta());
                         this.player = resolved.player() == null ? new PlayerIdentity(this.meta.get().player(), this.meta.get().player().toString()) : resolved.player();
                         this.inventory = this.createInventory(Arrays.copyOf(this.contents.inventory(), Math.min(this.contents.inventory().length, 41)));
-                        this.enderChest = this.createInventory(Arrays.copyOf(this.contents.enderChest(), Math.min(this.contents.enderChest().length, 27)));
+                        this.enderChest = this.createInventory(this.contents.enderChest().clone());
+                        this.enderPage = 0;
                         this.buildContent(this.inventory, false);
                         this.buildContent(this.enderChest, true);
                         this.tabs.select(false);
@@ -473,7 +487,7 @@ public final class SnapshotDetailGui {
      * 根据本次读取的快照建立可编辑副本, 点击与物品事务均检查当前编辑权限.
      * 权限监听随容器存活.
      *
-     * @param items 已裁剪到展示槽位范围的原始物品
+     * @param items 本次展示的独立物品数组
      * @return 拥有独立内容的临时容器
      */
     private VirtualInventory createInventory(ItemStack[] items) {
@@ -547,7 +561,7 @@ public final class SnapshotDetailGui {
      * @param format JSON 或二进制输出格式
      */
     private void export(SnapshotFiles.Format format) {
-        this.operation(() -> this.plugin.snapshotService().export(this.meta.get().id(), format, true), result -> {
+        this.operation(() -> this.plugin.snapshotService().export(this.meta.get().id(), format), result -> {
             switch (result) {
                 case SnapshotExportResult.Exported exported -> this.message("exported", exported.path());
                 case SnapshotExportResult.NotFound ignored -> this.removed();

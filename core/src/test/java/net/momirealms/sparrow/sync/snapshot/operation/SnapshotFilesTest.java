@@ -34,29 +34,29 @@ class SnapshotFilesTest {
 
     @ParameterizedTest
     @EnumSource(SnapshotFiles.Format.class)
-    void exportsBothFormatsToSenderDirectoriesAndOverwritesSameId(SnapshotFiles.Format format) throws Exception {
+    void exportsBothFormatsToSharedOutputAndOverwritesSameId(SnapshotFiles.Format format) throws Exception {
         SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
         Snapshot original = snapshot(UUID.randomUUID());
-        String console = files.export(original, format, false);
-        assertTrue(console.startsWith("snapshot/" + original.meta().player() + "/"));
-        String player = files.export(original, format, true);
-        assertTrue(player.startsWith("snapshot/output/" + original.meta().player() + "/" + original.meta().id() + "."));
-        assertEquals(original, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(player.substring("snapshot/".length()))).snapshot());
+        String output = files.export(original, format);
+        assertTrue(output.startsWith("snapshot/output/" + original.meta().player() + "/" + original.meta().id() + "."));
+        assertEquals(original, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(output.substring("snapshot/output/".length()))).snapshot());
         Snapshot updated = new Snapshot(original.meta().withPinned(false), original.data());
-        assertEquals(player, files.export(updated, format, true));
-        assertEquals(updated, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(player.substring("snapshot/".length()))).snapshot());
-        assertEquals(original, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(console.substring("snapshot/".length()))).snapshot());
+        assertEquals(output, files.export(updated, format));
+        assertEquals(updated, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(output.substring("snapshot/output/".length()))).snapshot());
     }
 
     @Test
     void invalidPathsAndUnsupportedSuffixesAreRefused() throws Exception {
         SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
-        Path nested = this.directory.resolve("snapshot/nested/folder with spaces");
+        Path nested = this.directory.resolve("snapshot/output/nested/folder with spaces");
         Files.createDirectories(nested);
         Files.writeString(nested.resolve("one.json"), "invalid");
         Files.writeString(nested.resolve("two.snapshot"), "invalid");
         Files.writeString(nested.resolve("ignore.yml"), "config");
         assertThrows(IOException.class, () -> files.read("../config.yml"));
+        assertThrows(IOException.class, () -> files.read("../pending/one.snapshot"));
+        assertThrows(IOException.class, () -> files.read("../exception/one.snapshot"));
+        assertThrows(IOException.class, () -> files.read("backup.zip"));
         assertThrows(IOException.class, () -> files.read("nested/folder with spaces/ignore.yml"));
         assertThrows(IOException.class, () -> files.read("missing.json"));
     }
@@ -64,7 +64,7 @@ class SnapshotFilesTest {
     @Test
     void exceptionDeletionDoesNotNeedToDecodeTheBody() throws Exception {
         SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
-        Path file = this.directory.resolve("exception/corrupted/broken.snapshot");
+        Path file = this.directory.resolve("snapshot/exception/corrupted/broken.snapshot");
         Files.createDirectories(file.getParent());
         Files.writeString(file, "broken body");
         assertTrue(files.deleteException("corrupted/broken.snapshot"));

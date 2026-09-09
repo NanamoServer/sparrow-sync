@@ -41,8 +41,8 @@ class SnapshotFileSuggestionsTest {
                 ? new ExceptionDeleteCommand(null, plugin)::suggestions
                 : new SnapshotImportCommand(null, plugin)::suggestions;
         assertTrue(suggest.apply("").isEmpty());
-        Path selected = exceptions ? files.exceptions() : files.directory();
-        Path other = exceptions ? files.directory() : files.exceptions();
+        Path selected = exceptions ? files.exceptions() : files.output();
+        Path other = exceptions ? files.output() : files.exceptions();
         Files.createDirectories(other);
         Files.writeString(other.resolve("outside.json"), "other directory");
         Path nested = selected.resolve("nested/folder with spaces");

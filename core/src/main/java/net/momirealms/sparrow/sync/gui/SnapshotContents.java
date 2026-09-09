@@ -47,10 +47,10 @@ record SnapshotContents(ItemStack[] inventory, ItemStack[] enderChest, boolean i
         }
     }
 
-    static List<Integer> slots(int size, boolean enderChest) {
+    static List<Integer> slots(int size, boolean enderChest, int page) {
         List<Integer> slots = new ArrayList<>();
         if (enderChest) {
-            for (int i = 0; i < Math.min(size, 27); i++) {
+            for (int i = page * 36; i < Math.min(size, (page + 1) * 36); i++) {
                 slots.add(i);
             }
         } else {

@@ -22,15 +22,17 @@ import java.util.stream.Stream;
 public final class SnapshotFiles {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS").withZone(ZoneId.systemDefault());
 
-    private final Path directory; // 普通快照的导入与导出根目录
+    private final Path directory; // 所有本地快照的根目录
+    private final Path output; // 单份快照的导入与导出目录
     private final Path pending;   // 本地待重试的快照目录
     private final Path exceptions; // 本服异常快照目录
     private final BinarySnapshotCodec binaryCodec; // 共享插件配置的二进制帧编解码器
 
     public SnapshotFiles(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec binaryCodec) {
         this.directory = dataFolder.resolve("snapshot").toAbsolutePath().normalize();
-        this.pending = dataFolder.resolve("pending").toAbsolutePath().normalize();
-        this.exceptions = dataFolder.resolve("exception").toAbsolutePath().normalize();
+        this.output = this.directory.resolve("output");
+        this.pending = this.directory.resolve("pending");
+        this.exceptions = this.directory.resolve("exception");
         this.binaryCodec = binaryCodec;
     }
 
@@ -39,13 +41,12 @@ public final class SnapshotFiles {
      *
      * @param snapshot 原始元数据与类型 Tag
      * @param format 输出文件格式
-     * @param playerSender 是否使用玩家输出目录
      * @return 导出文件相对于插件目录的路径
      * @throws IOException 编码或文件写入失败
      */
     @NotNull
-    public String export(@NotNull Snapshot snapshot, @NotNull Format format, boolean playerSender) throws IOException {
-        Path parent = (playerSender ? this.directory.resolve("output") : this.directory).resolve(snapshot.meta().player().toString());
+    public String export(@NotNull Snapshot snapshot, @NotNull Format format) throws IOException {
+        Path parent = this.output.resolve(snapshot.meta().player().toString());
         Files.createDirectories(parent);
         Path target = parent.resolve(snapshot.meta().id().toString() + format.suffix);
         Path temporary = Files.createTempFile(parent, ".export-", ".tmp");
@@ -69,19 +70,19 @@ public final class SnapshotFiles {
     }
 
     /**
-     * 读取普通快照目录内的二进制或 JSON 文件, 解码失败时保留具体原因.
+     * 读取 output 目录内的二进制或 JSON 文件, 解码失败时保留具体原因.
      *
-     * @param relative 普通快照目录内的相对路径
+     * @param relative output 目录内的相对路径
      * @return 快照数据解码结果, 不执行玩家类型解码
      * @throws IOException 路径不合法或文件无法读取
      */
     @NotNull
     public DecodedSnapshot read(@NotNull String relative) throws IOException {
-        Path file = this.directory.resolve(relative).normalize();
-        if (!file.startsWith(this.directory) || !supported(file) || !Files.isRegularFile(file)) {
+        Path file = this.output.resolve(relative).normalize();
+        if (!file.startsWith(this.output) || !supported(file) || !Files.isRegularFile(file)) {
             throw new IOException("Invalid snapshot file: " + relative);
         }
-        if (!file.toRealPath().startsWith(this.directory.toRealPath())) {
+        if (!file.toRealPath().startsWith(this.output.toRealPath())) {
             throw new IOException("Snapshot file is outside the snapshot directory");
         }
         return file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")
@@ -377,6 +378,11 @@ public final class SnapshotFiles {
     @NotNull
     public Path directory() {
         return this.directory;
+    }
+
+    @NotNull
+    public Path output() {
+        return this.output;
     }
 
     @NotNull

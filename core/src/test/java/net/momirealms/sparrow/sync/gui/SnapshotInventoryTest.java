@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,7 +28,7 @@ class SnapshotInventoryTest {
 
     @Test
     void inventoryMappingKeepsFixedLayoutAndIgnoresExtraSlots() {
-        List<Integer> slots = SnapshotContents.slots(43, false);
+        List<Integer> slots = SnapshotContents.slots(43, false, 0);
         assertEquals(36, slots.size());
         assertEquals(9, slots.getFirst());
         assertEquals(35, slots.get(26));
@@ -36,13 +37,21 @@ class SnapshotInventoryTest {
         for (int slot = 36; slot < 43; slot++) {
             assertFalse(slots.contains(slot));
         }
-        assertEquals(27, SnapshotContents.slots(54, true).size());
-        assertEquals(26, SnapshotContents.slots(54, true).getLast());
+        assertEquals(36, SnapshotContents.slots(54, true, 0).size());
+        assertEquals(35, SnapshotContents.slots(54, true, 0).getLast());
+    }
+
+    @Test
+    void enderChestPagesCoverExpandedAndPartialContainers() {
+        assertEquals(IntStream.range(0, 36).boxed().toList(), SnapshotContents.slots(54, true, 0));
+        assertEquals(IntStream.range(36, 54).boxed().toList(), SnapshotContents.slots(54, true, 1));
+        assertEquals(List.of(36, 37), SnapshotContents.slots(38, true, 1));
+        assertTrue(SnapshotContents.slots(0, true, 0).isEmpty());
     }
 
     @Test
     void smallInventoryLeavesMissingSlotsEmpty() {
-        List<Integer> slots = SnapshotContents.slots(5, false);
+        List<Integer> slots = SnapshotContents.slots(5, false, 0);
         assertEquals(36, slots.size());
         assertEquals(31, slots.stream().filter(slot -> slot == -1).count());
         assertEquals(List.of(0, 1, 2, 3, 4), slots.subList(27, 32));

@@ -39,7 +39,7 @@ public final class SnapshotImportCommand extends AbstractSnapshotCommand {
 
     // 在命令异步补全任务中扫描合法后缀, 返回相对目录路径.
     List<Suggestion> suggestions(String prefix) {
-        Path directory = this.plugin().snapshotService().files().directory();
+        Path directory = this.plugin().snapshotService().files().output();
         if (!Files.isDirectory(directory)) return List.of();
         try (Stream<Path> files = Files.walk(directory)) {
             return files.filter(Files::isRegularFile).filter(path -> {

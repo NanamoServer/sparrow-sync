@@ -100,10 +100,10 @@ class SnapshotManagementTest {
         assertInstanceOf(SnapshotPinResult.NotFound.class, this.service.pin(id).join());
         assertInstanceOf(SnapshotUnpinResult.NotFound.class, this.service.unpin(id).join());
         assertInstanceOf(SnapshotDeleteResult.NotFound.class, this.service.delete(id).join());
-        assertInstanceOf(SnapshotExportResult.NotFound.class, this.service.export(id, SnapshotFiles.Format.BINARY, false).join());
+        assertInstanceOf(SnapshotExportResult.NotFound.class, this.service.export(id, SnapshotFiles.Format.BINARY).join());
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
         this.stored.put(snapshot.meta().id(), snapshot);
-        SnapshotExportResult.Exported exported = assertInstanceOf(SnapshotExportResult.Exported.class, this.service.export(snapshot.meta().id(), SnapshotFiles.Format.BINARY, false).join());
+        SnapshotExportResult.Exported exported = assertInstanceOf(SnapshotExportResult.Exported.class, this.service.export(snapshot.meta().id(), SnapshotFiles.Format.BINARY).join());
         assertEquals(snapshot.meta().id(), exported.snapshotId());
         assertTrue(Files.isRegularFile(this.directory.resolve(exported.path())));
     }
@@ -111,8 +111,8 @@ class SnapshotManagementTest {
     @Test
     void importPreservesIdentityDoesNotRotateAndDetectsConflictingContent() throws Exception {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
-        String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY, false);
-        String relative = output.substring("snapshot/".length());
+        String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
+        String relative = output.substring("snapshot/output/".length());
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         assertInstanceOf(SnapshotImportResult.Unchanged.class, this.service.importFile(relative).join());

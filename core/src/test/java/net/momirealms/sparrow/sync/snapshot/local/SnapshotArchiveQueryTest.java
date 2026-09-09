@@ -156,7 +156,7 @@ class SnapshotArchiveQueryTest {
     }
 
     private Path write(String path, UUID player, long timestamp) throws IOException {
-        Path body = this.directory.resolve("exception").resolve(path);
+        Path body = this.directory.resolve("snapshot/exception").resolve(path);
         Files.createDirectories(body.getParent());
         Files.writeString(body, "deliberately invalid body");
         SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), player, timestamp, SaveCause.COMMAND, true, "lobby", 0);
