@@ -62,6 +62,8 @@ buildConfig {
 
     buildConfigField("COMPILE_TIME", SimpleDateFormat("yyyyMMdd_HHmm").format(Date()))
     buildConfigField("CONFIG_VERSION", libs.versions.config.version.get())
+    buildConfigField("COMMANDS_CONFIG_VERSION", libs.versions.commands.config.version.get())
+    buildConfigField("SERVER_CONFIG_VERSION", libs.versions.server.config.version.get())
     buildConfigField("LANG_VERSION", libs.versions.lang.version.get())
     buildConfigField("MONGODB_INDEX_VERSION", libs.versions.mongodb.index.version.get().toInt())
     buildConfigField("MYSQL_SCHEMA_VERSION", libs.versions.mysql.schema.version.get().toInt())

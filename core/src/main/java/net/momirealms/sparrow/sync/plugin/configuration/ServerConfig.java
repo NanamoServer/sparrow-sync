@@ -55,7 +55,7 @@ public final class ServerConfig {
     public static class ConfigDefinition {
         @Comment("Configuration file version, do not modify this value")
         @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改此值")
-        String configVersion = DependencyVersions.CONFIG_VERSION;
+        String configVersion = DependencyVersions.SERVER_CONFIG_VERSION;
 
         @Comment({
                 "Unique identifier for this server in the synchronization cluster; every server participating in data synchronization must use a different value",

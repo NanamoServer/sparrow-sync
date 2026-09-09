@@ -55,7 +55,7 @@ public final class CommandsConfig {
     public static class ConfigDefinition {
         @YamlProperty("config-version")
         @Comment("Do not modify this value")
-        String configVersion = DependencyVersions.CONFIG_VERSION;
+        String configVersion = DependencyVersions.COMMANDS_CONFIG_VERSION;
 
         @BlankLineBefore
         @Comment({

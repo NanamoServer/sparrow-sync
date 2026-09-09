@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.plugin.configuration;
 
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.yaml.SparrowYaml;
+import net.momirealms.sparrow.yaml.route.Route;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -59,6 +60,8 @@ class CommandsConfigTest {
         assertEquals("network.admin", config.configDefinition().command("reload").getPermission());
         assertEquals(List.of("/network reload-sync"), config.configDefinition().command("reload").getUsages());
         assertFalse(config.configDefinition().command("reload").isEnable());
+        assertEquals(DependencyVersions.COMMANDS_CONFIG_VERSION, SparrowYaml.builder().build()
+                .load(Files.readString(this.directory.resolve("commands.yml"))).getString(Route.from("config-version")));
     }
 
 
@@ -73,7 +76,7 @@ class CommandsConfigTest {
                   permission: custom.status
                   usages:
                     - /different-status
-                """.formatted(DependencyVersions.CONFIG_VERSION));
+                """.formatted(DependencyVersions.COMMANDS_CONFIG_VERSION));
         assertSame(published, config.configDefinition());
         assertEquals("sparrow_sync.command.status", config.configDefinition().command("status").getPermission());
         assertEquals("custom.status", new CommandsConfig(this.directory, SparrowYaml.builder().build()).configDefinition().command("status").getPermission());
