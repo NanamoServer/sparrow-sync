@@ -52,6 +52,24 @@ public final class Dependencies {
             .build();
 
     /**
+     * BStats
+     */
+    public static final Dependency BSTATS_BASE = Dependency.builder()
+            .groupId("org{}bstats")
+            .artifactId("bstats-base")
+            .version(DependencyVersions.BSTATS)
+            .addRelocation("bstats", "org{}bstats")
+            .build();
+
+    public static final Dependency BSTATS_BUKKIT = Dependency.builder()
+            .groupId("org{}bstats")
+            .artifactId("bstats-bukkit")
+            .version(BSTATS_BASE.version())
+            .addRelocation("bstats", "org{}bstats")
+            .build();
+
+
+    /**
      * Cloud
      */
     public static final Dependency GEANTY_REF = Dependency.builder()

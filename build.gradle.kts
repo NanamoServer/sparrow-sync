@@ -82,6 +82,7 @@ subprojects {
             relocate("cn.gtemc.levelerbridge", "$libs.levelerbridge")
             relocate("org.incendo", libs)
             relocate("dev.dejvokep", libs)
+            relocate("org.bstats", "$libs.bstats")
             relocate("com.github.benmanes.caffeine", "$libs.caffeine")
             relocate("org.snakeyaml", "$libs.snakeyaml")
             relocate("org.ahocorasick", "$libs.ahocorasick")

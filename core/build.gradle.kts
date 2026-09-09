@@ -16,6 +16,7 @@ dependencies {
     compileOnly(project(":bukkit-proxy"))
     implementation(project(":common-files"))
 
+    compileOnly(libs.bundles.bstats)
     compileOnly(libs.bundles.cloud)
     compileOnly(libs.bundles.adventure)
     implementation(libs.bundles.sparrow)
@@ -75,6 +76,8 @@ buildConfig {
     buildConfigField("MONGODB_DRIVER", libs.versions.mongodb.driver.get())
     buildConfigField("REACTIVE_STREAMS", libs.versions.reactive.streams.get())
     buildConfigField("ZSTD_JNI", libs.versions.zstd.get())
+    // BSTATS
+    buildConfigField("BSTATS", libs.versions.bstats.get())
     // MYSQL
     buildConfigField("JDBI", libs.versions.jdbi.get())
     buildConfigField("HIKARI_CP", libs.versions.hikari.cp.get())
@@ -128,5 +131,4 @@ paper {
     main = "net.momirealms.sparrow.sync.plugin.PaperJavaPlugin"
     apiVersion = "1.21.8"
     foliaSupported = true
-
 }

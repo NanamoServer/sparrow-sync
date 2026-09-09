@@ -1,7 +1,7 @@
 [versions]
 project-version = "26.9"
 config-version = "28"
-lang-version = "40"
+lang-version = "41"
 mongodb-index-version = "2"
 mysql-schema-version = "1"
 postgresql-schema-version = "1"
@@ -13,6 +13,7 @@ paperweight = "2.0.0-beta.21"
 paper-api = "1.21.8-R0.1-SNAPSHOT"
 asm = "9.9.1"
 asmcommons = "9.9.1"
+bstats = "3.2.1"
 caffeine = "3.2.3"
 geantyref = "2.0.1"
 jdbi = "3.54.0"
@@ -63,6 +64,9 @@ postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postg
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
+bstats-base = { module = "org.bstats:bstats-base", version.ref = "bstats" }
+bstats-bukkit = { module = "org.bstats:bstats-bukkit", version.ref = "bstats" }
+
 mojang-brigadier = { module = "com.mojang:brigadier", version.ref = "mojang-brigadier" }
 cloud-core = { module = "org.incendo:cloud-core", version.ref = "cloud-core" }
 cloud-services = { module = "org.incendo:cloud-services", version.ref = "cloud-services" }
@@ -102,6 +106,11 @@ test-paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-a
 
 
 [bundles]
+
+bstats = [
+    "bstats-base",
+    "bstats-bukkit"
+]
 
 cloud = [
     "cloud-core",

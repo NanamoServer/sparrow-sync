@@ -56,6 +56,7 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import net.momirealms.sparrow.ui.SparrowUI;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
+import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -277,6 +278,10 @@ public class SparrowSync implements Plugin {
             Bukkit.getServer().shutdown();
             return;
         }
+        // BStats
+        if (PluginConfig.metrics()) {
+            new Metrics(this.javaPlugin(), 33952);
+        }
         // 命令管理器
         this.remoteSnapshotManager = new RemoteSnapshotManager(this);
         this.commandManager = new BukkitCommandManager(this);
@@ -472,6 +477,7 @@ public class SparrowSync implements Plugin {
 
     @Override
     public List<Dependency> platformDependencies() {
+        // Common
         List<Dependency> dependencies = new ArrayList<>(List.of(
                 Dependencies.PLUGIN_BUKKIT_PROXY,
                 // Common
@@ -494,6 +500,7 @@ public class SparrowSync implements Plugin {
                 Dependencies.MINIMESSAGE,
                 Dependencies.TEXT_SERIALIZER_COMMONS, Dependencies.TEXT_SERIALIZER_LEGACY, Dependencies.TEXT_SERIALIZER_GSON, Dependencies.TEXT_SERIALIZER_GSON_LEGACY, Dependencies.TEXT_SERIALIZER_JSON
         ));
+        // Database
         switch (PluginConfig.database$type()) {
             case MONGODB -> dependencies.addAll(List.of(
                     Dependencies.MONGODB_DRIVER_CORE, Dependencies.MONGODB_DRIVER_SYNC
@@ -503,6 +510,12 @@ public class SparrowSync implements Plugin {
             ));
             case POSTGRESQL -> dependencies.addAll(List.of(
                     Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.POSTGRESQL_DRIVER, Dependencies.CHECKER_QUAL
+            ));
+        }
+        // Bstats
+        if (PluginConfig.metrics()) {
+            dependencies.addAll(List.of(
+                    Dependencies.BSTATS_BASE, Dependencies.BSTATS_BUKKIT
             ));
         }
         return dependencies;
