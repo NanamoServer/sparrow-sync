@@ -63,6 +63,11 @@ public final class MapPublisher {
         return result;
     }
 
+    /** 清除来源地图的发布比较缓存, 下一次发布重新读取数据库中的地图记录. */
+    public void invalidate(@NotNull MapSource source) {
+        this.published.invalidate(source);
+    }
+
     // 提交一份已经采集的地图同步数据, 失败交给物品管线处理.
     private CompletableFuture<StoredMap> publishContent(MapSource source, MapData data) {
         if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map publisher is closed"));

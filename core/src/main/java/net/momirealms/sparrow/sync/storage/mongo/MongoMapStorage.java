@@ -17,6 +17,13 @@ import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.model.Sorts;
+import com.mongodb.client.model.Updates;
+import java.util.List;
+import java.util.ArrayList;
 import org.bson.Document;
 import org.bson.BsonType;
 import org.bson.conversions.Bson;
@@ -121,6 +128,46 @@ public final class MongoMapStorage implements MapStorage {
             if (matched != 1) {
                 throw new IllegalStateException("map identity does not match a registered map with a supported format");
             }
+        }, this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<MapArchiveRecord>> scan(int beforeId, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<MapArchiveRecord> result = new ArrayList<>();
+            try (MongoCursor<Document> cursor = this.maps.find(lt("_id", beforeId)).sort(Sorts.descending("_id")).limit(limit).batchSize(limit).iterator()) {
+                while (cursor.hasNext()) {
+                    Document map = cursor.next();
+                    result.add(new MapArchiveRecord(new MapIdentity(new MapSource(map.getString("owner"), map.getInteger("origin_id")), map.getInteger("_id")),
+                            map.getInteger("data_version"), map.getLong("updated_at"), map.get("data", Binary.class).getData()));
+                }
+            }
+            return result;
+        }, this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Long> sequence() {
+        return CompletableFuture.supplyAsync(() -> ((Number) this.meta.find(eq("_id", "maps")).first().get("sequence")).longValue(), this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importSequence(long sequence) {
+        return CompletableFuture.runAsync(() -> this.meta.updateOne(eq("_id", "maps"), Updates.max("sequence", sequence)), this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importMap(@NotNull MapArchiveRecord map) {
+        return CompletableFuture.runAsync(() -> {
+            // 先推进分配计数, 后续登记继续使用导入 ID 之后的空间.
+            this.meta.updateOne(eq("_id", "maps"), Updates.max("sequence", -(long) map.identity().globalId()));
+            this.maps.replaceOne(eq("_id", map.identity().globalId()), new Document("_id", map.identity().globalId())
+                    .append("owner", map.identity().source().ownerId()).append("origin_id", map.identity().source().id())
+                    .append("data_version", map.dataVersion()).append("updated_at", map.updatedAt()).append("data", new Binary(map.data())), new ReplaceOptions().upsert(true));
         }, this.executor);
     }
 

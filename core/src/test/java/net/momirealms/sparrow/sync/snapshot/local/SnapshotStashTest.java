@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
@@ -290,6 +291,26 @@ class SnapshotStashTest {
             this.savedIds.add(snapshot.meta().id());
             SaveResult next = this.script.poll();
             return CompletableFuture.completedFuture(new SaveOutcome(next != null ? next : this.fallback, null));
+        }
+
+        @Override
+        public CompletableFuture<List<Snapshot>> scanSnapshots(long before, UUID after, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<List<StoredUser>> scanUsers(UUID after, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Void> importUser(StoredUser user) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<SaveOutcome> importSnapshot(Snapshot snapshot) {
+            throw new UnsupportedOperationException();
         }
 
         @Override

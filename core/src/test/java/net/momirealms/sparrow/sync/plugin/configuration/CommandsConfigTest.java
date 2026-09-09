@@ -18,10 +18,16 @@ class CommandsConfigTest {
     @Test
     void createsCanonicalCommands() throws Exception {
         CommandsConfig config = new CommandsConfig(this.directory, SparrowYaml.builder().build());
-        for (String feature : List.of("status", "reload")) {
-            assertEquals("sparrow_sync.command." + feature, config.configDefinition().command(feature).getPermission());
+        for (String feature : List.of("status", "reload", "dump_all", "import_all")) {
+            String command = feature.replace("_", "");
+            assertEquals("sparrow_sync.command." + command, config.configDefinition().command(feature).getPermission());
             assertTrue(config.configDefinition().command(feature).isEnable());
-            assertEquals(List.of("/sparrow-sync " + feature), config.configDefinition().command(feature).getUsages());
+            String usage = switch (feature) {
+                case "dump_all", "import_all" -> "/sparrow-sync data " + feature;
+                default -> "/sparrow-sync " + feature;
+            };
+            assertEquals(List.of(usage), config.configDefinition().command(feature).getUsages());
+            assertTrue(Files.readString(this.directory.resolve("commands.yml")).contains(feature + ":"));
         }
         assertTrue(Files.readString(this.directory.resolve("commands.yml")).contains("status:"));
         for (String feature : List.of("gui", "snapshot_view", "snapshot_list", "exception_list", "exception_view")) {

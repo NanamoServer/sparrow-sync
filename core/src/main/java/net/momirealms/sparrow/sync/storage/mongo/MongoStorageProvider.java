@@ -18,8 +18,11 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StoredUser;
+import java.io.IOException;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import org.bson.Document;
+import org.bson.BsonMaximumSizeExceededException;
 import org.bson.UuidRepresentation;
 import org.bson.conversions.Bson;
 import org.bson.types.Binary;
@@ -259,6 +262,72 @@ public final class MongoStorageProvider implements StorageProvider {
         return CompletableFuture.supplyAsync(() -> {
             Document document = this.userCollection().find(Filters.eq(USER_FIELD_NAME, name)).sort(Sorts.descending(USER_FIELD_LAST_SEEN)).limit(1).first();
             return document == null ? Optional.empty() : Optional.ofNullable(document.get("_id", UUID.class));
+        }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<Snapshot>> scanSnapshots(long before, @Nullable UUID after, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            Bson filter = Filters.lt(DocumentSnapshotCodec.FIELD_TIMESTAMP, new Date(before));
+            if (after != null) filter = Filters.and(filter, Filters.gt("_id", after));
+            List<Snapshot> result = new ArrayList<>();
+            try (MongoCursor<Document> cursor = this.snapshotCollection().find(filter).sort(Sorts.ascending("_id")).limit(limit).batchSize(limit).iterator()) {
+                while (cursor.hasNext()) {
+                    result.add(this.decodeDocument(cursor.next()).orElseThrow());
+                }
+            }
+            return result;
+        }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<StoredUser>> scanUsers(@Nullable UUID after, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            Bson filter = after == null ? new Document() : Filters.gt("_id", after);
+            List<StoredUser> result = new ArrayList<>();
+            try (MongoCursor<Document> cursor = this.userCollection().find(filter).sort(Sorts.ascending("_id")).limit(limit).batchSize(limit).iterator()) {
+                while (cursor.hasNext()) {
+                    Document user = cursor.next();
+                    result.add(new StoredUser(user.get("_id", UUID.class), user.getString(USER_FIELD_NAME), user.getDate(USER_FIELD_LAST_SEEN).getTime()));
+                }
+            }
+            return result;
+        }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importUser(@NotNull StoredUser user) {
+        return CompletableFuture.runAsync(() -> this.userCollection().replaceOne(Filters.eq("_id", user.player()),
+                new Document("_id", user.player()).append(USER_FIELD_NAME, user.name()).append(USER_FIELD_LAST_SEEN, new Date(user.lastSeen())), new ReplaceOptions().upsert(true)), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<SaveOutcome> importSnapshot(@NotNull Snapshot snapshot) {
+        return CompletableFuture.supplyAsync(() -> {
+            Document document;
+            try {
+                document = this.codec.encode(snapshot);
+            } catch (IOException failure) {
+                return new SaveOutcome(SaveResult.REJECTED_MALFORMED, failure);
+            }
+            if (document.get(DocumentSnapshotCodec.FIELD_DATA, Binary.class).getData().length > MAX_PAYLOAD_BYTES) {
+                return new SaveOutcome(SaveResult.REJECTED_OVERSIZED, new IOException("Snapshot exceeds the storage payload limit"));
+            }
+            try {
+                this.snapshotCollection().replaceOne(byId(snapshot.meta().id()), document, new ReplaceOptions().upsert(true));
+                return new SaveOutcome(SaveResult.SAVED, null);
+            } catch (MongoWriteException failure) {
+                int code = failure.getError().getCode();
+                SaveResult result = code == 121 || failure.getError().getCategory() == ErrorCategory.DUPLICATE_KEY
+                        ? SaveResult.REJECTED_MALFORMED : code == 10334 || code == 17419 ? SaveResult.REJECTED_OVERSIZED : MongoFailureClassifier.classify(failure);
+                return new SaveOutcome(result, failure);
+            } catch (MongoException | BsonMaximumSizeExceededException failure) {
+                return new SaveOutcome(MongoFailureClassifier.classify(failure), failure);
+            }
         }, this.asyncExecutor);
     }
 

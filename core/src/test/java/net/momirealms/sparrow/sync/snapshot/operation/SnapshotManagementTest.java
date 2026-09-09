@@ -66,11 +66,11 @@ class SnapshotManagementTest {
                     yield CompletableFuture.completedFuture(changed);
                 }
                 case "deleteSnapshot" -> CompletableFuture.completedFuture(this.stored.remove((UUID) args[0]) != null);
-                case "saveSnapshotOutcome" -> {
+                case "importSnapshot" -> {
                     this.writes.incrementAndGet();
                     Snapshot snapshot = (Snapshot) args[0];
-                    Snapshot old = this.stored.putIfAbsent(snapshot.meta().id(), snapshot);
-                    yield CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(old == null ? StorageProvider.SaveResult.SAVED : StorageProvider.SaveResult.DUPLICATE, null));
+                    this.stored.put(snapshot.meta().id(), snapshot);
+                    yield CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.SAVED, null));
                 }
                 default -> throw new AssertionError("Unexpected storage operation: " + method.getName());
             };
@@ -109,16 +109,17 @@ class SnapshotManagementTest {
     }
 
     @Test
-    void importPreservesIdentityDoesNotRotateAndDetectsConflictingContent() throws Exception {
+    void importPreservesIdentityDoesNotRotateAndOverwritesExistingContent() throws Exception {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
         String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
         String relative = output.substring("snapshot/output/".length());
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
-        assertInstanceOf(SnapshotImportResult.Unchanged.class, this.service.importFile(relative).join());
+        assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
         this.stored.put(snapshot.meta().id(), new Snapshot(snapshot.meta().withPinned(false), snapshot.data()));
-        assertInstanceOf(SnapshotImportResult.Conflict.class, this.service.importFile(relative).join());
-        assertEquals(1, this.writes.get());
+        assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
+        assertEquals(3, this.writes.get());
+        assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         Files.write(this.directory.resolve(output), new byte[]{1, 2, 3});
         assertInstanceOf(SnapshotImportResult.InvalidFile.class, this.service.importFile(relative).join());
     }

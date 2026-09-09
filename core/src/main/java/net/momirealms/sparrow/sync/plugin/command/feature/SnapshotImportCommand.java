@@ -29,8 +29,6 @@ public final class SnapshotImportCommand extends AbstractSnapshotCommand {
                 .handler(context -> this.finish(context, this.plugin().snapshotService().importFile(context.get("file")), result -> {
                     switch (result) {
                         case SnapshotImportResult.Imported imported -> this.feedback(context, "imported", imported.snapshotId(), "");
-                        case SnapshotImportResult.Unchanged existing -> this.feedback(context, "unchanged", existing.snapshotId(), "");
-                        case SnapshotImportResult.Conflict conflict -> this.feedback(context, "conflict", conflict.snapshotId(), "");
                         case SnapshotImportResult.InvalidFile ignored -> this.feedback(context, "invalid_file", null, "");
                         case SnapshotImportResult.Failed ignored -> this.feedback(context, "failed", null, "");
                     }

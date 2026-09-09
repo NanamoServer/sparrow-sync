@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.sync.storage.mysql;
 
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
+import net.momirealms.sparrow.sync.storage.StoredUser;
+import org.jetbrains.annotations.Nullable;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
@@ -170,6 +172,63 @@ public final class MysqlStorageProvider implements StorageProvider {
             Optional<SnapshotRow> row = this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
                     .bind("id", snapshotId).mapTo(SnapshotRow.class).findOne());
             return row.map(this::decodeRow);
+        }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<Snapshot>> scanSnapshots(long before, @Nullable UUID after, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<SnapshotRow> rows = this.jdbi().withHandle(handle -> {
+                Query query = handle.createQuery("SELECT " + META_COLUMNS + ", `format`, `data` FROM `" + this.options.tablePrefix() + "snapshots` WHERE `ts` < :before" + (after == null ? "" : " AND `id` > :after") + " ORDER BY `id` LIMIT :limit")
+                        .bind("before", before).bind("limit", limit);
+                if (after != null) query.bind("after", after);
+                return query.mapTo(SnapshotRow.class).list();
+            });
+            return rows.stream().map(this::decodeRow).toList();
+        }, this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<StoredUser>> scanUsers(@Nullable UUID after, int limit) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> {
+            Query query = handle.createQuery("SELECT `player`, `name`, `last_seen` FROM `" + this.options.tablePrefix() + "users`" + (after == null ? "" : " WHERE `player` > :after") + " ORDER BY `player` LIMIT :limit").bind("limit", limit);
+            if (after != null) query.bind("after", after);
+            return query.map((result, context) -> new StoredUser(UUIDUtils.fromBytes(result.getBytes("player")), result.getString("name"), result.getLong("last_seen"))).list();
+        }), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importUser(@NotNull StoredUser user) {
+        return CompletableFuture.runAsync(() -> this.jdbi().useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.options.tablePrefix() + "users` (`player`, `name`, `last_seen`) VALUES (:player, :name, :lastSeen) ON DUPLICATE KEY UPDATE `name` = :name, `last_seen` = :lastSeen")
+                .bind("player", user.player()).bind("name", user.name()).bind("lastSeen", user.lastSeen()).execute()), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<SaveOutcome> importSnapshot(@NotNull Snapshot snapshot) {
+        return CompletableFuture.supplyAsync(() -> {
+            SnapshotRow row;
+            try {
+                row = this.codec.encode(snapshot);
+            } catch (IOException failure) {
+                return new SaveOutcome(SaveResult.REJECTED_MALFORMED, failure);
+            }
+            if (row.data().length > MAX_PAYLOAD_BYTES) return new SaveOutcome(SaveResult.REJECTED_OVERSIZED, new IOException("Snapshot exceeds the storage payload limit"));
+            SnapshotMeta meta = row.meta();
+            try {
+                this.jdbi().useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.options.tablePrefix() + "snapshots` (`id`, `player`, `ts`, `cause`, `pinned`, `server`, `format`, `mc_data`, `data`) VALUES (:id, :player, :ts, :cause, :pinned, :server, :format, :mcData, :data) ON DUPLICATE KEY UPDATE `player` = :player, `ts` = :ts, `cause` = :cause, `pinned` = :pinned, `server` = :server, `format` = :format, `mc_data` = :mcData, `data` = :data")
+                        .bind("id", meta.id()).bind("player", meta.player()).bind("ts", meta.timestamp()).bind("cause", meta.cause().name())
+                        .bind("pinned", meta.pinned()).bind("server", meta.server()).bind("format", row.format()).bind("mcData", meta.mcDataVersion()).bind("data", row.data()).execute());
+                return new SaveOutcome(SaveResult.SAVED, null);
+            } catch (JdbiException failure) {
+                SQLException sql = MysqlFailureClassifier.sqlCause(failure);
+                SaveResult result = sql == null ? null : MysqlFailureClassifier.classify(sql);
+                if (result == null) throw failure;
+                return new SaveOutcome(result, failure);
+            }
         }, this.asyncExecutor);
     }
 

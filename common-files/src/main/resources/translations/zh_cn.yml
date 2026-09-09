@@ -164,9 +164,14 @@ command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>Spar
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>正在重载，请稍候</color>'
 
 # command.snapshot
+command.dump_all.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>导出完成：<arg:0>；用户 <arg:1>，地图 <arg:2>，快照 <arg:3>，耗时 <arg:5> 毫秒</color>'
+command.dump_all.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>导出失败，未生成本次正式 ZIP；停止于 <arg:7>，已处理快照 <arg:3>，耗时 <arg:5> 毫秒。原因见控制台日志</color>'
+command.dump_all.started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>开始导出，快照截止时间 <arg:0>（不含该时刻）</color>'
+command.import_all.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>导入完成：用户 <arg:1>，地图 <arg:2>，快照成功 <arg:3>，失败归档并跳过 <arg:4>；异常目录 <arg:6>，耗时 <arg:5> 毫秒</color>'
+command.import_all.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>导入中断：停止于 <arg:7>；用户已写入 <arg:1>，地图已写入 <arg:2>，快照成功 <arg:3>，失败归档并跳过 <arg:4>；异常目录 <arg:6>，耗时 <arg:5> 毫秒。源 ZIP 保留，原因见控制台日志</color>'
+
 command.snapshot.cancelled: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成：快照保存已被取消</color>'
 command.snapshot.captured: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已保存 <arg:0> 的快照 <color:#C7BCE7><arg:1></color></color>'
-command.snapshot.conflict: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>快照 <color:#C7BCE7><arg:1></color> 已存在且内容不同，未覆盖</color>'
 command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除快照 <color:#C7BCE7><arg:1></color> 。</color>'
 command.snapshot.exported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导出快照 <color:#C7BCE7><arg:1></color> 至 <color:#FFE3A3><arg:2></color></color>'
 command.snapshot.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成，请查看服务器日志</color>'

@@ -27,7 +27,7 @@ public final class SnapshotTransfer {
     }
 
     /**
-     * 将指定数据库快照导出为完整文件, 按发送者类型选择输出目录.
+     * 将指定数据库快照导出到 output 目录.
      *
      * @param snapshotId 明确选定的快照 ID
      * @param format 导出文件格式
@@ -47,10 +47,10 @@ public final class SnapshotTransfer {
     }
 
     /**
-     * 导入保留原身份与时间的完整快照, 同 ID 的不同内容作为冲突返回.
+     * 导入保留原身份与时间的完整快照, 覆盖相同 ID 的记录.
      *
      * @param relative 选定文件在本服目录内的相对路径
-     * @return 导入、幂等、冲突、无效文件或保存失败结果
+     * @return 导入、无效文件或保存失败结果
      */
     @NotNull
     public CompletableFuture<SnapshotImportResult> importFile(@NotNull String relative) {
@@ -63,17 +63,11 @@ public final class SnapshotTransfer {
         }, this.executor).thenCompose(decoded -> {
             if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(new SnapshotImportResult.InvalidFile());
             Snapshot snapshot = valid.snapshot();
-            UUID snapshotId = snapshot.meta().id();
-            return this.storage.snapshot(snapshotId).thenCompose(existing -> {
-                if (existing.isPresent()) return CompletableFuture.completedFuture(existing.get().equals(snapshot) ? new SnapshotImportResult.Unchanged(snapshotId) : new SnapshotImportResult.Conflict(snapshotId));
-                // 导入保持原身份和时间, 直接入库, 自动轮转属于正常保存流程.
-                return this.storage.saveSnapshot(snapshot).thenCompose(saved -> {
-                    if (saved == StorageProvider.SaveResult.DUPLICATE) {
-                        return this.storage.snapshot(snapshotId).thenApply(current -> current.filter(snapshot::equals).isPresent() ? new SnapshotImportResult.Unchanged(snapshotId) : new SnapshotImportResult.Conflict(snapshotId));
-                    }
-                    return CompletableFuture.completedFuture(saved.stored() ? new SnapshotImportResult.Imported(snapshotId) : new SnapshotImportResult.Failed());
-                });
-            });
+            return this.storage.importSnapshot(snapshot).thenApply(saved ->
+                    saved.result().stored()
+                            ? new SnapshotImportResult.Imported(snapshot.meta().id())
+                            : new SnapshotImportResult.Failed()
+            );
         });
     }
 }

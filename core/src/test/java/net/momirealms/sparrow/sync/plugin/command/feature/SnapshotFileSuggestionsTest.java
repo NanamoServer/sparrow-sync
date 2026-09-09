@@ -10,6 +10,7 @@ import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.incendo.cloud.suggestion.Suggestion;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -59,5 +60,25 @@ class SnapshotFileSuggestionsTest {
             assertEquals(3, suggest.apply("").size());
             assertTrue(suggest.apply("").contains(Suggestion.suggestion("nested/folder with spaces/orphan.snapshot")));
         }
+    }
+
+    @Test
+    void zipImportOnlySuggestsCompletedZipsInDumpDirectory() throws Exception {
+        SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+        SnapshotService service = new SnapshotService(plugin);
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        NmsPlayerFixture.set(SnapshotService.class, service, "files", files);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
+        ImportAllCommand command = new ImportAllCommand(null, plugin);
+        assertTrue(command.suggestions("").isEmpty());
+        Files.createDirectories(files.dump());
+        Files.createDirectories(files.output());
+        Files.writeString(files.dump().resolve("backup.ZIP"), "archive");
+        Files.writeString(files.dump().resolve(".dump-working.tmp"), "in progress");
+        Files.writeString(files.dump().resolve("one.snapshot"), "single snapshot");
+        Files.writeString(files.output().resolve("outside.zip"), "other directory");
+        assertEquals(List.of(Suggestion.suggestion("backup.ZIP")), command.suggestions("BACK"));
+        assertEquals(1, command.suggestions("").size());
+        assertTrue(new SnapshotImportCommand(null, plugin).suggestions("").isEmpty());
     }
 }

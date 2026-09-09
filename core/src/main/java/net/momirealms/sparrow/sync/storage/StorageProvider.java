@@ -81,6 +81,33 @@ public interface StorageProvider {
         return this.listSnapshots(SnapshotQuery.of(player).between(from, to));
     }
 
+    /**
+     * 按数据库 ID 升序读取时间戳小于 before 的至多 limit 份完整快照,
+     * before 为固定的毫秒截止时间, after 为上一批末尾 ID, 首批传 null.
+     */
+    @NotNull
+    CompletableFuture<List<Snapshot>> scanSnapshots(long before, @Nullable UUID after, int limit);
+
+    /**
+     * 按数据库中的玩家 UUID 升序读取至多 limit 条名字映射及最后上线时间,
+     * after 为上一批末尾 UUID, 首批传 null.
+     */
+    @NotNull
+    CompletableFuture<List<StoredUser>> scanUsers(@Nullable UUID after, int limit);
+
+    /**
+     * 按玩家 UUID 写入或覆盖名字映射, 保留导入记录的名字和最后上线时间.
+     */
+    @NotNull
+    CompletableFuture<Void> importUser(@NotNull StoredUser user);
+
+    /**
+     * 保留快照身份并覆盖相同 ID 的全部内容, 成功返回 SAVED,
+     * 数据拒绝与可重试故障通过 SaveOutcome 携带原因, 其余异常由 future 传播.
+     */
+    @NotNull
+    CompletableFuture<SaveOutcome> importSnapshot(@NotNull Snapshot snapshot);
+
     // ---- 写入 ----
 
     /**

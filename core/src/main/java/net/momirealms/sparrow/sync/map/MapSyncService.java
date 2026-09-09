@@ -6,6 +6,8 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.map.cache.MapCache;
 import net.momirealms.sparrow.sync.map.cache.RedisMapCache;
 import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
@@ -39,6 +41,7 @@ public final class MapSyncService {
     private NativeMapStorage nativeStorage;
     private MapPublisher publisher;
     private MapReceiver receiver;
+    private MapCache shared; // 常规同步与导入共用, 未启用地图同步时由首次导入创建
     private volatile MapPipeline pipeline; // 世界就绪后发布, 未启用地图同步时保持为空
 
     public MapSyncService(@NotNull SparrowSync plugin) {
@@ -56,6 +59,7 @@ public final class MapSyncService {
         this.nativeStorage = new NativeMapStorage(server, VersionHelper.WORLD_VERSION);
         MapStorage storage = this.plugin.storageProvider().maps();
         MapCache shared = new RedisMapCache(this.plugin.redisConnector().connection().async(), this.plugin.messageBrokerManager().broker(), this.plugin.scheduler().async());
+        this.shared = shared;
         this.publisher = new MapPublisher(storage, shared, this.ownerId, this.plugin.scheduler().async());
         this.receiver = new MapReceiver(storage, shared, this.nativeMaps, server, this.ownerId, this.plugin.logger());
         this.pipeline = new MapPipeline(this.plugin.dataRegistry(), List.of(new HideMapHandler(), new SyncMapHandler(this.receiver)), this.plugin.logger());
@@ -121,6 +125,32 @@ public final class MapSyncService {
 
     public void invalidate(int globalId) {
         this.receiver.refresh(globalId);
+    }
+
+    /**
+     * 导入一份地图到数据库, 并且立刻覆盖它的 Redis 缓存, 然后发布消息清掉其他服务器对于本 ID 地图的缓存.
+     *
+     * @return Redis 缓存写入、广播发送和本服刷新请求提交完成的结果, 地图副本随后异步刷新
+     */
+    @NotNull
+    public CompletableFuture<Void> importedMap(@NotNull MapArchiveRecord record) {
+        try {
+            StoredMap map = new StoredMap(record.identity(), new MapData(record.dataVersion(), NBT.fromBytes(record.data())));
+            // 导入已覆盖数据库内容, 清除本服保留的来源地图比较结果.
+            if (this.publisher != null) this.publisher.invalidate(record.identity().source());
+            MapCache cache = this.shared;
+            if (cache == null) {
+                // 未启用本服地图同步时, 导入仍更新集群共享缓存.
+                cache = new RedisMapCache(this.plugin.redisConnector().connection().async(), this.plugin.messageBrokerManager().broker(), this.plugin.scheduler().async());
+                this.shared = cache;
+            }
+            return cache.publish(map).thenRun(() -> {
+                // 共享缓存写入和广播完成后, 向本服接收端提交刷新请求.
+                if (this.receiver != null) this.receiver.refresh(record.identity().globalId());
+            });
+        } catch (IOException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
     }
 
     // 停止地图副本数据的拉取与更新, 来源发布保留到关服最终保存结束.

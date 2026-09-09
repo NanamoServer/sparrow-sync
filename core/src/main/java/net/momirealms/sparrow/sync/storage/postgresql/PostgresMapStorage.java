@@ -16,6 +16,8 @@ import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.List;
+import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -35,6 +37,36 @@ public final class PostgresMapStorage implements MapStorage {
         this.maps = "\"" + prefix + "maps\"";
         this.meta = "\"" + prefix + "meta\"";
         this.executor = executor;
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<List<MapArchiveRecord>> scan(int beforeId, int limit) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi.withHandle(handle -> handle.createQuery("SELECT " + COLUMNS + " FROM " + this.maps + " WHERE \"global_id\" < :before ORDER BY \"global_id\" DESC LIMIT :limit")
+                .bind("before", beforeId).bind("limit", limit).map((result, context) -> new MapArchiveRecord(new MapIdentity(new MapSource(result.getString("owner"), result.getInt("origin_id")), result.getInt("global_id")), result.getInt("data_version"), result.getLong("updated_at"), result.getBytes("data"))).list()), this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Long> sequence() {
+        return CompletableFuture.supplyAsync(() -> this.jdbi.withHandle(handle -> handle.createQuery("SELECT \"value\" FROM " + this.meta + " WHERE \"id\" = 'maps'").mapTo(Long.class).one()), this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importSequence(long sequence) {
+        return CompletableFuture.runAsync(() -> this.jdbi.useHandle(handle -> handle.createUpdate("UPDATE " + this.meta + " SET \"value\" = GREATEST(\"value\", :sequence) WHERE \"id\" = 'maps'").bind("sequence", sequence).execute()), this.executor);
+    }
+
+    @Override
+    @NotNull
+    public CompletableFuture<Void> importMap(@NotNull MapArchiveRecord map) {
+        return CompletableFuture.runAsync(() -> this.jdbi.useTransaction(handle -> {
+            handle.createUpdate("INSERT INTO " + this.maps + " (\"global_id\", \"owner\", \"origin_id\", \"data_version\", \"updated_at\", \"data\") VALUES (:id, :owner, :origin, :version, :updated, :data) ON CONFLICT (\"global_id\") DO UPDATE SET \"owner\" = EXCLUDED.\"owner\", \"origin_id\" = EXCLUDED.\"origin_id\", \"data_version\" = EXCLUDED.\"data_version\", \"updated_at\" = EXCLUDED.\"updated_at\", \"data\" = EXCLUDED.\"data\"")
+                    .bind("id", map.identity().globalId()).bind("owner", map.identity().source().ownerId()).bind("origin", map.identity().source().id())
+                    .bind("version", map.dataVersion()).bind("updated", map.updatedAt()).bind("data", map.data()).execute();
+            handle.createUpdate("UPDATE " + this.meta + " SET \"value\" = GREATEST(\"value\", :sequence) WHERE \"id\" = 'maps'").bind("sequence", -(long) map.identity().globalId()).execute();
+        }), this.executor);
     }
 
     @Override

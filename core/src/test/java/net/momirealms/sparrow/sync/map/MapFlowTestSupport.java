@@ -15,6 +15,7 @@ import net.minecraft.world.level.storage.DimensionDataStorage;
 import net.momirealms.sparrow.sync.map.cache.MapCache;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.map.data.MapData;
+import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
@@ -171,6 +172,26 @@ final class MapFlowTestSupport {
         int registrations;
         int reads;
         final List<Integer> writes = new ArrayList<>();
+
+        @Override
+        public CompletableFuture<List<MapArchiveRecord>> scan(int beforeId, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Long> sequence() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Void> importSequence(long sequence) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Void> importMap(MapArchiveRecord map) {
+            throw new UnsupportedOperationException();
+        }
 
         @Override
         @NotNull

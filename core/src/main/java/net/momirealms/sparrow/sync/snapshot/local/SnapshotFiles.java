@@ -24,6 +24,7 @@ public final class SnapshotFiles {
 
     private final Path directory; // 所有本地快照的根目录
     private final Path output; // 单份快照的导入与导出目录
+    private final Path dump; // 数据库搬迁 ZIP 目录
     private final Path pending;   // 本地待重试的快照目录
     private final Path exceptions; // 本服异常快照目录
     private final BinarySnapshotCodec binaryCodec; // 共享插件配置的二进制帧编解码器
@@ -31,6 +32,7 @@ public final class SnapshotFiles {
     public SnapshotFiles(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec binaryCodec) {
         this.directory = dataFolder.resolve("snapshot").toAbsolutePath().normalize();
         this.output = this.directory.resolve("output");
+        this.dump = this.directory.resolve("dump");
         this.pending = this.directory.resolve("pending");
         this.exceptions = this.directory.resolve("exception");
         this.binaryCodec = binaryCodec;
@@ -216,6 +218,7 @@ public final class SnapshotFiles {
     public boolean deleteException(@NotNull String relative) throws IOException {
         Path body = this.exceptionFile(relative);
         boolean deleted = Files.deleteIfExists(body);
+        deleted = Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".error.txt")) || deleted;
         return Files.deleteIfExists(ExceptionHeader.path(body)) || deleted;
     }
 
@@ -383,6 +386,32 @@ public final class SnapshotFiles {
     @NotNull
     public Path output() {
         return this.output;
+    }
+
+    @NotNull
+    public Path dump() {
+        return this.dump;
+    }
+
+    // ZIP 文件直接位于 dump 目录, 临时文件使用独立后缀.
+    @NotNull
+    public Path dumpFile(@NotNull String name) throws IOException {
+        Path target = this.dump.resolve(name).normalize();
+        if (!this.dump.equals(target.getParent()) || !name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            throw new IOException("Expected a ZIP filename in the dump directory: " + name);
+        }
+        return target;
+    }
+
+    // 归档导入失败的原始字节, 解码失败时也保留可见的异常头.
+    public void archiveImport(byte @NotNull [] data, @Nullable SnapshotMeta meta, @NotNull String category, @NotNull String reason) throws IOException {
+        Path parent = this.exceptions.resolve(category);
+        Files.createDirectories(parent);
+        String id = meta == null ? UUID.randomUUID().toString() : meta.id().toString();
+        Path body = Files.createTempFile(parent, "import-" + id + "-", ".snapshot");
+        Files.write(body, data);
+        new ExceptionHeader(meta, null).write(body);
+        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), reason);
     }
 
     @NotNull

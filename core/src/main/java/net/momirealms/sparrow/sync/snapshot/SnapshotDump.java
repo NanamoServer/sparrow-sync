@@ -1,0 +1,280 @@
+package net.momirealms.sparrow.sync.snapshot;
+
+import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
+import net.momirealms.sparrow.sync.map.data.MapIdentity;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StoredUser;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+@ApiStatus.Internal
+public final class SnapshotDump {
+    private static final int BATCH_SIZE = 4; // 每批正文读取上限, 写完后释放.
+
+    private final StorageProvider storage;
+    private final SnapshotFiles files;
+    private final BinarySnapshotCodec codec;
+    private final Function<MapArchiveRecord, CompletableFuture<Void>> mapImported; // 地图落库后的缓存发布回调, 完成后再导入下一条
+
+    public SnapshotDump(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull BinarySnapshotCodec codec, @NotNull Function<MapArchiveRecord, CompletableFuture<Void>> mapImported) {
+        this.storage = storage;
+        this.files = files;
+        this.codec = codec;
+        this.mapImported = mapImported;
+    }
+
+    // 在文件 I/O worker 中导出时间戳小于 before 的快照, before 使用命令开始时的 Unix 毫秒时间.
+    @NotNull
+    public Result dump(@NotNull String name, long before) {
+        Progress progress = new Progress();
+        Path temporary = null;
+        Path target = this.files.dump().resolve(name);
+        try {
+            target = this.files.dumpFile(name);
+            Files.createDirectories(this.files.dump());
+            // 临时文件与正式 ZIP 位于同一目录, 整份归档写完后再替换目标.
+            temporary = Files.createTempFile(this.files.dump(), ".dump-", ".tmp");
+            try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary)))) {
+                DataOutputStream output = new DataOutputStream(zip);
+                // 固定数量的 ZIP 成员承载连续记录, ZIP 目录也保持固定内存占用.
+                zip.putNextEntry(new ZipEntry("users.bin"));
+                this.writeUsers(output, progress);
+                zip.closeEntry();
+                zip.putNextEntry(new ZipEntry("maps.bin"));
+                this.writeMaps(output, progress);
+                zip.closeEntry();
+                zip.putNextEntry(new ZipEntry("snapshots.bin"));
+                this.writeSnapshots(output, before, progress);
+                zip.closeEntry();
+                // 保存分配计数, 已删除地图曾占用的 ID 也包含在导入后的分配进度中.
+                progress.current = "map-sequence";
+                zip.putNextEntry(new ZipEntry("sequence.bin"));
+                output.writeLong(this.storage.maps().sequence().join());
+                zip.closeEntry();
+                progress.current = "ZIP";
+            }
+            // ZIP 完整关闭后才发布正式文件, 之前的成功归档保留到此时.
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return progress.result(target, null);
+        } catch (IOException | RuntimeException failure) {
+            // 任一阶段失败即终止导出并清理半成品, 清理故障附加到原始失败中.
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
+            return progress.result(target, failure);
+        }
+    }
+
+    // 按玩家 UUID 分批写入名字映射, 每条记录以 true 开头, 全部写完后以 false 结束.
+    private void writeUsers(DataOutputStream output, Progress progress) throws IOException {
+        UUID after = null;
+        while (true) {
+            progress.current = "users after " + after;
+            List<StoredUser> batch = this.storage.scanUsers(after, BATCH_SIZE).join();
+            if (batch.isEmpty()) break;
+            for (int i = 0; i < batch.size(); i++) {
+                StoredUser user = batch.get(i);
+                progress.current = "user " + user.player();
+                output.writeBoolean(true);
+                output.writeUTF(user.player().toString());
+                output.writeUTF(user.name());
+                output.writeLong(user.lastSeen());
+                after = user.player();
+                progress.users++;
+            }
+        }
+        output.writeBoolean(false);
+    }
+
+    // 从 0 向更小的全局 ID 分批导出地图, 保留原始数据及来源、版本和更新时间.
+    private void writeMaps(DataOutputStream output, Progress progress) throws IOException {
+        int after = 0;
+        while (true) {
+            progress.current = "maps after " + after;
+            List<MapArchiveRecord> batch = this.storage.maps().scan(after, BATCH_SIZE).join();
+            if (batch.isEmpty()) break;
+            for (int i = 0; i < batch.size(); i++) {
+                MapArchiveRecord map = batch.get(i);
+                progress.current = "map " + map.identity().globalId();
+                output.writeBoolean(true);
+                output.writeInt(map.identity().globalId());
+                output.writeUTF(map.identity().source().ownerId());
+                output.writeInt(map.identity().source().id());
+                output.writeInt(map.dataVersion());
+                output.writeLong(map.updatedAt());
+                writeBytes(output, map.data());
+                after = map.identity().globalId();
+                progress.maps++;
+            }
+        }
+        output.writeBoolean(false);
+    }
+
+    // 全程使用同一截止时间, 每批快照写完后才读取下一批.
+    private void writeSnapshots(DataOutputStream output, long before, Progress progress) throws IOException {
+        UUID after = null;
+        while (true) {
+            progress.current = "snapshots after " + after;
+            List<Snapshot> batch = this.storage.scanSnapshots(before, after, BATCH_SIZE).join();
+            if (batch.isEmpty()) break;
+            for (int i = 0; i < batch.size(); i++) {
+                Snapshot snapshot = batch.get(i);
+                progress.current = "snapshot " + snapshot.meta().id();
+                // 每次编码一份快照, 长度前缀保留这份快照在连续记录中的边界.
+                byte[] data = this.codec.encode(snapshot);
+                output.writeBoolean(true);
+                writeBytes(output, data);
+                after = snapshot.meta().id();
+                progress.snapshots++;
+            }
+        }
+        output.writeBoolean(false);
+    }
+
+    // 在文件 I/O worker 中逐条导入, 返回成功、归档跳过和中断情况, 源 ZIP 与已落库记录保留.
+    @NotNull
+    public Result importFile(@NotNull String name) {
+        Progress progress = new Progress();
+        Path source = this.files.dump().resolve(name);
+        try {
+            source = this.files.dumpFile(name);
+            if (!source.toRealPath().startsWith(this.files.dump().toRealPath())) throw new IOException("ZIP is outside the dump directory");
+            try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(Files.newInputStream(source)))) {
+                DataInputStream input = new DataInputStream(zip);
+                ZipEntry entry = zip.getNextEntry();
+                if (entry == null) throw new IOException("ZIP contains no readable members");
+                do {
+                    progress.current = entry.getName();
+                    // 按 ZIP 成员顺序消费记录, 每项数据库写入完成后才继续读取.
+                    switch (entry.getName()) {
+                        case "users.bin" -> this.readUsers(input, progress);
+                        case "maps.bin" -> this.readMaps(input, progress);
+                        case "snapshots.bin" -> this.readSnapshots(input, progress);
+                        case "sequence.bin" -> this.storage.maps().importSequence(input.readLong()).join();
+                        default -> throw new IOException("Unknown ZIP member: " + entry.getName());
+                    }
+                    zip.closeEntry();
+                } while ((entry = zip.getNextEntry()) != null);
+            }
+            return progress.result(source, null);
+        } catch (IOException | RuntimeException failure) {
+            return progress.result(source, failure);
+        }
+    }
+
+    // 逐条覆盖玩家名字映射, 每次写入成功后累计用户数.
+    private void readUsers(DataInputStream input, Progress progress) throws IOException {
+        while (input.readBoolean()) {
+            StoredUser user = new StoredUser(UUID.fromString(input.readUTF()), input.readUTF(), input.readLong());
+            progress.current = "user " + user.player();
+            this.storage.importUser(user).join();
+            progress.users++;
+        }
+    }
+
+    // 按原身份导入地图, 每条落库后等待缓存发布回调完成.
+    private void readMaps(DataInputStream input, Progress progress) throws IOException {
+        while (input.readBoolean()) {
+            int id = input.readInt();
+            progress.current = "map " + id;
+            MapSource source = new MapSource(input.readUTF(), input.readInt());
+            MapArchiveRecord map = new MapArchiveRecord(new MapIdentity(source, id), input.readInt(), input.readLong(), readBytes(input));
+            this.storage.maps().importMap(map).join();
+            // 地图计数表示已落库数量, 后续缓存发布失败时仍保留这条成功记录.
+            progress.maps++;
+            this.mapImported.apply(map).join();
+        }
+    }
+
+    // 单份快照的数据故障归档后继续, 数据库故障和异常文件写入失败交给整次导入处理.
+    private void readSnapshots(DataInputStream input, Progress progress) throws IOException {
+        while (input.readBoolean()) {
+            progress.current = "snapshot record " + (progress.snapshots + progress.failed + 1);
+            // 先读完当前记录, 损坏的快照正文仍可原样归档, 下一条从独立的长度前缀开始.
+            byte[] data = readBytes(input);
+            DecodedSnapshot decoded = this.codec.decode(data);
+            if (decoded instanceof DecodedSnapshot.Invalid invalid) {
+                // 解码失败时保留原始字节和原因, 归档成功后才计入跳过数量.
+                this.files.archiveImport(data, null, "corrupted", invalid.reason() + ": " + invalid.detail());
+                progress.failed++;
+                continue;
+            }
+            Snapshot snapshot = ((DecodedSnapshot.Valid) decoded).snapshot();
+            progress.current = "snapshot " + snapshot.meta().id();
+            StorageProvider.SaveOutcome saved = this.storage.importSnapshot(snapshot).join();
+            if (saved.result().stored()) {
+                progress.snapshots++;
+            } else if (saved.result().retriable()) {
+                // 数据库暂时不可用时中断导入, 后续可使用保留的源 ZIP 重新执行.
+                throw new IOException("Database write failed for snapshot " + snapshot.meta().id(), saved.failure());
+            } else {
+                // 存储拒绝的数据按原因归入异常目录, 保留快照元数据供后续查看.
+                String category = saved.result() == StorageProvider.SaveResult.REJECTED_OVERSIZED ? "oversized" : "malformed";
+                String reason = saved.failure() == null ? saved.result().name() : saved.failure().toString();
+                this.files.archiveImport(data, snapshot.meta(), category, reason);
+                progress.failed++;
+            }
+        }
+    }
+
+    // 记录长度使用四字节整数, 随后紧跟该记录的完整字节.
+    private static void writeBytes(DataOutputStream output, byte[] bytes) throws IOException {
+        output.writeInt(bytes.length);
+        output.write(bytes);
+    }
+
+    // 内存中只读取当前一条二进制记录, 长度不足表示归档截断并终止导入.
+    private static byte[] readBytes(DataInputStream input) throws IOException {
+        int length = input.readInt();
+        byte[] data = input.readNBytes(length);
+        if (data.length != length) throw new EOFException("Incomplete binary record");
+        return data;
+    }
+
+    public record Result(@NotNull Path file, long users, long maps, long snapshots, long failed, long elapsedMillis, @NotNull String current, @Nullable Throwable failure) {
+    }
+
+    private static final class Progress {
+        private final long started = System.nanoTime();
+        private long users;
+        private long maps;
+        private long snapshots;
+        private long failed; // 已成功写入异常目录并跳过的快照数
+        private String current = "ZIP"; // 当前阶段或记录身份, 失败时作为控制台定位信息
+
+        private Result result(Path file, @Nullable Throwable failure) {
+            return new Result(file, this.users, this.maps, this.snapshots, this.failed, (System.nanoTime() - this.started) / 1_000_000, this.current, failure);
+        }
+    }
+}
