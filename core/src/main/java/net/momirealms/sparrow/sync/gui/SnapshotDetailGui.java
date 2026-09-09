@@ -17,9 +17,12 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.snapshot.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.util.ItemUtils;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
@@ -36,6 +39,7 @@ import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
@@ -78,7 +82,7 @@ public final class SnapshotDetailGui {
     private final Pane inventoryPane = Pane.empty(9, 5); // 主背包、快捷栏与装备区域
     private final Pane enderPane = Pane.empty(9, 5);     // 末影箱固定 27 格内容区域
     private final Tab<Boolean> tabs = Tab.of(Map.of(false, this.inventoryPane, true, this.enderPane), false); // false 为背包, true 为末影箱
-    private final Pane statusPane = Pane.empty(9, 5); // 加载、失败与已删除状态的内容区
+    private final Pane statusPane = Pane.empty(9, 5); // 加载与失败状态的内容区
     private final MutableSignal<Boolean> showingContents = Signal.of(false); // 是否展示已加载的容器
     private SnapshotDetailResult.Ready ready;     // 完成解码的原快照与各类预览状态
     private SnapshotContents contents;            // 本次读取的原始物品, 用于容器初始化和完整打包
@@ -87,8 +91,6 @@ public final class SnapshotDetailGui {
     private ExceptionArchives.Entry archive;      // 异常头与路径, 正文损坏时仍可展示
     private VirtualInventory inventory;           // 本次打开的背包内容, 切换 Tab 时保留修改
     private VirtualInventory enderChest;          // 本次打开的末影箱内容, 切换 Tab 时保留修改
-    private boolean deleted;                      // 当前记录已删除, 停止后续内容与管理操作
-    private long loading;                         // 当前详情查询序号, 关闭后不接收旧结果
 
     public SnapshotDetailGui(SparrowSync plugin, Player viewer, String playerName, @Nullable UUID snapshotId, @Nullable String archivePath, @Nullable Runnable refreshParent) {
         this.plugin = plugin;
@@ -100,7 +102,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 构建六行菜单并绑定打开、关闭回调.
+     * 构建六行菜单并在打开时加载详情.
      * 由命令在异步阶段调用, 返回后继续执行 Window.open().
      *
      * @return 尚未打开的窗口, 由 SparrowUI 管理 Session 导航
@@ -109,22 +111,17 @@ public final class SnapshotDetailGui {
         this.pane.fill(Item.simple(this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank")));
         // 内容区绑定所选 Pane, Tab 切换由投影更新显示路径, 两个容器保持原有实例.
         Signal<Pane> body = Signals.combine(this.showingContents, this.tabs.pane(), (showing, selected) -> showing ? selected : this.statusPane);
-        this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 52), body.map(selected -> {
+        this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 51), body.map(selected -> {
             List<Element> elements = new ArrayList<>();
-            for (int slot = 0; slot < 43; slot++) {
+            for (int slot = 0; slot < 42; slot++) {
                 elements.add(Element.pane(selected, slot));
             }
             return elements;
         }), this.plugin.scheduler().async());
         this.window = NormalWindow.builder().setUpperPane(this.pane).setTitle(this.text(this.archivePath == null ? "title.snapshot" : "title.archive", this.playerName))
-                .addCloseHandler((closed, reason) -> this.closed())
                 .addOpenHandler(opened -> {
                     this.pane.setItem(0, this.buildNavigationButton());
-                    if (this.deleted) {
-                        this.status("deleted");
-                    } else {
-                        this.load();
-                    }
+                    this.load();
                 }).build(this.viewer);
         return this.window;
     }
@@ -134,19 +131,11 @@ public final class SnapshotDetailGui {
      * 管理按钮受 ui.edit 控制, 异常来源提供删除与领取.
      */
     private void controls() {
-        if (this.deleted) {
-            return;
-        }
         this.pane.setItem(1, this.buildPlayerInfo());
         this.pane.setItem(2, this.buildInventoryTabButton());
         this.pane.setItem(3, this.buildEnderChestTabButton());
         this.pane.setItem(4, this.buildSummaryInfo());
-        this.pane.setItem(52, Item.empty());
-        // 本次内容加载后装配管理控件, 点击时仍检查当前编辑权限.
-        for (int i = 5; i < 9; i++) {
-            this.pane.setItem(i, Item.empty());
-        }
-        this.pane.setItem(53, Item.empty());
+        this.pane.setItem(51, this.buildLocationButton());
         if (!this.viewer.hasPermission(EDIT)) {
             return;
         }
@@ -241,12 +230,12 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 创建数据类型状态摘要, 包括经验、血量和各类预览可用性.
+     * 创建附加数据状态图标, 展示快照中可读取的玩家数值.
      *
      * @return 顶部摘要说明 Item
      */
     private Item buildSummaryInfo() {
-        return Item.simple(this.icon(Material.EXPERIENCE_BOTTLE, this.text("info.summary"), false, this.summary()));
+        return Item.simple(this.icon(Material.EXPERIENCE_BOTTLE, this.text("additional.title"), false, this.summary()));
     }
 
     /** 创建随固定状态更新的管理按钮, 点击时使用当前元数据. */
@@ -284,6 +273,25 @@ public final class SnapshotDetailGui {
         return Item.builder().setItemProviderConstant(this.icon(Material.BARRIER, "button.delete")).addClickHandler(click -> this.delete()).build();
     }
 
+    /** 展示快照保存的世界与坐标, 点击可将查看者传送到本服对应世界. */
+    private Item buildLocationButton() {
+        if (!(this.ready.previews().get(LocationDataType.LOCATION) instanceof SnapshotDetailResult.Preview.Ready(var value)
+                && value instanceof LocationDataType.PlayerLocation location)) {
+            return Item.simple(this.icon(Material.COMPASS, "location.title", this.text("location.missing")));
+        }
+        List<Component> lore = new ArrayList<>();
+        lore.add(this.text("location.world", location.world()));
+        lore.add(this.text("location.coordinates", location.x(), location.y(), location.z()));
+        if (Bukkit.getWorld(location.world()) == null) {
+            lore.add(this.text("location.unavailable"));
+        }
+        return Item.builder().setItemProviderConstant(this.icon(Material.COMPASS, this.text("location.title"), false, lore)).addClickHandler(click -> {
+            if (click.clickType() == ClickType.LEFT) {
+                this.teleport(click.player(), location);
+            }
+        }).build();
+    }
+
     // 创建快照恢复按钮, 左键恢复到快照所属玩家.
     private Item buildRestoreButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.restore", this.text("restore_target", this.player.name()))).addClickHandler(click -> {
@@ -309,7 +317,7 @@ public final class SnapshotDetailGui {
 
     // 创建当前内容类型缺失或解码失败的说明.
     private Item buildContentUnavailableInfo() {
-        return Item.simple(this.icon(Material.BARRIER, "content_unavailable"));
+        return Item.simple(this.icon(Material.BARRIER, "container_unavailable"));
     }
 
     // 创建末影箱 Tab 的展示容量说明, 最多显示 27 格.
@@ -409,13 +417,6 @@ public final class SnapshotDetailGui {
      * 成功后首次显示背包 Tab, 失败与无效正文分别进入对应反馈状态.
      */
     private void load() {
-        long version = ++this.loading;
-        // 重新打开时先显示加载状态, 当前快照读取完成后再装入容器与操作按钮.
-        for (int slot = 1; slot < 9; slot++) {
-            this.pane.setItem(slot, Item.empty());
-        }
-        this.pane.setItem(52, Item.empty());
-        this.pane.setItem(53, Item.empty());
         this.status("loading");
         // 解码与名字解析异步完成, 容器副本可直接在完成回调中构建.
         CompletableFuture<Loaded> future;
@@ -429,9 +430,6 @@ public final class SnapshotDetailGui {
         future.thenCombine(this.playerName.isEmpty() ? CompletableFuture.completedFuture(Optional.<PlayerIdentity>empty())
                 : this.plugin.playerDirectory().resolve(this.playerName), (detail, identity) -> new Resolved(detail, identity.orElse(null)))
                 .whenComplete((resolved, failure) -> {
-                    if (version != this.loading || !this.window.isOpen()) {
-                        return;
-                    }
                     if (failure != null) {
                         this.failedContent(failure);
                         return;
@@ -474,7 +472,7 @@ public final class SnapshotDetailGui {
 
     /**
      * 根据本次读取的快照建立可编辑副本, 点击与物品事务均检查当前编辑权限.
-     * 权限监听随容器存活, 关闭窗口后容器与监听一同释放.
+     * 权限监听随容器存活.
      *
      * @param items 已裁剪到展示槽位范围的原始物品
      * @return 拥有独立内容的临时容器
@@ -483,13 +481,13 @@ public final class SnapshotDetailGui {
         VirtualInventory inventory = new VirtualInventory(items);
         // 创造克隆在点击阶段拦截, 拖拽与跨容器移动在事务提交前检查.
         inventory.subscribeClick(event -> {
-            if (this.deleted || !this.window.isOpen() || !event.player().hasPermission(EDIT)) {
+            if (!event.player().hasPermission(EDIT)) {
                 event.cancel();
             }
         });
         inventory.subscribePreUpdate(event -> {
             if (event.reason() instanceof PlayerUpdateReason reason
-                    && (this.deleted || !this.window.isOpen() || !reason.player().hasPermission(EDIT))) {
+                    && !reason.player().hasPermission(EDIT)) {
                 event.setCancelled(true);
             }
         });
@@ -497,38 +495,37 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 汇总各数据类型的预览值、失败或未适配状态.
-     * 物品读取不完整时附带不能完整打包的说明.
+     * 按手持槽位、饥饿、游戏模式、经验、生命和附魔种子的顺序汇总可读取值.
      *
      * @return 状态摘要图标使用的 Lore 行
      */
     private List<Component> summary() {
         List<Component> lines = new ArrayList<>();
-        for (var entry : this.ready.previews().entrySet()) {
-            String key = entry.getKey().toString();
-            Component value = switch (entry.getValue()) {
-                case SnapshotDetailResult.Preview.Failed failed -> this.text("preview_failed", failed.detail());
-                case SnapshotDetailResult.Preview.Unsupported unsupported -> this.text(unsupported.registered() ? "unsupported" : "unregistered");
-                case SnapshotDetailResult.Preview.Ready preview -> switch (preview.value()) {
-                    case ExperienceDataType.Experience experience -> this.text("experience", experience.level(), experience.total(), experience.progress());
-                    case HealthDataType.Health health -> this.text("value", health.health());
-                    case HungerDataType.Hunger hunger -> this.text("hunger", hunger.food(), hunger.saturation(), hunger.exhaustion());
-                    case InventoryDataType.Inventory inventory -> this.text("held_slot", inventory.heldSlot() + 1);
-                    case GameMode gameMode -> this.text("value", gameMode.name());
-                    default -> this.text("available");
-                };
-            };
-            lines.add(this.text("type_summary", key, value));
+        var previews = this.ready.previews();
+        if (previews.get(InventoryDataType.INVENTORY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof InventoryDataType.Inventory inventory) {
+            lines.add(this.text("additional.held_slot", inventory.heldSlot() + 1));
         }
-        if (!this.contents.complete()) {
-            lines.add(this.text("incomplete"));
+        if (previews.get(HungerDataType.HUNGER) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof HungerDataType.Hunger hunger) {
+            lines.add(this.text("additional.hunger", hunger.food(), hunger.saturation(), hunger.exhaustion()));
+        }
+        if (previews.get(GameModeDataType.GAME_MODE) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof GameMode gameMode) {
+            lines.add(this.text("additional.game_mode", gameMode.name()));
+        }
+        if (previews.get(ExperienceDataType.EXPERIENCE) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof ExperienceDataType.Experience experience) {
+            lines.add(this.text("additional.experience", experience.level(), experience.total(), experience.progress()));
+        }
+        if (previews.get(HealthDataType.HEALTH) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof HealthDataType.Health health) {
+            lines.add(this.text("additional.health", health.health()));
+        }
+        if (previews.get(EnchantmentSeedDataType.ENCHANTMENT_SEED) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof Integer seed) {
+            lines.add(this.text("additional.enchantment_seed", seed));
         }
         return lines;
     }
 
     /**
      * 切换数据库快照固定状态, 成功后更新详情头与上级列表.
-     * 业务结果报告记录不存在时转入删除后的界面状态.
+     * 业务结果报告记录不存在时返回上一级.
      */
     private void pin() {
         boolean pin = !this.meta.get().pinned();
@@ -589,9 +586,28 @@ public final class SnapshotDetailGui {
         });
     }
 
+    // 按保存的世界名在本服定位, 异步传送保留坐标与朝向.
+    private void teleport(Player recipient, LocationDataType.PlayerLocation location) {
+        if (!this.editable()) {
+            return;
+        }
+        var world = recipient.getServer().getWorld(location.world());
+        if (world == null) {
+            this.message("location.unavailable");
+            return;
+        }
+        recipient.teleportAsync(new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch())).whenComplete((moved, failure) -> {
+            if (failure != null) {
+                this.failed(failure);
+            } else {
+                this.message(moved ? "location.teleported" : "location.rejected");
+            }
+        });
+    }
+
     /** 在 UI 点击回调中装箱并发放给点击玩家, 权限与容量在本次操作中检查. */
     private void pack(Player recipient) {
-        if (!this.editable() || this.deleted) {
+        if (!this.editable()) {
             return;
         }
         if (!this.contents.complete()) {
@@ -615,7 +631,7 @@ public final class SnapshotDetailGui {
 
     /**
      * 删除当前数据库快照或本服异常档案.
-     * 完成后刷新上级, 再返回列表或将根详情切换为已删除状态.
+     * 完成后刷新上级并返回, 根详情直接关闭.
      */
     private void delete() {
         // 数据库走快照服务, 本服异常文件删除放在异步执行器中完成.
@@ -678,21 +694,17 @@ public final class SnapshotDetailGui {
 
     /** 更新状态 Pane, 内容区的投影负责切换显示. */
     private void status(String key) {
-        this.statusPane.fill(Item.empty());
         this.statusPane.setItem(13, Item.simple(this.icon(Material.BARRIER, key)));
         this.showingContents.set(false);
     }
 
     /**
-     * 在管理操作执行前检查窗口状态和 ui.edit 权限.
+     * 在管理操作执行前检查 ui.edit 权限.
      * 缺少编辑权限时向查看者发送拒绝反馈.
      *
-     * @return 当前窗口允许执行管理操作时为 true
+     * @return 查看者拥有编辑权限时为 true
      */
     private boolean editable() {
-        if (!this.window.isOpen()) {
-            return false;
-        }
         if (this.viewer.hasPermission(EDIT)) {
             return true;
         }
@@ -740,39 +752,12 @@ public final class SnapshotDetailGui {
         this.message("failed");
     }
 
-    /**
-     * 停止已删除记录的领取与管理, 再按 Session 层级返回或展示已删除状态.
-     * 根详情清空物品映射, 返回列表时由 Window 的关闭回调结束当前展示.
-     */
+    /** 返回上级或关闭根详情, 导航异常时静默关闭. */
     private void removed() {
-        this.deleted = true;
-        if (!this.window.isOpen()) {
-            return;
-        }
-        if (this.window.session().hasBack()) {
-            this.window.back();
-        } else {
-            for (int slot = 1; slot < 9; slot++) {
-                this.pane.setItem(slot, Item.empty());
-            }
-            this.pane.setItem(52, Item.empty());
-            this.pane.setItem(53, Item.empty());
-            this.status("deleted");
-            this.pane.setItem(0, this.buildNavigationButton());
-        }
-    }
-
-    /**
-     * 结束当前展示并释放两个容器, 下次打开时重新读取快照内容.
-     */
-    private void closed() {
-        this.loading++;
-        this.showingContents.set(false);
-        this.statusPane.fill(Item.empty());
-        this.inventoryPane.fill(Item.empty());
-        this.enderPane.fill(Item.empty());
-        this.inventory = null;
-        this.enderChest = null;
+        this.window.backOrClose().exceptionally(failure -> {
+            this.window.close();
+            return null;
+        });
     }
 
     /**

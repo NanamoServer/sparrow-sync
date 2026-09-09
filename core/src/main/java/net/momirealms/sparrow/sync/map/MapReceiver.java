@@ -30,7 +30,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-/** 为传输物品和已登记副本准备本服地图 ID, 合并同图读取并处理更新通知与接收关闭. */
 public final class MapReceiver {
     private final MapStorage storage;
     private final MapCache redisCache;

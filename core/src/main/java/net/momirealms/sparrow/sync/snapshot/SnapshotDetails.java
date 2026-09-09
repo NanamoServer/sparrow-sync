@@ -6,11 +6,13 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult.Previe
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.jetbrains.annotations.ApiStatus;
@@ -80,7 +82,8 @@ public final class SnapshotDetails {
             PlayerDataType<?> type = this.registry.type(entry.getKey());
             if (!(type instanceof InventoryDataType || type instanceof EnderChestDataType
                     || type instanceof ExperienceDataType || type instanceof HealthDataType
-                    || type instanceof HungerDataType || type instanceof GameModeDataType)) {
+                    || type instanceof HungerDataType || type instanceof GameModeDataType || type instanceof EnchantmentSeedDataType
+                    || type instanceof LocationDataType)) {
                 previews.put(entry.getKey(), new Preview.Unsupported(type != null));
                 continue;
             }

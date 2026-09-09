@@ -13,9 +13,11 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
@@ -74,6 +77,28 @@ class SnapshotDetailsTest {
         assertSame(snapshot, ready.snapshot());
         assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
         assertThrows(UnsupportedOperationException.class, () -> ready.previews().clear());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -123456789, Integer.MAX_VALUE})
+    void enchantmentSeedPreviewPreservesTheStoredInteger(int seed) {
+        var type = new EnchantmentSeedDataType();
+        this.registry.register(type);
+        Snapshot snapshot = this.snapshot(Map.of(EnchantmentSeedDataType.ENCHANTMENT_SEED, type.encode(seed)));
+        this.reader = id -> CompletableFuture.completedFuture(Optional.of(snapshot));
+        var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(snapshot.meta().id()).join());
+        assertEquals(seed, assertInstanceOf(Preview.Ready.class, ready.previews().get(EnchantmentSeedDataType.ENCHANTMENT_SEED)).value());
+    }
+
+    @Test
+    void locationPreviewRetainsWorldCoordinatesAndRotation() {
+        var type = new LocationDataType();
+        this.registry.register(type);
+        var location = new LocationDataType.PlayerLocation("remote_world", -120.25, 64.5, 305.75, 135.5f, -20.25f);
+        Snapshot snapshot = this.snapshot(Map.of(LocationDataType.LOCATION, type.encode(location)));
+        this.reader = id -> CompletableFuture.completedFuture(Optional.of(snapshot));
+        var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(snapshot.meta().id()).join());
+        assertEquals(location, assertInstanceOf(Preview.Ready.class, ready.previews().get(LocationDataType.LOCATION)).value());
     }
 
     @Test

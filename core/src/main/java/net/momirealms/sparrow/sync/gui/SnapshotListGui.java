@@ -203,11 +203,11 @@ public final class SnapshotListGui {
         return CraftItemStack.asCraftMirror(item);
     }
 
-    // 把快照头格式化为 ID、完整时间、原因、来源服和固定状态.
+    // 把快照头格式化为 ID、完整时间、原因和来源服.
     private List<Component> metadata(SnapshotMeta meta) {
         return List.of(this.text("label.snapshot_id", meta.id()), this.text("label.time", time(meta.timestamp(), true)),
                 this.text("label.cause", this.text("cause." + meta.cause().name().toLowerCase(Locale.ROOT))),
-                this.text("label.server", meta.server()), this.text(meta.pinned() ? "state.pinned" : "state.unpinned"));
+                this.text("label.server", meta.server()));
     }
 
     static String time(long timestamp, boolean full) {

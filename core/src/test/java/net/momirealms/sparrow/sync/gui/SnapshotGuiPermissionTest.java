@@ -5,6 +5,8 @@ import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,12 +29,10 @@ class SnapshotGuiPermissionTest {
         try {
             List<String> checked = new ArrayList<>();
             AtomicBoolean edit = new AtomicBoolean(true);
-            for (Object menu : menus(viewer(edit, checked), new AtomicBoolean(true))) {
-                assertTrue(invoke(menu, "editable"));
-                edit.set(false);
-                assertFalse(invoke(menu, "editable"));
-                edit.set(true);
-            }
+            var menu = new SnapshotDetailGui(null, viewer(edit, checked), "Target", null, null, null);
+            assertTrue(invoke(menu, "editable"));
+            edit.set(false);
+            assertFalse(invoke(menu, "editable"));
             assertEquals(List.of("sparrow_sync.ui.edit", "sparrow_sync.ui.edit"), checked);
         } finally {
             translation.set(null, previous);
@@ -49,18 +50,26 @@ class SnapshotGuiPermissionTest {
         });
     }
 
-    private static List<Object> menus(Player viewer, AtomicBoolean open) throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void removalDelegatesToNavigationAndClosesSilentlyOnFailure(boolean fail) throws Exception {
+        List<String> calls = new ArrayList<>();
         Window window = (Window) Proxy.newProxyInstance(Window.class.getClassLoader(), new Class[]{Window.class}, (instance, method, args) -> {
-            assertEquals("isOpen", method.getName());
-            return open.get();
+            calls.add(method.getName());
+            return switch (method.getName()) {
+                case "backOrClose" -> fail ? CompletableFuture.failedFuture(new IllegalStateException("navigation failed")) : CompletableFuture.completedFuture(null);
+                case "close" -> CompletableFuture.completedFuture(null);
+                default -> throw new AssertionError(method.getName());
+            };
         });
-        List<Object> menus = List.of(new SnapshotDetailGui(null, viewer, "Target", null, null, null));
-        for (Object menu : menus) {
-            Field field = menu.getClass().getDeclaredField("window");
-            field.setAccessible(true);
-            field.set(menu, window);
-        }
-        return menus;
+        var menu = new SnapshotDetailGui(null, null, "Target", null, null, null);
+        Field field = SnapshotDetailGui.class.getDeclaredField("window");
+        field.setAccessible(true);
+        field.set(menu, window);
+        Method removed = SnapshotDetailGui.class.getDeclaredMethod("removed");
+        removed.setAccessible(true);
+        removed.invoke(menu);
+        assertEquals(fail ? List.of("backOrClose", "close") : List.of("backOrClose"), calls);
     }
 
     private static boolean invoke(Object menu, String name) throws Exception {
