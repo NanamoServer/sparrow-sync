@@ -1,4 +1,6 @@
 # gui
+gui.button.snapshots: '<color:#FFE08A>» 普通快照</color>'
+gui.button.exceptions: '<color:#FFB6CB>» 异常快照</color>'
 gui.location.title: '<color:#C8E4E9>» 保存位置</color>'
 gui.location.world: '<color:#C8E4E9>· 世界 <color:#FFE08A><arg:0></color></color>'
 gui.location.coordinates: '<color:#C8E4E9>· X <color:#FFE08A><arg:0></color>，Y <color:#FFE08A><arg:1></color>，Z <color:#FFE08A><arg:2></color></color>'

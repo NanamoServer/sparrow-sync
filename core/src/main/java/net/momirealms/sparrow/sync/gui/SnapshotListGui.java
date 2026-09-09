@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.page.SnapshotPagination;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.ui.item.Item;
@@ -30,6 +31,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -51,8 +54,8 @@ public final class SnapshotListGui {
     private final Pane pane = Pane.empty(9, 6);
     private Window window;
     private final String playerName; // 命令指定的目标玩家
-    private final MutableSignal<Integer> index = Signal.of(0); // 请求页码, 从零开始
-    private KeyedSignal<Integer, LoadedPage> pages; // 异步查询的页缓存
+    private final MutableSignal<PageRequest> request = Signal.of(new PageRequest(false, 0)); // 来源与页码共同确定查询缓存
+    private KeyedSignal<PageRequest, LoadedPage> pages; // 异步查询的页缓存
     private Signal<LoadedPage> current; // 当前页的完整查询结果
 
     public SnapshotListGui(SparrowSync plugin, Player viewer, String playerName) {
@@ -62,36 +65,75 @@ public final class SnapshotListGui {
     }
 
     public Window build() {
-        this.pages = KeyedSignal.async(new LoadedPage(null, 0, 1, List.of(), "loading"), this.plugin.scheduler().async(), this::loadPage);
-        this.current = Signals.switching(this.pages, this.index);
+        this.pages = KeyedSignal.async(new LoadedPage(null, 0, 1, List.of(), List.of(), "loading"), this.plugin.scheduler().async(), this::loadPage);
+        this.current = Signals.switching(this.pages, this.request);
         this.pane.fill(Item.simple(this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank")));
-        // 投影负责记录区的差异更新, 查询完成只发布新值.
         this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 45), this.current.map(this::pageElements), this.plugin.scheduler().async());
         this.pane.setItem(1, this.buildPlayerInfo());
-        this.pane.setItem(8, this.buildSortInfo());
-        this.pane.setItem(45, this.buildPreviousButton());
+        this.pane.setItem(2, Item.builder()
+                .dependsOn(this.request)
+                .setItemProvider(context -> this.icon(Material.CHEST, this.text("button.snapshots"), !this.request.get().exceptions(), List.of()))
+                .addClickHandler(click -> this.request.set(new PageRequest(false, 0)))
+                .build());
+        this.pane.setItem(3, Item.builder()
+                .dependsOn(this.request)
+                .setItemProvider(context -> this.icon(Material.REPEATER, this.text("button.exceptions"), this.request.get().exceptions(), List.of()))
+                .addClickHandler(click -> this.request.set(new PageRequest(true, 0)))
+                .build());
+        this.pane.setItem(8, Item.simple(this.icon(Material.CLOCK, "info.order")));
+        this.pane.setItem(45, Item.builder()
+                .setItemProviderConstant(this.icon(Material.ARROW, "button.previous"))
+                .addClickHandler(click -> this.turn(-1))
+                .build());
         this.pane.setItem(48, this.buildPageInfo());
-        this.pane.setItem(49, this.buildRefreshButton());
-        this.pane.setItem(53, this.buildNextButton());
-        this.window = NormalWindow.builder().setUpperPane(this.pane).setTitle(this.text("title.list", this.playerName))
-                .addOpenHandler(opened -> this.pane.setItem(0, this.buildNavigationButton())).build(this.viewer);
+        this.pane.setItem(49, Item.builder()
+                .setItemProviderConstant(this.icon(Material.COMPASS, "button.refresh"))
+                .addClickHandler(click -> this.pages.dirty(this.request.get()))
+                .build());
+        this.pane.setItem(53, Item.builder()
+                .setItemProviderConstant(this.icon(Material.ARROW, "button.next"))
+                .addClickHandler(click -> this.turn(1))
+                .build());
+        this.window = NormalWindow.builder()
+                .setUpperPane(this.pane)
+                .setTitle(this.text("title.list", this.playerName))
+                .addOpenHandler(opened -> this.pane.setItem(0, this.buildNavigationButton()))
+                .build(this.viewer);
         return this.window;
     }
 
     /**
      * 把一页查询结果转换为记录区元素, 加载和错误提示占据内容区中央.
      *
-     * @param page 数据库分页查询结果
+     * @param page 当前来源的分页查询结果
      * @return 按记录区槽位顺序排列的元素
      */
     private List<Element> pageElements(LoadedPage page) {
-        if (page.status() != null || page.entries().isEmpty()) {
+        if (page.status() != null || (page.entries().isEmpty() && page.archives().isEmpty())) {
             List<Element> elements = new ArrayList<>();
             for (int i = 0; i < 13; i++) {
                 elements.add(Element.empty());
             }
             elements.add(Element.item(Item.simple(this.icon(Material.BARRIER, page.status() == null ? "empty" : page.status()))));
             return elements;
+        }
+        if (!page.archives().isEmpty()) {
+            return page.archives().stream().map(entry -> {
+                SnapshotMeta meta = entry.header().meta();
+                List<Component> lore = new ArrayList<>(this.metadata(meta));
+                lore.add(this.text("label.category", entry.category()));
+                lore.add(this.text("label.archive", entry.path()));
+                if (!entry.bodyPresent()) {
+                    lore.add(this.text("not_found"));
+                }
+                return (Element) Element.item(Item.builder().setItemProviderConstant(this.icon(Material.BOOK,
+                        this.text("snapshot_entry", this.text("unpin_mark"), time(meta.timestamp(), false), entry.category()), false, lore))
+                        .addClickHandler(click -> {
+                            if (click.clickType() == ClickType.LEFT) {
+                                this.view(null, entry.path());
+                            }
+                        }).build());
+            }).toList();
         }
         return page.entries().stream().map(entry -> (Element) Element.item(this.buildSnapshotButton(entry))).toList();
     }
@@ -117,24 +159,6 @@ public final class SnapshotListGui {
     }
 
     /**
-     * 创建当前排序说明, 列表固定按采集时间从新到旧排列.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
-    private Item buildSortInfo() {
-        return Item.simple(this.icon(Material.CLOCK, "info.order"));
-    }
-
-    /**
-     * 创建上一页箭矢按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
-    private Item buildPreviousButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.previous")).addClickHandler(click -> this.turn(-1)).build();
-    }
-
-    /**
      * 把内部从零开始的页码转换成玩家看到的页数.
      *
      * @return 显示当前页与总页数的说明 Item
@@ -144,24 +168,6 @@ public final class SnapshotListGui {
             LoadedPage page = this.current.get();
             return this.icon(Material.PAPER, this.text("info.page", page.index() + 1, page.count()), false, List.of());
         }).build();
-    }
-
-    /**
-     * 创建重新查询当前页的刷新按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
-    private Item buildRefreshButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.COMPASS, "button.refresh")).addClickHandler(click -> this.pages.dirty(this.index.get())).build();
-    }
-
-    /**
-     * 创建下一页箭矢按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
-    private Item buildNextButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.next")).addClickHandler(click -> this.turn(1)).build();
     }
 
     /**
@@ -176,7 +182,7 @@ public final class SnapshotListGui {
                 this.text("cause." + meta.cause().name().toLowerCase(Locale.ROOT)));
         return Item.builder().setItemProviderConstant(this.icon(Material.BOOK, name, meta.pinned(), this.metadata(meta))).addClickHandler(click -> {
             if (click.clickType() == ClickType.LEFT) {
-                this.view(meta);
+                this.view(meta.id(), null);
             }
         }).build();
     }
@@ -216,34 +222,41 @@ public final class SnapshotListGui {
 
     private void turn(int step) {
         LoadedPage page = this.current.get();
-        this.index.set(Math.clamp(page.index() + step, 0, page.count() - 1));
+        this.request.set(new PageRequest(this.request.get().exceptions(), Math.clamp(page.index() + step, 0, page.count() - 1)));
     }
 
     /**
      * 在异步 Signal 的装载线程读取玩家身份和一页记录, 返回完整结果供绑定消费.
      *
-     * @param index 请求页码, 从零开始
+     * @param request 查询来源与从零开始的页码
      * @return 包含实际页码、玩家身份或错误状态的结果
      */
-    private LoadedPage loadPage(int index) {
+    private LoadedPage loadPage(PageRequest request) {
         try {
             var found = this.plugin.playerDirectory().resolve(this.playerName).join();
             if (found.isEmpty()) {
-                return new LoadedPage(null, 0, 1, List.of(), "player_missing");
+                return new LoadedPage(null, 0, 1, List.of(), List.of(), "player_missing");
             }
             PlayerIdentity player = found.get();
-            var page = new SnapshotPagination(this.plugin.storageProvider()).load(SnapshotQuery.of(player.uuid()), index, PAGE_SIZE).join();
-            return new LoadedPage(player, page.index(), page.count(), page.content(), null);
+            if (request.exceptions()) {
+                var page = this.plugin.snapshotService().files().listExceptions(player.uuid(), null, request.index(), PAGE_SIZE);
+                return new LoadedPage(player, page.index(), page.count(), List.of(), page.content(), null);
+            }
+            var page = new SnapshotPagination(this.plugin.storageProvider()).load(SnapshotQuery.of(player.uuid()), request.index(), PAGE_SIZE).join();
+            return new LoadedPage(player, page.index(), page.count(), page.content(), List.of(), null);
+        } catch (IOException failure) {
+            this.failed(failure);
+            return new LoadedPage(null, request.index(), 1, List.of(), List.of(), "failed");
         } catch (CompletionException failure) {
             this.failed(failure.getCause());
-            return new LoadedPage(null, index, 1, List.of(), "failed");
+            return new LoadedPage(null, request.index(), 1, List.of(), List.of(), "failed");
         }
     }
 
     // 异步构建详情并交给当前 Session 导航, Window 负责执行打开流程.
-    private void view(SnapshotMeta meta) {
+    private void view(@Nullable UUID snapshotId, @Nullable String archivePath) {
         this.window.navigate(CompletableFuture.supplyAsync(() -> new SnapshotDetailGui(this.plugin, this.viewer,
-                this.playerName, meta.id(), null, this.pages::clear).build(), this.plugin.scheduler().async()))
+                this.playerName, snapshotId, archivePath, this.pages::clear).build(), this.plugin.scheduler().async()))
                 .whenComplete((opened, failure) -> {
                     if (failure != null) {
                         this.failed(failure);
@@ -251,15 +264,10 @@ public final class SnapshotListGui {
                 });
     }
 
-    // 按查看者语言发送带项目统一前缀的操作反馈.
-    private void message(String key, Object... values) {
-        this.viewer.sendMessage(this.text("feedback", this.text(key, values)));
-    }
-
     // 记录本次菜单操作异常并向查看者发送失败反馈.
     private void failed(Throwable failure) {
         this.plugin.logger().warn("Snapshot GUI operation failed", failure);
-        this.message("failed");
+        this.viewer.sendMessage(this.text("feedback", this.text("failed")));
     }
 
     /**
@@ -269,8 +277,12 @@ public final class SnapshotListGui {
      * @param index 查询服务校正后的从零开始页码
      * @param count 查询结果的总页数
      * @param entries 当前页的记录头
+     * @param archives 当前页的本服异常档案
      * @param status 加载或失败提示, 正常页为空
      */
-    private record LoadedPage(@Nullable PlayerIdentity player, int index, int count, List<SnapshotMeta> entries, @Nullable String status) {
+    private record LoadedPage(@Nullable PlayerIdentity player, int index, int count, List<SnapshotMeta> entries, List<SnapshotFiles.ExceptionEntry> archives, @Nullable String status) {
+    }
+
+    private record PageRequest(boolean exceptions, int index) {
     }
 }
