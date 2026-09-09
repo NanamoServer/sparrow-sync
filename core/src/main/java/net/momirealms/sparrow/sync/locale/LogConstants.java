@@ -80,6 +80,13 @@ public interface LogConstants {
     String SYNC_LOAD_FAILED = "log.sync.load_failed";
     String SYNC_USER_FAILED = "log.sync.user_failed";
     String SYNC_SHUTDOWN_SAVED = "log.sync.shutdown_saved";
+    String SYNC_SHUTDOWN_PROGRESS = "log.sync.shutdown_progress";
+    String SYNC_SHUTDOWN_STALLED = "log.sync.shutdown_stalled";
+    String SYNC_SHUTDOWN_TIMEOUT = "log.sync.shutdown_timeout";
+    String SYNC_SHUTDOWN_INTERRUPTED = "log.sync.shutdown_interrupted";
+    String SYNC_SHUTDOWN_SUMMARY = "log.sync.shutdown_summary";
+    String SYNC_SHUTDOWN_MAPS = "log.sync.shutdown_maps";
+    String SYNC_SHUTDOWN_EXECUTOR = "log.sync.shutdown_executor";
 
     String STASH_PENDING = "log.stash.pending";
     String STASH_EXCEPTION = "log.stash.exception";

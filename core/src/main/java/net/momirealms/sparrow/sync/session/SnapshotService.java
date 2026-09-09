@@ -285,12 +285,12 @@ public final class SnapshotService {
     }
 
     /**
-     * 封闭保存入口并等待已接收请求的最终结果, 使用调用方剩余的停服预算.
+     * 封闭保存入口并等待已接收请求的最终结果, 连续无进展达到期限时结束等待.
      * <p>等待期间已有请求继续写入和重试.
      *
-     * @param timeout 调用方剩余的等待预算
-     * @param unit 等待预算的时间单位
-     * @return 是否在期限内结束全部已接收保存
+     * @param timeout 连续无进展的最长等待时间, 非正数表示不等待
+     * @param unit 等待时间的单位
+     * @return 是否结束全部已接收保存, 单份异常结束也计为结束
      */
     public boolean sealAndAwaitSaves(long timeout, @NotNull TimeUnit unit) {
         return this.saver == null || this.saver.sealAndAwaitSaves(timeout, unit);

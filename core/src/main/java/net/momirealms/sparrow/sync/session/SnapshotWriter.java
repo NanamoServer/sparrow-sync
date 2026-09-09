@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 final class SnapshotWriter {
+    private static final long SHUTDOWN_REPORT_NANOS = TimeUnit.SECONDS.toNanos(1);
+
     private final SyncLogger logger;
     private final StorageProvider storage;
     private final SnapshotStash stash; // 完整正文的 pending 或异常档案写入入口
@@ -193,10 +195,10 @@ final class SnapshotWriter {
     }
 
     /**
-     * 封闭接收入口并限时等待当前所有请求的最终结果, 期间允许已有请求继续写入和重试.
+     * 封闭接收入口并等待当前请求的最终结果, 连续无进展达到期限时结束等待.
      *
-     * @param timeout 调用方剩余的停服等待预算
-     * @param unit 预算的时间单位
+     * @param timeout 连续无进展的最长等待时间, 非正数表示不等待
+     * @param unit 等待时间的单位
      * @return 是否等到了整批请求结束, 单份请求异常结束也计为结束
      */
     boolean sealAndAwaitSaves(long timeout, @NotNull TimeUnit unit) {
@@ -209,18 +211,78 @@ final class SnapshotWriter {
                 completions[index++] = request.completion();
             }
         }
-        // 接收已封口, 锁外等待固定批次; 超时只结束等待, 原始保存回执仍由业务收尾完成.
+        if (completions.length == 0) return true;
+        CompletableFuture<Void> finished = CompletableFuture.allOf(completions);
+        long idleNanos = Math.max(0, unit.toNanos(timeout));
+        long lastProgress = System.nanoTime();
+        long nextReport = lastProgress;
+        int previousCompleted = 0;
         try {
-            CompletableFuture.allOf(completions).get(Math.max(0, timeout), unit);
-            return true;
-        } catch (ExecutionException exception) {
-            return true;
-        } catch (TimeoutException exception) {
-            return false;
+            while (true) {
+                int completed = 0;
+                for (int i = 0; i < completions.length; i++) {
+                    if (completions[i].isDone()) completed++;
+                }
+                long now = System.nanoTime();
+                if (completed > previousCompleted) {
+                    lastProgress = now;
+                    previousCompleted = completed;
+                }
+                if (completed == completions.length) return true;
+                long stalledNanos = now - lastProgress;
+                long remaining = idleNanos - stalledNanos;
+                if (now >= nextReport) {
+                    if (stalledNanos >= SHUTDOWN_REPORT_NANOS) {
+                        long remainingSeconds = remaining > 0 ? TimeUnit.NANOSECONDS.toSeconds(remaining - 1) + 1 : 0;
+                        this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_STALLED, String.valueOf(completed), String.valueOf(completions.length),
+                                String.valueOf(TimeUnit.NANOSECONDS.toSeconds(stalledNanos)), String.valueOf(remainingSeconds));
+                    } else {
+                        this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_PROGRESS, String.valueOf(completed), String.valueOf(completions.length));
+                    }
+                    nextReport = now + SHUTDOWN_REPORT_NANOS;
+                }
+                if (remaining <= 0) {
+                    this.logger.warn(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_TIMEOUT, String.valueOf(completed), String.valueOf(completions.length));
+                    return false;
+                }
+                // 整批完成可立即唤醒; 单份异常完成仍需等其他请求, 超时醒来重新观察进度.
+                try {
+                    finished.get(Math.min(remaining, Math.max(0, nextReport - System.nanoTime())), TimeUnit.NANOSECONDS);
+                } catch (ExecutionException | TimeoutException ignored) {
+                }
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            this.logger.warn(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_INTERRUPTED);
             return false;
+        } finally {
+            this.logShutdownSummary(completions);
         }
+    }
+
+    // 汇总最终回执, 未落库的结果和异常都归入失败, 本地留存另由 Stash 报告.
+    private void logShutdownSummary(CompletableFuture<?>[] completions) {
+        int stored = 0;
+        int cancelled = 0;
+        int failed = 0;
+        int unfinished = 0;
+        for (int i = 0; i < completions.length; i++) {
+            CompletableFuture<?> completion = completions[i];
+            if (!completion.isDone()) {
+                unfinished++;
+            } else if (completion.isCancelled()) {
+                cancelled++;
+            } else if (completion.isCompletedExceptionally()) {
+                failed++;
+            } else if (completion.getNow(null) instanceof SnapshotSaveResult.Cancelled) {
+                cancelled++;
+            } else if (((SnapshotSaveResult.Settled) completion.getNow(null)).result().stored()) {
+                stored++;
+            } else {
+                failed++;
+            }
+        }
+        this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_SUMMARY, String.valueOf(stored), String.valueOf(cancelled), String.valueOf(failed), String.valueOf(unfinished));
     }
 
     /**

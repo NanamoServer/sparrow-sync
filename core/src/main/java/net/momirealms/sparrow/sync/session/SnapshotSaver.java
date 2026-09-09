@@ -247,11 +247,11 @@ final class SnapshotSaver {
     }
 
     /**
-     * 封闭保存入口并等待已接收请求的最终结果, 期间 Writer 继续正常重试.
+     * 封闭保存入口并等待最终结果, 期间继续重试, 完成数增加时重置停滞计时.
      *
-     * @param timeout 调用方剩余的等待预算
-     * @param unit 等待预算的时间单位
-     * @return 是否在期限内结束全部已接收请求
+     * @param timeout 连续无进展的最长等待时间, 非正数表示不等待
+     * @param unit 等待时间的单位
+     * @return 是否结束全部已接收请求, 单份异常结束也计为结束
      */
     public boolean sealAndAwaitSaves(long timeout, @NotNull TimeUnit unit) {
         return this.writer.sealAndAwaitSaves(timeout, unit);

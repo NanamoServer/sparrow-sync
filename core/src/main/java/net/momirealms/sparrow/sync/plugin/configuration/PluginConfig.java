@@ -289,16 +289,15 @@ public final class PluginConfig {
         int workerThreads = 4;
 
         @Comment({
-                "Maximum time to wait for pending data to be written to storage on shutdown, in seconds",
-                "Basic testing with workerThreads = 4 took about 8 seconds to save 1000 players with complex data",
-                "Timeouts are uncommon; if one occurs, data not submitted to the database is saved to a local folder and saved again on the next server startup",
-                "If the server runs in Docker, check how long Docker waits before forcibly killing the container on shutdown; the usual 10-second timeout may not be sufficient"
+                "Maximum time without a completed save request during shutdown, in seconds; non-positive values skip waiting",
+                "Progress is reported every second; each increase resets the timeout, so total saving time may exceed this value",
+                "After all save requests finish, map publication and executor draining share one additional fixed budget of this length",
+                "On timeout or interruption, cleanup starts without an additional wait; unfinished complete snapshots are submitted for local stashing",
+                "External process or container shutdown limits must allow enough time for saving and cleanup"
         })
         @Comment(lang = "zh-CN", value = {
-                "关服时等待待保存数据写入存储的最长时间, 单位为秒",
-                "经过简单测试: 当 workerThreads = 4 时保存 1000 名复杂数据玩家约需 8 秒",
-                "通常不会出现超时情况, 若保存超时, 未投递到数据库的数据会被留存输出在本地文件夹, 将在下次启动服务器时重新保存",
-                "若服务器正运行在 Docker 容器中, 你可能需要额外关注关服时强制杀死容器的等待时间上限, 它通常为 10 秒, 并不绝对安全"
+                "当关服执行保存时发现保存任务一直没有被推进时的最长等待时间, 单位为秒, 非正数表示不等待",
+                "超时或中断后直接进入收尾, 未完成的完整快照交由本地暂存处理"
         })
         int shutdownTimeoutSeconds = 30;
 

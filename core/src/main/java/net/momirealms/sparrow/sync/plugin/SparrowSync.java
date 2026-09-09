@@ -315,7 +315,7 @@ public class SparrowSync implements Plugin {
     }
 
     /**
-     * 在共享等待预算内完成最终会话保存、地图发布和玩家队列排空, 随后暂存剩余完整快照.
+     * 等待最终会话保存, 连续无进展时停止等待; 正常结束后地图发布和队列排空共用固定收尾预算.
      * <p>先停止管理操作, 待 ACTIVE 会话提交 SHUTDOWN 请求后才封闭保存入口.
      * 依赖在保存收尾之后关闭, 初始化中途失败时仅处理已经装配的对象.
      */
@@ -324,12 +324,19 @@ public class SparrowSync implements Plugin {
         if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
         if (this.snapshotService != null)       this.snapshotService.stopOperations();
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
-        long shutdownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(PluginConfig.synchronization$shutdownTimeoutSeconds());
+        long shutdownTimeout = TimeUnit.SECONDS.toNanos(Math.max(0, PluginConfig.synchronization$shutdownTimeoutSeconds()));
         if (this.mapSyncService != null)        this.mapSyncService.stopReceiving();
         if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
-        if (this.snapshotService != null)       this.snapshotService.sealAndAwaitSaves(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-        if (this.mapSyncService != null)        this.mapSyncService.finishPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-        if (this.playerExecutor != null)        this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        boolean savesFinished = this.snapshotService == null || this.snapshotService.sealAndAwaitSaves(shutdownTimeout, TimeUnit.NANOSECONDS);
+        long shutdownDeadline = System.nanoTime() + (savesFinished && !Thread.currentThread().isInterrupted() ? shutdownTimeout : 0);
+        if (this.mapSyncService != null) {
+            this.logger.info(LogCategory.LIFECYCLE, LogConstants.SYNC_SHUTDOWN_MAPS);
+            this.mapSyncService.finishPublishing(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        }
+        if (this.playerExecutor != null) {
+            this.logger.info(LogCategory.LIFECYCLE, LogConstants.SYNC_SHUTDOWN_EXECUTOR);
+            this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        }
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
         if (this.scheduler != null)             this.scheduler.shutdownScheduler();
         if (this.scheduler != null)             this.scheduler.shutdownExecutor();

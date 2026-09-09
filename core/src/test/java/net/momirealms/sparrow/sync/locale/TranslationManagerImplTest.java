@@ -12,6 +12,7 @@ import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.yaml.SparrowYaml;
+import net.momirealms.sparrow.yaml.route.Route;
 import net.momirealms.sparrow.yaml.YamlDocument;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,6 +116,54 @@ class TranslationManagerImplTest {
         Map<String, String> translations = (Map<String, String>) loadLangData.invoke(null, document);
 
         assertEquals("first<reset><newline>second", translations.get("message"));
+    }
+
+    @Test
+    void upgradingShutdownTranslationsKeepsCustomTextAndAddsNewKeys() throws Exception {
+        String bundled;
+        try (InputStream input = this.getClass().getResourceAsStream("/translations/en.yml")) {
+            bundled = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        Path folder = this.directory.resolve("translations");
+        Files.createDirectories(folder);
+        Files.writeString(folder.resolve("en.yml"), """
+                lang-version: "39"
+                log.sync.shutdown_saved: 'custom shutdown text'
+                """);
+        TranslationManagerImpl manager = new TranslationManagerImpl(new TestPlugin(this.directory, bundled));
+        manager.reload();
+        assertEquals("custom shutdown text", manager.miniMessageTranslation(LogConstants.SYNC_SHUTDOWN_SAVED));
+        assertTrue(manager.miniMessageTranslation(LogConstants.SYNC_SHUTDOWN_STALLED).contains("<arg:0>/<arg:1>"));
+        String written = Files.readString(folder.resolve("en.yml"));
+        assertEquals(DependencyVersions.LANG_VERSION, SparrowYaml.builder().build().load(written).getString(Route.from("lang-version")));
+        assertTrue(written.contains(LogConstants.SYNC_SHUTDOWN_SUMMARY));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shutdownTranslationArgumentsMatchInBothLanguages() throws Exception {
+        Map<String, Integer> keys = Map.of(
+                LogConstants.SYNC_SHUTDOWN_PROGRESS, 2,
+                LogConstants.SYNC_SHUTDOWN_STALLED, 4,
+                LogConstants.SYNC_SHUTDOWN_TIMEOUT, 2,
+                LogConstants.SYNC_SHUTDOWN_INTERRUPTED, 0,
+                LogConstants.SYNC_SHUTDOWN_SUMMARY, 4,
+                LogConstants.SYNC_SHUTDOWN_MAPS, 0,
+                LogConstants.SYNC_SHUTDOWN_EXECUTOR, 0);
+        Method loadLangData = TranslationManagerImpl.class.getDeclaredMethod("loadLangData", YamlDocument.class);
+        loadLangData.setAccessible(true);
+        for (String language : List.of("en", "zh_cn")) {
+            try (InputStream input = this.getClass().getResourceAsStream("/translations/" + language + ".yml")) {
+                Map<String, String> translations = (Map<String, String>) loadLangData.invoke(null, SparrowYaml.builder().build().load(input));
+                for (Map.Entry<String, Integer> entry : keys.entrySet()) {
+                    String text = translations.get(entry.getKey());
+                    for (int i = 0; i < entry.getValue(); i++) {
+                        assertTrue(text.contains("<arg:" + i + ">"), entry.getKey());
+                    }
+                    assertEquals(entry.getValue().intValue(), text.split("<arg:", -1).length - 1, entry.getKey());
+                }
+            }
+        }
     }
 
     private static String translationYaml(String value) {

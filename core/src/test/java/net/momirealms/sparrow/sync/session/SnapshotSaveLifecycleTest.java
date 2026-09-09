@@ -1,6 +1,19 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.map.MapPublisher;
+import net.momirealms.sparrow.sync.map.MapStorage;
+import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.cache.MapCache;
+import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import org.bukkit.Bukkit;
+import org.bukkit.Server;
+import net.momirealms.sparrow.sync.locale.TranslationManager;
+import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -60,6 +73,8 @@ class SnapshotSaveLifecycleTest {
     private final AtomicInteger rotations = new AtomicInteger(); // 只计发起轮转, 轮转 Future 故意保持未完成
     private final AtomicInteger stashReports = new AtomicInteger(); // 每次真实暂存尝试的报告次数
     private final List<Throwable> failures = new CopyOnWriteArrayList<>(); // 控制台收到的异常原因
+    private final LinkedBlockingQueue<String> shutdownLogs = new LinkedBlockingQueue<>();
+    private Object previousTranslations;
     private volatile Runnable onWarning = () -> {}; // 在暂存报告时暂停收尾, 检查结果完成的边界
     private Function<Snapshot, CompletableFuture<SaveOutcome>> onSave; // 默认返回可控写入, 单个测试可换成真实队列投递
     private PluginConfig.ConfigDefinition config; // 当前测试固定的配置
@@ -82,8 +97,15 @@ class SnapshotSaveLifecycleTest {
         configField.setAccessible(true);
         this.previousConfig = configField.get(null);
         configField.set(null, this.config);
+        Field translationField = TranslationManagerImpl.class.getDeclaredField("instance");
+        translationField.setAccessible(true);
+        this.previousTranslations = translationField.get(null);
+        translationField.set(null, Proxy.newProxyInstance(TranslationManager.class.getClassLoader(), new Class<?>[]{TranslationManager.class},
+                (proxy, method, args) -> args[0] + " " + String.join(",", (String[]) args[1])));
         PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> {
-            if (method.getName().equals("warn")) {
+            String message = (String) args[0];
+            if (message.startsWith("log.sync.shutdown_")) this.shutdownLogs.add(message);
+            if (method.getName().equals("warn") && (message.startsWith(LogConstants.STASH_PENDING + " ") || message.startsWith(LogConstants.STASH_EXCEPTION + " "))) {
                 this.stashReports.incrementAndGet();
                 this.onWarning.run();
             }
@@ -119,6 +141,190 @@ class SnapshotSaveLifecycleTest {
         Field configField = PluginConfig.class.getDeclaredField("config");
         configField.setAccessible(true);
         configField.set(null, this.previousConfig);
+        Field translationField = TranslationManagerImpl.class.getDeclaredField("instance");
+        translationField.setAccessible(true);
+        translationField.set(null, this.previousTranslations);
+    }
+
+    @Test
+    void progressExtendsSavingBeyondTheOriginalTimeout() throws Exception {
+        SaveRequest first = this.accept(false);
+        SaveRequest second = this.accept(false);
+        SaveRequest third = this.accept(false);
+        long start = System.nanoTime();
+        CompletableFuture<Boolean> waiting = CompletableFuture.supplyAsync(() -> this.writer.sealAndAwaitSaves(500, TimeUnit.MILLISECONDS));
+        assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,3", this.nextShutdownLog());
+        try (var clock = Executors.newSingleThreadScheduledExecutor()) {
+            clock.schedule(() -> first.fail(new IllegalStateException("finished")), 200, TimeUnit.MILLISECONDS);
+            clock.schedule(() -> second.fail(new IllegalStateException("finished")), 650, TimeUnit.MILLISECONDS);
+            clock.schedule(() -> third.fail(new IllegalStateException("finished")), 1050, TimeUnit.MILLISECONDS);
+            assertTrue(waiting.get(3, TimeUnit.SECONDS));
+        }
+        assertTrue(System.nanoTime() - start > TimeUnit.MILLISECONDS.toNanos(1000));
+        assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_SUMMARY + " 0,0,3,0"));
+    }
+
+    @Test
+    void stalledCountdownResetsAfterProgressAndThenExpires() throws Exception {
+        SaveRequest first = this.accept(false);
+        SaveRequest second = this.accept(false);
+        CompletableFuture<Boolean> waiting = CompletableFuture.supplyAsync(() -> this.writer.sealAndAwaitSaves(2, TimeUnit.SECONDS));
+        assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,2", this.nextShutdownLog());
+        assertEquals(LogConstants.SYNC_SHUTDOWN_STALLED + " 0,2,1,1", this.nextShutdownLog());
+        first.completion().complete(new SnapshotSaveResult.Cancelled());
+        assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 1,2", this.nextShutdownLog());
+        assertEquals(LogConstants.SYNC_SHUTDOWN_STALLED + " 1,2,1,1", this.nextShutdownLog());
+        assertFalse(waiting.get(3, TimeUnit.SECONDS));
+        assertFalse(second.completion().isDone());
+        assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_TIMEOUT + " 1,2"));
+        assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_SUMMARY + " 0,1,0,1"));
+    }
+
+    @Test
+    void allCompletedOutcomesWakeImmediatelyAndAreClassified() throws Exception {
+        SaveRequest stored = this.accept(false);
+        SaveRequest cancelled = this.accept(false);
+        SaveRequest rejected = this.accept(false);
+        SaveRequest exceptional = this.accept(false);
+        CompletableFuture<Boolean> waiting = CompletableFuture.supplyAsync(() -> this.writer.sealAndAwaitSaves(30, TimeUnit.SECONDS));
+        assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,4", this.nextShutdownLog());
+        stored.completion().complete(new SnapshotSaveResult.Settled(SaveResult.DUPLICATE, stored.meta().id()));
+        cancelled.completion().complete(new SnapshotSaveResult.Cancelled());
+        rejected.completion().complete(new SnapshotSaveResult.Settled(SaveResult.REJECTED_OVERSIZED, rejected.meta().id()));
+        exceptional.fail(new IllegalStateException("failed"));
+        assertTrue(waiting.get(500, TimeUnit.MILLISECONDS));
+        assertEquals(LogConstants.SYNC_SHUTDOWN_SUMMARY + " 1,1,2,0", this.nextShutdownLog());
+    }
+
+    @Test
+    void emptyBatchSkipsProgress() {
+        assertTrue(this.writer.sealAndAwaitSaves(0, TimeUnit.SECONDS));
+        assertTrue(this.shutdownLogs.isEmpty());
+    }
+
+    @Test
+    void nonPositiveTimeoutDoesNotWait() {
+        SaveRequest request = this.accept(false);
+        assertFalse(this.writer.sealAndAwaitSaves(-1, TimeUnit.SECONDS));
+        assertFalse(request.completion().isDone());
+    }
+
+    @Test
+    void interruptedWaitPreservesRequestsAndInterruptFlag() throws Exception {
+        SaveRequest request = this.accept(false);
+        CompletableFuture<Boolean> outcome = new CompletableFuture<>();
+        Thread waiter = Thread.ofPlatform().start(() -> {
+            boolean completed = this.writer.sealAndAwaitSaves(30, TimeUnit.SECONDS);
+            outcome.complete(!completed && Thread.currentThread().isInterrupted());
+        });
+        try {
+            assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,1", this.nextShutdownLog());
+            waiter.interrupt();
+            assertTrue(outcome.get(1, TimeUnit.SECONDS));
+            assertFalse(request.completion().isDone());
+            assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_INTERRUPTED + " "));
+            assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_SUMMARY + " 0,0,0,1"));
+        } finally {
+            waiter.interrupt();
+            waiter.join(1000);
+        }
+    }
+
+    @Test
+    void encodingAndRetriesDoNotResetTheIdleTimeout() throws Exception {
+        this.maxRetries(-1);
+        SaveRequest request = this.accept(true);
+        this.onSave = snapshot -> {
+            this.submissions.add(new Submission(snapshot, new CompletableFuture<>()));
+            return CompletableFuture.completedFuture(new SaveOutcome(SaveResult.RETRY_LATER, null));
+        };
+        this.writer.write(request);
+        assertFalse(this.writer.sealAndAwaitSaves(250, TimeUnit.MILLISECONDS));
+        assertTrue(this.submissions.size() > 1);
+        assertFalse(request.completion().isDone());
+        this.writer.stashUnsettled();
+        assertTrue(request.completion().isDone());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void shutdownTailSharesOneBudgetAndTimeoutAddsNoBudget(int mode) throws Exception {
+        Field optionsField = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
+        optionsField.setAccessible(true);
+        Object options = optionsField.get(this.config);
+        NmsPlayerFixture.set(options.getClass(), options, "shutdownTimeoutSeconds", 1);
+        if (mode != 0) this.accept(true);
+        Field serverField = Bukkit.class.getDeclaredField("server");
+        serverField.setAccessible(true);
+        Object previousServer = serverField.get(null);
+        serverField.set(null, Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[]{Server.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("isStopping")) return true;
+                    throw new AssertionError(method.getName());
+                }));
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        this.executor.submit(PLAYER, () -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                interrupted.countDown();
+            }
+        });
+        assertTrue(started.await(1, TimeUnit.SECONDS));
+        SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
+        Field loggerField = SnapshotWriter.class.getDeclaredField("logger");
+        loggerField.setAccessible(true);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", loggerField.get(this.writer));
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "playerExecutor", this.executor);
+        SnapshotSaver saver = NmsPlayerFixture.allocate(SnapshotSaver.class);
+        NmsPlayerFixture.set(SnapshotSaver.class, saver, "writer", this.writer);
+        SnapshotService service = new SnapshotService(plugin);
+        NmsPlayerFixture.set(SnapshotService.class, service, "saver", saver);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
+        MapStorage storage = (MapStorage) Proxy.newProxyInstance(MapStorage.class.getClassLoader(), new Class<?>[]{MapStorage.class},
+                (proxy, method, args) -> { throw new AssertionError(method.getName()); });
+        MapCache cache = (MapCache) Proxy.newProxyInstance(MapCache.class.getClassLoader(), new Class<?>[]{MapCache.class},
+                (proxy, method, args) -> { throw new AssertionError(method.getName()); });
+        MapPublisher publisher = new MapPublisher(storage, cache, "test", Runnable::run);
+        Field pendingField = MapPublisher.class.getDeclaredField("pending");
+        pendingField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<MapSource, CompletableFuture<StoredMap>> pending = (Map<MapSource, CompletableFuture<StoredMap>>) pendingField.get(publisher);
+        pending.put(new MapSource("test", 0), new CompletableFuture<>());
+        MapSyncService maps = new MapSyncService(plugin);
+        NmsPlayerFixture.set(MapSyncService.class, maps, "publisher", publisher);
+        NmsPlayerFixture.set(MapSyncService.class, maps, "ownerId", "test");
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "mapSyncService", maps);
+        try {
+            long start = System.nanoTime();
+            if (mode == 2) Thread.currentThread().interrupt();
+            plugin.onPluginDisable();
+            boolean wasInterrupted = Thread.interrupted();
+            long elapsed = System.nanoTime() - start;
+            assertTrue(interrupted.await(500, TimeUnit.MILLISECONDS));
+            if (mode == 2) {
+                assertTrue(wasInterrupted);
+                assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(500));
+            } else {
+                assertTrue(elapsed >= TimeUnit.MILLISECONDS.toNanos(900));
+            }
+            assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(1800), "shutdown allocated another wait budget");
+            assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_MAPS + " "));
+            assertTrue(this.shutdownLogs.contains(LogConstants.SYNC_SHUTDOWN_EXECUTOR + " "));
+            if (mode != 0) assertEquals(1, this.bodies().size());
+        } finally {
+            Thread.interrupted();
+            serverField.set(null, previousServer);
+        }
+    }
+
+    private String nextShutdownLog() throws InterruptedException {
+        String message = this.shutdownLogs.poll(3, TimeUnit.SECONDS);
+        assertNotNull(message, "missing shutdown log");
+        return message;
     }
 
     /** 首次提交以后仍等待最终回执, 汇总超时不会修改任何原始 Future. */
