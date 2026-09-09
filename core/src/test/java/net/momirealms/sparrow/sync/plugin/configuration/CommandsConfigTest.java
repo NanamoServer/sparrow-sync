@@ -24,13 +24,15 @@ class CommandsConfigTest {
             assertEquals(List.of("/sparrow-sync " + feature), config.configDefinition().command(feature).getUsages());
         }
         assertTrue(Files.readString(this.directory.resolve("commands.yml")).contains("status:"));
-        for (String feature : List.of("snapshot_list", "exception_list", "exception_view")) {
+        for (String feature : List.of("gui", "snapshot_view", "snapshot_list", "exception_list", "exception_view")) {
             assertTrue(config.configDefinition().command(feature).isEnable());
             assertEquals("sparrow_sync.command.view", config.configDefinition().command(feature).getPermission());
         }
         assertEquals(List.of("/sparrow-sync snapshot list"), config.configDefinition().command("snapshot_list").getUsages());
         assertEquals(List.of("/sparrow-sync exception list"), config.configDefinition().command("exception_list").getUsages());
         assertEquals(List.of("/sparrow-sync exception view"), config.configDefinition().command("exception_view").getUsages());
+        assertEquals(List.of("/sparrow-sync gui"), config.configDefinition().command("gui").getUsages());
+        assertEquals(List.of("/sparrow-sync snapshot view"), config.configDefinition().command("snapshot_view").getUsages());
         assertThrows(IllegalArgumentException.class, () -> config.configDefinition().command("snapshot"));
         assertThrows(IllegalArgumentException.class, () -> config.configDefinition().command("about"));
         assertThrows(IllegalArgumentException.class, () -> config.configDefinition().command("help"));

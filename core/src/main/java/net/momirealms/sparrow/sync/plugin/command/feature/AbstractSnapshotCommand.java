@@ -35,7 +35,7 @@ abstract class AbstractSnapshotCommand extends BukkitCommandFeature {
         });
     }
 
-    protected <T> void finish(CommandContext<CommandSender> context, CompletableFuture<T> operation, Consumer<T> feedback) {
+    protected <T> void finish(CommandContext<? extends CommandSender> context, CompletableFuture<T> operation, Consumer<T> feedback) {
         operation.whenComplete((result, failure) -> {
             if (failure != null) {
                 this.plugin().logger().warn(TranslationManager.console("log.command.snapshot_failed", this.getFeatureID()), failure);

@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.GuiCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotViewCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand;
@@ -407,7 +409,7 @@ class CommandFeaturesTest {
         this.registerPanelCommands();
         SnapshotMeta meta = new SnapshotMeta(id, playerId, 1788877230000L, SaveCause.COMMAND, true, "<red>origin", 0);
         CommandSender viewer = player(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export"));
-        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 12, List.of(meta)));
+        this.showSnapshots(viewer, new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 12, List.of(meta)));
         assertEquals(3, this.text().lines().count());
         assertTrue(this.text().contains("<red>or..."));
         assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, "<red>origin")));
@@ -433,12 +435,12 @@ class CommandFeaturesTest {
         SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, false, "origin", 0)));
         Set<String> permissions = new HashSet<>(Set.of("sparrow_sync.command.view", "custom.delete"));
         Player viewer = player(permissions);
-        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
+        this.showSnapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
         assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/custom erase " + id))));
         permissions.remove("custom.delete");
         assertThrows(ExecutionException.class, () -> this.execute(viewer, "custom erase " + id));
         this.messages.clear();
-        new SnapshotTextPanel(this.manager).snapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
+        this.showSnapshots(viewer, new PlayerIdentity(playerId, "Steve"), page);
         assertFalse(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/custom erase " + id))));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export json " + id)));
     }
@@ -448,7 +450,7 @@ class CommandFeaturesTest {
         this.registerPanelCommands();
         UUID playerId = UUID.randomUUID();
         UUID id = UUID.randomUUID();
-        new SnapshotTextPanel(this.manager).snapshots(sender(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export")),
+        this.showSnapshots(sender(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export")),
                 new PlayerIdentity(playerId, "Steve"), new SnapshotPage(1, 5, 6, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, false, "origin", 0))));
         assertTrue(this.text().contains(id.toString()));
         assertTrue(this.text().contains(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(1))));
@@ -556,8 +558,37 @@ class CommandFeaturesTest {
         this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
         assertTrue(this.text().contains("Body missing"));
         this.messages.clear();
+        AtomicInteger scheduled = this.installGuiScheduler();
         this.execute(player(Set.of("sparrow_sync.command.view")), "sparrow-sync exception view corrupted/archive.snapshot");
-        assertTrue(this.text().contains("detail menu is not available"));
+        assertEquals(1, scheduled.get());
+        assertTrue(this.messages.isEmpty());
+    }
+
+    @Test
+    void guiCommandsRequirePlayerAndViewPermissionAndPreserveSnapshotId() throws Exception {
+        AtomicInteger scheduled = this.installGuiScheduler();
+        this.manager.registerFeature(new GuiCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("gui"));
+        this.manager.registerFeature(new SnapshotViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("snapshot_view"));
+        Player allowed = player(Set.of("sparrow_sync.command.view"));
+        this.execute(allowed, "sparrow-sync gui TestPlayer");
+        this.execute(allowed, "sparrow-sync snapshot view TestPlayer 12345678-1234-1234-1234-123456789abc");
+        assertEquals(2, scheduled.get());
+        assertThrows(ExecutionException.class, () -> this.execute(player(Set.of()), "sparrow-sync gui TestPlayer"));
+        assertThrows(ExecutionException.class, () -> this.execute(sender(Set.of("sparrow_sync.command.view")), "sparrow-sync gui TestPlayer"));
+        assertThrows(ExecutionException.class, () -> this.execute(allowed, "sparrow-sync snapshot view TestPlayer invalid-id"));
+        assertEquals(2, scheduled.get());
+        this.messages.clear();
+        SnapshotMeta meta = new SnapshotMeta(UUID.fromString("12345678-1234-1234-1234-123456789abc"), UUID.randomUUID(), 1, SaveCause.COMMAND, false, "server", 1);
+        this.showSnapshots(allowed, new PlayerIdentity(meta.player(), "TestPlayer"), new SnapshotPage(0, 7, 1, List.of(meta)));
+        assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot view TestPlayer " + meta.id())));
+    }
+
+    private AtomicInteger installGuiScheduler() {
+        AtomicInteger scheduled = new AtomicInteger();
+        // 只记录异步构建任务, 命令入口无需先访问实体调度器或玩家物品栏.
+        Executor async = task -> scheduled.incrementAndGet();
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> method.getName().equals("async") ? async : null));
+        return scheduled;
     }
 
     private SnapshotFiles installArchiveService() {
@@ -577,13 +608,34 @@ class CommandFeaturesTest {
                 new CommandConfig(true, List.of("/archive remove"), "custom.archive"));
         String path = "corrupted/archive with spaces.snapshot";
         ExceptionArchives.Entry entry = new ExceptionArchives.Entry(path, "corrupted", null, ExceptionArchives.HeadStatus.UNREADABLE, false);
-        new SnapshotTextPanel(this.manager).exceptions(player(Set.of("custom.archive")), null, new ExceptionArchives.Page(0, 5, 1, 1, List.of(entry)));
+        this.showExceptions(player(Set.of("custom.archive")), null, new ExceptionArchives.Page(0, 5, 1, 1, List.of(entry)));
         assertTrue(this.text().contains("Header unreadable"));
         assertTrue(this.text().contains("Body missing"));
         assertTrue(this.text().contains("Unknown player"));
         assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/archive remove " + path))));
         assertFalse(this.text().contains("[Binary]"));
         this.assertTranslatedHover(this.messages.getFirst());
+    }
+
+    // 直接验证具体命令的文字输出, 分页查询与命令权限由相邻的执行测试覆盖.
+    private void showSnapshots(CommandSender sender, PlayerIdentity player, SnapshotPage page) {
+        try {
+            var render = SnapshotListCommand.class.getDeclaredMethod("renderPage", CommandSender.class, PlayerIdentity.class, SnapshotPage.class);
+            render.setAccessible(true);
+            render.invoke(new SnapshotListCommand(this.manager, this.plugin), sender, player, page);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
+    }
+
+    private void showExceptions(CommandSender sender, String player, ExceptionArchives.Page page) {
+        try {
+            var render = ExceptionListCommand.class.getDeclaredMethod("renderPage", CommandSender.class, String.class, ExceptionArchives.Page.class);
+            render.setAccessible(true);
+            render.invoke(new ExceptionListCommand(this.manager, this.plugin), sender, player, page);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
     private void registerPanelCommands() {
@@ -603,7 +655,7 @@ class CommandFeaturesTest {
                 new SnapshotMeta(UUID.fromString("ffffffff-0000-0000-0000-000000000000"), playerId, 1, SaveCause.DISCONNECT, false, "i", 0),
                 new SnapshotMeta(UUID.fromString("aaaaaaaa-0000-0000-0000-000000000000"), playerId, 1, SaveCause.SHUTDOWN, true, "WWWWWWWWWW", 0),
                 new SnapshotMeta(UUID.fromString("ffffaaaa-0000-0000-0000-000000000000"), playerId, 1, SaveCause.WORLD_SAVE, false, "server-name-is-long", 0));
-        new SnapshotTextPanel(this.manager).snapshots(player(Set.of("sparrow_sync.command.view")), new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 3, records));
+        this.showSnapshots(player(Set.of("sparrow_sync.command.view")), new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 3, records));
         assertEquals(5, this.text().lines().count());
         assertTrue(this.text().contains("WWWWWWWWWW"));
         assertTrue(this.text().contains("server-..."));
@@ -623,14 +675,13 @@ class CommandFeaturesTest {
         this.registerPanelCommands();
         UUID playerId = UUID.randomUUID();
         SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(UUID.randomUUID(), playerId, 1, SaveCause.COMMAND, false, server, 0)));
-        SnapshotTextPanel panel = new SnapshotTextPanel(this.manager);
         PlayerIdentity identity = new PlayerIdentity(playerId, "Steve");
-        panel.snapshots(player(Set.of()), identity, page);
+        this.showSnapshots(player(Set.of()), identity, page);
         String expected = server.codePointCount(0, server.length()) <= 10 ? server : server.substring(0, server.offsetByCodePoints(0, 7)) + "...";
         assertTrue(this.text().contains(expected));
         assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, server)));
         this.messages.clear();
-        panel.snapshots(sender(Set.of()), identity, page);
+        this.showSnapshots(sender(Set.of()), identity, page);
         assertTrue(this.text().contains(server));
         this.assertNoEvents(this.messages.getFirst());
     }
@@ -647,7 +698,7 @@ class CommandFeaturesTest {
             records.add(new SnapshotMeta(UUID.fromString(ids[i] + "-0000-0000-0000-000000000000"), playerId, 1,
                     i == 1 || i == 4 ? SaveCause.WORLD_SAVE : SaveCause.SHUTDOWN, i == 2, "Paper_26.2", 0));
         }
-        new SnapshotTextPanel(this.manager).snapshots(player(Set.of("sparrow_sync.command.view")),
+        this.showSnapshots(player(Set.of("sparrow_sync.command.view")),
                 new PlayerIdentity(playerId, "Catnies"), new SnapshotPage(0, 5, 34, records));
         List<Integer> offsets = new ArrayList<>();
         List<Integer> widths = new ArrayList<>();
@@ -697,10 +748,9 @@ class CommandFeaturesTest {
         String command = "/custom " + action + " " + id;
         PlayerIdentity identity = new PlayerIdentity(playerId, "Steve");
         SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(id, playerId, 1, SaveCause.COMMAND, pinned, "origin", 0)));
-        SnapshotTextPanel panel = new SnapshotTextPanel(this.manager);
         Set<String> permissions = new HashSet<>(Set.of("sparrow_sync.command.view", "custom." + action));
         Player viewer = player(permissions);
-        panel.snapshots(viewer, identity, page);
+        this.showSnapshots(viewer, identity, page);
         assertTrue(this.text().contains(pinned ? "★ [V]" : "☆ [V]"));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, command)));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom " + opposite + " " + id)));
@@ -710,7 +760,7 @@ class CommandFeaturesTest {
         permissions.add("custom." + opposite);
         assertThrows(ExecutionException.class, () -> this.execute(viewer, command.substring(1)));
         this.messages.clear();
-        panel.snapshots(viewer, identity, page);
+        this.showSnapshots(viewer, identity, page);
         assertTrue(this.text().contains(pinned ? "★ [V]" : "☆ [V]"));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, command)));
     }
@@ -736,6 +786,7 @@ class CommandFeaturesTest {
         return proxy(Player.class, (instance, method, args) -> switch (method.getName()) {
             case "hasPermission" -> permissions.contains(args[0]);
             case "getName", "toString" -> "Viewer";
+            case "getUniqueId" -> UUID.fromString("12345678-1234-1234-1234-123456789abc");
             case "isOp" -> false;
             default -> null;
         });

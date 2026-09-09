@@ -1,39 +1,151 @@
 package net.momirealms.sparrow.sync.plugin.command.feature;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.sync.gui.SnapshotDetailGui;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.command.CommandConfig;
+import net.momirealms.sparrow.sync.plugin.command.CommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.plugin.command.SnapshotTextPanel;
 import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
+import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionArchives;
+import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;
 import org.incendo.cloud.parser.standard.StringParser;
+import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+
+// 查看本服异常档案, 玩家进入快照菜单, 控制台接收文字详情.
 public final class ExceptionViewCommand extends AbstractSnapshotCommand {
-    public ExceptionViewCommand(CommandManager manager, SparrowSync plugin) {
+    private static final DateTimeFormatter FULL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault());
+
+    public ExceptionViewCommand(@NotNull CommandManager manager, @NotNull SparrowSync plugin) {
         super(manager, plugin);
     }
 
     @Override
-    public Command.Builder<? extends CommandSender> assembleCommand(org.incendo.cloud.CommandManager<CommandSender> manager, Command.Builder<CommandSender> builder) {
+    @NotNull
+    public Command.Builder<? extends CommandSender> assembleCommand(@NotNull org.incendo.cloud.CommandManager<CommandSender> manager, @NotNull Command.Builder<CommandSender> builder) {
         return builder.required("file", StringParser.greedyStringParser()).handler(context -> {
-            if (context.sender() instanceof Player) {
-                this.handleFeedback(context, Component.translatable().key("command.panel.gui_pending"));
+            if (context.sender() instanceof Player viewer) {
+                this.finish(context, CompletableFuture.supplyAsync(() -> new SnapshotDetailGui(this.plugin(), viewer, "", null, context.get("file"), null).build(), this.plugin().scheduler().async())
+                        .thenCompose(Window::open), result -> {});
                 return;
             }
+            // 控制台等待档案正文读取完成后输出详情, 读取异常在命令边界记录一次.
             this.finish(context, this.plugin().snapshotService().details().loadException(context.get("file")), archive -> {
-                if (archive.result() instanceof SnapshotDetailResult.Failed failed) {
-                    this.plugin().logger().warn(TranslationManager.console("log.command.snapshot_failed", this.getFeatureID()), failed.failure());
+                if (archive.result() instanceof SnapshotDetailResult.Failed(Throwable failure)) {
+                    this.plugin().logger().warn(TranslationManager.console("log.command.snapshot_failed", this.getFeatureID()), failure);
                 }
-                new SnapshotTextPanel(this.commandManager).archive(context.sender(), archive);
+                this.renderArchive(context.sender(), archive);
             });
         });
     }
 
     @Override
+    @NotNull
     public String getFeatureID() {
         return "exception_view";
+    }
+
+    /**
+     * 向控制台发送异常档案详情与正文读取结果, 所有标识均保留完整文本.
+     *
+     * @param sender 通过命令入口进入文字详情的非玩家发送者
+     * @param archive 档案条目及正文读取结果
+     */
+    private void renderArchive(@NotNull CommandSender sender, @NotNull SnapshotDetailResult.Archive archive) {
+        ExceptionArchives.Entry entry = archive.entry();
+        SnapshotMeta meta = entry.informationAvailable() ? entry.header().meta() : null;
+        Component time = meta == null ? this.tr("unknown_time") : Component.text(FULL_TIME.format(Instant.ofEpochMilli(meta.timestamp())));
+        Component player = this.tr("unknown_player");
+        if (meta != null) {
+            String name = entry.header().playerName() == null ? meta.player().toString() : entry.header().playerName();
+            player = Component.text(name + " (" + meta.player() + ")");
+        }
+        // 档案头与正文的状态分别显示, 即使头损坏也保留完整路径和删除入口.
+        Component status = this.tr("exception.head_" + entry.headStatus().name().toLowerCase(Locale.ROOT));
+        if (!entry.informationAvailable() && entry.headStatus() == ExceptionArchives.HeadStatus.AVAILABLE) {
+            status = this.tr("exception.information_missing");
+        }
+        status = status.append(Component.space()).append(this.tr(entry.bodyPresent() ? "exception.body_unchecked" : "exception.body_missing"));
+        Component actions = this.action(sender, "view", "exception_view", entry.path())
+                .append(Component.space()).append(this.action(sender, "delete", "exception_delete", entry.path()));
+        Component panel = this.tr("exception.detail", Component.text(entry.path())).append(Component.newline())
+                .append(this.tr("exception.row", Component.text(entry.path()), time, player, Component.text(entry.category()),
+                        meta == null ? this.tr("unknown_server") : Component.text(meta.server()), status, actions));
+        // 这里报告实际正文读取结果, 可读正文使用其自身元数据, 与上方独立读取的档案头区分.
+        Component result = switch (archive.result()) {
+            case SnapshotDetailResult.Ready ready -> {
+                SnapshotMeta contents = ready.snapshot().meta();
+                yield this.tr("exception.readable", this.tr("snapshot.hover", Component.text(contents.id().toString()), Component.text(contents.player().toString()),
+                        Component.text(FULL_TIME.format(Instant.ofEpochMilli(contents.timestamp()))), Component.text(contents.cause().name()), Component.text(contents.server()),
+                        this.tr(contents.pinned() ? "pinned_text" : "unpinned"), Component.text(contents.mcDataVersion())));
+            }
+            case SnapshotDetailResult.NotFound ignored -> this.tr("exception.body_missing");
+            case SnapshotDetailResult.Invalid invalid -> this.tr("exception.invalid", Component.text(invalid.reason().name()), Component.text(invalid.detail()));
+            case SnapshotDetailResult.Failed ignored -> this.tr("exception.failed");
+        };
+        this.handleFeedback(sender, Component.translatable().key("command.panel.message"), panel.append(Component.newline()).append(result));
+    }
+
+    /**
+     * 根据命令当前配置和发送者权限构建操作文本.
+     *
+     * @param sender 操作文本的接收者
+     * @param label 操作名称, 用于选择翻译模板
+     * @param featureId 操作对应的已注册命令功能标识
+     * @param arguments 附加在命令入口后的完整参数
+     * @return 包含完整命令的控制台文本, 或操作不可用的说明
+     */
+    @NotNull
+    private Component action(@NotNull CommandSender sender, @NotNull String label, @NotNull String featureId, @NotNull String arguments) {
+        // 入口与权限来自当前注册的命令配置, 自定义别名和权限会同步体现在链接中.
+        CommandFeature feature = this.commandManager.features().value(featureId);
+        CommandConfig config = feature == null ? null : feature.commandConfig();
+        Component caption = this.tr("label." + label);
+        String usage = null;
+        if (config != null && config.isEnable()) {
+            List<String> usages = config.getUsages();
+            int size = usages.size();
+            for (int i = 0; i < size; i++) {
+                String candidate = usages.get(i);
+                if (candidate.startsWith("/")) {
+                    usage = candidate.trim();
+                    break;
+                }
+            }
+        }
+        // 每次渲染按发送者的当前权限生成链接, 命令执行时仍由命令框架检查权限.
+        String permission = config == null ? null : config.getPermission();
+        boolean permitted = permission == null || permission.isEmpty() || sender.hasPermission(permission);
+        if (usage == null || !permitted) {
+            Component reason = this.tr(!permitted ? "no_permission" : label.equals("view") ? "gui_pending" : "unavailable");
+            return this.tr("console.disabled", caption, reason);
+        }
+        String command = usage + " " + arguments;
+        return this.tr("console.action", caption, Component.text(command));
+    }
+
+    /**
+     * 创建面板翻译片段, 供后续拼接记录和操作文本.
+     *
+     * @param key 相对于 command.panel 的翻译键
+     * @param arguments 模板参数, 动态文本应使用普通文本组件传入
+     * @return 包含翻译节点的外层组件
+     */
+    @NotNull
+    private Component tr(@NotNull String key, @NotNull Component... arguments) {
+        // 翻译节点只承载模板参数, 后续行与按钮挂在外层, 随模板替换后仍保留.
+        return Component.empty().append(Component.translatable("command.panel." + key).arguments(arguments));
     }
 }
