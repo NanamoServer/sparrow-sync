@@ -1,5 +1,7 @@
 # Sparrow Sync 🐦
 
+**English** | [简体中文](README_CN.md)
+
 ![Code Size](https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync)
 ![bStats Servers](https://img.shields.io/bstats/servers/33952)
 ![bStats Players](https://img.shields.io/bstats/players/33952)
