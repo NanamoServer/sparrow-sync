@@ -1,12 +1,21 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * 一类同步数据的标识, 由命名空间与名称组成, 规范形式为 {@code namespace:value}.
  */
-public record DataKey(@NotNull String namespace, @NotNull String value) implements Comparable<DataKey> {
+public final class DataKey implements Comparable<DataKey> {
     public static final String DEFAULT_NAMESPACE = "sparrow_sync";
+
+    private final String namespace;
+    private final String value;
+
+    public DataKey(@NotNull String namespace, @NotNull String value) {
+        this.namespace = namespace;
+        this.value = value;
+    }
 
     @NotNull
     public static DataKey of(@NotNull String namespace, @NotNull String value) {
@@ -28,6 +37,29 @@ public record DataKey(@NotNull String namespace, @NotNull String value) implemen
     @NotNull
     public String asString() {
         return this.namespace + ":" + this.value;
+    }
+
+    @NotNull
+    public String namespace() {
+        return this.namespace;
+    }
+
+    @NotNull
+    public String value() {
+        return this.value;
+    }
+
+    @Override
+    public boolean equals(@Nullable Object object) {
+        if (this == object) return true;
+        if (!(object instanceof DataKey)) return false;
+        DataKey other = (DataKey) object;
+        return this.namespace.equals(other.namespace) && this.value.equals(other.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return 31 * this.namespace.hashCode() + this.value.hashCode();
     }
 
     @Override

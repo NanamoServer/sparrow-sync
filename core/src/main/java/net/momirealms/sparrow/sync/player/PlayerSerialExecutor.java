@@ -32,15 +32,13 @@ public final class PlayerSerialExecutor {
     private volatile boolean shutdown;
 
     /**
-     * @param workerCount 期望的串行线程数, 会被规范化到最近的不小于它的 2 的幂 (分桶用位运算取模)
+     * @param workerCount 串行线程数, 限制在 1 到 64 之间
      */
     public PlayerSerialExecutor(@NotNull PluginLogger logger, int workerCount) {
         this.logger = logger;
         int count = Math.clamp(workerCount, 1, 64);
-        int power = Integer.highestOneBit(count);
-        int buckets = power == count ? count : power << 1;
-        this.workers = new Worker[buckets];
-        for (int i = 0; i < buckets; i++) {
+        this.workers = new Worker[count];
+        for (int i = 0; i < count; i++) {
             this.workers[i] = new Worker(i);
         }
     }
@@ -72,7 +70,7 @@ public final class PlayerSerialExecutor {
     }
 
     private Worker worker(UUID player) {
-        return this.workers[player.hashCode() & (this.workers.length - 1)];
+        return this.workers[Math.floorMod(player.hashCode(), this.workers.length)];
     }
 
     /**

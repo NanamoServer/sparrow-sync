@@ -273,18 +273,18 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SynchronizationOptions {
         @Comment({
-                "Number of serial executor threads for player data tasks, rounded up to a power of two",
+                "Number of serial executor threads for player data tasks, limited to 1-64",
                 "Recommended values based on basic testing:",
                 "For <= 150 players online on this server, set this to 2.",
-                "For >= 150 players online on this server, set this to 4.",
-                "For >= 600 players online on this server, set this to 8."
+                "For <= 350 players online on this server, set this to 4.",
+                "For <= 700 players online on this server, set this to 8."
         })
         @Comment(lang = "zh-CN", value = {
-                "处理玩家数据任务的串行线程数, 向上取整到 2 的幂",
+                "处理玩家数据任务的串行线程数, 范围为 1-64",
                 "经过一些简单测试的推荐值: ",
                 "当前单服务器在线玩家数 <= 150 人时, 推荐设置为 2.",
-                "当前单服务器在线玩家数 >= 150 人时, 推荐设置为 4.",
-                "当前单服务器在线玩家数 >= 600 人时, 推荐设置为 8.",
+                "当前单服务器在线玩家数 <= 350 人时, 推荐设置为 4.",
+                "当前单服务器在线玩家数 <= 700 人时, 推荐设置为 8.",
         })
         int workerThreads = 4;
 
@@ -300,7 +300,7 @@ public final class PluginConfig {
                 "通常不会出现超时情况, 若保存超时, 未投递到数据库的数据会被留存输出在本地文件夹, 将在下次启动服务器时重新保存",
                 "若服务器正运行在 Docker 容器中, 你可能需要额外关注关服时强制杀死容器的等待时间上限, 它通常为 10 秒, 并不绝对安全"
         })
-        int shutdownTimeoutSeconds = 25;
+        int shutdownTimeoutSeconds = 30;
 
         @Comment("Maximum number of unpinned snapshots kept per player; excess snapshots are removed at an appropriate time, starting with the oldest")
         @Comment(lang = "zh-CN", value = "每名玩家最多保留的未固定快照的数量, 超出后会在合适的时机删除最旧的未固定快照")
@@ -439,7 +439,7 @@ public final class PluginConfig {
                 "如果你使用了 \"跨服交易行, 由插件管理的随时背包\" 绕开同步时对地图物品的扫描的话, 插件也无法保证绕过的地图是否存在错误显示的问题",
                 "总而言之, 插件会尽可能保证地图仍然是可看可正常工作的, 这是一项有一定代价的功能"
         })
-        boolean enabled = true;
+        boolean enabled = false;
 
         @Comment({
                 "Map data synchronization mode, available values: HIDE, SYNC",

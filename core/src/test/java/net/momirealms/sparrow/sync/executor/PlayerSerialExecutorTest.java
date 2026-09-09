@@ -4,6 +4,9 @@ import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,9 +92,10 @@ class PlayerSerialExecutorTest {
         assertEquals(1, runs.get());
     }
 
-    @Test
-    void tasksOfSamePlayerRunInSubmissionOrder() throws InterruptedException {
-        executor = new PlayerSerialExecutor(logger, 4);
+    @ParameterizedTest
+    @ValueSource(ints = {3, 4, 5})
+    void tasksOfSamePlayerRunInSubmissionOrder(int workerCount) throws InterruptedException {
+        this.executor = new PlayerSerialExecutor(this.logger, workerCount);
         int taskCount = 1000;
         List<Integer> aliceOrder = new ArrayList<>(taskCount);
         List<Integer> bobOrder = new ArrayList<>(taskCount);
@@ -118,9 +122,10 @@ class PlayerSerialExecutorTest {
         }
     }
 
-    @Test
-    void samePlayerAlwaysRunsOnSameWorkerThread() throws InterruptedException {
-        executor = new PlayerSerialExecutor(logger, 4);
+    @ParameterizedTest
+    @ValueSource(ints = {3, 4, 5})
+    void samePlayerAlwaysRunsOnSameWorkerThread(int workerCount) throws InterruptedException {
+        this.executor = new PlayerSerialExecutor(this.logger, workerCount);
         Set<String> threads = ConcurrentHashMap.newKeySet();
         CountDownLatch done = new CountDownLatch(100);
 
@@ -215,18 +220,29 @@ class PlayerSerialExecutorTest {
         }, 1, TimeUnit.SECONDS));
     }
 
-    @Test
-    void workerCountNormalizedToPowerOfTwo() {
-        executor = new PlayerSerialExecutor(logger, 3);
-        assertEquals(4, executor.workerCount());
-        executor.shutdown(1, TimeUnit.SECONDS);
+    @ParameterizedTest
+    @CsvSource({"-1, 1", "0, 1", "1, 1", "3, 3", "4, 4", "5, 5", "63, 63", "64, 64", "65, 64"})
+    void workerCountClampedToSupportedRange(int requested, int expected) {
+        this.executor = new PlayerSerialExecutor(this.logger, requested);
+        assertEquals(expected, this.executor.workerCount());
+    }
 
-        executor = new PlayerSerialExecutor(logger, 4);
-        assertEquals(4, executor.workerCount());
-        executor.shutdown(1, TimeUnit.SECONDS);
-
-        executor = new PlayerSerialExecutor(logger, 0);
-        assertEquals(1, executor.workerCount());
+    @ParameterizedTest
+    @ValueSource(ints = {3, 5, 6})
+    void uuidHashesReachEveryWorkerIncludingNegativeHashes(int workerCount) throws InterruptedException {
+        this.executor = new PlayerSerialExecutor(this.logger, workerCount);
+        Set<String> threads = ConcurrentHashMap.newKeySet();
+        int[] hashes = {0, 1, 2, 3, 4, 5, -1, -2, Integer.MIN_VALUE, Integer.MAX_VALUE};
+        CountDownLatch done = new CountDownLatch(hashes.length);
+        for (int i = 0; i < hashes.length; i++) {
+            UUID player = new UUID(0, Integer.toUnsignedLong(hashes[i]));
+            this.executor.submit(player, () -> {
+                threads.add(Thread.currentThread().getName());
+                done.countDown();
+            });
+        }
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(workerCount, threads.size());
     }
 
     private static final class QuietLogger implements PluginLogger {
