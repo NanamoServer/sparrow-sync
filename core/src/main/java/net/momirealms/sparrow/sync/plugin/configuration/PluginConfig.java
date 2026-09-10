@@ -345,16 +345,6 @@ public final class PluginConfig {
         DataTypes dataTypes = new DataTypes();
 
         @BlankLineBefore
-        @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
-        @Comment(lang = "zh-CN", value = "在线回滚快照时可以选择不同步部分数据, 不影响登录同步")
-        OnlineRestoreOptions onlineRestore = new OnlineRestoreOptions();
-
-        @BlankLineBefore
-        @Comment("Map synchronization and origin settings")
-        @Comment(lang = "zh-CN", value = "地图同步和来源设置")
-        MapOptions map = new MapOptions();
-
-        @BlankLineBefore
         @Comment({
                 "Writes compatible snapshot data directly into player data that has not yet been loaded, on an asynchronous thread during login preparation",
                 "Strongly recommended: moves most of the synchronization work during login to a separate asynchronous thread and can also speed up vanilla player data loading",
@@ -366,6 +356,16 @@ public final class PluginConfig {
                 "此选项不会阻塞 Netty 线程和服务器主线程, 若你使用的服务端在此选项开启时发生了错误或兼容性问题, 请尝试关闭此选项"
         })
         NativeAsyncApplyOptions nativeAsyncApply = new NativeAsyncApplyOptions();
+
+        @BlankLineBefore
+        @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
+        @Comment(lang = "zh-CN", value = "在线回滚快照时可以选择不同步部分数据, 不影响登录同步")
+        OnlineRestoreOptions onlineRestore = new OnlineRestoreOptions();
+
+        @BlankLineBefore
+        @Comment("Map synchronization and origin settings")
+        @Comment(lang = "zh-CN", value = "地图同步和来源设置")
+        MapOptions map = new MapOptions();
 
         @BlankLineBefore
         @Comment("Advancement synchronization settings")
@@ -429,6 +429,7 @@ public final class PluginConfig {
                 "Enables map item encoding and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
                 "Because of how Minecraft stores maps, map synchronization is best-effort; enabling it means",
                 "the plugin modifies map items, including updating and reassigning map-id values and recording required data in custom_data",
+                "If you use a \"cross-server auction house\" or a \"plugin-managed portable backpack\" to bypass map item scanning during synchronization, the plugin cannot guarantee that the bypassed maps will display correctly",
                 "Uninstalling the plugin cannot fully restore map data components, but we aim to keep maps viewable and functional; this feature comes with these trade-offs"
         })
         @Comment(lang = "zh-CN", value = {
@@ -841,7 +842,7 @@ public final class PluginConfig {
     public static class GameModeChangeTriggerOptions {
         @Comment("Whether to save a snapshot when a player changes game mode")
         @Comment(lang = "zh-CN", value = "是否在玩家切换游戏模式时进行快照保存")
-        boolean enabled = true;
+        boolean enabled = false;
 
         @Comment({
                 "Game modes that do not trigger a save when a player switches to them",

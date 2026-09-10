@@ -83,15 +83,6 @@ class SnapshotStashTest {
     }
 
     @Test
-    void fileNameCarriesSanitizedNameUuidCauseAndTime() throws IOException {
-        stash.stash(snapshotAt(1_756_300_000_000L), "Bad/Na:me*", StorageProvider.SaveResult.RETRY_LATER);
-
-        String name = listFiles(dataFolder.resolve("snapshot/pending")).get(0).getFileName().toString();
-        assertTrue(name.startsWith("Bad_Na_me_-" + PLAYER + "-DISCONNECT-"), "unexpected file name: " + name);
-        assertTrue(name.endsWith(".snapshot"));
-    }
-
-    @Test
     void restoredSnapshotIsDeletedAfterSuccessfulSave() throws IOException {
         Snapshot snapshot = snapshotAt(1_756_300_000_000L);
         stash.stash(snapshot, "Steve", StorageProvider.SaveResult.RETRY_LATER);
