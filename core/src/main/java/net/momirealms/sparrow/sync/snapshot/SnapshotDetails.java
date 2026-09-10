@@ -58,7 +58,7 @@ public final class SnapshotDetails {
     public CompletableFuture<SnapshotDetailResult> load(@NotNull UUID id) {
         return this.storage.snapshot(id).handleAsync((snapshot, failure) -> {
             if (failure != null) return this.failure(failure);
-            return snapshot.<SnapshotDetailResult>map(this::prepare).orElseGet(SnapshotDetailResult.NotFound::new);
+            return snapshot.<SnapshotDetailResult>map(this::prepare).orElse(SnapshotDetailResult.NOT_FOUND);
         }, this.executor);
     }
 
@@ -121,7 +121,7 @@ public final class SnapshotDetails {
         while (failure instanceof CompletionException && failure.getCause() != null) {
             failure = failure.getCause();
         }
-        if (failure instanceof NoSuchFileException) return new SnapshotDetailResult.NotFound();
+        if (failure instanceof NoSuchFileException) return SnapshotDetailResult.NOT_FOUND;
         if (failure instanceof FormatException invalid) {
             return new SnapshotDetailResult.Invalid(invalid.reason(), invalid.getMessage());
         }

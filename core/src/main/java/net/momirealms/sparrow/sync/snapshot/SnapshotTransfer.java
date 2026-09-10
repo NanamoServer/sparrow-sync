@@ -36,7 +36,7 @@ public final class SnapshotTransfer {
     @NotNull
     public CompletableFuture<SnapshotExportResult> export(@NotNull UUID snapshotId, @NotNull SnapshotFiles.Format format) {
         return this.storage.snapshot(snapshotId).thenApplyAsync(found -> {
-            if (found.isEmpty()) return new SnapshotExportResult.NotFound();
+            if (found.isEmpty()) return SnapshotExportResult.NOT_FOUND;
             Snapshot snapshot = found.get();
             try {
                 return new SnapshotExportResult.Exported(snapshotId, this.files.export(snapshot, format));
@@ -61,12 +61,12 @@ public final class SnapshotTransfer {
                 throw new CompletionException(failure);
             }
         }, this.executor).thenCompose(decoded -> {
-            if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(new SnapshotImportResult.InvalidFile());
+            if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(SnapshotImportResult.INVALID_FILE);
             Snapshot snapshot = valid.snapshot();
             return this.storage.importSnapshot(snapshot).thenApply(saved ->
                     saved.result().stored()
                             ? new SnapshotImportResult.Imported(snapshot.meta().id())
-                            : new SnapshotImportResult.Failed()
+                            : SnapshotImportResult.FAILED
             );
         });
     }

@@ -542,16 +542,18 @@ public final class SnapshotDetailGui {
      */
     private void pin() {
         boolean pin = !this.meta.get().pinned();
-        this.operation(() -> pin ? this.plugin.snapshotService().pin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotPinResult.NotFound))
-                : this.plugin.snapshotService().unpin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotUnpinResult.NotFound)), found -> {
-            this.invalidateParent();
-            if (!found) {
-                this.removed();
-                return;
-            }
-            this.meta.set(this.meta.get().withPinned(pin));
-            this.message(pin ? "pinned_feedback" : "unpinned_feedback");
-        });
+        this.operation(() -> pin
+                ? this.plugin.snapshotService().pin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotPinResult.NotFound))
+                : this.plugin.snapshotService().unpin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotUnpinResult.NotFound)),
+                found -> {
+                    this.invalidateParent();
+                    if (!found) {
+                        this.removed();
+                        return;
+                    }
+                    this.meta.set(this.meta.get().withPinned(pin));
+                    this.message(pin ? "pinned_feedback" : "unpinned_feedback");
+                });
     }
 
     /**

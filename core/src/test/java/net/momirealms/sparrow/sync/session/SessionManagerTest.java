@@ -128,7 +128,7 @@ class SessionManagerTest {
         assertEquals(SessionState.SAVING, session.state());
         assertSame(session, this.manager.find(player));
 
-        remoteSave.complete(new SnapshotSaveResult.Cancelled());
+        remoteSave.complete(SnapshotSaveResult.CANCELLED);
 
         assertEquals(SessionState.CLOSED, session.state());
         assertNull(this.manager.find(player));

@@ -11,6 +11,8 @@ public sealed interface SnapshotExportResult {
     }
 
     /** 指定快照不存在. */
+    NotFound NOT_FOUND = new NotFound();
+
     record NotFound() implements SnapshotExportResult {
     }
 }

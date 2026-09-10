@@ -11,7 +11,8 @@ sealed interface PlayerDataPreload {
     }
 
     /** 本地数据读取失败, 登录流程按空数据继续. */
-    // todo 直接改单例
+    Fallback FALLBACK = new Fallback();
+
     record Fallback() implements PlayerDataPreload {
     }
 }

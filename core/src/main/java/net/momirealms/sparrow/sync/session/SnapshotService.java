@@ -209,8 +209,8 @@ public final class SnapshotService {
     @NotNull
     public CompletableFuture<SnapshotPinResult> pin(@NotNull UUID snapshotId) {
         return this.storage.setPinned(snapshotId, true).thenCompose(changed -> {
-            if (changed) return CompletableFuture.completedFuture(new SnapshotPinResult.Pinned());
-            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? new SnapshotPinResult.NotFound() : new SnapshotPinResult.Unchanged());
+            if (changed) return CompletableFuture.completedFuture(SnapshotPinResult.PINNED);
+            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? SnapshotPinResult.NOT_FOUND : SnapshotPinResult.UNCHANGED);
         });
     }
 
@@ -223,8 +223,8 @@ public final class SnapshotService {
     @NotNull
     public CompletableFuture<SnapshotUnpinResult> unpin(@NotNull UUID snapshotId) {
         return this.storage.setPinned(snapshotId, false).thenCompose(changed -> {
-            if (changed) return CompletableFuture.completedFuture(new SnapshotUnpinResult.Unpinned());
-            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? new SnapshotUnpinResult.NotFound() : new SnapshotUnpinResult.Unchanged());
+            if (changed) return CompletableFuture.completedFuture(SnapshotUnpinResult.UNPINNED);
+            return this.storage.snapshot(snapshotId).thenApply(current -> current.isEmpty() ? SnapshotUnpinResult.NOT_FOUND : SnapshotUnpinResult.UNCHANGED);
         });
     }
 
@@ -236,7 +236,7 @@ public final class SnapshotService {
      */
     @NotNull
     public CompletableFuture<SnapshotDeleteResult> delete(@NotNull UUID snapshotId) {
-        return this.storage.deleteSnapshot(snapshotId).thenApply(deleted -> deleted ? new SnapshotDeleteResult.Deleted() : new SnapshotDeleteResult.NotFound());
+        return this.storage.deleteSnapshot(snapshotId).thenApply(deleted -> deleted ? SnapshotDeleteResult.DELETED : SnapshotDeleteResult.NOT_FOUND);
     }
 
     @NotNull

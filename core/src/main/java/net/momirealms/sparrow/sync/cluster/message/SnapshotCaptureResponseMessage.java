@@ -23,10 +23,10 @@ public final class SnapshotCaptureResponseMessage extends TwoWayResponseMessage<
         super(buffer);
         this.result = switch (buffer.readUnsignedByte()) {
             case 0 -> new SnapshotCaptureResult.Captured(new UUID(buffer.readLong(), buffer.readLong()));
-            case 1 -> new SnapshotCaptureResult.Offline();
-            case 2 -> new SnapshotCaptureResult.Cancelled();
-            case 3 -> new SnapshotCaptureResult.Failed();
-            case 4 -> new SnapshotCaptureResult.Unavailable();
+            case 1 -> SnapshotCaptureResult.OFFLINE;
+            case 2 -> SnapshotCaptureResult.CANCELLED;
+            case 3 -> SnapshotCaptureResult.FAILED;
+            case 4 -> SnapshotCaptureResult.UNAVAILABLE;
             default -> throw new IllegalArgumentException("Unknown snapshot capture result");
         };
     }

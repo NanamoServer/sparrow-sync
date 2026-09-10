@@ -171,7 +171,7 @@ class SnapshotSaveLifecycleTest {
         CompletableFuture<Boolean> waiting = CompletableFuture.supplyAsync(() -> this.writer.sealAndAwaitSaves(2, TimeUnit.SECONDS));
         assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,2", this.nextShutdownLog());
         assertEquals(LogConstants.SYNC_SHUTDOWN_STALLED + " 0,2,1,1", this.nextShutdownLog());
-        first.completion().complete(new SnapshotSaveResult.Cancelled());
+        first.completion().complete(SnapshotSaveResult.CANCELLED);
         assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 1,2", this.nextShutdownLog());
         assertEquals(LogConstants.SYNC_SHUTDOWN_STALLED + " 1,2,1,1", this.nextShutdownLog());
         assertFalse(waiting.get(3, TimeUnit.SECONDS));
@@ -189,7 +189,7 @@ class SnapshotSaveLifecycleTest {
         CompletableFuture<Boolean> waiting = CompletableFuture.supplyAsync(() -> this.writer.sealAndAwaitSaves(30, TimeUnit.SECONDS));
         assertEquals(LogConstants.SYNC_SHUTDOWN_PROGRESS + " 0,4", this.nextShutdownLog());
         stored.completion().complete(new SnapshotSaveResult.Settled(SaveResult.DUPLICATE, stored.meta().id()));
-        cancelled.completion().complete(new SnapshotSaveResult.Cancelled());
+        cancelled.completion().complete(SnapshotSaveResult.CANCELLED);
         rejected.completion().complete(new SnapshotSaveResult.Settled(SaveResult.REJECTED_OVERSIZED, rejected.meta().id()));
         exceptional.fail(new IllegalStateException("failed"));
         assertTrue(waiting.get(500, TimeUnit.MILLISECONDS));

@@ -15,11 +15,13 @@ public sealed interface SnapshotApplyResult {
     record Applied(@NotNull List<DataKey> applied, @NotNull List<DataKey> skipped, @NotNull List<SnapshotApplyContext.Failure> failures) implements SnapshotApplyResult {
     }
 
+    /** 会话在应用前已经失效. */
+    Rejected REJECTED = new Rejected();
+
     /** 关键数据应用失败, 玩家不能进入 ACTIVE. */
     record Failed(@NotNull String detail) implements SnapshotApplyResult {
     }
 
-    /** 会话在应用前已经失效. */
     record Rejected() implements SnapshotApplyResult {
     }
 }

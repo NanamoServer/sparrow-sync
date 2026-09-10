@@ -179,7 +179,7 @@ class PlayerSessionTest {
     void failedLocalLoadPublishesAnEmptyReadyCache() {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
 
-        session.publishLoginData(new PlayerDataPreload.Fallback(), null, 0L, 0L);
+        session.publishLoginData(PlayerDataPreload.FALLBACK, null, 0L, 0L);
 
         assertEquals(Optional.empty(), session.loadPlayerData(() -> Optional.of(new CompoundTag())));
         assertEquals(1, assertInstanceOf(LoginDataState.Ready.class, session.finishLoginData()).loads());

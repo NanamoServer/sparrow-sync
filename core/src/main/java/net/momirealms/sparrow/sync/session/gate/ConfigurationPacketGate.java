@@ -151,8 +151,7 @@ public final class ConfigurationPacketGate implements LoginGate {
                 // 同服锁可能由离线恢复持有, 其余同 id 持锁情况按集群身份冲突处理
                 LockValue holder = LockValue.parse(value);
                 if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
-                    // todo 不能直接kick, 要在log记录有这个情况, 这个情况并不非法, 应该继续等待
-                    // 离线回滚期间进入服务器
+                    // 本服离线恢复期间拒绝本次登录, 拒绝日志记录保存中的原因, 玩家可在恢复结束后重连.
                     if (this.plugin.snapshotService().restoringOffline(uuid)) {
                         yield CompletableFuture.failedFuture(new IllegalStateException("offline snapshot restore is still saving"));
                     }

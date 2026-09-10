@@ -9,8 +9,9 @@ import java.util.Optional;
 
 sealed interface LoginDataState {
 
-    record Preloading() implements LoginDataState {
-    }
+    Preloading PRELOADING = new Preloading();
+
+    Cleared CLEARED = new Cleared();
 
     record Ready(
             @NotNull Optional<CompoundTag> playerData,
@@ -22,6 +23,9 @@ sealed interface LoginDataState {
     }
 
     record Failed(@NotNull String detail) implements LoginDataState {
+    }
+
+    record Preloading() implements LoginDataState {
     }
 
     record Cleared() implements LoginDataState {

@@ -99,7 +99,7 @@ class RemoteSnapshotManagerTest {
             response.set(new CompletableFuture<>());
             CompletableFuture<SnapshotRestoreResult> restore = this.remote.restore("remote", player, saved);
             assertFalse(restore.isDone());
-            restored.complete(new SnapshotRestoreResponseMessage(new SnapshotRestoreResult.Offline()));
+            restored.complete(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
             assertInstanceOf(SnapshotRestoreResult.Offline.class, restore.join());
             response.set(new CompletableFuture<>());
             CompletableFuture<SnapshotCaptureResult> lost = this.remote.capture("remote", player);
@@ -135,10 +135,10 @@ class RemoteSnapshotManagerTest {
 
     static Stream<SnapshotCaptureResult> captureResults() {
         return Stream.of(new SnapshotCaptureResult.Captured(UUID.randomUUID()),
-                new SnapshotCaptureResult.Offline(),
-                new SnapshotCaptureResult.Cancelled(),
-                new SnapshotCaptureResult.Failed(),
-                new SnapshotCaptureResult.Unavailable());
+                SnapshotCaptureResult.OFFLINE,
+                SnapshotCaptureResult.CANCELLED,
+                SnapshotCaptureResult.FAILED,
+                SnapshotCaptureResult.UNAVAILABLE);
     }
 
     @ParameterizedTest
@@ -163,12 +163,12 @@ class RemoteSnapshotManagerTest {
     static Stream<SnapshotRestoreResult> restoreResults() {
         return Stream.of(new SnapshotRestoreResult.Restored(UUID.randomUUID()),
                 new SnapshotRestoreResult.RestoredOffline(UUID.randomUUID()),
-                new SnapshotRestoreResult.NotFound(),
-                new SnapshotRestoreResult.WrongPlayer(),
-                new SnapshotRestoreResult.Offline(),
-                new SnapshotRestoreResult.Cancelled(),
-                new SnapshotRestoreResult.Failed(),
-                new SnapshotRestoreResult.Unavailable());
+                SnapshotRestoreResult.NOT_FOUND,
+                SnapshotRestoreResult.WRONG_PLAYER,
+                SnapshotRestoreResult.OFFLINE,
+                SnapshotRestoreResult.CANCELLED,
+                SnapshotRestoreResult.FAILED,
+                SnapshotRestoreResult.UNAVAILABLE);
     }
 
     @Test

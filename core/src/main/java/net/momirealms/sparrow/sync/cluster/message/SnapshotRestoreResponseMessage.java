@@ -24,12 +24,12 @@ public final class SnapshotRestoreResponseMessage extends TwoWayResponseMessage<
         this.result = switch (buffer.readUnsignedByte()) {
             case 0 -> new SnapshotRestoreResult.Restored(new UUID(buffer.readLong(), buffer.readLong()));
             case 1 -> new SnapshotRestoreResult.RestoredOffline(new UUID(buffer.readLong(), buffer.readLong()));
-            case 2 -> new SnapshotRestoreResult.NotFound();
-            case 3 -> new SnapshotRestoreResult.WrongPlayer();
-            case 4 -> new SnapshotRestoreResult.Offline();
-            case 6 -> new SnapshotRestoreResult.Cancelled();
-            case 7 -> new SnapshotRestoreResult.Failed();
-            case 8 -> new SnapshotRestoreResult.Unavailable();
+            case 2 -> SnapshotRestoreResult.NOT_FOUND;
+            case 3 -> SnapshotRestoreResult.WRONG_PLAYER;
+            case 4 -> SnapshotRestoreResult.OFFLINE;
+            case 6 -> SnapshotRestoreResult.CANCELLED;
+            case 7 -> SnapshotRestoreResult.FAILED;
+            case 8 -> SnapshotRestoreResult.UNAVAILABLE;
             default -> throw new IllegalArgumentException("Unknown snapshot restore result");
         };
     }

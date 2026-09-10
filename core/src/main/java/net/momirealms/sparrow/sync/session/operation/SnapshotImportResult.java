@@ -11,10 +11,14 @@ public sealed interface SnapshotImportResult {
     }
 
     /** 文件内容无法解码为合法快照. */
+    InvalidFile INVALID_FILE = new InvalidFile();
+
+    /** 快照未成功写入数据库. */
+    Failed FAILED = new Failed();
+
     record InvalidFile() implements SnapshotImportResult {
     }
 
-    /** 快照未成功写入数据库. */
     record Failed() implements SnapshotImportResult {
     }
 }

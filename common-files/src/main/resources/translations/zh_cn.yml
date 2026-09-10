@@ -324,7 +324,7 @@ log.lock.waiting: '<arg:0> 的会话锁被 <arg:1> 持有，开始交接探测'
 
 # log.plugin
 log.plugin.disable_at_runtime: '请不要在服务器运行时卸载插件。'
-log.plugin.load_failed: '插件启用失败，请检查加载阶段的日志。为减少数据损失，正在关闭服务器。'
+log.plugin.load_failed: '插件启用失败，请检查加载阶段的日志，为减少数据损失，正在关闭服务器。'
 log.plugin.player_data_storage_install_failed: '注入 PlayerDataStorage 时发生错误，正在关闭服务器。'
 log.plugin.registry_frozen_types: '已启用 <arg:0> 种数据类型的同步: <arg:1>'
 log.plugin.reload_at_runtime: '请不要在服务器运行时重启插件。'
