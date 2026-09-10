@@ -227,8 +227,6 @@ exception.no_such_command: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowS
 exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>An internal error occurred while attempting to perform this command</color>'
 
 # argument
-argument.entity.notfound.entity: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No entity was found</color>'
-argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player was found</color>'
 argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid component ''<arg:0>'': <arg:1></color>'
 argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing component ''<arg:0>''</color>'
 argument.parse.failure.boolean: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not parse boolean from ''<arg:0>''</color>'
@@ -236,28 +234,16 @@ argument.parse.failure.char: '<color:#C8E4E9>>></color> <color:#FFE08A><b>Sparro
 argument.parse.failure.color: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid color</color>'
 argument.parse.failure.duration: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a duration format</color>'
 argument.parse.failure.either: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not resolve <arg:1> or <arg:2> from ''<arg:0>''</color>'
-argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid enchantment</color>'
 argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not one of the following: <arg:1></color>'
 argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Duplicate flag ''<arg:0>''</color>'
 argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Missing argument for ''<arg:0>''</color>'
 argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No flag started. Don''t know what to do with ''<arg:0>''</color>'
 argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>You don''t have permission to use ''<arg:0>''</color>'
 argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Unknown flag ''<arg:0>''</color>'
-argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid location. Required format is ''<arg:1> <arg:2> <arg:3></color>'
-argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Cannot mix local and absolute coordinates. (either all coordinates use ''^'' or none do)</color>'
-argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid material name</color>'
-argument.parse.failure.namedtextcolor: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a named text color</color>'
-argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid key ''<arg:0>''. Must be [a-z0-9/._-]</color>'
-argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid namespace ''<arg:0>''. Must be [a-z0-9._-]</color>'
-argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Invalid input ''<arg:0>'', requires an explicit namespace</color>'
 argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid number in the range <arg:1> to <arg:2></color>'
-argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
-argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No player found for input ''<arg:0>''</color>'
 argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' does not match ''<arg:1>''</color>'
 argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid string of type <arg:1></color>'
-argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid time format</color>'
 argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid UUID</color>'
-argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>''<arg:0>'' is not a valid Minecraft world</color>'
 
 # Kick messages sent to players.
 # sync
@@ -268,12 +254,7 @@ sync.kick.too_fast: <color:#E75FA8>You reconnected too quickly, your previous da
 plugin.compatibility: '[Compatibility] Hooked <arg:0>'
 plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
 
-# config
-config.errors_detected: 'Error found in config.yml - <arg:0>'
 
-# update
-update.available: 'New version <arg:0> is available: <arg:1>'
-update.is_latest: You're running the latest version
 
 # Console messages use forced-locale from config.yml, or the system locale when unset.
 # log.command

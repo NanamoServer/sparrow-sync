@@ -5,7 +5,7 @@ gui.location.title: '<color:#C8E4E9>» 保存位置</color>'
 gui.location.world: '<color:#C8E4E9>· 世界 <color:#FFE08A><arg:0></color></color>'
 gui.location.coordinates: '<color:#C8E4E9>· X <color:#FFE08A><arg:0></color>，Y <color:#FFE08A><arg:1></color>，Z <color:#FFE08A><arg:2></color></color>'
 gui.location.unavailable: '<color:#FFB6CB>本服未加载该世界</color>'
-gui.location.missing: '<color:#C8E4E9>快照未保存位置或位置数据无法读取</color>'
+gui.location.missing: '<color:#C8E4E9>快照里没有位置信息，或位置数据无法读取</color>'
 gui.location.teleported: '<color:#C9F2C7>已传送到快照保存的位置</color>'
 gui.location.rejected: '<color:#FFB6CB>传送未完成</color>'
 gui.additional.title: '<color:#C8E4E9>» 附加数据状态</color>'
@@ -42,7 +42,7 @@ gui.cause.unknown: '<color:#F2F4FF>未知原因</color>'
 gui.cause.world_change: '<color:#F2F4FF>切换世界</color>'
 gui.cause.world_save: '<color:#F2F4FF>世界保存</color>'
 gui.button.close: '<color:#FFB6CB>× 关闭菜单</color>'
-gui.container_unavailable: '<color:#FFB6CB>此类内容缺失或无法解码</color>'
+gui.container_unavailable: '<color:#FFB6CB>内容缺失或无法解码</color>'
 gui.button.delete: '<color:#FFB6CB>× 删除记录</color>'
 gui.deleted_feedback: '<color:#C9F2C7>记录已删除</color>'
 gui.title.snapshot: '<arg:0> · 快照详情'
@@ -53,7 +53,7 @@ gui.button.export_json: '<color:#C8E4E9>» 导出 JSON</color>'
 gui.exported: '<color:#C9F2C7>快照已导出到 <arg:0></color>'
 gui.failed: '<color:#FFB6CB>操作失败，请查看控制台日志</color>'
 gui.label.snapshot_id: '<color:#C8E4E9>• 快照 ID：</color><color:#C7BCE7><arg:0></color>'
-gui.incomplete: '<color:#FFB6CB>部分物品无法完整读取，不能打包全部物品</color>'
+gui.incomplete: '<color:#FFB6CB>部分物品无法完整读取，无法打包</color>'
 gui.invalid: '<color:#FFB6CB>快照内容无法解码</color>'
 gui.button.inventory: '<color:#FFE08A>» 玩家背包</color>'
 gui.title.list: '<arg:0> · 快照列表'
@@ -97,16 +97,16 @@ command.connected: '<color:#C9F2C7>已连接</color>'
 command.disconnected: '<color:#FFB6CB>未连接</color>'
 command.pinned: '<color:#FFE08A>※ 已固定</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家 </color><color:#F2F4FF><arg:0></color>'
-command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到该玩家的数据，它可能从未登录过本服务器。</color>'
-command.migrate.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移完成: <arg:0>; 转换 <arg:1>, 入库 <arg:3>, 用时 <arg:5> ms。请核验后再开放目标服。'
+command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到该玩家的数据，这位玩家可能从未在本服登录过。</color>'
+command.migrate.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移完成：<arg:0>；转换 <arg:1>，导入 <arg:3>，用时 <arg:5> ms。请核验后再开放目标服。'
 command.migrate.console_only: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 数据迁移仅允许控制台执行。'
-command.migrate.generating: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 正在生成 <arg:0> 迁移 ZIP: <arg:1>; 已处理 <arg:2>, 转换 <arg:3>, 归档 <arg:4>。'
-command.migrate.generation_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移生成中断于 <arg:7>: <arg:8>; 转换 <arg:1>, 归档 <arg:2>, 用时 <arg:5> ms。未发布本批 ZIP, 目标库未写入。异常目录: <arg:6>。'
-command.migrate.import_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移入库中断于 <arg:7>: <arg:8>; 已入库 <arg:3>, 导入归档 <arg:4>, 生成归档 <arg:2>。完整 ZIP 保留于 <arg:0>, 异常目录 <arg:6>。'
-command.migrate.importing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <arg:0> ZIP 已完成: <arg:1>; 正在导入, 快照成功 <arg:5>, 导入归档 <arg:6>; 生成转换 <arg:3>, 生成归档 <arg:4>。'
-command.migrate.partial: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移完成, 存在异常: <arg:0>; 转换 <arg:1>, 生成归档 <arg:2>, 入库 <arg:3>, 导入归档 <arg:4>, 用时 <arg:5> ms。异常目录: <arg:6>。生成时跳过的玩家须修复来源后重新迁移。'
-command.migrate.retry: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 修复原因后重跑同一 ZIP: <arg:0>。重新执行 migrate 会生成新批次。'
-command.migrate.unavailable: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 来源 <arg:0> 未就绪。请安装并启用对应插件, 接口加载失败时查看启动日志。可用来源: husksync、invsync。'
+command.migrate.generating: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 正在生成 <arg:0> 迁移 ZIP：<arg:1>；已处理 <arg:2>，转换 <arg:3>，归档 <arg:4>。'
+command.migrate.generation_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移生成中断于 <arg:7>：<arg:8>；转换 <arg:1>，归档 <arg:2>，用时 <arg:5> ms。本批 ZIP 未发布，目标库未写入。异常目录：<arg:6>。'
+command.migrate.import_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移导入中断于 <arg:7>：<arg:8>；已导入 <arg:3>，导入归档 <arg:4>，生成归档 <arg:2>。完整 ZIP 保留于 <arg:0>，异常目录 <arg:6>。'
+command.migrate.importing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <arg:0> ZIP 已完成：<arg:1>；正在导入，快照成功 <arg:5>，导入归档 <arg:6>；生成转换 <arg:3>，生成归档 <arg:4>。'
+command.migrate.partial: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移完成，存在异常：<arg:0>；转换 <arg:1>，生成归档 <arg:2>，导入 <arg:3>，导入归档 <arg:4>，用时 <arg:5> ms。异常目录：<arg:6>。生成时跳过的玩家须修复来源后重新迁移。'
+command.migrate.retry: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 修复原因后重跑同一 ZIP：<arg:0>。重新执行 migrate 会生成新批次。'
+command.migrate.unavailable: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 来源 <arg:0> 未就绪。请安装并启用对应插件，接口加载失败时查看启动日志。可用来源：husksync、invsync。'
 command.query_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>查询失败，请查看控制台日志</color>'
 command.unpinned: '<color:#C8E4E9>未固定</color>'
 
@@ -134,9 +134,9 @@ command.panel.exception.body_missing: '<color:#FFB6CB>正文缺失</color>'
 command.panel.exception.body_unchecked: '<color:#C8E4E9>正文未检查</color>'
 command.panel.exception.detail: '<color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>'
 command.panel.exception.failed: '<color:#FFB6CB>读取失败，请查看服务器日志</color>'
-command.panel.exception.head_available: '<color:#C9F2C7>头可读</color>'
-command.panel.exception.head_missing: '<color:#FFE3A3>缺少头信息</color>'
-command.panel.exception.head_unreadable: '<color:#FFB6CB>头不可读</color>'
+command.panel.exception.head_available: '<color:#C9F2C7>头部可读</color>'
+command.panel.exception.head_missing: '<color:#FFE3A3>头部缺失</color>'
+command.panel.exception.head_unreadable: '<color:#FFB6CB>头部不可读</color>'
 command.panel.exception.information_missing: '<color:#FFE3A3>元信息不足</color>'
 command.panel.exception.invalid: '<color:#FFB6CB>正文无法解码：<arg:0> · <arg:1></color>'
 command.panel.exception.readable: '<color:#C9F2C7>正文可读</color><newline><arg:0>'
@@ -158,7 +158,7 @@ command.panel.label.view: '[查]'
 command.panel.message: '<arg:0>'
 command.panel.navigation: '<arg:0> <color:#FFE08A><arg:1>/<arg:2></color> <arg:3> <arg:4>'
 command.panel.no_permission: '没有执行此命令的权限'
-command.panel.snapshot.hover: '<color:#F2F4FF>快照：<arg:0></color><newline><color:#C8E4E9>玩家：<arg:1></color><newline><color:#FFE3A3><arg:2></color><newline><color:#C8E4E9>原因：<arg:3> · 来源：<arg:4></color><newline><arg:5><newline><color:#C8E4E9>Data version: <arg:6></color>'
+command.panel.snapshot.hover: '<color:#F2F4FF>快照：<arg:0></color><newline><color:#C8E4E9>玩家：<arg:1></color><newline><color:#FFE3A3><arg:2></color><newline><color:#C8E4E9>原因：<arg:3> · 来源：<arg:4></color><newline><arg:5><newline><color:#C8E4E9>Data version：<arg:6></color>'
 command.panel.snapshot.row: '<color:#C7BCE7><arg:0></color> <color:#FFE3A3><arg:1></color> <color:#F2F4FF><arg:2></color> <color:#C8E4E9><arg:3></color> <arg:4> <arg:5>'
 command.panel.snapshot.title: '<arg:0> 的快照'
 command.panel.unavailable: '当前操作不可用'
@@ -171,7 +171,7 @@ command.panel.unpinned: '<color:#C8E4E9>未固定</color>'
 
 # command.reload
 command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>配置重载失败，请查看控制台日志</color>'
-command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>配置已经重载</color><color:#C8E4E9>（异步 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>配置已重载</color><color:#C8E4E9>（异步耗时 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>正在重载，请稍候</color>'
 
 # command.snapshot
@@ -183,10 +183,10 @@ command.import_all.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowS
 
 command.snapshot.cancelled: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成：快照保存已被取消</color>'
 command.snapshot.captured: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已保存 <arg:0> 的快照 <color:#C7BCE7><arg:1></color></color>'
-command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除快照 <color:#C7BCE7><arg:1></color> 。</color>'
+command.snapshot.deleted: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已删除快照 <color:#C7BCE7><arg:1></color>，后续登录会使用最新的剩余快照。</color>'
 command.snapshot.exported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导出快照 <color:#C7BCE7><arg:1></color> 至 <color:#FFE3A3><arg:2></color></color>'
 command.snapshot.failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作未完成，请查看服务器日志</color>'
-command.snapshot.imported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导入快照 <color:#C7BCE7><arg:1></color>，未主动应用在线玩家</color>'
+command.snapshot.imported: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>已导入快照 <color:#C7BCE7><arg:1></color>，不会应用到在线玩家身上</color>'
 command.snapshot.invalid_file: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法导入：文件不是有效的 SparrowSync 快照</color>'
 command.snapshot.not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到指定快照 <color:#C7BCE7><arg:1></color></color>'
 command.snapshot.offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>操作失败：玩家已离线或当前无法操作</color>'
@@ -201,7 +201,7 @@ command.snapshot.wrong_player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>Spar
 # command.status
 command.status.no_lock: '<color:#F2F4FF>无</color>'
 command.status.no_session: '<color:#F2F4FF>无会话</color>'
-command.status.no_snapshot: '<color:#F2F4FF>无存档</color>'
+command.status.no_snapshot: '<color:#F2F4FF>无快照</color>'
 command.status.player: |-
   <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF><arg:0></color>
   <color:#C8E4E9>• 本服：</color><color:#C9F2C7><arg:2></color> <color:#C8E4E9>· 锁持有服：</color><color:#F2F4FF><arg:3></color>
@@ -213,7 +213,7 @@ command.status.snapshot: |-
 command.status.system: |-
   <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>运行状态</color>
   <color:#C8E4E9>• 节点：</color><color:#F2F4FF><arg:2></color>
-  <color:#C8E4E9>• 存储：</color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis: </color><arg:4>
+  <color:#C8E4E9>• 存储：</color><color:#F2F4FF><arg:3></color> <color:#C8E4E9>· Redis：</color><arg:4>
   <color:#C8E4E9>• 线程：</color><color:#F2F4FF><arg:5></color> <color:#C8E4E9>· 排队：</color><color:#F2F4FF><arg:6></color> <color:#C8E4E9>· 会话：</color><color:#F2F4FF><arg:7></color>
   <color:#C8E4E9>• 任务失败：</color><color:#F2F4FF><arg:8></color>
 command.status.unknown: '<color:#FFB6CB>查询失败</color>'
@@ -227,8 +227,6 @@ exception.no_such_command: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowS
 exception.unexpected: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>执行此命令时发生内部错误</color>'
 
 # argument
-argument.entity.notfound.entity: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到实体</color>'
-argument.entity.notfound.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家</color>'
 argument.parse.failure.aggregate.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无效的“<arg:0>”组件：<arg:1></color>'
 argument.parse.failure.aggregate.missing: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>缺少“<arg:0>”组件</color>'
 argument.parse.failure.boolean: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法从“<arg:0>”解析布尔值</color>'
@@ -236,44 +234,27 @@ argument.parse.failure.char: '<color:#C8E4E9>>></color> <color:#FFE08A><b>Sparro
 argument.parse.failure.color: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的颜色</color>'
 argument.parse.failure.duration: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是时间长度格式</color>'
 argument.parse.failure.either: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法从“<arg:0>”解析出<arg:1>或<arg:2></color>'
-argument.parse.failure.enchantment: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的魔咒</color>'
 argument.parse.failure.enum: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是以下选项之一：<arg:1></color>'
 argument.parse.failure.flag.duplicate_flag: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>重复的“<arg:0>”标志</color>'
 argument.parse.failure.flag.missing_argument: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>缺少“<arg:0>”参数</color>'
 argument.parse.failure.flag.no_flag_started: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法识别的短标志组合“<arg:0>”</color>'
 argument.parse.failure.flag.no_permission: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>你没有权限使用“<arg:0>”标志</color>'
 argument.parse.failure.flag.unknown: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未知的“<arg:0>”标志</color>'
-argument.parse.failure.location.invalid_format: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的位置格式。所需格式为“<arg:1> <arg:2> <arg:3>”</color>'
-argument.parse.failure.location.mixed_local_absolute: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>不能混用相对和绝对坐标。（要么所有坐标都使用“^”，要么都不使用）</color>'
-argument.parse.failure.material: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的材料名称</color>'
-argument.parse.failure.namedtextcolor: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是命名的文本颜色</color>'
-argument.parse.failure.namespacedkey.key: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>命名空间ID“<arg:0>”无效。必须由[a-z0-9._-]组成</color>'
-argument.parse.failure.namespacedkey.namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>命名空间“<arg:0>”无效。必须由[a-z0-9._-]组成</color>'
-argument.parse.failure.namespacedkey.need_namespace: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>输入“<arg:0>”无效，需要显式命名空间</color>'
 argument.parse.failure.number: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不在<arg:1>到<arg:2>的范围内</color>'
-argument.parse.failure.offlineplayer: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>输入的玩家“<arg:0>”已离线</color>'
-argument.parse.failure.player: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>找不到输入的玩家“<arg:0>”</color>'
 argument.parse.failure.regex: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”与“<arg:1>”不匹配</color>'
 argument.parse.failure.string: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是<arg:1>类型的有效字符串</color>'
-argument.parse.failure.time: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的时间格式</color>'
 argument.parse.failure.uuid: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的UUID</color>'
-argument.parse.failure.world: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>“<arg:0>”不是有效的Minecraft世界</color>'
 
 # 踢出消息，发送给玩家。
 # sync
-sync.kick.not_ready: <color:#E75FA8>你的数据尚未同步完成，请稍后重新连接。若多次出现请联系管理员。</color>
+sync.kick.not_ready: <color:#E75FA8>你的数据还没同步完，请稍后再连接。如果反复出现，请联系管理员。</color>
 sync.kick.too_fast: <color:#E75FA8>你重新连接得太快了，上一次的数据还在保存中，请稍后再试。</color>
 
 # plugin
 plugin.compatibility: '[兼容性] 已挂钩 <arg:0>'
 plugin.compatibility_failed: '[兼容性] 挂钩 <arg:0> 失败'
 
-# config
-config.errors_detected: '在 config.yml 中发现错误 - <arg:0>'
 
-# update
-update.available: '新版本 <arg:0> 已发布：<arg:1>'
-update.is_latest: 你正在使用最新版本
 
 # 控制台消息。语言取决于 config.yml 的 forced-locale，留空时跟随系统语言。
 # log.command
@@ -326,7 +307,7 @@ log.lock.waiting: '<arg:0> 的会话锁被 <arg:1> 持有，开始交接探测'
 log.plugin.disable_at_runtime: '请不要在服务器运行时卸载插件。'
 log.plugin.load_failed: '插件启用失败，请检查加载阶段的日志，为减少数据损失，正在关闭服务器。'
 log.plugin.player_data_storage_install_failed: '注入 PlayerDataStorage 时发生错误，正在关闭服务器。'
-log.plugin.registry_frozen_types: '已启用 <arg:0> 种数据类型的同步: <arg:1>'
+log.plugin.registry_frozen_types: '已启用 <arg:0> 种数据类型的同步：<arg:1>'
 log.plugin.reload_at_runtime: '请不要在服务器运行时重启插件。'
 log.plugin.reload_failed: '重新加载插件时发生错误'
 log.plugin.started: 'SparrowSync 已启动'
