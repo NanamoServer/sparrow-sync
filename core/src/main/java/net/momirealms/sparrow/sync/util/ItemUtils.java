@@ -80,4 +80,16 @@ public final class ItemUtils {
         }
         return result;
     }
+
+    /** 把原生物品数组转为独立的 Bukkit 物品数组, 空槽与空物品保持为 null. */
+    @NotNull
+    public static ItemStack[] copy(@Nullable net.minecraft.world.item.ItemStack @NotNull [] items) {
+        ItemStack[] result = new ItemStack[items.length];
+        for (int i = 0; i < items.length; i++) {
+            if (items[i] != null && !items[i].isEmpty()) {
+                result[i] = CraftItemStack.asBukkitCopy(items[i]);
+            }
+        }
+        return result;
+    }
 }

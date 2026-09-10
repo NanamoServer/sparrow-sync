@@ -4,7 +4,7 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
+import net.momirealms.sparrow.sync.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -18,18 +18,7 @@ record SnapshotContents(ItemStack[] inventory, ItemStack[] enderChest, boolean i
         InventoryDataType.Inventory inventory = inventoryPreview instanceof SnapshotDetailResult.Preview.Ready value && value.value() instanceof InventoryDataType.Inventory items ? items : null;
         ItemCodec.LoadedItems ender = enderPreview instanceof SnapshotDetailResult.Preview.Ready value && value.value() instanceof ItemCodec.LoadedItems items ? items : null;
         boolean complete = (inventoryPreview == null || inventory != null && inventory.dropped() == 0) && (enderPreview == null || ender != null && ender.dropped() == 0);
-        // todo 这里的复制可能没有必要
-        return new SnapshotContents(inventory == null ? new ItemStack[0] : copy(inventory.contents()), ender == null ? new ItemStack[0] : copy(ender.items()), inventory != null, ender != null, complete);
-    }
-
-    private static ItemStack[] copy(net.minecraft.world.item.ItemStack[] items) {
-        ItemStack[] result = new ItemStack[items.length];
-        for (int i = 0; i < items.length; i++) {
-            if (items[i] != null && !items[i].isEmpty()) {
-                result[i] = CraftItemStack.asBukkitCopy(items[i]);
-            }
-        }
-        return result;
+        return new SnapshotContents(inventory == null ? new ItemStack[0] : ItemUtils.copy(inventory.contents()), ender == null ? new ItemStack[0] : ItemUtils.copy(ender.items()), inventory != null, ender != null, complete);
     }
 
     List<ItemStack> allItems() {
