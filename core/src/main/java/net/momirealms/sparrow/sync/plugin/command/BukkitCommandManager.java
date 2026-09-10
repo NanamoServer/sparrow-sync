@@ -13,6 +13,7 @@ import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotExportCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotImportCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.DumpAllCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ImportAllCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.MigrateCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
@@ -57,6 +58,7 @@ public final class BukkitCommandManager extends AbstractCommandManager {
                 new SnapshotImportCommand(this, plugin),
                 new DumpAllCommand(this, plugin),
                 new ImportAllCommand(this, plugin),
+                new MigrateCommand(this, plugin),
                 new ExceptionDeleteCommand(this, plugin),
                 new SnapshotListCommand(this, plugin),
                 new GuiCommand(this, plugin),

@@ -3,6 +3,8 @@ package net.momirealms.sparrow.sync.storage;
 import com.mongodb.client.MongoClients;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
+import net.momirealms.sparrow.sync.compatibility.migration.SnapshotMigration;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
 import java.nio.file.Path;
@@ -48,6 +51,40 @@ class StorageDumpIntegrationTest {
     private final PlayerSerialExecutor serial = new PlayerSerialExecutor(this.logger, 2);
     private final List<StorageProvider> providers = new ArrayList<>();
     private final List<Runnable> cleanup = new ArrayList<>();
+
+    @ParameterizedTest
+    @ValueSource(strings = {"mongo", "mysql", "postgres"})
+    void migrationZipReplaysWithoutSourceAndPreservesUnrelatedRecords(String kind) throws Exception {
+        requireEnvironment(kind);
+        StorageProvider target = this.open(kind);
+        Snapshot unrelated = SnapshotFixtures.snapshot();
+        assertTrue(target.importSnapshot(unrelated).join().result().stored());
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec);
+        SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        UUID player = UUID.randomUUID();
+        MigrationSource source = new MigrationSource() {
+            @Override
+            public String id() { return "fixture"; }
+            @Override
+            public void read(Sink sink) throws Exception {
+                sink.accept(new PlayerData(player, new StoredUser(player, "Migrated", 123), 456L, 4189, SnapshotFixtures.snapshot().data()));
+            }
+        };
+        SnapshotMigration.Result migrated = new SnapshotMigration(files, this.codec, importer, "source-server").migrate("migration.zip", source, 999);
+        assertNull(migrated.failure());
+        assertNull(migrated.imported().failure());
+        Snapshot first = target.latestSnapshot(player).join().orElseThrow();
+        assertEquals(SaveCause.MIGRATION, first.meta().cause());
+        assertEquals(456, first.meta().timestamp());
+        assertEquals(SnapshotFixtures.snapshot().data(), first.data());
+        List<Snapshot> once = target.scanSnapshots(Long.MAX_VALUE, null, 100).join();
+        assertEquals(2, once.size());
+        assertNull(importer.importFile("migration.zip").failure());
+        assertNull(importer.importFile("migration.zip").failure());
+        assertEquals(once, target.scanSnapshots(Long.MAX_VALUE, null, 100).join());
+        assertEquals(first, target.latestSnapshot(player).join().orElseThrow());
+        assertTrue(once.contains(unrelated));
+    }
 
     @ParameterizedTest
     @CsvSource({"mongo,mongo", "mysql,mysql", "postgres,postgres", "mongo,mysql", "mysql,mongo", "mongo,postgres", "postgres,mongo", "mysql,postgres", "postgres,mysql"})

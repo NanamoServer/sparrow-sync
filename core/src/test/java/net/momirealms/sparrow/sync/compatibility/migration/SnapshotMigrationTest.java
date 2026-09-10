@@ -17,11 +17,13 @@ import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.zip.ZipFile;
 
@@ -203,6 +205,71 @@ class SnapshotMigrationTest {
     }
 
     @Test
+    void committedWriteWithLostResponseIsOverwrittenOnReplay() throws Exception {
+        Snapshot unrelated = SnapshotFixtures.snapshot();
+        this.snapshots.put(unrelated.meta().id(), unrelated);
+        this.save = snapshot -> {
+            this.store(snapshot);
+            return CompletableFuture.failedFuture(new IOException("connection lost after commit"));
+        };
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            for (int i = 1; i <= 3; i++) sink.accept(data(i));
+        });
+        assertNull(result.failure());
+        assertNotNull(result.imported().failure());
+        assertEquals(0, result.imported().snapshots());
+        assertEquals(2, this.snapshots.size());
+        Snapshot committed = this.snapshots.values().stream().filter(snapshot -> !snapshot.equals(unrelated)).findFirst().orElseThrow();
+        this.save = this::store;
+        assertNull(this.importer().importFile("migration.zip").failure());
+        Map<UUID, Snapshot> recovered = Map.copyOf(this.snapshots);
+        assertEquals(4, recovered.size());
+        assertEquals(committed, recovered.get(committed.meta().id()));
+        assertSame(unrelated, recovered.get(unrelated.meta().id()));
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(recovered, this.snapshots);
+        for (Snapshot snapshot : this.snapshots.values()) assertEquals(SnapshotFixtures.snapshot().data(), snapshot.data());
+    }
+
+    @Test
+    void publishedZipCanRecoverBeforeFirstImportAndReportsStagesOnWorker() throws Exception {
+        Thread worker = Thread.currentThread();
+        ArrayList<SnapshotMigration.Result> stages = new ArrayList<>();
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(data(1)), progress -> {
+            assertSame(worker, Thread.currentThread());
+            stages.add(progress);
+            assertEquals(0, this.writes);
+            if (progress.imported() != null) throw new IllegalStateException("stopped before first database write");
+        });
+        assertEquals(2, stages.size());
+        assertNull(stages.getFirst().imported());
+        assertEquals(0, stages.getFirst().converted());
+        assertNotNull(stages.getLast().imported());
+        assertEquals(1, stages.getLast().converted());
+        assertEquals(0, stages.getLast().imported().snapshots());
+        assertNull(result.failure());
+        assertNotNull(result.imported().failure());
+        assertTrue(Files.isRegularFile(result.file()));
+        assertEquals(0, this.writes);
+        assertNull(this.importer().importFile("migration.zip").failure());
+        Map<UUID, Snapshot> recovered = Map.copyOf(this.snapshots);
+        assertEquals(1, recovered.size());
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(recovered, this.snapshots);
+    }
+
+    @Test
+    void regeneratingSourceCreatesNewSnapshotIdentities() {
+        assertNull(this.migrate(sink -> sink.accept(data(1))).failure());
+        UUID first = this.snapshots.keySet().iterator().next();
+        assertNull(this.migrate(sink -> sink.accept(data(1))).failure());
+        assertEquals(2, this.snapshots.size());
+        assertTrue(this.snapshots.containsKey(first));
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(2, this.snapshots.size());
+    }
+
+    @Test
     void sourceLinkageFailureStopsAndCleansGeneration() throws Exception {
         NoSuchMethodError failure = new NoSuchMethodError("source API changed");
         SnapshotMigration.Result result = this.migrate(sink -> {
@@ -234,6 +301,10 @@ class SnapshotMigrationTest {
     }
 
     private SnapshotMigration.Result migrate(Reader reader) {
+        return this.migrate(reader, progress -> {});
+    }
+
+    private SnapshotMigration.Result migrate(Reader reader, Consumer<SnapshotMigration.Result> listener) {
         MigrationSource source = new MigrationSource() {
             /** {@inheritDoc} */
             @Override
@@ -242,7 +313,7 @@ class SnapshotMigrationTest {
             @Override
             public void read(@NonNull Sink sink) throws Exception { reader.read(sink); }
         };
-        return new SnapshotMigration(this.files(), this.codec, this.importer(), "migration-server").migrate("migration.zip", source, 12345);
+        return new SnapshotMigration(this.files(), this.codec, this.importer(), "migration-server").migrate("migration.zip", source, 12345, listener);
     }
 
     private SnapshotFiles files() {

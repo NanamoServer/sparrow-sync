@@ -114,6 +114,9 @@ public final class CommandsConfig {
         CommandConfig importAll = new CommandConfig(true, List.of("/sparrow-sync data import_all"), "sparrow_sync.command.importall");
 
         @BlankLineBefore
+        CommandConfig migrate = new CommandConfig(true, List.of("/sparrow-sync data migrate"), "sparrow_sync.command.migrate");
+
+        @BlankLineBefore
         CommandConfig exceptionDelete = new CommandConfig(true, List.of("/sparrow-sync exception delete"), "sparrow_sync.command.exception.delete");
 
         /**
@@ -143,6 +146,7 @@ public final class CommandsConfig {
                 case "snapshot_import" -> this.snapshotImport;
                 case "dump_all" -> this.dumpAll;
                 case "import_all" -> this.importAll;
+                case "migrate" -> this.migrate;
                 case "exception_delete" -> this.exceptionDelete;
                 default -> throw new IllegalArgumentException("Unknown default command feature: " + featureID);
             };

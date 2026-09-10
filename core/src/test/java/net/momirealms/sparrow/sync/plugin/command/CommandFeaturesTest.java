@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.plugin.command;
 
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.GuiCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.MigrateCommand;
+import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotViewCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionViewCommand;
@@ -66,6 +68,8 @@ import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.YamlDocument;
 import net.momirealms.sparrow.yaml.route.Route;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.bukkit.plugin.PluginDescriptionFile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.incendo.cloud.execution.ExecutionCoordinator;
@@ -155,6 +159,26 @@ class CommandFeaturesTest {
     void restoreConfig() {
         NmsPlayerFixture.set(PluginConfig.class, null, "config", this.previousConfig);
         NmsPlayerFixture.set(ServerConfig.class, null, "config", this.previousServer);
+    }
+
+    @Test
+    void migrationRequiresPermissionAndConsoleAndReportsUnavailableSource() throws Exception {
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "compatibilityManager", new CompatibilityManager(this.plugin));
+        this.manager.registerFeature(new MigrateCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("migrate"));
+        assertThrows(ExecutionException.class, () -> this.execute(sender(Set.of()), "sparrow-sync data migrate invsync"));
+        this.manager.locale = Locale.SIMPLIFIED_CHINESE;
+        this.execute(player(Set.of("sparrow_sync.command.migrate")), "sparrow-sync data migrate invsync");
+        assertTrue(this.text().contains("控制台"));
+        this.messages.clear();
+        ConsoleCommandSender console = proxy(ConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
+        this.execute(console, "sparrow-sync data migrate HuskSync");
+        assertTrue(this.text().contains("husksync"));
+        assertTrue(this.text().contains("未就绪"));
+        this.messages.clear();
+        this.manager.locale = Locale.ENGLISH;
+        RemoteConsoleCommandSender remote = proxy(RemoteConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
+        this.execute(remote, "sparrow-sync data migrate invsync");
+        assertTrue(this.text().contains("Source invsync is unavailable"));
     }
 
     @Test

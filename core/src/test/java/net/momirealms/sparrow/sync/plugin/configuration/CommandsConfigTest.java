@@ -19,12 +19,12 @@ class CommandsConfigTest {
     @Test
     void createsCanonicalCommands() throws Exception {
         CommandsConfig config = new CommandsConfig(this.directory, SparrowYaml.builder().build());
-        for (String feature : List.of("status", "reload", "dump_all", "import_all")) {
+        for (String feature : List.of("status", "reload", "dump_all", "import_all", "migrate")) {
             String command = feature.replace("_", "");
             assertEquals("sparrow_sync.command." + command, config.configDefinition().command(feature).getPermission());
             assertTrue(config.configDefinition().command(feature).isEnable());
             String usage = switch (feature) {
-                case "dump_all", "import_all" -> "/sparrow-sync data " + feature;
+                case "dump_all", "import_all", "migrate" -> "/sparrow-sync data " + feature;
                 default -> "/sparrow-sync " + feature;
             };
             assertEquals(List.of(usage), config.configDefinition().command(feature).getUsages());
@@ -49,7 +49,7 @@ class CommandsConfigTest {
     @Test
     void preservesCustomPermissionAndUsages() throws Exception {
         Files.writeString(this.directory.resolve("commands.yml"), """
-                config-version: '20'
+                config-version: '1'
                 reload:
                   enable: false
                   permission: network.admin
@@ -60,6 +60,7 @@ class CommandsConfigTest {
         assertEquals("network.admin", config.configDefinition().command("reload").getPermission());
         assertEquals(List.of("/network reload-sync"), config.configDefinition().command("reload").getUsages());
         assertFalse(config.configDefinition().command("reload").isEnable());
+        assertEquals(List.of("/sparrow-sync data migrate"), config.configDefinition().command("migrate").getUsages());
         assertEquals(DependencyVersions.COMMANDS_CONFIG_VERSION, SparrowYaml.builder().build()
                 .load(Files.readString(this.directory.resolve("commands.yml"))).getString(Route.from("config-version")));
     }

@@ -25,6 +25,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -175,10 +176,19 @@ public final class SnapshotDump {
     // 在文件 I/O worker 中逐条导入, 返回成功、归档跳过和中断情况, 源 ZIP 与已落库记录保留.
     @NotNull
     public Result importFile(@NotNull String name) {
+        return this.importFile(name, progress -> {});
+    }
+
+    // 进度在当前导入 worker 中报告, 成功数量只包含已经完成的写入.
+    @NotNull
+    public Result importFile(@NotNull String name, @NotNull Consumer<Result> listener) {
         Progress progress = new Progress();
         Path source = this.files.dump().resolve(name);
         try {
             source = this.files.dumpFile(name);
+            Path file = source;
+            progress.listener = () -> listener.accept(progress.result(file, null));
+            progress.listener.run();
             if (!source.toRealPath().startsWith(this.files.dump().toRealPath())) throw new IOException("ZIP is outside the dump directory");
             try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(Files.newInputStream(source)))) {
                 DataInputStream input = new DataInputStream(zip);
@@ -210,6 +220,7 @@ public final class SnapshotDump {
             progress.current = "user " + user.player();
             this.storage.importUser(user).join();
             progress.users++;
+            progress.report();
         }
     }
 
@@ -223,6 +234,7 @@ public final class SnapshotDump {
             this.storage.maps().importMap(map).join();
             // 地图计数表示已落库数量, 后续缓存发布失败时仍保留这条成功记录.
             progress.maps++;
+            progress.report();
             this.mapImported.apply(map).join();
         }
     }
@@ -238,6 +250,7 @@ public final class SnapshotDump {
                 // 解码失败时保留原始字节和原因, 归档成功后才计入跳过数量.
                 this.files.archiveImport(data, null, "corrupted", invalid.reason() + ": " + invalid.detail());
                 progress.failed++;
+                progress.report();
                 continue;
             }
             Snapshot snapshot = ((DecodedSnapshot.Valid) decoded).snapshot();
@@ -245,6 +258,7 @@ public final class SnapshotDump {
             StorageProvider.SaveOutcome saved = this.storage.importSnapshot(snapshot).join();
             if (saved.result().stored()) {
                 progress.snapshots++;
+                progress.report();
             } else if (saved.result().retriable()) {
                 // 数据库暂时不可用时中断导入, 后续可使用保留的源 ZIP 重新执行.
                 throw new IOException("Database write failed for snapshot " + snapshot.meta().id(), saved.failure());
@@ -254,6 +268,7 @@ public final class SnapshotDump {
                 String reason = saved.failure() == null ? saved.result().name() : saved.failure().toString();
                 this.files.archiveImport(data, snapshot.meta(), category, reason);
                 progress.failed++;
+                progress.report();
             }
         }
     }
@@ -319,11 +334,20 @@ public final class SnapshotDump {
 
     private static final class Progress {
         private final long started = System.nanoTime();
+        private long nextReport = this.started + 5_000_000_000L;
+        private Runnable listener;
         private long users;
         private long maps;
         private long snapshots;
         private long failed; // 已成功写入异常目录并跳过的快照数
         private String current = "ZIP"; // 当前阶段或记录身份, 失败时作为控制台定位信息
+
+        private void report() {
+            long now = System.nanoTime();
+            if (now < this.nextReport) return;
+            this.nextReport = now + 5_000_000_000L;
+            this.listener.run();
+        }
 
         private Result result(Path file, @Nullable Throwable failure) {
             return new Result(file, this.users, this.maps, this.snapshots, this.failed, (System.nanoTime() - this.started) / 1_000_000, this.current, failure);
