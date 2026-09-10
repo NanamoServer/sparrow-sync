@@ -366,7 +366,6 @@ final class SnapshotWriter {
             return this.number == 1 || this.number % LOG_INTERVAL == 0;
         }
 
-        // todo 其实这个类换成普通类会不会好点, 每次 new 和字段自增哪个开销小?
         @NotNull
         WriteAttempt next() {
             return new WriteAttempt(this.request, this.number + 1, this.maxRetries);

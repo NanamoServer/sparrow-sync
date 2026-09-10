@@ -190,11 +190,10 @@ public final class SnapshotService {
     }
 
     /**
-     * 导入保留原身份与时间的完整快照, 同 ID 的不同内容作为冲突返回.
-     * // todo 直接覆盖, 不要冲突结果
+     * 导入保留原身份与时间的完整快照, 同 ID 的已有记录直接覆盖.
      *
      * @param relative 选定文件在本服目录内的相对路径
-     * @return 导入、幂等、冲突、无效文件或保存失败结果
+     * @return 导入、无效文件或保存失败结果
      */
     @NotNull
     public CompletableFuture<SnapshotImportResult> importFile(@NotNull String relative) {

@@ -55,12 +55,18 @@ public final class CommandsConfig {
     public static class ConfigDefinition {
         @YamlProperty("config-version")
         @Comment("Do not modify this value")
+        @Comment(lang = "zh-CN", value = "请勿修改此值")
         String configVersion = DependencyVersions.COMMANDS_CONFIG_VERSION;
 
         @BlankLineBefore
         @Comment({
                 "",
                 "For safety reasons, editing this file requires a restart to apply",
+                ""
+        })
+        @Comment(lang = "zh-CN", value = {
+                "",
+                "出于安全考虑, 修改此文件后需要重启服务器才能生效",
                 ""
         })
         CommandConfig test = new CommandConfig(true, List.of("/sparrow-sync test"), "ce.command.admin.test");
