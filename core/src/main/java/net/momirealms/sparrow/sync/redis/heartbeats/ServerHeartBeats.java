@@ -31,7 +31,7 @@ public final class ServerHeartBeats {
     private static final long HEARTBEAT_INTERVAL_MILLIS = 3000;                      // 心跳续期周期
     private static final long HEARTBEAT_TTL_MILLIS = HEARTBEAT_INTERVAL_MILLIS * 3;  // 心跳键存活期, 停跳超过它身份即消失
     private static final long PROBE_WAIT_MILLIS = 3000;                              // 启动冲突探测的应答等待
-    private static final String SEIZE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
+    private static final String SEIZE_SCRIPT = "local current = redis.call('GET', KEYS[1]); if not current or current == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
     private static final String DELETE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
 
     private SparrowSync plugin;
@@ -134,7 +134,7 @@ public final class ServerHeartBeats {
     // 同 id 的心跳键已存在就进行探测, 有应答 = 对方在线, 属配置冲突; 静默 = 残留身份.
     private boolean claimStaleIdentity(RedisCommands<byte[], byte[]> commands, byte[] observed) {
         if (this.probeHolder()) return false;
-        // 值仍是观察值才接管, 变了说明有活人在动同样按冲突处理
+        // 残键可能在探测等待期间过期; 键已空或仍为观察值时原子接管, 其他 token 视为冲突.
         Long swapped = commands.eval(
                 SEIZE_SCRIPT,
                 ScriptOutputType.INTEGER,

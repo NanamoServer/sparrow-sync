@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.redis.heartbeats;
 
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.test.RedisTestSupport;
@@ -149,6 +150,42 @@ class ServerHeartBeatsTest {
             assertNotEquals("dead-token", value, "the stale token must be replaced");
         } finally {
             registry.shutdown();
+        }
+    }
+
+    @Test
+    void staleIdentityExpiringDuringProbeCanRegister() {
+        String key = this.serverKey("expiring");
+        ServerHeartBeats registry = this.registry(this.connectorC, this.brokerC, "expiring");
+        this.inspection.sync().set(key, "dead-token", SetArgs.Builder.px(PROBE_WAIT / 2));
+        long started = System.nanoTime();
+        try {
+            assertTrue(registry.initialize(), "an identity that expires during the probe must be claimable");
+            assertTrue(System.nanoTime() - started >= TimeUnit.MILLISECONDS.toNanos(PROBE_WAIT), "registration must have entered the stale identity probe");
+            String value = this.inspection.sync().get(key);
+            assertNotNull(value);
+            assertNotEquals("dead-token", value);
+            assertTrue(this.inspection.sync().pttl(key) > 0, "the new identity must have a TTL");
+        } finally {
+            registry.shutdown();
+        }
+    }
+
+    @Test
+    void identityReplacedDuringProbeIsNotSeized() throws Exception {
+        String key = this.serverKey("replaced");
+        ServerHeartBeats registry = this.registry(this.connectorC, this.brokerC, "replaced");
+        this.inspection.sync().set(key, "dead-token");
+        ScheduledFuture<?> replacement = this.heartbeatExecutor.schedule(
+                () -> this.inspection.sync().set(key, "new-holder-token"), PROBE_WAIT / 2, TimeUnit.MILLISECONDS);
+        try {
+            assertFalse(registry.initialize(), "a different token acquired during the probe must be preserved");
+            replacement.get(2, TimeUnit.SECONDS);
+            assertEquals("new-holder-token", this.inspection.sync().get(key));
+        } finally {
+            replacement.cancel(false);
+            registry.shutdown();
+            this.inspection.sync().del(key);
         }
     }
 
