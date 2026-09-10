@@ -9,6 +9,10 @@ import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
+import net.momirealms.sparrow.sync.map.data.StoredMap;
+import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.cache.MapCache;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -33,6 +37,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -160,6 +166,87 @@ class StorageDumpIntegrationTest {
         assertEquals(original, storage.snapshot(original.meta().id()).join().orElseThrow());
         assertTrue(storage.importSnapshot(replacement).join().result().stored());
         assertEquals(replacement, storage.snapshot(original.meta().id()).join().orElseThrow());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"mongo", "mysql", "postgres"})
+    void mapImportOnlyOverwritesTheSameGlobalId(String kind) throws Exception {
+        requireEnvironment(kind);
+        var maps = this.open(kind).maps();
+        MapSource firstSource = new MapSource("original", 1);
+        MapArchiveRecord original = new MapArchiveRecord(new MapIdentity(firstSource, -1), 4189, 100, mapData(1).encode());
+        maps.importMap(original).join();
+        MapArchiveRecord changed = new MapArchiveRecord(new MapIdentity(new MapSource("replacement", 2), -1), 4190, 200, mapData(2).encode());
+        maps.importMap(changed).join();
+        maps.importMap(changed).join();
+        assertEquals(1, maps.scan(0, 10).join().size());
+        assertMapRecord(changed, maps.scan(0, 10).join().getFirst());
+        assertEquals(1L, maps.sequence().join());
+        assertEquals(-2, maps.register(firstSource, mapData(3)).join().identity().globalId());
+
+        MapArchiveRecord conflicting = new MapArchiveRecord(new MapIdentity(changed.identity().source(), -3), 4191, 300, mapData(4).encode());
+        assertThrows(CompletionException.class, () -> maps.importMap(conflicting).join());
+        assertTrue(maps.find(-3).join().isEmpty());
+        assertMapRecord(changed, maps.scan(0, 10).join().getFirst());
+        MapArchiveRecord occupied = maps.scan(0, 10).join().getLast();
+        MapArchiveRecord collisionOnBothKeys = new MapArchiveRecord(new MapIdentity(firstSource, -1), 4192, 400, mapData(5).encode());
+        assertThrows(CompletionException.class, () -> maps.importMap(collisionOnBothKeys).join());
+        assertMapRecord(changed, maps.scan(0, 10).join().getFirst());
+        assertMapRecord(occupied, maps.scan(0, 10).join().getLast());
+        // SQL 的地图写入和序列推进处于同一个事务.
+        if (!kind.equals("mongo")) assertEquals(2L, maps.sequence().join());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"mongo", "mysql", "postgres"})
+    void conflictingMapImportDoesNotCountOrPublishTheRejectedIdentity(String kind) throws Exception {
+        requireEnvironment(kind);
+        StorageProvider source = this.open(kind);
+        StorageProvider target = this.open(kind);
+        MapArchiveRecord accepted = new MapArchiveRecord(new MapIdentity(new MapSource("free", 1), -1), 4189, 200, mapData(2).encode());
+        MapSource occupiedSource = new MapSource("occupied", 2);
+        MapArchiveRecord conflict = new MapArchiveRecord(new MapIdentity(occupiedSource, -3), 4189, 300, mapData(3).encode());
+        source.maps().importMap(accepted).join();
+        source.maps().importMap(conflict).join();
+        target.maps().importMap(new MapArchiveRecord(new MapIdentity(new MapSource("previous", 1), -1), 4189, 100, mapData(1).encode())).join();
+        MapArchiveRecord occupied = new MapArchiveRecord(new MapIdentity(occupiedSource, -2), 4189, 150, mapData(4).encode());
+        target.maps().importMap(occupied).join();
+
+        Map<Integer, StoredMap> cache = new HashMap<>();
+        StoredMap existingCache = target.maps().find(-2).join().orElseThrow();
+        cache.put(-2, existingCache);
+        List<Integer> published = new ArrayList<>();
+        MapCache shared = (MapCache) Proxy.newProxyInstance(MapCache.class.getClassLoader(), new Class<?>[]{MapCache.class}, (instance, method, args) -> {
+            assertEquals("publish", method.getName());
+            StoredMap map = (StoredMap) args[0];
+            assertEquals(map, target.maps().find(map.identity().globalId()).join().orElseThrow());
+            cache.put(map.identity().globalId(), map);
+            published.add(map.identity().globalId());
+            return CompletableFuture.completedFuture(null);
+        });
+        MapSyncService sync = NmsPlayerFixture.allocate(MapSyncService.class);
+        NmsPlayerFixture.set(MapSyncService.class, sync, "shared", shared);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec);
+        SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        assertNull(exporter.dump("maps.zip", Long.MAX_VALUE).failure());
+        SnapshotDump.Result result = new SnapshotDump(target, files, this.codec, sync::importedMap).importFile("maps.zip");
+        assertNotNull(result.failure());
+        assertEquals("map -3", result.current());
+        assertEquals(1, result.maps());
+        assertEquals(List.of(-1), published);
+        assertEquals(2, cache.size());
+        assertSame(existingCache, cache.get(-2));
+        assertFalse(cache.containsKey(-3));
+        assertTrue(target.maps().find(-3).join().isEmpty());
+        assertMapRecord(accepted, target.maps().scan(0, 10).join().getFirst());
+        assertMapRecord(occupied, target.maps().scan(0, 10).join().getLast());
+    }
+
+    private static void assertMapRecord(MapArchiveRecord expected, MapArchiveRecord actual) {
+        assertEquals(expected.identity(), actual.identity());
+        assertEquals(expected.dataVersion(), actual.dataVersion());
+        assertEquals(expected.updatedAt(), actual.updatedAt());
+        assertArrayEquals(expected.data(), actual.data());
     }
 
     private StorageProvider open(String kind) throws Exception {

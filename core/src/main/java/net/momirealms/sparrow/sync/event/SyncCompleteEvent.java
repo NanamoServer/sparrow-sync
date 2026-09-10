@@ -28,31 +28,16 @@ public final class SyncCompleteEvent extends PlayerEvent {
         this.skipped = List.copyOf(skipped);
     }
 
-    /**
-     * 返回已经完成应用的快照.
-     *
-     * @return 已经完成应用的快照
-     */
     @NotNull
     public Snapshot snapshot() {
         return this.snapshot;
     }
 
-    /**
-     * 返回成功写入玩家的数据类型.
-     *
-     * @return 不可变的数据类型列表
-     */
     @NotNull
     public List<DataKey> applied() {
         return this.applied;
     }
 
-    /**
-     * 返回解码或应用时跳过的数据类型.
-     *
-     * @return 不可变的数据类型列表
-     */
     @NotNull
     public List<DataKey> skipped() {
         return this.skipped;

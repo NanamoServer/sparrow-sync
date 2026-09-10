@@ -62,7 +62,13 @@ public final class MysqlMapStorage implements MapStorage {
     @NotNull
     public CompletableFuture<Void> importMap(@NotNull MapArchiveRecord map) {
         return CompletableFuture.runAsync(() -> this.jdbi.useTransaction(handle -> {
-            handle.createUpdate("INSERT INTO " + this.maps + " (`global_id`, `owner`, `origin_id`, `data_version`, `updated_at`, `data`) VALUES (:id, :owner, :origin, :version, :updated, :data) ON DUPLICATE KEY UPDATE `owner` = :owner, `origin_id` = :origin, `data_version` = :version, `updated_at` = :updated, `data` = :data")
+            // 覆盖按全局 ID 定位, 来源唯一键冲突交给数据库拒绝并回滚事务.
+            boolean exists = handle.createQuery("SELECT 1 FROM " + this.maps + " WHERE `global_id` = :id FOR UPDATE")
+                    .bind("id", map.identity().globalId()).mapTo(Integer.class).findOne().isPresent();
+            String sql = exists
+                    ? "UPDATE " + this.maps + " SET `owner` = :owner, `origin_id` = :origin, `data_version` = :version, `updated_at` = :updated, `data` = :data WHERE `global_id` = :id"
+                    : "INSERT INTO " + this.maps + " (`global_id`, `owner`, `origin_id`, `data_version`, `updated_at`, `data`) VALUES (:id, :owner, :origin, :version, :updated, :data)";
+            handle.createUpdate(sql)
                     .bind("id", map.identity().globalId()).bind("owner", map.identity().source().ownerId()).bind("origin", map.identity().source().id())
                     .bind("version", map.dataVersion()).bind("updated", map.updatedAt()).bind("data", map.data()).execute();
             handle.createUpdate("UPDATE " + this.meta + " SET `value` = GREATEST(`value`, :sequence) WHERE `id` = 'maps'").bind("sequence", -(long) map.identity().globalId()).execute();

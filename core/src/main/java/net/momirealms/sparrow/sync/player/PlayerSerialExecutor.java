@@ -31,9 +31,6 @@ public final class PlayerSerialExecutor {
     private final AtomicLong failures = new AtomicLong();
     private volatile boolean shutdown;
 
-    /**
-     * @param workerCount 串行线程数, 限制在 1 到 64 之间
-     */
     public PlayerSerialExecutor(@NotNull PluginLogger logger, int workerCount) {
         this.logger = logger;
         int count = Math.clamp(workerCount, 1, 64);
@@ -43,21 +40,10 @@ public final class PlayerSerialExecutor {
         }
     }
 
-    /**
-     * 把任务追加到该玩家所在桶的队尾.
-     *
-     * @throws RejectedExecutionException 当执行器已关停时
-     */
     public void submit(@NotNull UUID player, @NotNull Runnable task) {
         this.enqueue(new QueuedTask(player, task, System.nanoTime()));
     }
 
-    /**
-     * 把任务追加到队尾, 但在指定延迟之前不执行.
-     * 到点之前该玩家的后续任务一起等, 同桶其他玩家照常推进.
-     *
-     * @throws RejectedExecutionException 当执行器已关停时
-     */
     public void submitDelayed(@NotNull UUID player, @NotNull Runnable task, long delay, @NotNull TimeUnit unit) {
         this.enqueue(new QueuedTask(player, task, System.nanoTime() + unit.toNanos(delay)));
     }
@@ -73,9 +59,6 @@ public final class PlayerSerialExecutor {
         return this.workers[Math.floorMod(player.hashCode(), this.workers.length)];
     }
 
-    /**
-     * 返回绑定到该玩家所在桶的 Executor 视图, 供 CompletableFuture 异步链使用.
-     */
     @NotNull
     public Executor executor(@NotNull UUID player) {
         return task -> this.submit(player, task);
@@ -83,7 +66,6 @@ public final class PlayerSerialExecutor {
 
     /**
      * 关停执行器, 立即拒绝新任务, 在限时内等待各队列排空, 超时后中断串行线程.
-     * 满服关服时这里承载全员的最后一次落盘, 超时应按存储写入延迟留足余量.
      *
      * @return 未能执行完的剩余任务数
      */
