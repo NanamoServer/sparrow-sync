@@ -34,7 +34,6 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final byte MAGIC_0 = 'S';
     private static final byte MAGIC_1 = 'S';
     private static final int HEADER_LENGTH = 4;
-    private static final int MAX_DECODED_SIZE = 16 * 1024 * 1024;   // 单帧解压后的上限
 
     static final String FIELD_ID = "id";
     static final String FIELD_PLAYER = "player";
@@ -141,7 +140,8 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (compressor == null) {
             throw new FormatException(InvalidReason.UNSUPPORTED_COMPRESSION, "unknown compression id " + bytes[3]);
         }
-        byte[] body = compressor.decompress(bytes, HEADER_LENGTH, bytes.length - HEADER_LENGTH, MAX_DECODED_SIZE);
+        // 快照读取使用字节数组的容量范围, 入库大小由存储层检查.
+        byte[] body = compressor.decompress(bytes, HEADER_LENGTH, bytes.length - HEADER_LENGTH, Integer.MAX_VALUE);
         return NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(body)), false);
     }
 

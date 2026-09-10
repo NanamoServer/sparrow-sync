@@ -31,6 +31,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class RowSnapshotCodecTest {
     private final RowSnapshotCodec codec = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 统一使用的读取入口, 用于验证不同写入压缩方式的兼容性
 
+    @ParameterizedTest
+    @EnumSource(CompressorRegistry.class)
+    void largeRawDataRoundTripsAndOnlyEncodedFrameSizeDependsOnCompression(CompressorRegistry compressor) throws IOException {
+        var codec = new RowSnapshotCodec(new BinarySnapshotCodec(compressor));
+        Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, NBT.createByteArray(new byte[17 * 1024 * 1024])));
+        var encoded = codec.encode(snapshot);
+        int frameSize = encoded.data().length;
+        assertEquals(compressor == CompressorRegistry.NONE, frameSize > 15 * 1024 * 1024);
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(encoded)).snapshot());
+    }
+
     /**
      * 验证读取压缩方式取自帧头, 可以读取由不同压缩器写出的快照.
      *

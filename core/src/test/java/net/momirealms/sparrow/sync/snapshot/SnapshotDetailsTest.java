@@ -203,6 +203,23 @@ class SnapshotDetailsTest {
         assertSame(SnapshotDetailResult.NOT_FOUND, missing.result());
     }
 
+    @Test
+    void oversizedBinaryArchiveStillPreparesGuiPreviews() throws IOException {
+        this.registry.register(new ExperienceDataType());
+        var experience = new ExperienceDataType.Experience(100, 7, 0.5f);
+        DataKey unknown = DataKey.of("test", "large");
+        Snapshot snapshot = this.snapshot(Map.of(unknown, NBT.createByteArray(new byte[17 * 1024 * 1024]),
+                ExperienceDataType.EXPERIENCE, new ExperienceDataType().encode(experience)));
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.binary);
+        Path body = files.write(snapshot, "Steve", "oversized");
+        assertTrue(Files.size(body) > 16 * 1024 * 1024);
+        var archive = this.details(Runnable::run).loadException("oversized/" + body.getFileName()).join();
+        var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, archive.result());
+        assertEquals(snapshot, ready.snapshot());
+        assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
+        assertEquals(new Preview.Unsupported(false), ready.previews().get(unknown));
+    }
+
     private SnapshotDetails details(Executor executor) {
         this.registry.freeze();
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (instance, method, args) -> {

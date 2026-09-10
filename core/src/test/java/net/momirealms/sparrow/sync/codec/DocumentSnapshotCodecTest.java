@@ -25,6 +25,8 @@ import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.types.Binary;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.util.List;
@@ -42,6 +44,17 @@ class DocumentSnapshotCodecTest {
     @BeforeAll
     static void initializeProxy() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+    }
+
+    @ParameterizedTest
+    @EnumSource(CompressorRegistry.class)
+    void largeRawDataRoundTripsAndOnlyEncodedFrameSizeDependsOnCompression(CompressorRegistry compressor) throws IOException {
+        var codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(compressor));
+        Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, NBT.createByteArray(new byte[17 * 1024 * 1024])));
+        var encoded = codec.encode(snapshot);
+        int frameSize = encoded.get("data", Binary.class).getData().length;
+        assertEquals(compressor == CompressorRegistry.NONE, frameSize > 15 * 1024 * 1024);
+        assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(encoded)).snapshot());
     }
 
     @Test

@@ -26,9 +26,8 @@ import java.util.UUID;
 
 /**
  * 人工可读的 JSON 形态快照编解码, 用于调试导出与手工修订, 不承担持久化.
- * 元数据为 JSON 字段, 数据体每个类型一个 SNBT 字符串, 类型后缀与数组标记保真,
- * 手改数值后可原样解码回快照. 字段名与二进制形态的树排布一致, 解码把 JSON 还原成
- * 同构的树后走同一条升级管线与树读取, 因此旧版本导出的文件同样可读.
+ * 元数据为 JSON 字段, 数据体每个类型一个 SNBT 字符串, 类型后缀与数组标记保真,手改数值后可原样解码回快照.
+ * 字段名与二进制形态的树排布一致, 解码把 JSON 还原成同构的树后进入升级管线与树读取.
  */
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     static final String FIELD_FORMAT = "format";    // 树形态的版本在帧头字节里, JSON 形态以顶层字段自述
