@@ -24,8 +24,7 @@ public interface MigrationSource {
         /**
          * 接收一名玩家已经转换好的 Sparrow 字段, 由迁移端分配本包内的快照身份.
          *
-         * @param data 每玩家交付一次, 调用期间 Tag 保持稳定; user 仅在真实名字和最后上线时间均可得时提供,
-         *             timestamp 缺失时使用本批开始时间, mcDataVersion 对应转换后物品的实际版本
+         * @param data 每玩家交付一次, 调用期间 Tag 保持稳定.
          * @throws IOException ZIP 写入或异常归档失败, 来源应立即结束读取
          */
         void accept(@NotNull PlayerData data) throws IOException;

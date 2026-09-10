@@ -7,6 +7,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
+import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -22,9 +23,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.craftbukkit.CraftRegistry;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
@@ -32,6 +31,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -53,6 +55,7 @@ class InvSyncSourceTest {
     private Object storage;
     private Thread decoderThread;
     private Thread sinkThread;
+    private boolean interruptDecode;
     private final MigrationSource.Sink sink = new MigrationSource.Sink() {
         public void accept(MigrationSource.@NonNull PlayerData data) { sinkThread = Thread.currentThread(); accepted.add(data); }
         public void reject(@NonNull UUID player, String name, @NonNull String stage, @NonNull Throwable error, byte[] raw) { rejected.add(raw); }
@@ -106,21 +109,24 @@ class InvSyncSourceTest {
     private Plugin plugin() {
         return (Plugin) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Plugin.class, SourceApi.class}, (proxy, method, args) -> switch (method.getName()) {
             case "getStorageManager" -> this.storage;
-            case "getGson" -> new Gson();
-            case "getItemSerializer" -> new ItemSerializer();
+            case "getGson" -> {
+                this.decoderThread = Thread.currentThread();
+                if (this.interruptDecode) throw new InterruptedException();
+                yield new Gson();
+            }
             default -> throw new AssertionError(method);
         });
     }
 
     @Test
-    void mysqlReadsOneBodyAtATimeAndPrefersV2() throws Exception {
+    void mysqlReadsOnlyV2OneBodyAtATimeWithoutLegacyApi() throws Exception {
         MysqlManager mysql = new MysqlManager(new SourceData(), new SourceData());
         this.storage = mysql;
         new InvSyncSource(this.plugin(), this.registry).read(this.sink);
         assertEquals(2, this.accepted.size());
         assertEquals(List.of("uuid"), mysql.playerDataDao.query.columns);
         assertTrue(mysql.playerDataDao.query.cursor.closed);
-        assertEquals(0, mysql.legacyReads);
+        assertTrue(mysql.playerUUIDDataDao.cursor.closed);
         assertEquals(0, this.rejected.size());
         assertNull(this.accepted.getFirst().user());
         assertNull(this.accepted.getFirst().timestamp());
@@ -142,7 +148,7 @@ class InvSyncSourceTest {
     @Test
     void readDecodeAndSinkStayOnTheMigrationWorker() throws Exception {
         SourceData source = new SourceData();
-        source.inventory = new byte[]{1};
+        source.inventory = items(Map.of(36, "{id:'minecraft:diamond_boots',count:1}", 39, "{id:'minecraft:diamond_helmet',count:1}", 40, "{id:'minecraft:shield',count:1}"));
         MysqlManager mysql = new MysqlManager(source);
         this.storage = mysql;
         Thread worker;
@@ -178,7 +184,7 @@ class InvSyncSourceTest {
     @Test
     void additionalEquipmentSlotsAreRetained() throws Exception {
         SourceData source = new SourceData();
-        source.inventory = new byte[]{2};
+        source.inventory = items(Map.of(42, "{id:'minecraft:saddle',count:1}"));
         this.storage = new MysqlManager(source);
         new InvSyncSource(this.plugin(), this.registry).read(this.sink);
         var inventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(this.accepted.getFirst().data().get(InventoryDataType.INVENTORY), CraftMagicNumbers.INSTANCE.getDataVersion());
@@ -208,7 +214,7 @@ class InvSyncSourceTest {
     @Test
     void conversionInterruptionEndsBatchAndClosesCursor() {
         SourceData source = new SourceData();
-        source.inventory = new byte[]{-2};
+        this.interruptDecode = true;
         MysqlManager mysql = new MysqlManager(source);
         this.storage = mysql;
         assertThrows(InterruptedException.class, () -> new InvSyncSource(this.plugin(), this.registry).read(this.sink));
@@ -222,7 +228,7 @@ class InvSyncSourceTest {
         this.storage = mysql;
         Thread.currentThread().interrupt();
         assertThrows(InterruptedException.class, () -> new InvSyncSource(this.plugin(), this.registry).read(this.sink));
-        assertTrue(mysql.playerDataDao.query.cursor.closed);
+        assertTrue(mysql.playerUUIDDataDao.cursor.closed);
         assertEquals(0, mysql.reads);
     }
 
@@ -239,27 +245,66 @@ class InvSyncSourceTest {
 
     public interface SourceApi {
         Object getStorageManager();
-        Gson getGson();
-        Object getItemSerializer();
+        Gson getGson() throws Exception;
     }
 
-    public class ItemSerializer {
-        public Map<Integer, ItemStack> deserializerInventory(byte[] bytes) throws Exception {
-            decoderThread = Thread.currentThread();
-            if (bytes[0] == -1) throw new IOException("bad item");
-            if (bytes[0] == -2) throw new InterruptedException();
-            if (bytes[0] == 2) {
-                return Map.of(42, CraftItemStack.asCraftMirror(new net.minecraft.world.item.ItemStack(Items.SADDLE)));
-            }
-            return Map.of(36, CraftItemStack.asCraftMirror(new net.minecraft.world.item.ItemStack(Items.DIAMOND_BOOTS)),
-                    39, CraftItemStack.asCraftMirror(new net.minecraft.world.item.ItemStack(Items.DIAMOND_HELMET)),
-                    40, CraftItemStack.asCraftMirror(new net.minecraft.world.item.ItemStack(Items.SHIELD)));
+    private static byte[] items(Map<Integer, String> entries) throws IOException {
+        List<Map<String, Object>> values = new ArrayList<>();
+        entries.forEach((slot, item) -> values.add(Map.of("slot", slot, "item", item)));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bytes)) {
+            gzip.write(new Gson().toJson(values).getBytes(StandardCharsets.UTF_8));
         }
+        return bytes.toByteArray();
+    }
+
+    @Test
+    void unregisteredEnchantmentsAndOriginalVersionsArePreserved() throws Exception {
+        SourceData source = new SourceData();
+        String item = "{id:'minecraft:enchanted_book',count:1,DataVersion:4671,components:{'minecraft:enchantments':{'minecraft:rejuvenation':3},'minecraft:stored_enchantments':{'minecraft:silence':2}}}";
+        source.inventory = items(Map.of(0, item));
+        source.enderChest = items(Map.of(5, item));
+        this.storage = new MysqlManager(source);
+        new InvSyncSource(this.plugin(), this.registry).read(this.sink);
+        assertTrue(this.rejected.isEmpty());
+        for (var key : List.of(InventoryDataType.INVENTORY, EnderChestDataType.ENDER_CHEST)) {
+            CompoundTag container = (CompoundTag) this.accepted.getFirst().data().get(key);
+            CompoundTag migrated = container.getList("items").getCompound(0);
+            assertEquals(4671, migrated.getInt("DataVersion"));
+            assertEquals(3, migrated.getCompound("components").getCompound("minecraft:enchantments").getInt("minecraft:rejuvenation"));
+            assertEquals(2, migrated.getCompound("components").getCompound("minecraft:stored_enchantments").getInt("minecraft:silence"));
+        }
+    }
+
+    @Test
+    void mysqlImportsNameWithUnknownLastSeenAndStableAliasChoice() throws Exception {
+        SourceData source = new SourceData();
+        MysqlManager mysql = new MysqlManager(source);
+        mysql.playerUUIDDataDao = new Names(List.of(new Name("Zeta", source.uuid), new Name("Alpha", source.uuid)));
+        this.storage = mysql;
+        new InvSyncSource(this.plugin(), this.registry).read(this.sink);
+        assertEquals("Alpha", this.accepted.getFirst().user().name());
+        assertEquals(UUID.fromString(source.uuid), this.accepted.getFirst().user().player());
+        assertEquals(0, this.accepted.getFirst().user().lastSeen());
+    }
+
+    @Test
+    void mongoImportsItsSeparateNameCollection() throws Exception {
+        SourceData source = new SourceData();
+        MongoDBManager mongo = new MongoDBManager();
+        mongo.playerDataCollection = new Collection(List.of(source));
+        mongo.uuidCollection = new Collection(List.of(new Name("Player", source.uuid)));
+        this.storage = mongo;
+        new InvSyncSource(this.plugin(), this.registry).read(this.sink);
+        assertEquals("Player", this.accepted.getFirst().user().name());
+        assertEquals(0, this.accepted.getFirst().user().lastSeen());
+        assertTrue(mongo.uuidCollection.cursor.closed);
     }
 
     public static class SourceData {
         final String uuid = UUID.randomUUID().toString();
         byte[] inventory;
+        byte[] enderChest;
         public String getUuid() { return this.uuid; }
         public double getHealth() { return 12; }
         public double getMaxHealth() { return 36; }
@@ -268,7 +313,8 @@ class InvSyncSourceTest {
         public float getExp() { return 0.75f; }
         public boolean inventoryIsInit() { return this.inventory != null; }
         public byte[] getInventory() { return this.inventory; }
-        public boolean enderChestIsInit() { return false; }
+        public boolean enderChestIsInit() { return this.enderChest != null; }
+        public byte[] getEnderChest() { return this.enderChest; }
         public boolean buffsIsInit() { return false; }
         public boolean statisticIsInit() { return false; }
         public boolean advancementsIsInit() { return false; }
@@ -277,13 +323,23 @@ class InvSyncSourceTest {
 
     public static class MysqlManager {
         final Dao playerDataDao;
+        Names playerUUIDDataDao = new Names(List.of());
         int reads;
-        int legacyReads;
         Thread readThread;
         MysqlManager(SourceData... data) { this.playerDataDao = new Dao(List.of(data)); }
         public SourceData getPlayerData(String uuid) { this.readThread = Thread.currentThread(); this.reads++; return this.playerDataDao.query.data.stream().filter(data -> data.uuid.equals(uuid)).findFirst().orElse(null); }
-        public List<String> getAllV1PlayerUUIDs() { return this.playerDataDao.query.data.stream().map(data -> data.uuid).toList(); }
-        public Object getPlayerDataFromV1(String uuid) { this.legacyReads++; throw new AssertionError("V2 must win"); }
+    }
+
+    public record Name(String name, String uuid) {
+        public String getName() { return this.name; }
+        public String getUuid() { return this.uuid; }
+        public String getString(String key) { return key.equals("_id") ? this.name : this.uuid; }
+    }
+
+    public static class Names {
+        final Cursor cursor;
+        Names(List<Name> names) { this.cursor = new Cursor(names.iterator()); }
+        public Cursor iterator() { return this.cursor; }
     }
 
     public static class Dao {
@@ -311,14 +367,16 @@ class InvSyncSourceTest {
     }
 
     public static class MongoDBManager {
-        final Collection playerDataCollection = new Collection();
+        Collection playerDataCollection = new Collection(List.of(new SourceData()));
+        Collection uuidCollection = new Collection(List.of());
         int mapped;
         private SourceData documentToPlayerData(SourceData document) { this.mapped++; return document; }
     }
 
     public static class Collection {
-        final Cursor cursor = new Cursor(List.of(new SourceData()).iterator());
+        final Cursor cursor;
         int batchSize;
+        Collection(List<?> values) { this.cursor = new Cursor(values.iterator()); }
         public Collection find() { return this; }
         public Collection batchSize(int size) { this.batchSize = size; return this; }
         public Cursor iterator() { return this.cursor; }

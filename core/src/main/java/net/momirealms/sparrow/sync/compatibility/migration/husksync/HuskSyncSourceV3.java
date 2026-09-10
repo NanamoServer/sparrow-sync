@@ -4,6 +4,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
+import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.william278.husksync.HuskSync;
 import net.william278.husksync.adapter.DataAdapter.AdaptionException;
 import net.william278.husksync.data.Data;
@@ -64,7 +65,7 @@ public final class HuskSyncSourceV3 implements MigrationSource {
             PlayerData converted;
             try {
                 raw = packed.asBytes(this.huskSync);
-                converted = this.convert(player, packed);
+                converted = this.convert(player, name, packed);
             } catch (InterruptedException exception) {
                 throw exception;
             } catch (Exception exception) {
@@ -77,7 +78,7 @@ public final class HuskSyncSourceV3 implements MigrationSource {
     }
 
     @NotNull
-    private PlayerData convert(UUID player, DataSnapshot.Packed packed) throws Exception {
+    private PlayerData convert(UUID player, String name, DataSnapshot.Packed packed) throws Exception {
         DataSnapshot.Unpacked unpacked = packed.unpack(this.huskSync);
         Map<Identifier, Data> decoded = unpacked.getData();
         Map<String, Data> fields = new LinkedHashMap<>();
@@ -87,8 +88,7 @@ public final class HuskSyncSourceV3 implements MigrationSource {
         }
         Map<DataKey, Tag> data = this.converter.convert(fields);
         long timestamp = packed.getTimestamp().toInstant().toEpochMilli();
-        // 源 User 只有名字, 没有 lastSeen; 保留诊断名, 不创建虚假的 StoredUser.
-        return new PlayerData(player, null, timestamp, Bukkit.getUnsafe().getDataVersion(), data);
+        return new PlayerData(player, new StoredUser(player, name, 0), timestamp, Bukkit.getUnsafe().getDataVersion(), data);
     }
 
 }

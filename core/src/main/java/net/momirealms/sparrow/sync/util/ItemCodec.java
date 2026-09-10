@@ -104,6 +104,7 @@ public final class ItemCodec {
      */
     @NotNull
     public static ItemStack loadItem(@NotNull CompoundTag tag, int dataVersion) throws IOException {
+        dataVersion = tag.getInt("DataVersion", dataVersion);
         int current = VersionHelper.WORLD_VERSION;
         if (dataVersion > current) {
             throw new IOException("item data version " + dataVersion + " is newer than this server (" + current + ")");

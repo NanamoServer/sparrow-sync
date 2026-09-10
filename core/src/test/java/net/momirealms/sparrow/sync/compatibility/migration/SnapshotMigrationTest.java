@@ -74,6 +74,19 @@ class SnapshotMigrationTest {
     }
 
     @Test
+    void unknownLastSeenSurvivesZipAndRepeatedImport() {
+        StoredUser user = new StoredUser(id(1), "Player1", 0);
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), user, null, 4189, SnapshotFixtures.snapshot().data())));
+        assertNull(result.failure());
+        assertNull(result.imported().failure());
+        assertEquals(1, result.users());
+        assertEquals(user, this.users.get(id(1)));
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(Map.of(id(1), user), this.users);
+        assertEquals(1, this.snapshots.size());
+    }
+
+    @Test
     void missingSourceTimeUsesBatchTimeWithoutInventingUserMapping() {
         SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, 4189, SnapshotFixtures.snapshot().data())));
         assertNull(result.failure());

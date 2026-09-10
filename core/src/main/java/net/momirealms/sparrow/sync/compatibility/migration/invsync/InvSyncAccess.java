@@ -10,6 +10,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 final class InvSyncAccess {
     private final Plugin plugin;
@@ -55,6 +56,14 @@ final class InvSyncAccess {
         return this.decodeJson(json, "bukkit.serializer.statistics.StatisticsData");
     }
 
+    // 保留来源物品的 NBT.
+    List<Map<String, Object>> decodeItems(byte[] bytes) throws Exception {
+        Object compression = this.singleton("bukkit.util.CompressUtil");
+        String json = (String) call(compression, "ungzipString", byte[].class, bytes);
+        Object gson = call(this.plugin, "getGson");
+        return (List<Map<String, Object>>) invoke(method(gson.getClass(), "fromJson", String.class, Class.class), gson, json, List.class);
+    }
+
     // 调用成就序列化器中只读取字节数组的重载。
     List<?> decodeAdvancements(Object serializer, byte[] bytes) throws Exception {
         MethodHandle decoder;
@@ -73,12 +82,12 @@ final class InvSyncAccess {
         }
     }
 
-    // 将 InvSync PDC 字段解析为 SNBT 文本, 供 Sparrow NBT 解析器接续转换。
-    String decodePersistentData(byte[] bytes) throws Exception {
+    // 使用来源 NBT-API 读取物品或 PDC 的 SNBT, 不解析物品组件注册表.
+    String decodeNbt(String snbt) throws Exception {
         // InvSync 的 Shadow 配置把 NBT-API 放在此包下, 由源 NBTContainer 解析 SNBT.
         Class<?> container = this.type("shadow.nbt.changeme.nbtapi.NBTContainer");
         try {
-            return container.getConstructor(String.class).newInstance(new String(bytes, StandardCharsets.UTF_8)).toString();
+            return container.getConstructor(String.class).newInstance(snbt).toString();
         } catch (InvocationTargetException exception) {
             throw failure(exception);
         } catch (ReflectiveOperationException exception) {

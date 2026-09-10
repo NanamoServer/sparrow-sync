@@ -3,8 +3,8 @@ package net.momirealms.sparrow.sync.compatibility.migration.invsync;
 import net.minecraft.stats.Stat;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy;
@@ -19,9 +19,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType.Modifie
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType.Experience;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType.Health;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType.Hunger;
-import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType.Inventory;
 import net.momirealms.sparrow.sync.snapshot.data.type.StatisticsDataType.Statistics;
-import net.momirealms.sparrow.sync.util.ItemCodec;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -29,7 +27,6 @@ import org.bukkit.Statistic;
 import org.bukkit.advancement.Advancement;
 import org.bukkit.advancement.AdvancementRequirement;
 import org.bukkit.craftbukkit.CraftStatistic;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.craftbukkit.potion.CraftPotionUtil;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.entity.EntityType;
@@ -39,9 +36,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,15 +60,17 @@ final class InvSyncConverter {
     @NotNull
     Map<DataKey, Tag> convert(Object data) throws Exception {
         Map<DataKey, Tag> result = new HashMap<>();
-        // 背包和末影箱各自带有来源的槽位布局，交由源物品序列化器还原。
+        // 迁移只生成持久 NBT, 未注册的自定义附魔同样原样保留.
         byte[] inventory = this.bytes(data, "inventory");
         if (inventory != null) {
             // 源库未保存手持槽, 快照固定选择第一个快捷栏槽位.
-            this.put(result, "inventory", new Inventory(this.items(inventory, 41), 0, 0));
+            CompoundTag items = this.items(inventory, 41);
+            items.putInt("heldSlot", 0);
+            result.put(DataKey.sparrow("inventory"), items);
         }
         byte[] enderChest = this.bytes(data, "enderChest");
         if (enderChest != null) {
-            this.put(result, "ender_chest", new ItemCodec.LoadedItems(this.items(enderChest, 27), 0));
+            result.put(DataKey.sparrow("ender_chest"), this.items(enderChest, 27));
         }
         // PlayerData 只保存当前生命和最大生命，最大生命放入目标属性列表。
         this.put(result, "health", new Health(((Number) call(data, "getHealth")).doubleValue()));
@@ -104,7 +103,7 @@ final class InvSyncConverter {
         }
         byte[] persistentData = this.bytes(data, "persistentData");
         if (persistentData != null) {
-            String snbt = this.access.decodePersistentData(persistentData);
+            String snbt = this.access.decodeNbt(new String(persistentData, StandardCharsets.UTF_8));
             Object parser = TagParserProxy.INSTANCE.create(NBTOps.INSTANCE);
             result.put(DataKey.sparrow("persistent_data"), (CompoundTag) TagParserProxy.INSTANCE.parseFully(parser, snbt));
         }
@@ -116,23 +115,25 @@ final class InvSyncConverter {
     private byte @Nullable [] bytes(Object data, String field) throws Exception {
         if (!(boolean) call(data, field + "IsInit")) return null;
         byte[] bytes = (byte[]) call(data, "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1));
-        // InvSync 的 V1 转换器以零长数组表达旧记录中不存在的字段.
+        // 零长数组没有可读取的字段正文.
         return bytes.length == 0 ? null : bytes;
     }
 
-    // 通过 InvSync ItemSerializer 还原物品，并转换为 Sparrow 使用的 NMS 数组。
-    private ItemStack[] items(byte[] bytes, int size) throws Exception {
-        Object serializer = call(this.plugin, "getItemSerializer");
-        Map<Integer, org.bukkit.inventory.ItemStack> contents = (Map<Integer, org.bukkit.inventory.ItemStack>) call(serializer, "deserializerInventory", byte[].class, bytes);
-        // 新版本装备槽也按源槽位保留, Sparrow 的 inventory codec 负责编码装备语义.
-        for (int slot : contents.keySet()) {
+    // 源组件负责解压和读取 SNBT; 只添加 Sparrow 的容器结构与槽位.
+    private CompoundTag items(byte[] bytes, int size) throws Exception {
+        var items = NBT.createList();
+        Object parser = TagParserProxy.INSTANCE.create(NBTOps.INSTANCE);
+        for (Map<String, Object> entry : this.access.decodeItems(bytes)) {
+            int slot = ((Number) entry.get("slot")).intValue();
+            String snbt = this.access.decodeNbt((String) entry.get("item"));
+            CompoundTag item = (CompoundTag) TagParserProxy.INSTANCE.parseFully(parser, snbt);
+            item.putInt("slot", slot);
+            items.add(item);
             size = Math.max(size, slot + 1);
         }
-        ItemStack[] result = new ItemStack[size];
-        Arrays.fill(result, ItemStack.EMPTY);
-        for (Map.Entry<Integer, org.bukkit.inventory.ItemStack> entry : contents.entrySet()) {
-            result[entry.getKey()] = CraftItemStack.asNMSCopy(entry.getValue());
-        }
+        CompoundTag result = NBT.createCompound();
+        result.putInt("size", size);
+        result.put("items", items);
         return result;
     }
 

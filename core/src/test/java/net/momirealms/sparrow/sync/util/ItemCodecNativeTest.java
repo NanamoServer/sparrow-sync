@@ -20,6 +20,7 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.MapPipeline;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
@@ -44,6 +45,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,20 @@ class ItemCodecNativeTest {
     @AfterEach
     void restoreRegistries() throws Exception {
         replaceOps("sparrowNbt", this.previousSparrowOps);
+    }
+
+    @Test
+    void sourceItemVersionOverridesSnapshotVersion() throws IOException {
+        var item = NBT.createCompound();
+        item.putString("id", "minecraft:diamond");
+        item.putByte("Count", (byte) 12);
+        item.putInt("DataVersion", 3700);
+        ItemStack decoded = ItemCodec.loadItem(item, VersionHelper.WORLD_VERSION);
+        assertTrue(decoded.is(Items.DIAMOND));
+        assertEquals(12, decoded.getCount());
+        assertEquals(3700, item.getInt("DataVersion"));
+        item.putInt("DataVersion", VersionHelper.WORLD_VERSION + 1);
+        assertThrows(IOException.class, () -> ItemCodec.loadItem(item, VersionHelper.WORLD_VERSION));
     }
 
     @Test
