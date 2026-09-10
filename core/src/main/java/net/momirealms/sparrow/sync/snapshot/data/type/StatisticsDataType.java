@@ -50,6 +50,15 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     private static final String VALUES_KEY = "values";
     private static final String AMOUNTS_KEY = "amounts";
 
+    public StatisticsDataType() {
+        // 服务器启动不代表所有 StatType 初始化完成, 启动时主动遍历访问确保内部的 map 缓存被正确创建.
+        for (StatType<?> type : BuiltInRegistries.STAT_TYPE) {
+            for (Object value : type.getRegistry()) {
+                statistic(type, value);
+            }
+        }
+    }
+
     @Override
     @NotNull
     public DataKey key() {

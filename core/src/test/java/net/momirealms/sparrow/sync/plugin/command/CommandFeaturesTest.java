@@ -375,7 +375,7 @@ class CommandFeaturesTest {
                 Component.text(999), Component.text(18), Component.text(981));
         assertEquals(1, this.text().lines().count());
         assertTrue(this.text().startsWith(">> SparrowSync · "));
-        assertTrue(this.text().contains(language.equals("zh") ? "异步 18 毫秒" : "async 18 ms"));
+        assertTrue(this.text().contains(language.equals("zh") ? "异步耗时 18 毫秒" : "async 18 ms"));
         assertFalse(this.text().contains("999"));
         assertFalse(this.text().contains("981"));
     }
@@ -628,7 +628,7 @@ class CommandFeaturesTest {
         assertEquals(0, scheduled.get());
         assertEquals(1, this.messages.size());
         assertTrue(this.text().contains(language.equals("zh_cn")
-                ? "未找到该玩家的数据，它可能从未登录过本服务器。"
+                ? "未找到该玩家的数据，这位玩家可能从未在本服登录过。"
                 : "No data was found for this player. They may never have joined this server."));
     }
 

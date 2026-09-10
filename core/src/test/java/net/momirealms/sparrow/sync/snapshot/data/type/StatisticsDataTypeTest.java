@@ -14,12 +14,14 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.stats.Stat;
+import net.minecraft.stats.StatType;
 import net.minecraft.stats.Stats;
 import net.minecraft.stats.StatsCounter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -43,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -50,6 +53,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -84,6 +88,79 @@ class StatisticsDataTypeTest {
         forcedStats().clear();
         forcedStats().putAll(this.previousForced);
         SpigotConfig.disableStatSaving = this.previousDisableSaving;
+    }
+
+    @Test
+    void constructionInitializesColdStatisticsAndPreservesExistingFormatters() throws Exception {
+        Stat<?> playTime = Stats.CUSTOM.get(Stats.PLAY_TIME);
+        String formatted = playTime.format(1200);
+        Map<Object, Stat<?>> used = statCache(Stats.ITEM_USED);
+        Stat<?> previous = used.remove(Items.DRAGON_EGG);
+        String name = Stat.buildName(Stats.ITEM_USED, Items.DRAGON_EGG);
+        ObjectiveCriteria previousCriterion = ObjectiveCriteria.CRITERIA_CACHE.remove(name);
+        try {
+            assertFalse(Stats.ITEM_USED.contains(Items.DRAGON_EGG));
+            new StatisticsDataType();
+
+            for (StatType<?> statType : BuiltInRegistries.STAT_TYPE) {
+                Map<Object, Stat<?>> cache = statCache(statType);
+                for (Object value : statType.getRegistry()) {
+                    assertTrue(cache.containsKey(value), "every registered statistic must be initialized before decoding");
+                }
+            }
+            assertSame(used.get(Items.DRAGON_EGG), ObjectiveCriteria.CRITERIA_CACHE.get(name));
+            assertSame(playTime, Stats.CUSTOM.get(Stats.PLAY_TIME));
+            assertEquals(formatted, Stats.CUSTOM.get(Stats.PLAY_TIME).format(1200));
+        } finally {
+            if (previous == null) {
+                used.remove(Items.DRAGON_EGG);
+            } else {
+                used.put(Items.DRAGON_EGG, previous);
+            }
+            if (previousCriterion == null) {
+                ObjectiveCriteria.CRITERIA_CACHE.remove(name);
+            } else {
+                ObjectiveCriteria.CRITERIA_CACHE.put(name, previousCriterion);
+            }
+        }
+    }
+
+    @Test
+    void parallelDecodeAndVanillaLookupReuseInitializedStatistics() throws Exception {
+        StatisticsDataType type = new StatisticsDataType();
+        var items = BuiltInRegistries.ITEM.stream().toList();
+        Stat<?>[] statistics = items.stream().map(Stats.ITEM_USED::get).toArray(Stat<?>[]::new);
+        int[] amounts = new int[statistics.length];
+        for (int i = 0; i < amounts.length; i++) {
+            amounts[i] = i + 1;
+        }
+        Tag encoded = type.encode(new Statistics(statistics, amounts));
+        Map<Object, Stat<?>> before = new IdentityHashMap<>(statCache(Stats.ITEM_USED));
+        Map<String, ObjectiveCriteria> criteriaBefore = new HashMap<>(ObjectiveCriteria.CRITERIA_CACHE);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> tasks = new ArrayList<>();
+        try (var workers = Executors.newFixedThreadPool(8)) {
+            for (int worker = 0; worker < 8; worker++) {
+                tasks.add(workers.submit(() -> {
+                    assertTrue(start.await(5, TimeUnit.SECONDS));
+                    for (int round = 0; round < 8; round++) {
+                        Statistics decoded = type.decode(encoded, 0);
+                        assertArrayEquals(amounts, decoded.amounts());
+                        for (int i = 0; i < statistics.length; i++) {
+                            assertSame(statistics[i], decoded.statistics()[i]);
+                            assertSame(statistics[i], Stats.ITEM_USED.get(items.get(i)));
+                        }
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (int i = 0; i < tasks.size(); i++) {
+                tasks.get(i).get(10, TimeUnit.SECONDS);
+            }
+        }
+        assertEquals(before, statCache(Stats.ITEM_USED));
+        assertEquals(criteriaBefore, ObjectiveCriteria.CRITERIA_CACHE);
     }
 
     @Test
@@ -342,6 +419,13 @@ class StatisticsDataTypeTest {
             values.put(statistics.statistics()[i], statistics.amounts()[i]);
         }
         return values;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<Object, Stat<?>> statCache(StatType<?> type) throws Exception {
+        Field field = StatType.class.getDeclaredField("map");
+        field.setAccessible(true);
+        return (Map<Object, Stat<?>>) field.get(type);
     }
 
     private static byte[] encodeNativeJson(Statistics value) throws Exception {
