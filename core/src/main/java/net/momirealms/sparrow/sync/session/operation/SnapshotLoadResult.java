@@ -14,6 +14,8 @@ public sealed interface SnapshotLoadResult {
     }
 
     /** 玩家没有历史快照, 本服状态即权威. */
+    Empty EMPTY = new Empty();
+
     record Empty() implements SnapshotLoadResult {
     }
 

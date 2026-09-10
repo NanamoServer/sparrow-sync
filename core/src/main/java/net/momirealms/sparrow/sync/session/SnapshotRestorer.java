@@ -46,10 +46,10 @@ final class SnapshotRestorer {
      */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull UUID snapshotId) {
-        if (this.operationsClosed) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+        if (this.operationsClosed) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
         return this.storage.snapshot(snapshotId).thenCompose(found -> {
-            if (found.isEmpty()) return CompletableFuture.completedFuture(new SnapshotRestoreResult.NotFound());
-            if (!found.get().meta().player().equals(player.getUniqueId())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.WrongPlayer());
+            if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotRestoreResult.NOT_FOUND);
+            if (!found.get().meta().player().equals(player.getUniqueId())) return CompletableFuture.completedFuture(SnapshotRestoreResult.WRONG_PLAYER);
             return this.restore(player, found.get());
         });
     }
@@ -64,12 +64,12 @@ final class SnapshotRestorer {
     @NotNull
     private CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull Snapshot snapshot) {
         return this.applier.applyOnline(player, snapshot).thenCompose(applied -> switch (applied) {
-            case SnapshotApplyResult.Rejected ignored -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
-            case SnapshotApplyResult.Failed ignored -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Failed());
+            case SnapshotApplyResult.Rejected ignored -> CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
+            case SnapshotApplyResult.Failed ignored -> CompletableFuture.completedFuture(SnapshotRestoreResult.FAILED);
             case SnapshotApplyResult.Applied ignored -> this.saver.saveRestored(snapshot, player.getName()).thenApply(saved -> switch (saved) {
-                case SnapshotSaveResult.Cancelled cancelled -> new SnapshotRestoreResult.Cancelled();
+                case SnapshotSaveResult.Cancelled cancelled -> SnapshotRestoreResult.CANCELLED;
                 case SnapshotSaveResult.Settled settled -> settled.result().stored()
-                        ? new SnapshotRestoreResult.Restored(settled.id()) : new SnapshotRestoreResult.Failed();
+                        ? new SnapshotRestoreResult.Restored(settled.id()) : SnapshotRestoreResult.FAILED;
             });
         });
     }
@@ -84,12 +84,12 @@ final class SnapshotRestorer {
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restoreOffline(@NotNull PlayerIdentity player, @NotNull UUID snapshotId) {
         return this.storage.snapshot(snapshotId).thenCompose(found -> {
-            if (found.isEmpty()) return CompletableFuture.completedFuture(new SnapshotRestoreResult.NotFound());
-            if (!found.get().meta().player().equals(player.uuid())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.WrongPlayer());
-            if (this.operationsClosed || !this.offlineRestores.add(player.uuid())) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+            if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotRestoreResult.NOT_FOUND);
+            if (!found.get().meta().player().equals(player.uuid())) return CompletableFuture.completedFuture(SnapshotRestoreResult.WRONG_PLAYER);
+            if (this.operationsClosed || !this.offlineRestores.add(player.uuid())) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
             // 先登记在途写入, 持锁期间交接探测持续回答 SAVING.
             return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.plugin.sessionLock().tryAcquire(player.uuid())).thenCompose(acquired -> {
-                if (!(acquired instanceof SessionLock.AcquireOutcome.Acquired lock)) return CompletableFuture.completedFuture(new SnapshotRestoreResult.Offline());
+                if (!(acquired instanceof SessionLock.AcquireOutcome.Acquired lock)) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
                 return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.saver.saveRestored(found.get(), player.name()))
                         .handle((saved, failure) -> new OfflineSave(saved, failure))
                         .thenCompose(outcome -> this.plugin.sessionLock().release(player.uuid(), lock.value()).thenApply(ignored -> {
@@ -97,9 +97,9 @@ final class SnapshotRestorer {
                                 throw new CompletionException(outcome.failure());
                             }
                             return (SnapshotRestoreResult) switch (outcome.saved()) {
-                                case SnapshotSaveResult.Cancelled cancelled -> new SnapshotRestoreResult.Cancelled();
+                                case SnapshotSaveResult.Cancelled ignored1 -> SnapshotRestoreResult.CANCELLED;
                                 case SnapshotSaveResult.Settled settled -> settled.result().stored()
-                                        ? new SnapshotRestoreResult.RestoredOffline(settled.id()) : new SnapshotRestoreResult.Failed();
+                                        ? new SnapshotRestoreResult.RestoredOffline(settled.id()) : SnapshotRestoreResult.FAILED;
                             };
                         }));
             }).whenComplete((result, failure) -> this.offlineRestores.remove(player.uuid()));

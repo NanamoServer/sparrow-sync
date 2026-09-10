@@ -54,7 +54,7 @@ public final class SnapshotRestoreRequestMessage extends TwoWayRequestMessage<By
     @NotNull
     protected CompletableFuture<SnapshotRestoreResponseMessage> handleRequest() {
         RemoteSnapshotManager current = receiver;
-        if (current == null) return CompletableFuture.completedFuture(new SnapshotRestoreResponseMessage(new SnapshotRestoreResult.Offline()));
+        if (current == null) return CompletableFuture.completedFuture(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
         return current.receiveRestore(this.playerId, this.snapshotId).thenApply(SnapshotRestoreResponseMessage::new);
     }
 }

@@ -121,13 +121,12 @@ public final class HandoffManager {
             return;
         }
         // 锁值不是本插件的格式, 问不出持有者, 按无主残锁直接夺
-        LockValue holder = LockValue.parse(probe.observed); // todo 每次轮询都解析, 没必要
-        if (holder == null) {
+        if (probe.holder == null) {
             this.seize(probe);
             return;
         }
         // 发布消息催促
-        this.broker.publishTwoWay(new HandoffRequestMessage(probe.player), holder.serverId())
+        this.broker.publishTwoWay(new HandoffRequestMessage(probe.player), probe.holder.serverId())
                 .orTimeout(this.probeTimeoutMillis, TimeUnit.MILLISECONDS)
                 .whenComplete((response, throwable) -> {
                     // 无应答, 静默持续超过判死阈值即认定持有者已死
@@ -164,7 +163,7 @@ public final class HandoffManager {
                         case SessionLock.AcquireOutcome.Acquired(String value) -> probe.future.complete(new HandoffOutcome(value, "done"));
                         // 别人抢先或旧锁还没删净, 带着最新持有锁的服务器ID继续探测
                         case SessionLock.AcquireOutcome.Held(String value) -> {
-                            probe.observed = value;
+                            probe.setObserved(value);
                             this.scheduleProbe(probe);
                         }
                     }
@@ -192,7 +191,7 @@ public final class HandoffManager {
                         switch (outcome) {
                             case SessionLock.AcquireOutcome.Acquired(String value) -> probe.future.complete(new HandoffOutcome(value, "seized"));
                             case SessionLock.AcquireOutcome.Held(String value) -> {
-                                probe.observed = value;
+                                probe.setObserved(value);
                                 probe.silentSince = 0;
                                 this.scheduleProbe(probe);
                             }
@@ -211,13 +210,20 @@ public final class HandoffManager {
         final UUID player;
         final long deadline;
         final CompletableFuture<HandoffOutcome> future = new CompletableFuture<>();
-        String observed;
+        String observed;    // 当前观察到的锁值原文, seize 时用于比较
+        LockValue holder;   // observed 的解析结果, 不是本插件格式时为 null
         long silentSince;  // 0 表示上一轮有应答
 
         Probe(UUID player, String observed, long deadline) {
             this.player = player;
-            this.observed = observed;
             this.deadline = deadline;
+            this.setObserved(observed);
+        }
+
+        // 原文与解析结果同步更新
+        void setObserved(String observed) {
+            this.observed = observed;
+            this.holder = LockValue.parse(observed);
         }
     }
 

@@ -15,26 +15,38 @@ public sealed interface SnapshotRestoreResult {
     }
 
     /** 指定快照不存在. */
+    NotFound NOT_FOUND = new NotFound();
+
+    /** 指定快照不属于目标玩家. */
+    WrongPlayer WRONG_PLAYER = new WrongPlayer();
+
+    /** 玩家或会话失效, 或离线恢复无法取得会话锁. */
+    Offline OFFLINE = new Offline();
+
+    /** RESTORE 记录的保存被事件监听器取消. */
+    Cancelled CANCELLED = new Cancelled();
+
+    /** 解码、应用或保存未成功, 或远程执行发生异常. */
+    Failed FAILED = new Failed();
+
+    /** 远程请求失联或超时, 无法确认执行结果. */
+    Unavailable UNAVAILABLE = new Unavailable();
+
     record NotFound() implements SnapshotRestoreResult {
     }
 
-    /** 指定快照不属于目标玩家. */
     record WrongPlayer() implements SnapshotRestoreResult {
     }
 
-    /** 玩家或会话失效, 或离线恢复无法取得会话锁. */
     record Offline() implements SnapshotRestoreResult {
     }
 
-    /** RESTORE 记录的保存被事件监听器取消. */
     record Cancelled() implements SnapshotRestoreResult {
     }
 
-    /** 解码、应用或保存未成功, 或远程执行发生异常. */
     record Failed() implements SnapshotRestoreResult {
     }
 
-    /** 远程请求失联或超时, 无法确认执行结果. */
     record Unavailable() implements SnapshotRestoreResult {
     }
 }

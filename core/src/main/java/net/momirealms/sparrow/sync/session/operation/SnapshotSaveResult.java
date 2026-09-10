@@ -13,6 +13,8 @@ public sealed interface SnapshotSaveResult {
     }
 
     /** 快照保存被事件监听器取消. */
+    Cancelled CANCELLED = new Cancelled();
+
     record Cancelled() implements SnapshotSaveResult {
     }
 }

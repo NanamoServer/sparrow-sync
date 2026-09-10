@@ -177,6 +177,42 @@ class HandoffManagerTest {
         assertTrue(this.lockA.release(player, heldByA).get(5, TimeUnit.SECONDS));
     }
 
+    @Test
+    void handoffRetriesWithLatestValueWhileHolderKeepsLock() throws Exception {
+        UUID player = UUID.randomUUID();
+        String heldByA = this.acquire(this.lockA, player);
+        this.sessionsA.add(player);
+
+        CompletableFuture<HandoffOutcome> handoff = this.serviceB.awaitHandoff(player, heldByA, System.nanoTime() + TimeUnit.SECONDS.toNanos(8));
+        // 让 B 至少吃到一轮 SAVING
+        Thread.sleep(350);
+        // A 已落库但还没释放锁, B 只能反复重抢失败并带着最新锁值继续探测
+        this.serviceA.recordSettled(player);
+        this.sessionsA.remove(player);
+        Thread.sleep(350);
+        assertTrue(this.lockA.release(player, heldByA).get(5, TimeUnit.SECONDS));
+
+        HandoffOutcome outcome = handoff.get(8, TimeUnit.SECONDS);
+
+        assertEquals("done", outcome.method());
+        assertTrue(outcome.lockValue().startsWith("serverB:"));
+        assertEquals(outcome.lockValue(), this.inspection.sync().get(this.key(player)));
+    }
+
+    @Test
+    void handoffSeizesUnparseableLockValue() throws Exception {
+        UUID player = UUID.randomUUID();
+        // 锁值不是本插件格式, 解析不出持有者, 不等待应答直接夺锁
+        String legacy = "unmanaged-lock";
+        this.inspection.sync().set(this.key(player), legacy);
+
+        HandoffOutcome outcome = this.serviceB.awaitHandoff(player, legacy, System.nanoTime() + TimeUnit.SECONDS.toNanos(8)).get(8, TimeUnit.SECONDS);
+
+        assertEquals("seized", outcome.method());
+        assertTrue(outcome.lockValue().startsWith("serverB:"));
+        assertEquals(outcome.lockValue(), this.inspection.sync().get(this.key(player)));
+    }
+
     private HandoffResponseMessage request(UUID player) throws Exception {
         return this.brokerB.broker().publishTwoWay(new HandoffRequestMessage(player), "serverA").get(5, TimeUnit.SECONDS);
     }

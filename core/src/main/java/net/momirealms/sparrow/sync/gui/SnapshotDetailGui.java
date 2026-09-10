@@ -542,16 +542,18 @@ public final class SnapshotDetailGui {
      */
     private void pin() {
         boolean pin = !this.meta.get().pinned();
-        this.operation(() -> pin ? this.plugin.snapshotService().pin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotPinResult.NotFound))
-                : this.plugin.snapshotService().unpin(this.meta.get().id()).thenApply(result -> !(result instanceof SnapshotUnpinResult.NotFound)), found -> {
-            this.invalidateParent();
-            if (!found) {
-                this.removed();
-                return;
-            }
-            this.meta.set(this.meta.get().withPinned(pin));
-            this.message(pin ? "pinned_feedback" : "unpinned_feedback");
-        });
+        this.operation(() -> pin
+                ? this.plugin.snapshotService().pin(this.meta.get().id()).thenApply(result -> result != SnapshotPinResult.NOT_FOUND)
+                : this.plugin.snapshotService().unpin(this.meta.get().id()).thenApply(result -> result != SnapshotUnpinResult.NOT_FOUND),
+                found -> {
+                    this.invalidateParent();
+                    if (!found) {
+                        this.removed();
+                        return;
+                    }
+                    this.meta.set(this.meta.get().withPinned(pin));
+                    this.message(pin ? "pinned_feedback" : "unpinned_feedback");
+                });
     }
 
     /**
@@ -648,7 +650,7 @@ public final class SnapshotDetailGui {
      */
     private void delete() {
         // 数据库走快照服务, 本服异常文件删除放在异步执行器中完成.
-        this.operation(() -> this.archivePath == null ? this.plugin.snapshotService().delete(this.meta.get().id()).thenApply(result -> result instanceof SnapshotDeleteResult.Deleted)
+        this.operation(() -> this.archivePath == null ? this.plugin.snapshotService().delete(this.meta.get().id()).thenApply(result -> result == SnapshotDeleteResult.DELETED)
                 : CompletableFuture.supplyAsync(() -> {
                     try {
                         return this.plugin.snapshotService().files().deleteException(this.archivePath);

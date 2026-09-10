@@ -23,7 +23,7 @@ public final class PlayerSession implements PlayerDataEntry {
     private final Connection connection; // 随会话保留到最终保存和解锁结束
     private final CompletableFuture<Void> released = new CompletableFuture<>(); // 会话从注册表移除后完成
     private SessionState state = SessionState.PREPARING;
-    private LoginDataState loginDataState = new LoginDataState.Preloading();
+    private LoginDataState loginDataState = LoginDataState.PRELOADING;
     private Map<DataKey, Tag> retainedData = Map.of(); // 本服不认识或已关闭的数据类型, 保存时原样写回快照
     private String lockToken; // 分布式锁的持有值, 释放时原样传回
 
@@ -78,7 +78,7 @@ public final class PlayerSession implements PlayerDataEntry {
             long asyncReadNanos,
             long nativeApplyNanos
     ) {
-        if (this.loginDataState instanceof LoginDataState.Preloading) {
+        if (this.loginDataState == LoginDataState.PRELOADING) {
             Optional<CompoundTag> data = switch (playerData) {
                 case PlayerDataPreload.Ready ready -> ready.data();
                 case PlayerDataPreload.Fallback ignored -> Optional.empty();
@@ -90,7 +90,7 @@ public final class PlayerSession implements PlayerDataEntry {
 
     @NotNull
     synchronized LoginDataState failLoginData(@NotNull String detail) {
-        if (this.loginDataState instanceof LoginDataState.Preloading) {
+        if (this.loginDataState == LoginDataState.PRELOADING) {
             this.loginDataState = new LoginDataState.Failed(detail);
         }
         return this.loginDataState;
@@ -99,7 +99,7 @@ public final class PlayerSession implements PlayerDataEntry {
     @NotNull
     synchronized LoginDataState finishLoginData() {
         LoginDataState result = this.loginDataState;
-        this.loginDataState = new LoginDataState.Cleared();
+        this.loginDataState = LoginDataState.CLEARED;
         return result;
     }
 
@@ -111,7 +111,7 @@ public final class PlayerSession implements PlayerDataEntry {
                 this.loginDataState = new LoginDataState.Ready(ready.playerData(), ready.loads() + 1, ready.snapshot(), ready.asyncReadNanos(), ready.nativeApplyNanos());
                 return ready.playerData();
             }
-            if (this.loginDataState instanceof LoginDataState.Preloading) {
+            if (this.loginDataState == LoginDataState.PRELOADING) {
                 this.loginDataState = new LoginDataState.Failed(EARLY_PLAYER_DATA_LOAD);
             }
         }

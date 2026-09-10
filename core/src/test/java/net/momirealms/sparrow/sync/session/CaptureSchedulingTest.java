@@ -576,7 +576,7 @@ class CaptureSchedulingTest {
         this.releaseWorker.countDown();
         assertTrue(this.service.sealAndAwaitSaves(2, TimeUnit.SECONDS));
         if (this.cancelEvent) {
-            assertInstanceOf(SnapshotSaveResult.Cancelled.class, result.get(2, TimeUnit.SECONDS));
+            assertSame(SnapshotSaveResult.CANCELLED, result.get(2, TimeUnit.SECONDS));
         } else {
             assertThrows(java.util.concurrent.ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
         }

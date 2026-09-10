@@ -49,7 +49,7 @@ public final class SnapshotCaptureRequestMessage extends TwoWayRequestMessage<By
     @NotNull
     protected CompletableFuture<SnapshotCaptureResponseMessage> handleRequest() {
         RemoteSnapshotManager current = receiver;
-        if (current == null) return CompletableFuture.completedFuture(new SnapshotCaptureResponseMessage(new SnapshotCaptureResult.Offline()));
+        if (current == null) return CompletableFuture.completedFuture(new SnapshotCaptureResponseMessage(SnapshotCaptureResult.OFFLINE));
         return current.receiveCapture(this.playerId).thenApply(SnapshotCaptureResponseMessage::new);
     }
 }

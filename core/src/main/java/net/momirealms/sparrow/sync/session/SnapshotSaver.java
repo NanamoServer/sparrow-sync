@@ -55,18 +55,18 @@ final class SnapshotSaver {
      */
     @NotNull
     public CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player) {
-        if (this.operationsClosed) return CompletableFuture.completedFuture(new SnapshotCaptureResult.Offline());
+        if (this.operationsClosed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
         CompletableFuture<SnapshotCaptureResult> result = new CompletableFuture<>();
         Runnable capture = () -> {
             try {
                 PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
                 if (!player.isOnline() || session == null || session.state() != SessionState.ACTIVE) {
-                    result.complete(new SnapshotCaptureResult.Offline());
+                    result.complete(SnapshotCaptureResult.OFFLINE);
                     return;
                 }
                 CompletableFuture<SnapshotSaveResult> saved = this.plugin.sessionManager().captureNowAndSave(session, player, SaveCause.COMMAND);
                 if (saved == null) {
-                    result.complete(new SnapshotCaptureResult.Offline());
+                    result.complete(SnapshotCaptureResult.OFFLINE);
                     return;
                 }
                 saved.whenComplete((outcome, failure) -> {
@@ -74,9 +74,10 @@ final class SnapshotSaver {
                         result.completeExceptionally(failure);
                     } else {
                         result.complete(switch (outcome) {
-                            case SnapshotSaveResult.Cancelled ignored -> new SnapshotCaptureResult.Cancelled();
+                            case SnapshotSaveResult.Cancelled ignored -> SnapshotCaptureResult.CANCELLED;
                             case SnapshotSaveResult.Settled settled -> settled.result().stored()
-                                    ? new SnapshotCaptureResult.Captured(settled.id()) : new SnapshotCaptureResult.Failed();
+                                    ? new SnapshotCaptureResult.Captured(settled.id())
+                                    : SnapshotCaptureResult.FAILED;
                         });
                     }
                 });
@@ -86,8 +87,8 @@ final class SnapshotSaver {
         };
         if (this.plugin.scheduler().entity().isOwnedByCurrentRegion(player)) {
             capture.run();
-        } else if (this.plugin.scheduler().entity().run(player, capture, () -> result.complete(new SnapshotCaptureResult.Offline())) == null) {
-            result.complete(new SnapshotCaptureResult.Offline());
+        } else if (this.plugin.scheduler().entity().run(player, capture, () -> result.complete(SnapshotCaptureResult.OFFLINE)) == null) {
+            result.complete(SnapshotCaptureResult.OFFLINE);
         }
         return result;
     }
@@ -210,7 +211,7 @@ final class SnapshotSaver {
         if (EventUtils.fireAndCheckCancel(event)) {
             if (request.beginFinish()) {
                 this.logger.file(LogCategory.SAVE, request.meta().player(), request.playerName(), LogConstants.SYNC_SAVE_CANCELLED_BY_EVENT, request.playerName(), request.meta().cause().name(), request.meta().id().toString());
-                request.completion().complete(new SnapshotSaveResult.Cancelled());
+                request.completion().complete(SnapshotSaveResult.CANCELLED);
             }
             return;
         }

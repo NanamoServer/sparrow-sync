@@ -14,6 +14,8 @@ public sealed interface SnapshotDetailResult {
     record Ready(@NotNull Snapshot snapshot, @NotNull Map<DataKey, Preview> previews) implements SnapshotDetailResult {
     }
 
+    NotFound NOT_FOUND = new NotFound();
+
     record NotFound() implements SnapshotDetailResult {
     }
 

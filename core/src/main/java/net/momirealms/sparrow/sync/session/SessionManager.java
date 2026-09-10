@@ -72,7 +72,7 @@ public final class SessionManager {
     public CompletableFuture<SessionPrepareResult> prepare(@NotNull PlayerSession session) {
         // 迟到的锁结果不再为已经关闭的会话启动读取
         if (session.state() != SessionState.PREPARING) {
-            return CompletableFuture.completedFuture(new SessionPrepareResult.Rejected());
+            return CompletableFuture.completedFuture(SessionPrepareResult.REJECTED);
         }
         long loadStart = System.nanoTime();
         // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取
@@ -84,7 +84,7 @@ public final class SessionManager {
                     if (throwable != null) {
                         String detail = String.valueOf(throwable);
                         this.logger.warnWithFileCause(LogCategory.APPLY, session.uuid(), session.playerName(), throwable, LogConstants.SYNC_LOCAL_DATA_FALLBACK, session.playerName(), loadMillis, detail);
-                        return new PlayerDataPreload.Fallback();
+                        return PlayerDataPreload.FALLBACK;
                     }
                     // 正常读取成功
                     this.logger.file(LogCategory.APPLY, session.uuid(), session.playerName(), loaded.isPresent() ? LogConstants.SYNC_LOCAL_DATA_READY : LogConstants.SYNC_LOCAL_DATA_EMPTY, session.playerName(), loadMillis);
@@ -99,7 +99,7 @@ public final class SessionManager {
             long asyncReadNanos = System.nanoTime() - loadStart;
             // 已结束的登录不再执行登录数据转换
             if (session.state() != SessionState.PREPARING) {
-                return new SessionPrepareResult.Rejected();
+                return SessionPrepareResult.REJECTED;
             }
             SnapshotLoadResult.Ready loadedSnapshot = remote instanceof SnapshotLoadResult.Ready ready ? ready : null;
             PlayerDataPreload preparedLocal = local;
@@ -115,7 +115,7 @@ public final class SessionManager {
             // 设置会话加载结果与 abort 共用 Session 监视器, 本服登录数据和快照一起提交
             synchronized (session) {
                 if (session.state() != SessionState.PREPARING) {
-                    return new SessionPrepareResult.Rejected();
+                    return SessionPrepareResult.REJECTED;
                 }
                 // 检查快照和本地数据读取是否成功
                 if (remote instanceof SnapshotLoadResult.Failed(String detail)) {
@@ -130,7 +130,7 @@ public final class SessionManager {
                 if (!(published instanceof LoginDataState.Ready)) {
                     return new SessionPrepareResult.Failed("player data cache no longer accepts preload results");
                 }
-                return new SessionPrepareResult.Ready();
+                return SessionPrepareResult.READY;
             }
         }, this.plugin.scheduler().async());
     }
@@ -157,7 +157,7 @@ public final class SessionManager {
         long nativeApplyNanos;
         synchronized (session) {
             if (!this.owns(session) || !session.tryTransition(SessionState.PREPARING, SessionState.APPLYING)) {
-                return new SnapshotApplyResult.Rejected();
+                return SnapshotApplyResult.REJECTED;
             }
             // Join 验收后 Session 解除对原版数据的引用.
             LoginDataState loginDataState = session.finishLoginData();
@@ -186,7 +186,7 @@ public final class SessionManager {
         if (result instanceof SnapshotApplyResult.Applied applied) {
             synchronized (session) {
                 if (!this.owns(session) || session.state() != SessionState.APPLYING) {
-                    return new SnapshotApplyResult.Rejected();
+                    return SnapshotApplyResult.REJECTED;
                 }
                 if (loaded != null) session.retainedData(loaded.context().passthrough());
                 session.transition(SessionState.ACTIVE);

@@ -48,9 +48,9 @@ class SnapshotEventTest {
         event.setCancelled(true);
         assertTrue(event.isCancelled());
         assertSame(SnapshotSaveEvent.getHandlerList(), event.getHandlers());
-        event.completion().toCompletableFuture().complete(new SnapshotSaveResult.Cancelled());
+        event.completion().toCompletableFuture().complete(SnapshotSaveResult.CANCELLED);
         assertFalse(outcome.isDone());
-        outcome.complete(new SnapshotSaveResult.Cancelled());
+        outcome.complete(SnapshotSaveResult.CANCELLED);
         assertTrue(event.completion().toCompletableFuture().join() instanceof SnapshotSaveResult.Cancelled);
     }
 

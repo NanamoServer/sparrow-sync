@@ -86,21 +86,21 @@ class SnapshotManagementTest {
         UUID player = snapshot.meta().player();
         UUID id = snapshot.meta().id();
         this.stored.put(id, snapshot);
-        assertInstanceOf(SnapshotPinResult.Unchanged.class, this.service.pin(id).join());
-        assertInstanceOf(SnapshotUnpinResult.Unpinned.class, this.service.unpin(id).join());
-        assertInstanceOf(SnapshotUnpinResult.Unchanged.class, this.service.unpin(id).join());
-        assertInstanceOf(SnapshotPinResult.Pinned.class, this.service.pin(id).join());
-        assertInstanceOf(SnapshotDeleteResult.Deleted.class, this.service.delete(id).join());
-        assertInstanceOf(SnapshotDeleteResult.NotFound.class, this.service.delete(id).join());
+        assertSame(SnapshotPinResult.UNCHANGED, this.service.pin(id).join());
+        assertSame(SnapshotUnpinResult.UNPINNED, this.service.unpin(id).join());
+        assertSame(SnapshotUnpinResult.UNCHANGED, this.service.unpin(id).join());
+        assertSame(SnapshotPinResult.PINNED, this.service.pin(id).join());
+        assertSame(SnapshotDeleteResult.DELETED, this.service.delete(id).join());
+        assertSame(SnapshotDeleteResult.NOT_FOUND, this.service.delete(id).join());
     }
 
     @Test
     void managementTargetsSnapshotIdAndMissingSnapshotIsReported() {
         UUID id = UUID.randomUUID();
-        assertInstanceOf(SnapshotPinResult.NotFound.class, this.service.pin(id).join());
-        assertInstanceOf(SnapshotUnpinResult.NotFound.class, this.service.unpin(id).join());
-        assertInstanceOf(SnapshotDeleteResult.NotFound.class, this.service.delete(id).join());
-        assertInstanceOf(SnapshotExportResult.NotFound.class, this.service.export(id, SnapshotFiles.Format.BINARY).join());
+        assertSame(SnapshotPinResult.NOT_FOUND, this.service.pin(id).join());
+        assertSame(SnapshotUnpinResult.NOT_FOUND, this.service.unpin(id).join());
+        assertSame(SnapshotDeleteResult.NOT_FOUND, this.service.delete(id).join());
+        assertSame(SnapshotExportResult.NOT_FOUND, this.service.export(id, SnapshotFiles.Format.BINARY).join());
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
         this.stored.put(snapshot.meta().id(), snapshot);
         SnapshotExportResult.Exported exported = assertInstanceOf(SnapshotExportResult.Exported.class, this.service.export(snapshot.meta().id(), SnapshotFiles.Format.BINARY).join());
@@ -121,7 +121,7 @@ class SnapshotManagementTest {
         assertEquals(3, this.writes.get());
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         Files.write(this.directory.resolve(output), new byte[]{1, 2, 3});
-        assertInstanceOf(SnapshotImportResult.InvalidFile.class, this.service.importFile(relative).join());
+        assertSame(SnapshotImportResult.INVALID_FILE, this.service.importFile(relative).join());
     }
 
     @SuppressWarnings("unchecked")

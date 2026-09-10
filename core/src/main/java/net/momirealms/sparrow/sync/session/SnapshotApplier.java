@@ -65,7 +65,7 @@ final class SnapshotApplier {
                         .map(snapshot -> this.prepareSnapshot(snapshot, playerName, loadStart))
                         .orElseGet(() -> {
                             this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_LOAD_EMPTY, playerName, millis(loadStart, System.nanoTime()));
-                            return CompletableFuture.completedFuture(new SnapshotLoadResult.Empty());
+                            return CompletableFuture.completedFuture(SnapshotLoadResult.EMPTY);
                         }))
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
@@ -140,7 +140,7 @@ final class SnapshotApplier {
     CompletableFuture<SnapshotApplyResult> applyOnline(@NotNull Player player, @NotNull Snapshot snapshot) {
         PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
         if (this.operationsClosed || session == null || session.state() != SessionState.ACTIVE) {
-            return CompletableFuture.completedFuture(new SnapshotApplyResult.Rejected());
+            return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
         }
         return this.prepareSnapshot(snapshot, session.playerName()).thenCompose(loaded -> {
             if (!(loaded instanceof SnapshotLoadResult.Ready ready)) {
@@ -167,11 +167,11 @@ final class SnapshotApplier {
                     apply.run();
                 }
                 else {
-                    completion.complete(new SnapshotApplyResult.Rejected());
+                    completion.complete(SnapshotApplyResult.REJECTED);
                 }
             };
             if (this.plugin.scheduler().entity().run(player, apply, retired) == null) {
-                completion.complete(new SnapshotApplyResult.Rejected());
+                completion.complete(SnapshotApplyResult.REJECTED);
             }
             return completion;
         });
@@ -187,7 +187,7 @@ final class SnapshotApplier {
      */
     @NotNull
     private CompletableFuture<SnapshotApplyResult> applyOnlineNow(@NotNull PlayerSession session, @NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
-        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(new SnapshotApplyResult.Rejected());
+        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
         PluginConfig.OnlineRestoreOptions options = PluginConfig.synchronization$onlineRestore();
         PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
         // 配置先移除默认不恢复的值. 监听器仍可按自己的规则补回这些值.
@@ -198,7 +198,7 @@ final class SnapshotApplier {
             event.decoded().remove(LocationDataType.LOCATION);
         }
         EventUtils.fireAndForget(event);
-        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(new SnapshotApplyResult.Rejected());
+        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
         SnapshotApplyContext context = loaded.context();
         // 事件可能删除、替换或补回值. Context 接收事件最终留下的集合.
         context.acceptEventValues(event.decoded());
@@ -241,7 +241,7 @@ final class SnapshotApplier {
     @SuppressWarnings("unchecked")
     @NotNull
     private CompletableFuture<SnapshotApplyResult> applyOnlineData(@NotNull PlayerSession session, @NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded, @Nullable HealthDataType.Health health, @Nullable LocationDataType.PlayerLocation location) {
-        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(new SnapshotApplyResult.Rejected());
+        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
         if (health != null && health.health() > 0 && player.isDead()) {
             return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed("player did not respawn"));
         }
@@ -262,7 +262,7 @@ final class SnapshotApplier {
             teleport = player.teleportAsync(new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch()));
         }
         return teleport.thenApply(moved -> {
-            if (!this.canApplyOnline(session, player)) return new SnapshotApplyResult.Rejected();
+            if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
             if (!moved) return new SnapshotApplyResult.Failed("location teleport was rejected: " + location.world());
             if (location != null) {
                 context.appliedPlayer(LocationDataType.LOCATION);
@@ -274,7 +274,7 @@ final class SnapshotApplier {
                 }
                 context.appliedPlayer(HealthDataType.HEALTH);
             }
-            if (!this.canApplyOnline(session, player)) return new SnapshotApplyResult.Rejected();
+            if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
             session.retainedData(context.passthrough());
             SnapshotApplyResult.Applied result = new SnapshotApplyResult.Applied(context.applied(), context.skipped(), context.failures());
             EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), result.applied(), result.skipped()));
