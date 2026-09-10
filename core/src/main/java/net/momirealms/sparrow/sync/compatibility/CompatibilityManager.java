@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.compatibility;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV3;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV4;
+import net.momirealms.sparrow.sync.compatibility.migration.invsync.InvSyncSource;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -12,8 +13,8 @@ import org.jetbrains.annotations.Nullable;
 
 public final class CompatibilityManager {
     private final SparrowSync plugin;
-    private boolean hasPlaceholderAPI;
     private MigrationSource huskSyncMigration;
+    private MigrationSource invSyncMigration;
 
     public CompatibilityManager(SparrowSync plugin) {
         this.plugin = plugin;
@@ -26,21 +27,29 @@ public final class CompatibilityManager {
     }
 
     public void onDelayedEnable() {
-        if (this.isPluginEnabled("PlaceholderAPI")) {
-            this.runCatchingHook(() -> this.hasPlaceholderAPI = true, "PlaceholderAPI");
+        if (this.isPluginEnabled("InvSync")) {
+            Plugin invSync = this.getPlugin("InvSync");
+            assert invSync != null;
+            this.runCatchingHook(() -> this.invSyncMigration =
+                    new InvSyncSource(invSync, this.plugin.dataRegistry()), "InvSync");
         }
         if (this.isPluginEnabled("HuskSync")) {
             Plugin huskSync = this.getPlugin("HuskSync");
             assert huskSync != null;
             this.runCatchingHook(() -> this.huskSyncMigration = huskSync.getDescription().getVersion().startsWith("3.")
-                    ? new HuskSyncSourceV3(huskSync, this.plugin.scheduler().sync(), this.plugin.dataRegistry())
-                    : new HuskSyncSourceV4(huskSync, this.plugin.scheduler().sync(), this.plugin.dataRegistry()), "HuskSync");
+                    ? new HuskSyncSourceV3(huskSync, this.plugin.dataRegistry())
+                    : new HuskSyncSourceV4(huskSync, this.plugin.dataRegistry()), "HuskSync");
         }
     }
 
     @Nullable
     public MigrationSource huskSyncMigration() {
         return this.huskSyncMigration;
+    }
+
+    @Nullable
+    public MigrationSource invSyncMigration() {
+        return this.invSyncMigration;
     }
 
     public boolean isPluginEnabled(String plugin) {

@@ -136,6 +136,11 @@ paper {
     apiVersion = "1.21.8"
     foliaSupported = true
     serverDependencies {
+        register("InvSync") {
+            load = RelativeLoadOrder.BEFORE
+            required = false
+            joinClasspath = true
+        }
         register("HuskSync") {
             load = RelativeLoadOrder.BEFORE
             required = false

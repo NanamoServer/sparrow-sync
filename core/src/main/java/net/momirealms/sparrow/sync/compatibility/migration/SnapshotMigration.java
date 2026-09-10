@@ -38,8 +38,8 @@ public final class SnapshotMigration {
      * 在文件 I/O worker 中生成完整迁移 ZIP, 发布后自动导入, 返回两个阶段的独立结果.
      *
      * @param name dump 目录内的 ZIP 文件名
-     * @param source 已就绪的来源, 按自身 API 线程约束读取并交付脱离 Player 的数据
-     * @param startedAt 本批开始时的 Unix 毫秒时间, 作为缺失源时间的默认值
+     * @param source 已就绪可进行迁移的数据来源
+     * @param startedAt 本批开始时的毫秒时间
      * @return failure 表示生成故障, 此时 imported 为 null; 发布成功后检查 imported.failure 判断入库结果,
      *         converted / failed 分别统计写入 ZIP 和生成阶段归档的玩家, elapsedMillis 包含两阶段耗时;
      *         生成失败时 file 只是目标路径, 该位置可能仍是此前的 ZIP
@@ -62,12 +62,7 @@ public final class SnapshotMigration {
                 // ZIP 同时只能写一个成员, 先将名字暂存磁盘, 玩家正文逐份写入 snapshots.bin.
                 try (DataOutputStream userOutput = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(users)))) {
                     source.read(new MigrationSource.Sink() {
-                        /**
-                         * 将完整玩家结果写入本包, 编码故障归档后跳过该玩家.
-                         *
-                         * @param data 已由来源转换的完整字段与可得元数据
-                         * @throws IOException ZIP 或归档文件写入失败
-                         */
+
                         @Override
                         public void accept(@NotNull MigrationSource.PlayerData data) throws IOException {
                             progress.current = "player " + data.player();
@@ -93,7 +88,6 @@ public final class SnapshotMigration {
                             progress.converted++;
                         }
 
-                        /** {@inheritDoc} */
                         @Override
                         public void reject(@NotNull UUID player, @Nullable String playerName, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException {
                             progress.current = "player " + player + " " + stage;

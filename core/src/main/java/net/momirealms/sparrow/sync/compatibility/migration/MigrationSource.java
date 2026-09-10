@@ -17,17 +17,8 @@ public interface MigrationSource {
     @NotNull
     String id();
 
-    /**
-     * 在后台逐玩家读取、解码并同步交付结果, 返回前释放源游标等资源.
-     *
-     * @param sink 顺序消费记录, 接受方法返回后才能交付下一份; <strong>源适配器须原样传播消费端异常</strong>
-     * @throws Exception 枚举、连接或接口整体故障; 单玩家数据故障通过 reject 交付
-     */
     void read(@NotNull Sink sink) throws Exception;
 
-    /**
-     * 顺序接收完整玩家数据或已确认的数据故障, 调用返回后来源才可复用本次数据.
-     */
     interface Sink {
 
         /**
