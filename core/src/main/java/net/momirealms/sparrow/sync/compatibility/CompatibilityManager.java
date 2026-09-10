@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility;
 
+import net.momirealms.sparrow.sync.compatibility.migration.MigrationDataTypes;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV3;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV4;
@@ -31,14 +32,14 @@ public final class CompatibilityManager {
             Plugin invSync = this.getPlugin("InvSync");
             assert invSync != null;
             this.runCatchingHook(() -> this.invSyncMigration =
-                    new InvSyncSource(invSync, this.plugin.dataRegistry()), "InvSync");
+                    new InvSyncSource(invSync, MigrationDataTypes.createRegistry()), "InvSync");
         }
         if (this.isPluginEnabled("HuskSync")) {
             Plugin huskSync = this.getPlugin("HuskSync");
             assert huskSync != null;
             this.runCatchingHook(() -> this.huskSyncMigration = huskSync.getDescription().getVersion().startsWith("3.")
-                    ? new HuskSyncSourceV3(huskSync, this.plugin.dataRegistry())
-                    : new HuskSyncSourceV4(huskSync, this.plugin.dataRegistry()), "HuskSync");
+                    ? new HuskSyncSourceV3(huskSync, MigrationDataTypes.createRegistry())
+                    : new HuskSyncSourceV4(huskSync, MigrationDataTypes.createRegistry()), "HuskSync");
         }
     }
 

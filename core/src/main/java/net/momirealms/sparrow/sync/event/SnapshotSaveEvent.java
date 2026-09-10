@@ -30,21 +30,11 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
         this.completion = completion;
     }
 
-    /**
-     * 返回保存请求接受时记录的玩家名.
-     *
-     * @return 玩家名
-     */
     @NotNull
     public String playerName() {
         return this.playerName;
     }
 
-    /**
-     * 返回准备保存的快照.
-     *
-     * @return 准备保存的快照
-     */
     @NotNull
     public Snapshot snapshot() {
         return this.snapshot;

@@ -42,6 +42,7 @@ public final class RedisMapCache implements MapCache {
             if (bytes == null) return Optional.empty();
             try {
                 CompoundTag tag = NBT.fromBytes(bytes);
+                assert tag != null;
                 if (!(tag.get("owner") instanceof StringTag owner) || !(tag.get("origin_id") instanceof IntTag origin)
                         || !(tag.get("global_id") instanceof IntTag global) || global.getAsInt() != globalId
                         || !(tag.get("data_version") instanceof IntTag version) || !(tag.get("data") instanceof CompoundTag data)) {

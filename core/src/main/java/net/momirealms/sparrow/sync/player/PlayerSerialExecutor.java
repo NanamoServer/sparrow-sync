@@ -17,10 +17,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * 按玩家 UUID 分桶的串行执行器. 同一玩家的任务永远落在同一条 串行线程上并严格按提交序执行.
- * 任务可以带一个就绪时刻, 没到点的任务不占线程空转, 串行线程会等到它到点, 期间新任务照常唤醒.
- */
 public final class PlayerSerialExecutor {
     private static final UUID SHUTDOWN_PLAYER = new UUID(0, 0);
     private static final QueuedTask SHUTDOWN_SIGNAL = new QueuedTask(SHUTDOWN_PLAYER, () -> {}, 0);   // 排在队尾的退出哨兵

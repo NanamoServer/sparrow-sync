@@ -69,9 +69,6 @@ public final class CommandsConfig {
                 "出于安全考虑, 修改此文件后需要重启服务器才能生效",
                 ""
         })
-        CommandConfig test = new CommandConfig(true, List.of("/sparrow-sync test"), "ce.command.admin.test");
-
-        @BlankLineBefore
         CommandConfig reload = new CommandConfig(true, List.of("/sparrow-sync reload"), "sparrow_sync.command.reload");
 
         @BlankLineBefore
@@ -135,7 +132,6 @@ public final class CommandsConfig {
         @NotNull
         public CommandConfig command(@NotNull String featureID) {
             return switch (featureID) {
-                case "test" -> this.test;
                 case "reload" -> this.reload;
                 case "status" -> this.status;
                 case "gui" -> this.gui;

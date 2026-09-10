@@ -9,7 +9,14 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
+import net.momirealms.sparrow.sync.compatibility.migration.MigrationDataTypes;
+import net.momirealms.sparrow.sync.compatibility.migration.MigrationAssertions;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
+import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
@@ -29,13 +36,16 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +63,7 @@ class InvSyncSourceTest {
     private final Map<Field, Object> previous = new LinkedHashMap<>();
     private DataRegistry registry;
     private Object storage;
+    private Plugin hookedInvSync;
     private Thread decoderThread;
     private Thread sinkThread;
     private boolean interruptDecode;
@@ -71,8 +82,8 @@ class InvSyncSourceTest {
         this.replace(Bukkit.class, "server", Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[]{Server.class}, (proxy, method, args) -> switch (method.getName()) {
             case "getUnsafe" -> CraftMagicNumbers.INSTANCE;
             case "getPluginManager" -> Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{org.bukkit.plugin.PluginManager.class}, (manager, operation, arguments) -> switch (operation.getName()) {
-                case "getPlugin" -> null;
-                case "isPluginEnabled" -> false;
+                case "getPlugin" -> "InvSync".equals(arguments[0]) ? this.hookedInvSync : null;
+                case "isPluginEnabled" -> "InvSync".equals(arguments[0]) && this.hookedInvSync != null;
                 case "getPlugins" -> new Plugin[0];
                 default -> throw new AssertionError(operation);
             });
@@ -82,13 +93,8 @@ class InvSyncSourceTest {
             case "getBukkitVersion" -> "1.21.8-R0.1-SNAPSHOT";
             default -> throw new AssertionError(method);
         }));
-        this.registry = new DataRegistry();
-        this.registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
-        this.registry.register(NmsPlayerFixture.allocate(EnderChestDataType.class));
-        this.registry.register(new HealthDataType());
-        this.registry.register(new AttributesDataType());
-        this.registry.register(new HungerDataType());
-        this.registry.register(new ExperienceDataType());
+        this.replace(SparrowSync.class, "instance", NmsPlayerFixture.allocate(SparrowSync.class));
+        this.registry = MigrationDataTypes.createRegistry();
     }
 
     private void replace(Class<?> owner, String name, Object value) throws Exception {
@@ -116,6 +122,45 @@ class InvSyncSourceTest {
             }
             default -> throw new AssertionError(method);
         });
+    }
+
+    @Test
+    void disabledRuntimeTypesSurviveMigrationZip(@TempDir Path directory) throws Exception {
+        DataRegistry runtime = new DataRegistry();
+        runtime.register(new InventoryDataType());
+        runtime.freeze();
+        SourceData source = new SourceData();
+        source.inventory = items(Map.of(0, "{id:'minecraft:diamond',count:3}"));
+        this.storage = new MysqlManager(source);
+        this.hookedInvSync = this.plugin();
+        PluginLogger console = (PluginLogger) Proxy.newProxyInstance(PluginLogger.class.getClassLoader(), new Class<?>[]{PluginLogger.class}, (proxy, method, args) -> {
+            if (!method.getName().equals("info")) {
+                throw new AssertionError(Arrays.toString(args));
+            }
+            return null;
+        });
+        for (var entry : Map.of("dataRegistry", runtime, "logger", new SyncLogger(console)).entrySet()) {
+            Field field = SparrowSync.class.getDeclaredField(entry.getKey());
+            field.setAccessible(true);
+            field.set(SparrowSync.instance(), entry.getValue());
+        }
+        CompatibilityManager compatibility = new CompatibilityManager(SparrowSync.instance());
+        compatibility.onDelayedEnable();
+        MigrationSource migration = compatibility.invSyncMigration();
+        assertNotNull(migration);
+        migration.read(this.sink);
+        assertTrue(this.rejected.isEmpty());
+        assertEquals(1, this.accepted.size());
+        this.storage = new MysqlManager(source);
+        var snapshot = MigrationAssertions.assertZipRoundTrip(directory, migration, this.accepted.getFirst().data());
+        var decoded = new SnapshotDecoder(runtime).decodeForApply(snapshot);
+        assertNotNull(decoded.value(InventoryDataType.INVENTORY));
+        for (var key : List.of(HealthDataType.HEALTH, AttributesDataType.ATTRIBUTES, HungerDataType.HUNGER, ExperienceDataType.EXPERIENCE)) {
+            assertNotNull(snapshot.data().get(key));
+            assertNull(runtime.type(key));
+            assertNull(decoded.value(key));
+        }
+        assertEquals(1, runtime.size());
     }
 
     @Test

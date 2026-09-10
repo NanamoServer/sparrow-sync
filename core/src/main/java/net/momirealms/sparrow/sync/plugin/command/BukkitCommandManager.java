@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.plugin.command;
 import net.kyori.adventure.util.Index;
 import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
-import net.momirealms.sparrow.sync.plugin.command.feature.TestCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotCaptureCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotRestoreCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotPinCommand;
@@ -48,7 +47,6 @@ public final class BukkitCommandManager extends AbstractCommandManager {
         this.index = Index.create(CommandFeature::getFeatureID, List.of(
                 new StatusCommand(this, plugin),
                 new ReloadCommand(this, plugin),
-                new TestCommand(this, plugin),
                 new SnapshotCaptureCommand(this, plugin),
                 new SnapshotRestoreCommand(this, plugin),
                 new SnapshotPinCommand(this, plugin),

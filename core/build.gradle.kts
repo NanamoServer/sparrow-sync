@@ -48,6 +48,7 @@ dependencies {
     testImplementation(libs.postgresql.driver)
     testImplementation(libs.lettuce.core)
     testImplementation(libs.caffeine)
+    testImplementation(libs.husksync)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
     testImplementation(project(":bukkit-proxy"))

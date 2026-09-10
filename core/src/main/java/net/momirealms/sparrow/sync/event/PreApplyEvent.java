@@ -25,11 +25,6 @@ public final class PreApplyEvent extends PlayerEvent {
         this.decoded = new LinkedHashMap<>(decoded);
     }
 
-    /**
-     * 返回正在应用的原始快照.
-     *
-     * @return 正在应用的快照
-     */
     @NotNull
     public Snapshot snapshot() {
         return this.snapshot;
