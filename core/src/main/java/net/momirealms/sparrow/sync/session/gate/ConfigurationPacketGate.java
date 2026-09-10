@@ -131,7 +131,7 @@ public final class ConfigurationPacketGate implements LoginGate {
                     }
                     if (outcome instanceof SessionPrepareResult.Failed failed) {
                         this.refuse(listener, session, name, failed.detail());
-                    } else if (outcome instanceof SessionPrepareResult.Ready) {
+                    } else if (outcome == SessionPrepareResult.READY) {
                         this.release(user, listener, uuid, name);
                     }
                 });

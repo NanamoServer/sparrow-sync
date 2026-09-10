@@ -138,7 +138,7 @@ class PlayerSessionTest {
         assertEquals(1, ready.loads());
         assertEquals(12L, ready.asyncReadNanos());
         assertEquals(34L, ready.nativeApplyNanos());
-        assertInstanceOf(LoginDataState.Cleared.class, session.finishLoginData());
+        assertSame(LoginDataState.CLEARED, session.finishLoginData());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
         session.retainedData(replacement);
@@ -219,7 +219,7 @@ class PlayerSessionTest {
         PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
         session.finishLoginData();
 
-        assertInstanceOf(LoginDataState.Cleared.class, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L));
+        assertSame(LoginDataState.CLEARED, session.publishLoginData(new PlayerDataPreload.Ready(Optional.empty()), null, 0L, 0L));
     }
 
     private static SnapshotApplyContext newApplyContext(DataRegistry registry, Map<DataKey, Tag> passthrough) {

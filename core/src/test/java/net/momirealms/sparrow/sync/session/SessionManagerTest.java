@@ -72,7 +72,7 @@ class SessionManagerTest {
 
         SessionPrepareResult result = this.manager.prepare(session).join();
 
-        assertInstanceOf(SessionPrepareResult.Rejected.class, result);
+        assertSame(SessionPrepareResult.REJECTED, result);
     }
 
     @Test

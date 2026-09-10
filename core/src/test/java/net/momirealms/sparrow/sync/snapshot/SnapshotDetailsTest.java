@@ -155,7 +155,7 @@ class SnapshotDetailsTest {
     @Test
     void missingSnapshotAndStorageOutageAreDifferentResults() {
         SnapshotDetails details = this.details(Runnable::run);
-        assertInstanceOf(SnapshotDetailResult.NotFound.class, details.load(UUID.randomUUID()).join());
+        assertSame(SnapshotDetailResult.NOT_FOUND, details.load(UUID.randomUUID()).join());
         IOException failure = new IOException("database offline");
         this.reader = id -> CompletableFuture.failedFuture(failure);
         assertSame(failure, assertInstanceOf(SnapshotDetailResult.Failed.class, details.load(UUID.randomUUID()).join()).failure());
@@ -200,7 +200,7 @@ class SnapshotDetailsTest {
         var missing = details.loadException("corrupted/selected.snapshot").join();
         assertEquals(header, missing.entry().header());
         assertFalse(missing.entry().bodyPresent());
-        assertInstanceOf(SnapshotDetailResult.NotFound.class, missing.result());
+        assertSame(SnapshotDetailResult.NOT_FOUND, missing.result());
     }
 
     private SnapshotDetails details(Executor executor) {

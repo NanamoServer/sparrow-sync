@@ -78,7 +78,7 @@ public final class PlayerSession implements PlayerDataEntry {
             long asyncReadNanos,
             long nativeApplyNanos
     ) {
-        if (this.loginDataState instanceof LoginDataState.Preloading) {
+        if (this.loginDataState == LoginDataState.PRELOADING) {
             Optional<CompoundTag> data = switch (playerData) {
                 case PlayerDataPreload.Ready ready -> ready.data();
                 case PlayerDataPreload.Fallback ignored -> Optional.empty();
@@ -90,7 +90,7 @@ public final class PlayerSession implements PlayerDataEntry {
 
     @NotNull
     synchronized LoginDataState failLoginData(@NotNull String detail) {
-        if (this.loginDataState instanceof LoginDataState.Preloading) {
+        if (this.loginDataState == LoginDataState.PRELOADING) {
             this.loginDataState = new LoginDataState.Failed(detail);
         }
         return this.loginDataState;
@@ -111,7 +111,7 @@ public final class PlayerSession implements PlayerDataEntry {
                 this.loginDataState = new LoginDataState.Ready(ready.playerData(), ready.loads() + 1, ready.snapshot(), ready.asyncReadNanos(), ready.nativeApplyNanos());
                 return ready.playerData();
             }
-            if (this.loginDataState instanceof LoginDataState.Preloading) {
+            if (this.loginDataState == LoginDataState.PRELOADING) {
                 this.loginDataState = new LoginDataState.Failed(EARLY_PLAYER_DATA_LOAD);
             }
         }

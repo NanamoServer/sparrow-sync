@@ -135,10 +135,10 @@ class RemoteSnapshotManagerTest {
 
     static Stream<SnapshotCaptureResult> captureResults() {
         return Stream.of(new SnapshotCaptureResult.Captured(UUID.randomUUID()),
-                SnapshotCaptureResult.OFFLINE,
-                SnapshotCaptureResult.CANCELLED,
-                SnapshotCaptureResult.FAILED,
-                SnapshotCaptureResult.UNAVAILABLE);
+                new SnapshotCaptureResult.Offline(),
+                new SnapshotCaptureResult.Cancelled(),
+                new SnapshotCaptureResult.Failed(),
+                new SnapshotCaptureResult.Unavailable());
     }
 
     @ParameterizedTest
@@ -163,12 +163,12 @@ class RemoteSnapshotManagerTest {
     static Stream<SnapshotRestoreResult> restoreResults() {
         return Stream.of(new SnapshotRestoreResult.Restored(UUID.randomUUID()),
                 new SnapshotRestoreResult.RestoredOffline(UUID.randomUUID()),
-                SnapshotRestoreResult.NOT_FOUND,
-                SnapshotRestoreResult.WRONG_PLAYER,
-                SnapshotRestoreResult.OFFLINE,
-                SnapshotRestoreResult.CANCELLED,
-                SnapshotRestoreResult.FAILED,
-                SnapshotRestoreResult.UNAVAILABLE);
+                new SnapshotRestoreResult.NotFound(),
+                new SnapshotRestoreResult.WrongPlayer(),
+                new SnapshotRestoreResult.Offline(),
+                new SnapshotRestoreResult.Cancelled(),
+                new SnapshotRestoreResult.Failed(),
+                new SnapshotRestoreResult.Unavailable());
     }
 
     @Test

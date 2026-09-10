@@ -110,7 +110,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         if (!channel.isActive() || session.state() != SessionState.PREPARING) return;
         if (outcome instanceof SessionPrepareResult.Failed failed) {
             this.refuse(connection, session, name, failed.detail());
-        } else if (outcome instanceof SessionPrepareResult.Ready) {
+        } else if (outcome == SessionPrepareResult.READY) {
             this.release(uuid, name);
         }
     }

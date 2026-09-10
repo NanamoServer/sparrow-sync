@@ -327,7 +327,7 @@ class SnapshotCommandFlowTest {
     void remoteRestoreForDepartedPlayerDoesNotFallBackToOfflineSave() throws Exception {
         Snapshot source = this.source(this.uuid);
         this.online.set(false);
-        assertInstanceOf(SnapshotRestoreResult.Offline.class, this.remote.receiveRestore(this.uuid, source.meta().id()).get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.OFFLINE, this.remote.receiveRestore(this.uuid, source.meta().id()).get(2, TimeUnit.SECONDS));
         assertFalse(this.locked.get());
         assertFalse(this.service.restoringOffline(this.uuid));
         assertTrue(this.writes.isEmpty());
@@ -356,8 +356,8 @@ class SnapshotCommandFlowTest {
     @Test
     void restoreStillChecksOwnershipBeforeApplicationOrOfflineWrite() throws Exception {
         Snapshot source = this.source(UUID.randomUUID());
-        assertInstanceOf(SnapshotRestoreResult.WrongPlayer.class, this.service.restore(this.player, source.meta().id()).get(2, TimeUnit.SECONDS));
-        assertInstanceOf(SnapshotRestoreResult.WrongPlayer.class, this.service.restoreOffline(new PlayerIdentity(this.uuid, "Steve"), source.meta().id()).get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.WRONG_PLAYER, this.service.restore(this.player, source.meta().id()).get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.WRONG_PLAYER, this.service.restoreOffline(new PlayerIdentity(this.uuid, "Steve"), source.meta().id()).get(2, TimeUnit.SECONDS));
         assertTrue(this.entityTasks.isEmpty());
         assertTrue(this.writes.isEmpty());
         assertFalse(this.locked.get());
@@ -388,7 +388,7 @@ class SnapshotCommandFlowTest {
         assertNotNull(task);
         this.online.set(false);
         task.run();
-        assertInstanceOf(SnapshotRestoreResult.Offline.class, completion.get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.OFFLINE, completion.get(2, TimeUnit.SECONDS));
         assertEquals("live", this.value.get());
         assertTrue(this.writes.isEmpty());
     }
@@ -525,7 +525,7 @@ class SnapshotCommandFlowTest {
         this.onlineOptions(true, true);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
         this.teleport.complete(false);
-        assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.FAILED, result.get(2, TimeUnit.SECONDS));
         assertFalse(this.dead.get());
         assertTrue(this.writes.isEmpty());
     }
@@ -549,7 +549,7 @@ class SnapshotCommandFlowTest {
         this.dead.set(true);
         this.onRespawn = () -> this.online.set(false);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
-        assertInstanceOf(SnapshotRestoreResult.Offline.class, result.get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.OFFLINE, result.get(2, TimeUnit.SECONDS));
         assertEquals(List.of("respawn"), this.actions);
         assertTrue(this.writes.isEmpty());
     }

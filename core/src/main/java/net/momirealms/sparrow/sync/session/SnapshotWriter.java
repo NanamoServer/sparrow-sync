@@ -274,7 +274,7 @@ final class SnapshotWriter {
                 cancelled++;
             } else if (completion.isCompletedExceptionally()) {
                 failed++;
-            } else if (completion.getNow(null) instanceof SnapshotSaveResult.Cancelled) {
+            } else if (completion.getNow(null) == SnapshotSaveResult.CANCELLED) {
                 cancelled++;
             } else if (((SnapshotSaveResult.Settled) completion.getNow(null)).result().stored()) {
                 stored++;
