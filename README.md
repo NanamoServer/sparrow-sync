@@ -73,9 +73,9 @@ Each configuration file maintains its own version. Changes to `commands.yml` req
 | --- | --- |
 | `/sparrow-sync status` | View synchronization system status |
 | `/sparrow-sync gui <player>` | Open a player's snapshot management menu |
-| `/sparrow-sync snapshot capture <player>` | Capture a new snapshot of a player |
+| `/sparrow-sync data migrate <source>` | Migrate data from a supported source plugin (`husksync` or `invsync`) |
 | `/sparrow-sync snapshot list <player>` | List a player's saved snapshots |
-| `/sparrow-sync snapshot restore <player> <id>` | Restore a selected snapshot |
+| `/sparrow-sync snapshot view <player> <id>` | View the contents of a saved snapshot |
 | `/sparrow-sync reload` | Reload configuration and translations |
 
 Command permissions and usages can be customized in **`commands.yml`**.

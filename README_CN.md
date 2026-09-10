@@ -73,9 +73,9 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 | --- | --- |
 | `/sparrow-sync status` | 查看同步系统状态 |
 | `/sparrow-sync gui <player>` | 打开指定玩家的快照管理菜单 |
-| `/sparrow-sync snapshot capture <player>` | 为指定玩家创建新快照 |
+| `/sparrow-sync data migrate <source>` | 从支持的来源插件迁移数据（`husksync` 或 `invsync`） |
 | `/sparrow-sync snapshot list <player>` | 列出指定玩家的已保存快照 |
-| `/sparrow-sync snapshot restore <player> <id>` | 恢复指定快照 |
+| `/sparrow-sync snapshot view <player> <id>` | 查看已保存快照的内容 |
 | `/sparrow-sync reload` | 重新加载配置和翻译 |
 
 命令权限和用法可以在 **`commands.yml`** 中自定义。
