@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -44,8 +45,13 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
         if (world == null) {
             throw new IllegalStateException("location world is not loaded: " + value.world());
         }
-        // todo 需要包装一下, folia 不能直接用 teleport.
-        if (!player.teleport(new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch()))) {
+        Location target = new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch());
+        // Folia 没有同步传送, 这里只发起异步传送, 不等待也不校验结果.
+        if (VersionHelper.isFolia()) {
+            player.teleportAsync(target);
+            return;
+        }
+        if (!player.teleport(target)) {
             throw new IllegalStateException("location teleport was rejected: " + value.world());
         }
     }

@@ -348,12 +348,14 @@ public final class PluginConfig {
         @Comment({
                 "Writes compatible snapshot data directly into player data that has not yet been loaded, on an asynchronous thread during login preparation",
                 "Strongly recommended: moves most of the synchronization work during login to a separate asynchronous thread and can also speed up vanilla player data loading",
-                "This option does not block Netty threads or the server main thread; try disabling it if your server encounters errors or compatibility issues while it is enabled"
+                "This option does not block Netty threads or the server main thread; try disabling it if your server encounters errors or compatibility issues while it is enabled",
+                "On Folia, disabling this leaves location to a best-effort asynchronous teleport whose result is neither awaited nor checked"
         })
         @Comment(lang = "zh-CN", value = {
                 "在登录准备阶段将兼容的快照数据直接在异步线程写入未加载的玩家数据中",
                 "非常推荐启用, 这将进入服务器时的大部分同步成本转移到了独立的异步线程进行, 还可以进一步加快玩家进入服务器时原版的数据加载速度",
-                "此选项不会阻塞 Netty 线程和服务器主线程, 若你使用的服务端在此选项开启时发生了错误或兼容性问题, 请尝试关闭此选项"
+                "此选项不会阻塞 Netty 线程和服务器主线程, 若你使用的服务端在此选项开启时发生了错误或兼容性问题, 请尝试关闭此选项",
+                "在 Folia 上关闭此选项时, 玩家位置只会交由一次异步传送尽力恢复, 既不等待也不校验结果"
         })
         NativeAsyncApplyOptions nativeAsyncApply = new NativeAsyncApplyOptions();
 
