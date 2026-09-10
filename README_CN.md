@@ -86,6 +86,10 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 
 ### 🌍 翻译
 
+需要翻译的文本分为两类：玩家可见的消息，以及生成配置文件中的注释。
+
+#### 📄 语言文件
+
 1. 克隆仓库。
 2. 参考现有语言文件，在以下目录中添加你的翻译：
 
@@ -93,8 +97,34 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
    common-files/src/main/resources/translations/
    ```
 
-3. 保留翻译键、参数占位符和 MiniMessage 格式。
-4. 提交 **Pull Request** 供我们审核。欢迎参与贡献！💖
+3. 文件名对应语言环境，使用小写的 `language_country` 形式，例如 `zh_CN` 对应 `zh_cn.yml`；没有地区变体时也可以只写语言，例如 `en.yml`。
+4. 保留翻译键、参数占位符和 MiniMessage 格式。
+
+#### 📝 配置文件注释
+
+生成的 `config.yml` 和 `server.yml` 中的注释来自 `core/src/main/java/net/momirealms/sparrow/sync/plugin/configuration/` 下配置类上的 `@Comment` 注解。每个配置项都带有一条英文回退注释及其多语言变体：
+
+```java
+@Comment("Enables or disables metrics collection via BStats")
+@Comment(lang = "zh-CN", value = "是否启用 BStats 统计数据收集")
+boolean metrics = true;
+```
+
+要翻译它们，按照同样的方式添加带有你自己 `lang` 标签的 `@Comment` 即可：
+
+```java
+@Comment(lang = "pt-BR", value = "Ativa ou desativa a coleta de métricas via BStats")
+```
+
+- 使用 BCP-47 语言标签，例如 `zh-CN`、`pt-BR`、`en-US`。
+- 多行注释使用数组：`value = {"第一行", "第二行"}`。
+- 不带 `lang` 的 `@Comment` 是未匹配到语言时使用的回退注释，请保持原样。
+- 匹配顺序为完整标签（`zh-CN`）→ 语言加文字体系（`zh-Hans`）→ 纯语言（`zh`）→ 回退注释，因此只写语言的标签（如 `pt`）可以覆盖所有地区变体。
+- 实际写入配置文件的变体取决于服务端的默认语言环境，且已生成的配置文件会保留原有注释。
+
+#### 📬 提交
+
+提交 **Pull Request** 供我们审核。欢迎参与贡献！💖
 
 ---
 

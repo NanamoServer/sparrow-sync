@@ -86,6 +86,10 @@ Command permissions and usages can be customized in **`commands.yml`**.
 
 ### 🌍 Translations
 
+Two kinds of text can be translated: the messages players see, and the comments written into the generated configuration files.
+
+#### 📄 Language files
+
 1. Clone the repository.
 2. Use an existing language file as a reference and add your translation to:
 
@@ -93,8 +97,34 @@ Command permissions and usages can be customized in **`commands.yml`**.
    common-files/src/main/resources/translations/
    ```
 
-3. Preserve translation keys, argument placeholders, and MiniMessage formatting.
-4. Submit a **pull request** with your changes for review. Contributions are welcome! 💖
+3. Name the file after the locale, in lowercase `language_country` form, for example `zh_cn.yml` for `zh_CN`; a language-only name such as `en.yml` works when the language has no regional variant.
+4. Preserve translation keys, argument placeholders, and MiniMessage formatting.
+
+#### 📝 Configuration comments
+
+The comments in the generated `config.yml` and `server.yml` come from `@Comment` annotations on the configuration classes in `core/src/main/java/net/momirealms/sparrow/sync/plugin/configuration/`. Every option declares an English fallback comment together with its localized variants:
+
+```java
+@Comment("Enables or disables metrics collection via BStats")
+@Comment(lang = "zh-CN", value = "是否启用 BStats 统计数据收集")
+boolean metrics = true;
+```
+
+To translate them, add another `@Comment` carrying your own `lang` tag:
+
+```java
+@Comment(lang = "pt-BR", value = "Ativa ou desativa a coleta de métricas via BStats")
+```
+
+- Use a BCP-47 language tag such as `zh-CN`, `pt-BR` or `en-US`.
+- Multi-line comments take an array: `value = {"First line", "Second line"}`.
+- The `@Comment` without a `lang` is the fallback used when nothing matches; please keep it in place.
+- Variants are matched in the order full tag (`zh-CN`) → language with script (`zh-Hans`) → language (`zh`) → fallback, so a language-only tag such as `pt` covers every regional variant.
+- The variant written into a file follows the server's default locale, and comments already present in a generated file are preserved as they are.
+
+#### 📬 Submitting your changes
+
+Submit a **pull request** with your changes for review. Contributions are welcome! 💖
 
 ---
 
