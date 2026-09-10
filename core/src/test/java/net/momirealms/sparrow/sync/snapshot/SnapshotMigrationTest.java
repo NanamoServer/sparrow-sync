@@ -1,0 +1,289 @@
+package net.momirealms.sparrow.sync.snapshot;
+
+import net.momirealms.sparrow.sync.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.StoredUser;
+import org.jspecify.annotations.NonNull;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.lang.reflect.Proxy;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.zip.ZipFile;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class SnapshotMigrationTest {
+    @TempDir Path directory; // 每项测试独立的插件数据目录
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE); // 真实快照编码, 便于验证正文往返
+    private final Map<UUID, Snapshot> snapshots = new HashMap<>(); // 按快照 ID 覆盖的目标存储
+    private final Map<UUID, StoredUser> users = new HashMap<>(); // 按玩家 UUID 保存名字映射
+    private int writes; // 已调用的存储写入次数, 包含失败尝试
+    private Function<Snapshot, CompletableFuture<StorageProvider.SaveOutcome>> save = this::store; // 可替换的保存结果, 用于模拟断库
+
+    @Test
+    void generatesCompleteStandardZipBeforeWritingAndReplaysWithoutSource() throws Exception {
+        Snapshot unrelated = SnapshotFixtures.snapshot();
+        this.snapshots.put(unrelated.meta().id(), unrelated);
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            for (int i = 1; i <= 12; i++) {
+                sink.accept(data(i));
+                assertEquals(0, this.writes);
+                assertFalse(Files.exists(this.files().dump().resolve("migration.zip")));
+            }
+        });
+        assertNull(result.failure());
+        assertNotNull(result.imported());
+        assertNull(result.imported().failure());
+        assertEquals(12, result.converted());
+        assertEquals(12, result.users());
+        assertEquals(0, result.failed());
+        try (ZipFile zip = new ZipFile(result.file().toFile())) {
+            assertEquals(List.of("snapshots.bin", "users.bin"), zip.stream().map(entry -> entry.getName()).toList());
+        }
+        Snapshot first = this.snapshots.values().stream().filter(snapshot -> snapshot.meta().player().equals(id(1))).findFirst().orElseThrow();
+        assertEquals(SaveCause.MIGRATION, first.meta().cause());
+        assertEquals(1001, first.meta().timestamp());
+        assertEquals(4189, first.meta().mcDataVersion());
+        assertEquals("migration-server", first.meta().server());
+        assertFalse(first.meta().pinned());
+        assertEquals(SnapshotFixtures.snapshot().data(), first.data());
+        assertEquals(new StoredUser(id(1), "Player1", 501), this.users.get(id(1)));
+        Map<UUID, Snapshot> once = Map.copyOf(this.snapshots);
+        this.snapshots.put(first.meta().id(), new Snapshot(first.meta(), Map.of()));
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(once, this.snapshots);
+        assertSame(unrelated, this.snapshots.get(unrelated.meta().id()));
+        this.assertOnlyZip();
+    }
+
+    @Test
+    void missingSourceTimeUsesBatchTimeWithoutInventingUserMapping() {
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, 4189, SnapshotFixtures.snapshot().data())));
+        assertNull(result.failure());
+        assertEquals(0, result.users());
+        assertTrue(this.users.isEmpty());
+        assertEquals(12345, this.snapshots.values().iterator().next().meta().timestamp());
+    }
+
+    @Test
+    void badPlayerCreatesVisibleHeadAndRawAttachmentThenContinues() throws Exception {
+        byte[] raw = {0, 1, 2, 3};
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            sink.accept(data(1));
+            sink.reject(id(2), "BadPlayer", "inventory", new IOException("source item is broken"), raw);
+            sink.accept(data(3));
+        });
+        assertNull(result.failure());
+        assertNull(result.imported().failure());
+        assertEquals(2, result.converted());
+        assertEquals(1, result.failed());
+        assertEquals(2, this.snapshots.size());
+        assertFalse(this.users.containsKey(id(2)));
+        SnapshotFiles files = this.files();
+        SnapshotFiles.ExceptionPage page = files.listExceptions(id(2), "migration", 0, 10);
+        assertEquals(1, page.total());
+        SnapshotFiles.ExceptionEntry entry = page.content().getFirst();
+        assertEquals(SnapshotFiles.HeadStatus.AVAILABLE, entry.headStatus());
+        assertFalse(entry.bodyPresent());
+        assertEquals("BadPlayer", entry.header().playerName());
+        assertEquals(SaveCause.MIGRATION, entry.header().meta().cause());
+        Path body = files.exceptionFile(entry.path());
+        assertFalse(Files.exists(body));
+        assertArrayEquals(raw, Files.readAllBytes(body.resolveSibling(body.getFileName() + ".source")));
+        String reason = Files.readString(body.resolveSibling(body.getFileName() + ".error.txt"));
+        assertTrue(reason.contains("Source: husksync"));
+        assertTrue(reason.contains("Version: test-version"));
+        assertTrue(reason.contains("Stage: inventory"));
+        assertTrue(reason.contains("source item is broken"));
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(2, this.snapshots.size());
+        assertTrue(files.deleteException(entry.path()));
+        try (var paths = Files.list(body.getParent())) {
+            assertEquals(0, paths.count());
+        }
+    }
+
+    @Test
+    void unavailableRawDataRemainsDiagnosticOnly() throws Exception {
+        SnapshotMigration.Result result = this.migrate(sink -> sink.reject(id(1), null, "decode", new IllegalArgumentException("invalid"), null));
+        assertNull(result.failure());
+        assertEquals(1, result.failed());
+        assertEquals(0, result.imported().snapshots());
+        SnapshotFiles.ExceptionEntry entry = this.files().listExceptions(id(1), null, 0, 10).content().getFirst();
+        Path body = this.files().exceptionFile(entry.path());
+        assertFalse(Files.exists(body));
+        assertFalse(Files.exists(body.resolveSibling(body.getFileName() + ".source")));
+        assertTrue(Files.readString(body.resolveSibling(body.getFileName() + ".error.txt")).contains("Raw data: unavailable"));
+    }
+
+    @Test
+    void sourceFailureKeepsPreviousZipAndNeverTouchesTarget() throws Exception {
+        Files.createDirectories(this.files().dump());
+        Path previous = this.files().dump().resolve("migration.zip");
+        Files.writeString(previous, "previous complete ZIP");
+        IOException failure = new IOException("source database offline");
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            sink.accept(data(1));
+            throw failure;
+        });
+        assertSame(failure, result.failure());
+        assertNull(result.imported());
+        assertEquals(0, this.writes);
+        assertEquals("previous complete ZIP", Files.readString(previous));
+        this.assertOnlyZip();
+    }
+
+    @Test
+    void archiveFailureAbortsGenerationAndIsNotCountedAsSkipped() throws Exception {
+        Files.createDirectories(this.files().exceptions());
+        Files.writeString(this.files().exceptions().resolve("migration"), "occupied");
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            sink.accept(data(1));
+            sink.reject(id(2), null, "inventory", new IOException("bad item"), null);
+        });
+        assertInstanceOf(IOException.class, result.failure());
+        assertNull(result.imported());
+        assertEquals(0, result.failed());
+        assertEquals(0, this.writes);
+        try (var paths = Files.list(this.files().dump())) {
+            assertEquals(0, paths.count());
+        }
+    }
+
+    @Test
+    void publicationFailureNeverStartsImportOrLeavesTemporaryFiles() throws Exception {
+        Path target = this.files().dump().resolve("migration.zip");
+        Files.createDirectories(target);
+        Files.writeString(target.resolve("keep"), "existing");
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(data(1)));
+        assertNotNull(result.failure());
+        assertNull(result.imported());
+        assertEquals(0, this.writes);
+        assertEquals("existing", Files.readString(target.resolve("keep")));
+        this.assertOnlyZip();
+    }
+
+    @Test
+    void databaseFailureRetainsCompleteZipAndReplayConverges() throws Exception {
+        this.save = snapshot -> snapshot.meta().player().equals(id(2))
+                ? CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.RETRY_LATER, new IOException("offline"))) : this.store(snapshot);
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            for (int i = 1; i <= 3; i++) sink.accept(data(i));
+        });
+        assertNull(result.failure());
+        assertNotNull(result.imported().failure());
+        assertEquals(3, result.converted());
+        assertEquals(1, result.imported().snapshots());
+        assertEquals(1, this.snapshots.size());
+        UUID alreadyWritten = this.snapshots.keySet().iterator().next();
+        byte[] zip = Files.readAllBytes(result.file());
+        this.save = this::store;
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(3, this.snapshots.size());
+        assertTrue(this.snapshots.containsKey(alreadyWritten));
+        assertEquals(3, this.users.size());
+        assertNull(this.importer().importFile("migration.zip").failure());
+        assertEquals(3, this.snapshots.size());
+        assertArrayEquals(zip, Files.readAllBytes(result.file()));
+        this.assertOnlyZip();
+    }
+
+    @Test
+    void sourceLinkageFailureStopsAndCleansGeneration() throws Exception {
+        NoSuchMethodError failure = new NoSuchMethodError("source API changed");
+        SnapshotMigration.Result result = this.migrate(sink -> {
+            sink.accept(data(1));
+            throw failure;
+        });
+        assertSame(failure, result.failure());
+        assertNull(result.imported());
+        assertEquals(0, this.writes);
+        try (var paths = Files.list(this.files().dump())) {
+            assertEquals(0, paths.count());
+        }
+    }
+
+    @Test
+    void interruptionRestoresInterruptFlagAndCleansGeneration() throws Exception {
+        try {
+            SnapshotMigration.Result result = this.migrate(sink -> { throw new InterruptedException("cancelled"); });
+            assertInstanceOf(InterruptedException.class, result.failure());
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertNull(result.imported());
+            assertEquals(0, this.writes);
+            try (var paths = Files.list(this.files().dump())) {
+                assertEquals(0, paths.count());
+            }
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    private SnapshotMigration.Result migrate(Reader reader) {
+        MigrationSource source = new MigrationSource() {
+            /** {@inheritDoc} */
+            @Override
+            public @NonNull String id() { return "husksync"; }
+            /** {@inheritDoc} */
+            @Override
+            public @NonNull String version() { return "test-version"; }
+            /** {@inheritDoc} */
+            @Override
+            public void read(@NonNull Sink sink) throws Exception { reader.read(sink); }
+        };
+        return new SnapshotMigration(this.files(), this.codec, this.importer(), "migration-server").migrate("migration.zip", source, 12345);
+    }
+
+    private SnapshotFiles files() {
+        return new SnapshotFiles(this.directory, this.codec);
+    }
+
+    private SnapshotDump importer() {
+        StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (proxy, method, args) -> {
+            this.writes++;
+            return switch (method.getName()) {
+                case "importSnapshot" -> this.save.apply((Snapshot) args[0]);
+                case "importUser" -> {
+                    StoredUser user = (StoredUser) args[0];
+                    this.users.put(user.player(), user);
+                    yield CompletableFuture.completedFuture(null);
+                }
+                default -> throw new AssertionError(method.getName());
+            };
+        });
+        return new SnapshotDump(storage, this.files(), this.codec, map -> { throw new AssertionError("migration has no map records"); });
+    }
+
+    private CompletableFuture<StorageProvider.SaveOutcome> store(Snapshot snapshot) {
+        this.snapshots.put(snapshot.meta().id(), snapshot);
+        return CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.SAVED, null));
+    }
+
+    private void assertOnlyZip() throws IOException {
+        try (var paths = Files.list(this.files().dump())) {
+            assertEquals(List.of(this.files().dump().resolve("migration.zip")), paths.toList());
+        }
+    }
+
+    private static MigrationSource.PlayerData data(int value) {
+        return new MigrationSource.PlayerData(id(value), new StoredUser(id(value), "Player" + value, 500 + value), 1000L + value, 4189, SnapshotFixtures.snapshot().data());
+    }
+
+    private static UUID id(int value) { return new UUID(0, value); }
+
+    private interface Reader {
+        void read(MigrationSource.Sink sink) throws Exception;
+    }
+}

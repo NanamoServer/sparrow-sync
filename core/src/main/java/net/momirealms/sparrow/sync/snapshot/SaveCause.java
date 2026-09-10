@@ -17,6 +17,7 @@ public enum SaveCause {
     RESTORE,            // 回滚
     EDIT,               // 编辑
     API,                // API 保存
+    MIGRATION,          // 来源插件迁移
     UNKNOWN;            // 未知
 
     private static final SaveCause[] VALUES = values();

@@ -46,7 +46,13 @@ public final class SnapshotDump {
         this.mapImported = mapImported;
     }
 
-    // 在文件 I/O worker 中导出时间戳小于 before 的快照, before 使用命令开始时的 Unix 毫秒时间.
+    /**
+     * 在文件 I/O worker 中导出指定时间之前的快照及配套记录, 完整 ZIP 发布后返回结果.
+     *
+     * @param name dump 目录内的 ZIP 文件名
+     * @param before 快照时间的排他上限, 使用命令开始时的 Unix 毫秒时间
+     * @return 文件位置、已处理数量及失败信息; 生成失败时此前的正式 ZIP 保留
+     */
     @NotNull
     public Result dump(@NotNull String name, long before) {
         Progress progress = new Progress();
@@ -77,11 +83,7 @@ public final class SnapshotDump {
                 progress.current = "ZIP";
             }
             // ZIP 完整关闭后才发布正式文件, 之前的成功归档保留到此时.
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            publish(temporary, target);
             return progress.result(target, null);
         } catch (IOException | RuntimeException failure) {
             // 任一阶段失败即终止导出并清理半成品, 清理故障附加到原始失败中.
@@ -96,7 +98,13 @@ public final class SnapshotDump {
         }
     }
 
-    // 按玩家 UUID 分批写入名字映射, 每条记录以 true 开头, 全部写完后以 false 结束.
+    /**
+     * 按玩家 UUID 分批写入名字映射, 并结束当前记录流.
+     *
+     * @param output 已打开的 users.bin 成员
+     * @param progress 导出数量与当前记录位置
+     * @throws IOException 记录写入失败
+     */
     private void writeUsers(DataOutputStream output, Progress progress) throws IOException {
         UUID after = null;
         while (true) {
@@ -106,10 +114,7 @@ public final class SnapshotDump {
             for (int i = 0; i < batch.size(); i++) {
                 StoredUser user = batch.get(i);
                 progress.current = "user " + user.player();
-                output.writeBoolean(true);
-                output.writeUTF(user.player().toString());
-                output.writeUTF(user.name());
-                output.writeLong(user.lastSeen());
+                writeUser(output, user);
                 after = user.player();
                 progress.users++;
             }
@@ -141,7 +146,13 @@ public final class SnapshotDump {
         output.writeBoolean(false);
     }
 
-    // 全程使用同一截止时间, 每批快照写完后才读取下一批.
+    /**
+     * 写入截止时间之前的完整快照, 每批处理完后释放正文引用.
+     *
+     * @param output 已打开的 snapshots.bin 成员
+     * @param before 快照时间的排他上限, 整次导出使用同一个值
+     * @param progress 导出数量与当前记录位置
+     */
     private void writeSnapshots(DataOutputStream output, long before, Progress progress) throws IOException {
         UUID after = null;
         while (true) {
@@ -153,8 +164,7 @@ public final class SnapshotDump {
                 progress.current = "snapshot " + snapshot.meta().id();
                 // 每次编码一份快照, 长度前缀保留这份快照在连续记录中的边界.
                 byte[] data = this.codec.encode(snapshot);
-                output.writeBoolean(true);
-                writeBytes(output, data);
+                writeSnapshot(output, data);
                 after = snapshot.meta().id();
                 progress.snapshots++;
             }
@@ -245,6 +255,48 @@ public final class SnapshotDump {
                 this.files.archiveImport(data, snapshot.meta(), category, reason);
                 progress.failed++;
             }
+        }
+    }
+
+    /**
+     * 写入一条名字映射, 供数据库导出和来源迁移使用同一记录格式.
+     *
+     * @param output 当前名字记录流, 调用方在整组结束时写入 false
+     * @param user 原始玩家 UUID、名字与最后上线时间
+     * @throws IOException 记录写入失败
+     */
+    static void writeUser(@NotNull DataOutputStream output, @NotNull StoredUser user) throws IOException {
+        output.writeBoolean(true);
+        output.writeUTF(user.player().toString());
+        output.writeUTF(user.name());
+        output.writeLong(user.lastSeen());
+    }
+
+    /**
+     * 写入一份已编码快照, 长度前缀供导入端定位下一条记录.
+     *
+     * @param output 当前快照记录流, 调用方在整组结束时写入 false
+     * @param data 保留身份与元数据的完整快照字节
+     * @throws IOException 记录写入失败
+     */
+    static void writeSnapshot(@NotNull DataOutputStream output, byte @NotNull [] data) throws IOException {
+        output.writeBoolean(true);
+        writeBytes(output, data);
+    }
+
+    /**
+     * 将完整关闭的临时 ZIP 发布到正式路径, 替换此前的同名文件.
+     *
+     * @param temporary 与目标位于同一目录的完整临时 ZIP
+     * @param target 正式 ZIP 路径
+     * @throws IOException 文件替换失败, 由调用方清理临时文件
+     */
+    static void publish(@NotNull Path temporary, @NotNull Path target) throws IOException {
+        // 优先原子替换; 文件系统不支持时使用普通替换, 此时 ZIP 正文仍已完整写入.
+        try {
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

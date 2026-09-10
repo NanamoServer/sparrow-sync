@@ -1069,6 +1069,7 @@ public final class PluginConfig {
                 case RESTORE -> this.restore;
                 case EDIT -> this.edit;
                 case API -> this.api;
+                case MIGRATION -> false; // 迁移由批次结果汇报, 单份快照不触发控制台保存消息.
                 case UNKNOWN -> this.unknown;
             };
         }

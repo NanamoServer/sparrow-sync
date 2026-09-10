@@ -11,6 +11,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.*;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -218,6 +220,8 @@ public final class SnapshotFiles {
     public boolean deleteException(@NotNull String relative) throws IOException {
         Path body = this.exceptionFile(relative);
         boolean deleted = Files.deleteIfExists(body);
+        // 来源迁移可能只有头文件与原始附件, 正文缺失时仍需删除这些附属记录.
+        deleted = Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".source")) || deleted;
         deleted = Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".error.txt")) || deleted;
         return Files.deleteIfExists(ExceptionHeader.path(body)) || deleted;
     }
@@ -412,6 +416,41 @@ public final class SnapshotFiles {
         Files.write(body, data);
         new ExceptionHeader(meta, null).write(body);
         Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), reason);
+    }
+
+    /**
+     * 保存来源数据故障的诊断头、原始附件和错误说明, 供现有异常列表查询和删除.
+     *
+     * @param meta 本次失败记录的诊断身份, 用于列表中的 UUID、时间与保存原因
+     * @param playerName 源玩家名, 不可得时为 null
+     * @param source 来源插件标识
+     * @param version 实际读取数据的源插件版本
+     * @param stage 失败的读取、解码或字段转换步骤
+     * @param failure 原始异常, 错误说明保留堆栈及附带异常
+     * @param raw 源插件提供的原始字节, 不可得时为 null
+     * @throws IOException 任一归档文件写入失败, 已写出的诊断文件保留供排查
+     */
+    public void archiveMigration(@NotNull SnapshotMeta meta, @Nullable String playerName, @NotNull String source, @NotNull String version, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException {
+        Path parent = this.exceptions.resolve("migration");
+        Files.createDirectories(parent);
+        Path body = parent.resolve("migration-" + meta.id() + ".snapshot");
+        // 以缺正文的异常头进入已有列表, .source 保留源格式, 不参与 Sparrow 快照解码.
+        new ExceptionHeader(meta, playerName).write(body);
+        if (raw != null) {
+            Files.write(body.resolveSibling(body.getFileName() + ".source"), raw);
+        }
+        StringWriter reason = new StringWriter();
+        // 错误说明和可选附件与头文件同名, 管理员可由列表路径找到本次失败的完整上下文.
+        try (PrintWriter output = new PrintWriter(reason)) {
+            output.println("Source: " + source);
+            output.println("Version: " + version);
+            output.println("Player: " + meta.player());
+            output.println("Name: " + playerName);
+            output.println("Stage: " + stage);
+            output.println("Raw data: " + (raw == null ? "unavailable" : "attached .source"));
+            failure.printStackTrace(output);
+        }
+        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), reason.toString());
     }
 
     @NotNull
