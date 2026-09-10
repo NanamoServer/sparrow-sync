@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
-import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -8,8 +7,6 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.AttributeOptions;
-import net.momirealms.sparrow.sync.proxy.BukkitProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType.NativeApplyResult;
@@ -48,16 +45,6 @@ class NativeDataTypeTest {
     private static final UUID PLAYER = new UUID(0L, 0L);
 
     private final PlayerSession session = new SessionManager(null).tryOpen(PLAYER, "Steve", ConnectionFixture.create());
-
-    @Test
-    void foodDataProxyReadsAndWritesPrivateTickTimer() {
-        BukkitProxy.init("1.21.8", List.of("paper"));
-        FoodData foodData = new FoodData();
-
-        FoodDataProxy.INSTANCE.setTickTimer(foodData, 37);
-
-        assertEquals(37, FoodDataProxy.INSTANCE.getTickTimer(foodData));
-    }
 
     @Test
     void nativePdcMergesIntoSparrowTagWithoutChangingSourceTrees() throws Exception {

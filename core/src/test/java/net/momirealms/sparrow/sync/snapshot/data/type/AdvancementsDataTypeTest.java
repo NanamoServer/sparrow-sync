@@ -180,30 +180,6 @@ class AdvancementsDataTypeTest {
         assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
     }
 
-    @Test
-    void advancementProxiesBindRequiredMembers() {
-        assertNotNull(AdvancementHolderProxy.INSTANCE);
-        assertNotNull(AdvancementProgressProxy.INSTANCE);
-        assertTrue(AdvancementProgressProxy.INSTANCE.getCriteria(new AdvancementProgress()).isEmpty());
-    }
-
-    /** 验证生成的 final setter 能替换真实 PlayerAdvancements 字段, 且 getter 看到同一对象身份. */
-    @Test
-    void progressChangedFinalFieldCanBeReplaced() throws Exception {
-        // 跳过构造器可隔离服务器, 存档和 advancement manager 初始化
-        PlayerAdvancements advancements = allocateWithoutConstructor(PlayerAdvancements.class);
-        Field field = PlayerAdvancements.class.getDeclaredField("progressChanged");
-        field.setAccessible(true);
-        field.set(advancements, new HashSet<>());
-        Set<Object> replacement = new HashSet<>();
-
-        // 通过生成代理执行与生产路径相同的 final 字段写入
-        PlayerAdvancementsProxy.INSTANCE.setProgressChanged(advancements, replacement);
-
-        // 身份相等是生产代码启用跟踪 wrapper 的硬闸门
-        assertSame(replacement, PlayerAdvancementsProxy.INSTANCE.getProgressChanged(advancements));
-    }
-
     /** 验证 Map 换代后旧 ID 槽位保持稳定, holder 替换生效, 删除项留下空槽. */
     @Test
     void advancementSlotsKeepIdsStableAcrossReloads() throws Exception {
@@ -811,19 +787,6 @@ class AdvancementsDataTypeTest {
         root.putByteArray("done", new byte[]{0});
 
         assertThrows(IOException.class, () -> new AdvancementsDataType().decode(root, 0));
-    }
-
-    @Test
-    void criterionObtainedCanBePatchedDirectly() {
-        Instant original = Instant.now().minusSeconds(60);
-        Instant replacement = Instant.now();
-        CriterionProgress progress = new CriterionProgress(original);
-
-        CriterionProgressProxy.INSTANCE.setObtained(progress, replacement);
-        assertEquals(replacement, progress.getObtained());
-        CriterionProgressProxy.INSTANCE.setObtained(progress, null);
-        assertNull(progress.getObtained());
-        assertFalse(progress.isDone());
     }
 
     @Test

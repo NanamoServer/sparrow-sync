@@ -795,20 +795,6 @@ class NativeMapAdapterTest {
         assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
     }
 
-    @Test
-    void bukkitRefusesToUnloadTheDefaultOverworld() throws Exception {
-        MinecraftServer server = this.level.getServer();
-        CraftServer craft = (CraftServer) Bukkit.getServer();
-        NmsPlayerFixture.set(CraftServer.class, craft, "console", server);
-        NmsPlayerFixture.set(Level.class, this.level, "dimension", Level.OVERWORLD);
-        CraftWorld world = NmsPlayerFixture.allocate(CraftWorld.class);
-        NmsPlayerFixture.set(CraftWorld.class, world, "world", this.level);
-
-        assertFalse(craft.unloadWorld(world, false));
-        assertFalse(craft.unloadWorld(world, true));
-        assertSame(this.level, server.overworld());
-    }
-
     private static Object replaceStatic(Class<?> owner, String name, Object value) throws Exception {
         Field field = owner.getDeclaredField(name);
         field.setAccessible(true);

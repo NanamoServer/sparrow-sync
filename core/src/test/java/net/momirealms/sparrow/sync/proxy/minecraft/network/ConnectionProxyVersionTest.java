@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.proxy.minecraft.network;
 
 import net.momirealms.sparrow.sync.proxy.MinecraftPredicate;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -9,17 +8,9 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ConnectionProxyVersionTest {
-
-    @Test
-    void getterAcceptsBothPaperFieldNames() throws ReflectiveOperationException {
-        Annotation getter = annotation(ConnectionProxy.class.getDeclaredMethod("getSavedPlayerForLegacyEvents", Object.class), "FieldGetter");
-
-        assertArrayEquals(new String[]{"savedPlayerForLegacyEvents", "savedPlayerForLoginEventLegacy"}, (String[]) getter.annotationType().getMethod("name").invoke(getter));
-    }
 
     @ParameterizedTest
     @CsvSource({

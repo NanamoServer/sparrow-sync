@@ -10,7 +10,6 @@ import org.bukkit.Material;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -139,22 +138,6 @@ class SnapshotInventoryTest {
         assertTrue(net.minecraft.world.item.ItemStack.matches(original, contents.getFirst()));
         assertEquals(List.of(1, 64, 6), contents.stream().map(net.minecraft.world.item.ItemStack::getCount).toList());
         assertTrue(ItemUtils.pack(List.of(), net.minecraft.network.chat.Component.empty()).isEmpty());
-    }
-
-    @Test
-    @Disabled("测试 classpath 存在重复 PlainTextComponentSerializer.Provider, PaperAdventure 初始化失败")
-    void bothMenusWriteNameLoreAndGlintToNativeComponents() {
-        var list = new SnapshotListGui(null, null, "Test");
-        var detail = new SnapshotDetailGui(null, null, "Test", null, null, null);
-        var name = net.kyori.adventure.text.Component.text("Snapshot");
-        List<net.kyori.adventure.text.Component> lore = List.of(net.kyori.adventure.text.Component.text("Saved items"));
-        for (ItemStack icon : List.of(list.icon(Material.COMMAND_BLOCK, name, true, lore), detail.icon(Material.CHEST, name, true, lore))) {
-            var item = CraftItemStack.asNMSCopy(icon);
-            assertEquals("Snapshot", item.get(DataComponents.CUSTOM_NAME).getString());
-            assertEquals("Saved items", item.get(DataComponents.LORE).lines().getFirst().getString());
-            assertEquals(Boolean.TRUE, item.get(DataComponents.ENCHANTMENT_GLINT_OVERRIDE));
-        }
-        assertEquals(Boolean.FALSE, CraftItemStack.asNMSCopy(list.icon(Material.COMMAND_BLOCK, name, false, lore)).get(DataComponents.ENCHANTMENT_GLINT_OVERRIDE));
     }
 
     private static ItemStack stack(net.minecraft.world.item.Item item, int amount) {

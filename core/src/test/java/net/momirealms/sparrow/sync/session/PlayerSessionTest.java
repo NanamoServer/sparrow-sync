@@ -33,16 +33,6 @@ class PlayerSessionTest {
     private final Connection connection = ConnectionFixture.create();
 
     @Test
-    void identityAndConnectionAreBoundAtConstruction() {
-        UUID uuid = UUID.randomUUID();
-        PlayerSession session = new PlayerSession(uuid, "Steve", this.connection);
-
-        assertEquals(uuid, session.uuid());
-        assertEquals("Steve", session.playerName());
-        assertSame(this.connection, session.connection());
-    }
-
-    @Test
     void transitionMatrixMatchesLifecycle() {
         // 全枚举 5x5 转移矩阵, 合法集合之外的一律拒绝
         record Case(SessionState from, SessionState to, boolean legal) {

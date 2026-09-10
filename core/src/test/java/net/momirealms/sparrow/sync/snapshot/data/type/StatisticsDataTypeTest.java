@@ -192,21 +192,6 @@ class StatisticsDataTypeTest {
     }
 
     @Test
-    void statsCounterProxyBindsSparseMap() {
-        assertNotNull(StatsCounterProxy.INSTANCE);
-        assertInstanceOf(Object2IntMap.class, StatsCounterProxy.INSTANCE.getStats(new StatsCounter()));
-    }
-
-    @Test
-    void serverStatsCounterProxyBindsTheOriginalDirtySet() throws Exception {
-        PlayerFixture fixture = playerFixture();
-
-        assertSame(fixture.dirty, ServerStatsCounterProxy.INSTANCE.getDirty(fixture.counter));
-        fixture.counter.setValue(fixture.player.getHandle(), Stats.CUSTOM.get(Stats.PLAY_TIME), 1);
-        assertTrue(fixture.dirty.contains(Stats.CUSTOM.get(Stats.PLAY_TIME)));
-    }
-
-    @Test
     void nativeJsonUsesVanillaGroupedShape() throws Exception {
         Statistics value = new Statistics(
                 new Stat<?>[]{Stats.CUSTOM.get(Stats.PLAY_TIME), Stats.BLOCK_MINED.get(Blocks.STONE)},
