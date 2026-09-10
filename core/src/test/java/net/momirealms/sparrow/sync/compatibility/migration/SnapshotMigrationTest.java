@@ -1,5 +1,8 @@
-package net.momirealms.sparrow.sync.snapshot;
+package net.momirealms.sparrow.sync.compatibility.migration;
 
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotDump;
 import net.momirealms.sparrow.sync.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
@@ -104,7 +107,6 @@ class SnapshotMigrationTest {
         assertArrayEquals(raw, Files.readAllBytes(body.resolveSibling(body.getFileName() + ".source")));
         String reason = Files.readString(body.resolveSibling(body.getFileName() + ".error.txt"));
         assertTrue(reason.contains("Source: husksync"));
-        assertTrue(reason.contains("Version: test-version"));
         assertTrue(reason.contains("Stage: inventory"));
         assertTrue(reason.contains("source item is broken"));
         assertNull(this.importer().importFile("migration.zip").failure());
@@ -236,9 +238,6 @@ class SnapshotMigrationTest {
             /** {@inheritDoc} */
             @Override
             public @NonNull String id() { return "husksync"; }
-            /** {@inheritDoc} */
-            @Override
-            public @NonNull String version() { return "test-version"; }
             /** {@inheritDoc} */
             @Override
             public void read(@NonNull Sink sink) throws Exception { reader.read(sink); }

@@ -424,13 +424,12 @@ public final class SnapshotFiles {
      * @param meta 本次失败记录的诊断身份, 用于列表中的 UUID、时间与保存原因
      * @param playerName 源玩家名, 不可得时为 null
      * @param source 来源插件标识
-     * @param version 实际读取数据的源插件版本
      * @param stage 失败的读取、解码或字段转换步骤
      * @param failure 原始异常, 错误说明保留堆栈及附带异常
      * @param raw 源插件提供的原始字节, 不可得时为 null
      * @throws IOException 任一归档文件写入失败, 已写出的诊断文件保留供排查
      */
-    public void archiveMigration(@NotNull SnapshotMeta meta, @Nullable String playerName, @NotNull String source, @NotNull String version, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException {
+    public void archiveMigration(@NotNull SnapshotMeta meta, @Nullable String playerName, @NotNull String source, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException {
         Path parent = this.exceptions.resolve("migration");
         Files.createDirectories(parent);
         Path body = parent.resolve("migration-" + meta.id() + ".snapshot");
@@ -443,7 +442,6 @@ public final class SnapshotFiles {
         // 错误说明和可选附件与头文件同名, 管理员可由列表路径找到本次失败的完整上下文.
         try (PrintWriter output = new PrintWriter(reason)) {
             output.println("Source: " + source);
-            output.println("Version: " + version);
             output.println("Player: " + meta.player());
             output.println("Name: " + playerName);
             output.println("Stage: " + stage);

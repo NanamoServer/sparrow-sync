@@ -1,6 +1,7 @@
-package net.momirealms.sparrow.sync.snapshot;
+package net.momirealms.sparrow.sync.compatibility.migration;
 
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.DataKey;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -10,18 +11,11 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 从已启用的来源插件读取玩家持久数据, 将转换结果交给迁移 ZIP 写入端.
- * 实现方管理源接口的线程切换和资源释放, 每次交付一名玩家的完整结果.
- */
 @ApiStatus.Internal
 public interface MigrationSource {
 
     @NotNull
     String id();
-
-    @NotNull
-    String version();
 
     /**
      * 在后台逐玩家读取、解码并同步交付结果, 返回前释放源游标等资源.

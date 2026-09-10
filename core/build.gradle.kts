@@ -1,4 +1,5 @@
 import org.gradle.kotlin.dsl.buildConfigField
+import net.minecrell.pluginyml.paper.PaperPluginDescription.RelativeLoadOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -34,6 +35,7 @@ dependencies {
     }
     compileOnly(libs.postgresql.driver)
     compileOnly(libs.zstd.jni)
+    compileOnly(libs.husksync)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -133,4 +135,11 @@ paper {
     main = "net.momirealms.sparrow.sync.plugin.PaperJavaPlugin"
     apiVersion = "1.21.8"
     foliaSupported = true
+    serverDependencies {
+        register("HuskSync") {
+            load = RelativeLoadOrder.BEFORE
+            required = false
+            joinClasspath = true
+        }
+    }
 }

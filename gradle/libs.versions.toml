@@ -66,6 +66,8 @@ postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postg
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
+husksync = { module = "net.william278.husksync:husksync-bukkit", version = "4.0.0+1.21.10" }
+
 bstats-base = { module = "org.bstats:bstats-base", version.ref = "bstats" }
 bstats-bukkit = { module = "org.bstats:bstats-bukkit", version.ref = "bstats" }
 

@@ -45,6 +45,7 @@ subprojects {
         maven("https://repo.catnies.top/releases/")
         maven("https://repo.momirealms.net/releases/")
         maven("https://repo.momirealms.net/snapshots/")
+        maven("https://repo.william278.net/releases/")
         maven("https://repo.papermc.io/repository/maven-public/")
     }
 

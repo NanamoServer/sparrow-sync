@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.sync.compatibility;
 
+import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
+import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV3;
+import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV4;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -10,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 public final class CompatibilityManager {
     private final SparrowSync plugin;
     private boolean hasPlaceholderAPI;
+    private MigrationSource huskSyncMigration;
 
     public CompatibilityManager(SparrowSync plugin) {
         this.plugin = plugin;
@@ -23,8 +27,20 @@ public final class CompatibilityManager {
 
     public void onDelayedEnable() {
         if (this.isPluginEnabled("PlaceholderAPI")) {
-            runCatchingHook(() -> this.hasPlaceholderAPI = true, "PlaceholderAPI");
+            this.runCatchingHook(() -> this.hasPlaceholderAPI = true, "PlaceholderAPI");
         }
+        if (this.isPluginEnabled("HuskSync")) {
+            Plugin huskSync = this.getPlugin("HuskSync");
+            assert huskSync != null;
+            this.runCatchingHook(() -> this.huskSyncMigration = huskSync.getDescription().getVersion().startsWith("3.")
+                    ? new HuskSyncSourceV3(huskSync, this.plugin.scheduler().sync(), this.plugin.dataRegistry())
+                    : new HuskSyncSourceV4(huskSync, this.plugin.scheduler().sync(), this.plugin.dataRegistry()), "HuskSync");
+        }
+    }
+
+    @Nullable
+    public MigrationSource huskSyncMigration() {
+        return this.huskSyncMigration;
     }
 
     public boolean isPluginEnabled(String plugin) {
@@ -46,7 +62,7 @@ public final class CompatibilityManager {
     private void runCatchingHook(ThrowableRunnable runnable, String plugin) {
         try {
             runnable.run();
-            logHook(plugin);
+            this.logHook(plugin);
         } catch (Throwable e) {
             this.plugin.logger().warn(TranslationManager.console(LogConstants.PLUGIN_COMPATIBILITY_FAILED, plugin), e);
         }

@@ -265,7 +265,7 @@ public final class SnapshotDump {
      * @param user 原始玩家 UUID、名字与最后上线时间
      * @throws IOException 记录写入失败
      */
-    static void writeUser(@NotNull DataOutputStream output, @NotNull StoredUser user) throws IOException {
+    public static void writeUser(@NotNull DataOutputStream output, @NotNull StoredUser user) throws IOException {
         output.writeBoolean(true);
         output.writeUTF(user.player().toString());
         output.writeUTF(user.name());
@@ -279,7 +279,7 @@ public final class SnapshotDump {
      * @param data 保留身份与元数据的完整快照字节
      * @throws IOException 记录写入失败
      */
-    static void writeSnapshot(@NotNull DataOutputStream output, byte @NotNull [] data) throws IOException {
+    public static void writeSnapshot(@NotNull DataOutputStream output, byte @NotNull [] data) throws IOException {
         output.writeBoolean(true);
         writeBytes(output, data);
     }
@@ -291,7 +291,7 @@ public final class SnapshotDump {
      * @param target 正式 ZIP 路径
      * @throws IOException 文件替换失败, 由调用方清理临时文件
      */
-    static void publish(@NotNull Path temporary, @NotNull Path target) throws IOException {
+    public static void publish(@NotNull Path temporary, @NotNull Path target) throws IOException {
         // 优先原子替换; 文件系统不支持时使用普通替换, 此时 ZIP 正文仍已完整写入.
         try {
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);

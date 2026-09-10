@@ -1,6 +1,10 @@
-package net.momirealms.sparrow.sync.snapshot;
+package net.momirealms.sparrow.sync.compatibility.migration;
 
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.SnapshotDump;
+import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -76,7 +80,7 @@ public final class SnapshotMigration {
                                 encoded = SnapshotMigration.this.codec.encode(snapshot);
                             } catch (IOException failure) {
                                 // 编码没有生成完整字节, 归档诊断头和原因; 归档失败继续向外终止生成.
-                                SnapshotMigration.this.files.archiveMigration(meta, data.user() == null ? null : data.user().name(), source.id(), source.version(), "encode", failure, null);
+                                SnapshotMigration.this.files.archiveMigration(meta, data.user() == null ? null : data.user().name(), source.id(), "encode", failure, null);
                                 progress.failed++;
                                 return;
                             }
@@ -95,7 +99,7 @@ public final class SnapshotMigration {
                             progress.current = "player " + player + " " + stage;
                             // 诊断头提供列表所需的玩家身份, DataVersion 为 0 表示此时没有可用的转换后正文.
                             SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), player, startedAt, SaveCause.MIGRATION, false, SnapshotMigration.this.server, 0);
-                            SnapshotMigration.this.files.archiveMigration(meta, playerName, source.id(), source.version(), stage, failure, raw);
+                            SnapshotMigration.this.files.archiveMigration(meta, playerName, source.id(), stage, failure, raw);
                             progress.failed++;
                         }
                     });
