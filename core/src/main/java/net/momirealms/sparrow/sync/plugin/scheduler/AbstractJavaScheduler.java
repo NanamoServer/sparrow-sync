@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.AsyncTask;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.LazyAsyncTask;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Arrays;
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 
 public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
     private static final int PARALLELISM = 16;
+    private static final String SCHEDULER_THREAD_NAME = "plugin-scheduler";
+    private static final String WORKER_THREAD_NAME_PREFIX = "plugin-worker-";
 
     private final Plugin plugin;
     private final ScheduledThreadPoolExecutor scheduler; // 定时调度线程池
@@ -25,7 +28,7 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
         // 创建一个核心线程数为 4 的 ScheduledThreadPoolExecutor
         this.scheduler = new ScheduledThreadPoolExecutor(4, r -> {
             Thread thread = Executors.defaultThreadFactory().newThread(r);
-            thread.setName("plugin-scheduler");
+            thread.setName(SCHEDULER_THREAD_NAME);
             return thread;
         });
         this.scheduler.setRemoveOnCancelPolicy(true); // 取消任务时自动移除
@@ -99,7 +102,7 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
         try {
             if (!this.scheduler.awaitTermination(1, TimeUnit.MINUTES)) {
                 this.plugin.logger().error("Timed out waiting for the sparrow-sync scheduler to terminate");
-                reportRunningTasks(thread -> thread.getName().equals("craft-engine-scheduler"));
+                reportRunningTasks(AbstractJavaScheduler::isSchedulerThread);
             }
         } catch (InterruptedException e) {
             plugin.logger().warn("Thread is interrupted", e);
@@ -115,11 +118,21 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
         try {
             if (!this.worker.awaitTermination(1, TimeUnit.MINUTES)) {
                 this.plugin.logger().error("Timed out waiting for the sparrow-sync worker thread pool to terminate");
-                reportRunningTasks(thread -> thread.getName().startsWith("craft-engine-worker-"));
+                reportRunningTasks(AbstractJavaScheduler::isWorkerThread);
             }
         } catch (InterruptedException e) {
             plugin.logger().warn("Thread is interrupted", e);
         }
+    }
+
+    // 关服超时诊断据此筛出调度器线程, 与线程工厂设置的名称取自同一常量
+    static boolean isSchedulerThread(@NotNull Thread thread) {
+        return SCHEDULER_THREAD_NAME.equals(thread.getName());
+    }
+
+    // 关服超时诊断据此筛出异步线程池的 worker, 与线程工厂设置的名称前缀取自同一常量
+    static boolean isWorkerThread(@NotNull Thread thread) {
+        return thread.getName().startsWith(WORKER_THREAD_NAME_PREFIX);
     }
 
     /**
@@ -154,7 +167,7 @@ public abstract class AbstractJavaScheduler<T> implements SchedulerAdapter<T> {
         public ForkJoinWorkerThread newThread(ForkJoinPool pool) {
             ForkJoinWorkerThread thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
             thread.setDaemon(true);
-            thread.setName("plugin-worker-" + COUNT.getAndIncrement());
+            thread.setName(WORKER_THREAD_NAME_PREFIX + COUNT.getAndIncrement());
             return thread;
         }
     }

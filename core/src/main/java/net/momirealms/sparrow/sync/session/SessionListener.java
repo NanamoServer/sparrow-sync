@@ -93,12 +93,14 @@ public final class SessionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), false);
         PlayerSession session = this.sessions.find(player.getUniqueId());
-        if (session == null) return;
-        this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
-        // 原版会在 PlayerQuitEvent 返回后立刻保存玩家文件, 玩家所在 Region 的下一 tick 再采集时本地数据已经就绪.
-        this.sessions.disconnect(session, player);
+        if (session != null) {
+            this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
+            // 原版会在 PlayerQuitEvent 返回后立刻保存玩家文件, 玩家所在 Region 的下一 tick 再采集时本地数据已经就绪.
+            this.sessions.disconnect(session, player);
+        }
+        // ACTIVE 状态已结束, 校准在线名单.
+        this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), false);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

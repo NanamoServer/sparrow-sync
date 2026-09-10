@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
+import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.GuiCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.MigrateCommand;
@@ -376,6 +377,8 @@ class CommandFeaturesTest {
         assertEquals(1, this.text().lines().count());
         assertTrue(this.text().startsWith(">> SparrowSync · "));
         assertTrue(this.text().contains(language.equals("zh") ? "异步耗时 18 毫秒" : "async 18 ms"));
+        // 只说明重载流程走完了, 不对配置是否全部生效下结论
+        assertTrue(this.text().contains(language.equals("zh") ? "插件已完成 reload" : "Plugin reload completed"));
         assertFalse(this.text().contains("999"));
         assertFalse(this.text().contains("981"));
     }
@@ -415,6 +418,23 @@ class CommandFeaturesTest {
         assertFalse(this.plugin.isReloading());
         config.fail = false;
         assertTrue(this.plugin.reloadPlugin(Runnable::run, Runnable::run).join().success());
+    }
+
+    @Test
+    void reloadCommandReportsFailureWhenReloadThrows() throws Exception {
+        ReloadConfig config = NmsPlayerFixture.allocate(ReloadConfig.class);
+        config.fail = true;
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "configurationManager", config);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "reloading", new AtomicBoolean());
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> {
+            assertEquals("async", method.getName());
+            return (Executor) Runnable::run;
+        }));
+        this.manager.registerFeature(new ReloadCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("reload"));
+        this.manager.locale = Locale.SIMPLIFIED_CHINESE;
+        this.execute(sender(Set.of("sparrow_sync.command.reload")), "sparrow-sync reload");
+        assertTrue(this.text().contains("配置重载失败"));
+        assertFalse(this.plugin.isReloading());
     }
 
     private void execute(CommandSender sender, String command) throws Exception {

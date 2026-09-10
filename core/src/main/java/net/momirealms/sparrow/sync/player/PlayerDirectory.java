@@ -5,7 +5,6 @@ import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.SetArgs;
-import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
@@ -16,21 +15,24 @@ import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.incendo.cloud.suggestion.Suggestion;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class PlayerDirectory {
     private static final String ROSTER_PREFIX = "ss:online-players:";
@@ -40,7 +42,8 @@ public final class PlayerDirectory {
     private final SparrowSync plugin;
     private final Map<String, Map<String, PlayerIdentity>> servers = new HashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Optional<PlayerIdentity>>> loadingNames = new ConcurrentHashMap<>();
-    private final AtomicBoolean refreshing = new AtomicBoolean();
+    private @Nullable Set<String> refreshChanges; // 与 servers 共用监视器, 非 null 表示刷新在途
+    private CompletableFuture<Void> rosterWrites = CompletableFuture.completedFuture(null); // 本服名单写入的队尾
     private String serverId;
     private byte[] rosterKey;
     private volatile OnlineView online = OnlineView.EMPTY; // 更新后发布完整视图, 补全线程直接读取
@@ -62,17 +65,23 @@ public final class PlayerDirectory {
 
     // 每轮只有一个刷新在途, Redis 断线时不会不断堆积整服名单请求.
     void refresh() {
-        if (this.closed || !this.refreshing.compareAndSet(false, true)) return;
+        synchronized (this) {
+            if (this.closed || this.refreshChanges != null) return;
+            this.refreshChanges = new HashSet<>();
+        }
         try {
+            // 在写入队列内采集 ACTIVE 会话, 全量重写与进退服增量按顺序执行.
+            this.writeRoster(() -> {
+                if (this.closed) return;
+                RedisCommands<byte[], byte[]> commands = this.plugin.redisConnector().connection().sync();
+                Map<byte[], byte[]> fields = new HashMap<>();
+                this.plugin.sessionManager().onlinePlayers().forEach((uuid, name) -> fields.put(name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid)));
+                commands.del(this.rosterKey);
+                if (!fields.isEmpty()) {
+                    commands.hset(this.rosterKey, fields);
+                }
+            }).join();
             RedisCommands<byte[], byte[]> commands = this.plugin.redisConnector().connection().sync();
-            // 异步任务读取 ACTIVE 会话中的身份, 重写本服 Hash 来修正遗漏的进退服记录.
-            Map<UUID, String> local = this.plugin.sessionManager().onlinePlayers();
-            Map<byte[], byte[]> fields = new HashMap<>();
-            local.forEach((uuid, name) -> fields.put(name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid)));
-            commands.del(this.rosterKey);
-            if (!fields.isEmpty()) {
-                commands.hset(this.rosterKey, fields);
-            }
             Map<String, Map<String, PlayerIdentity>> rosters = new HashMap<>();
             // 按扫描批次查询心跳, 每批仅为仍存活的服务器读取名单.
             ScanArgs scan = ScanArgs.Builder.matches(ROSTER_PREFIX + "*").limit(64);
@@ -108,19 +117,24 @@ public final class PlayerDirectory {
             }
             // Redis 查询在锁外完成, 与通知共用的锁只覆盖本地名单替换.
             synchronized (this) {
-                if (!this.closed) {
-                    this.servers.clear();
-                    this.servers.putAll(rosters);
-                    this.rebuildOnline();
+                if (this.closed) return;
+                // 期间收到通知的服以本地视图为准, 其余服采用本轮快照.
+                for (Map.Entry<String, Map<String, PlayerIdentity>> entry : rosters.entrySet()) {
+                    if (!this.refreshChanges.contains(entry.getKey())) {
+                        this.servers.put(entry.getKey(), entry.getValue());
+                    }
                 }
+                // 快照里已消失且期间没有新通知的服整服移除.
+                this.servers.keySet().removeIf(id -> !rosters.containsKey(id) && !this.refreshChanges.contains(id));
+                this.rebuildOnline();
             }
         } catch (RedisException ignored) {
             // 保留本地名单, 下一轮校准补齐丢失的消息和缓存写入.
+        } catch (CompletionException exception) {
+            if (!(exception.getCause() instanceof RedisException)) throw exception;
         } finally {
-            this.refreshing.set(false);
-            if (this.closed) {
-                // 关闭期间仍在途的校准可能写回本服名单, 收尾时再清理一次.
-                this.deleteRoster();
+            synchronized (this) {
+                this.refreshChanges = null;
             }
         }
     }
@@ -128,21 +142,48 @@ public final class PlayerDirectory {
     // 由进退服事件更新本地名单, 异步写入 Redis 并通知其他服务器.
     public void presence(@NotNull UUID uuid, @NotNull String name, boolean joined) {
         if (this.closed) return;
+        // 本服立即可见, 跨服缓存写入进入异步队列.
         PlayerPresenceMessage message = new PlayerPresenceMessage(this.serverId, uuid, name, joined);
-        // 本服立即可见, 跨服缓存写入交给 Lettuce 异步执行.
         this.acceptPresence(message);
-        RedisAsyncCommands<byte[], byte[]> commands = this.plugin.redisConnector().connection().async();
-        CompletableFuture<?> write = joined
-                ? commands.hset(this.rosterKey, name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid)).toCompletableFuture()
-                : commands.hdel(this.rosterKey, name.getBytes(StandardCharsets.UTF_8)).toCompletableFuture();
-        MessageBroker<ByteBuf> broker = this.plugin.messageBrokerManager().broker();
-        // Redis 接受名单变更后再广播, 写入或通知失败由周期校准补齐.
-        write.thenCompose(ignored -> this.closed ? CompletableFuture.completedFuture(0L)
-                : commands.publish(broker.channel(), broker.encode(message)).toCompletableFuture());
+        this.writeRoster(() -> {
+            if (this.closed) return;
+            RedisCommands<byte[], byte[]> commands = this.plugin.redisConnector().connection().sync();
+            if (joined) {
+                commands.hset(this.rosterKey, name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid));
+            } else {
+                commands.hdel(this.rosterKey, name.getBytes(StandardCharsets.UTF_8));
+            }
+            MessageBroker<ByteBuf> broker = this.plugin.messageBrokerManager().broker();
+            // Redis 接受名单变更后再广播, 写入或通知失败由周期校准补齐.
+            if (!this.closed) {
+                commands.publish(broker.channel(), broker.encode(message));
+            }
+        });
+    }
+
+    // 先占据队尾再启动任务, 完成后的写入失败不阻断后续校准与增量.
+    private CompletableFuture<Void> writeRoster(Runnable write) {
+        CompletableFuture<Void> next = new CompletableFuture<>();
+        CompletableFuture<Void> previous;
+        synchronized (this) {
+            previous = this.rosterWrites;
+            this.rosterWrites = next;
+        }
+        previous.handle((ignored, failure) -> null).thenRunAsync(write, this.plugin.scheduler().async()).whenComplete((ignored, failure) -> {
+            if (failure == null) {
+                next.complete(null);
+            } else {
+                next.completeExceptionally(failure);
+            }
+        });
+        return next;
     }
 
     synchronized void acceptPresence(PlayerPresenceMessage message) {
         if (this.closed) return;
+        if (this.refreshChanges != null) {
+            this.refreshChanges.add(message.serverId());
+        }
         Map<String, PlayerIdentity> players = this.servers.computeIfAbsent(message.serverId(), ignored -> new HashMap<>());
         String name = message.name().toLowerCase(Locale.ROOT);
         if (message.joined()) {
@@ -261,22 +302,23 @@ public final class PlayerDirectory {
     }
 
     // 停止名单维护并清理本服在线记录.
-    public synchronized void shutdown() {
-        // 先撤销消息入口, closed 同时阻止在途校准重新发布本地名单.
-        PlayerPresenceMessage.listener(null);
-        this.servers.clear();
-        this.closed = true;
-        if (this.task != null) {
-            this.task.cancel();
+    public void shutdown() {
+        synchronized (this) {
+            // 先撤销消息入口, closed 同时阻止在途校准重新发布本地名单.
+            PlayerPresenceMessage.listener(null);
+            this.servers.clear();
+            this.closed = true;
+            if (this.task != null) {
+                this.task.cancel();
+            }
+            this.online = OnlineView.EMPTY;
         }
-        this.online = OnlineView.EMPTY;
-        this.deleteRoster();
-    }
-
-    private void deleteRoster() {
-        if (this.rosterKey != null && this.plugin.redisConnector().available()) {
-            this.plugin.redisConnector().connection().async().del(this.rosterKey);
-        }
+        // 清理排在所有已提交的名单写入之后.
+        this.writeRoster(() -> {
+            if (this.rosterKey != null && this.plugin.redisConnector().available()) {
+                this.plugin.redisConnector().connection().sync().del(this.rosterKey);
+            }
+        });
     }
 
     private static byte[] nameKey(String name) {

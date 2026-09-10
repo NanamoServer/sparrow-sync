@@ -11,6 +11,8 @@ import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
 import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 
 public final class ServerConfig {
@@ -38,8 +40,8 @@ public final class ServerConfig {
     void reload() {
         try {
             config = this.configMapper.load(this.configFilePath).value();
-        } catch (Exception e) {
-            this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to load " + CONFIG_FILE, e);
         }
     }
 

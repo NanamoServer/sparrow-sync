@@ -21,6 +21,8 @@ import org.bukkit.GameMode;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -79,8 +81,8 @@ public final class PluginConfig {
                 this.startupMapOptions = loadedConfig.synchronization.map;
             }
             config = loadedConfig;
-        } catch (Exception e) {
-            this.plugin.logger().error("Failed to load " + CONFIG_FILE, e);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to load " + CONFIG_FILE, e);
         }
     }
 

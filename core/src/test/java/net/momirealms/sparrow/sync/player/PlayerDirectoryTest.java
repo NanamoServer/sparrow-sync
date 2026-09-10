@@ -15,22 +15,31 @@ import io.lettuce.core.protocol.AsyncCommand;
 import io.lettuce.core.protocol.Command;
 import io.lettuce.core.protocol.CommandType;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionListener;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerQuitEvent;
+import net.kyori.adventure.text.Component;
 import org.incendo.cloud.context.CommandContext;
 import org.incendo.cloud.context.CommandInput;
 import org.incendo.cloud.execution.ExecutionCoordinator;
 import org.incendo.cloud.internal.CommandRegistrationHandler;
 import org.incendo.cloud.suggestion.Suggestion;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -46,6 +55,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -161,6 +171,138 @@ class PlayerDirectoryTest {
         second.directory.presence(uuid, "Steve", false);
         assertTrue(first.directory.onlinePlayers().isEmpty());
         assertTrue(second.directory.suggestions("S").isEmpty());
+    }
+
+    @Test
+    void refreshKeepsLoginHandledWhileItsRosterSnapshotWasBeingRead() {
+        FakeRedis redis = new FakeRedis();
+        Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        first.join(UUID.randomUUID(), "Alex");
+        UUID steve = UUID.randomUUID();
+        // 校准读完远端名单、尚未替换本地视图时, Steve 登录第二台服务器的广播到达.
+        redis.afterRosterRead = () -> first.directory.acceptPresence(new PlayerPresenceMessage(second.serverId, steve, "Steve", true));
+        first.directory.refresh();
+        assertEquals(List.of(Suggestion.suggestion("Alex"), Suggestion.suggestion("Steve")), first.directory.suggestions(""));
+    }
+
+    @Test
+    void refreshKeepsQuitHandledWhileItsRosterSnapshotWasBeingRead() {
+        FakeRedis redis = new FakeRedis();
+        Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        UUID steve = UUID.randomUUID();
+        second.directory.presence(steve, "Steve", true);
+        // 校准读到第二台服务器仍有 Steve 的旧名单, 但退出广播在替换本地视图前已经到达.
+        redis.afterRosterRead = () -> first.directory.acceptPresence(new PlayerPresenceMessage(second.serverId, steve, "Steve", false));
+        first.directory.refresh();
+        assertTrue(first.directory.suggestions("").isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void localPresenceDuringFullRewriteRemainsInRedisAndOtherServers(boolean joined) {
+        FakeRedis redis = new FakeRedis();
+        Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        first.join(UUID.randomUUID(), "Alex");
+        UUID steve = UUID.randomUUID();
+        PlayerSession oldSession = joined ? null : first.join(steve, "Steve");
+        first.directory.refresh();
+        // 全量任务已采样并执行 DEL, 此时的进退服写入必须排在旧名单 HSET 之后.
+        redis.afterRosterDelete = () -> {
+            assertFalse(Thread.holdsLock(first.directory));
+            if (joined) {
+                first.join(steve, "Steve");
+            } else {
+                NmsPlayerFixture.set(PlayerSession.class, oldSession, "state", SessionState.SAVING);
+            }
+            int calls = redis.calls;
+            first.directory.presence(steve, "Steve", joined);
+            assertEquals(calls, redis.calls);
+            assertEquals(joined, first.directory.cached("Steve").isPresent());
+        };
+        first.directory.refresh();
+        String field = HexFormat.of().formatHex("Steve".getBytes(StandardCharsets.UTF_8));
+        assertEquals(joined, redis.hashes.get("ss:online-players:" + first.serverId).containsKey(field));
+        second.directory.refresh();
+        assertEquals(joined, second.directory.cached("Steve").isPresent());
+    }
+
+    @Test
+    void loginAfterReadingAnExistingRemoteRosterKeepsBothPlayers() {
+        FakeRedis redis = new FakeRedis();
+        Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        second.directory.presence(UUID.randomUUID(), "Alex", true);
+        redis.rosterReadKey = "ss:online-players:" + second.serverId;
+        redis.afterRosterRead = () -> second.directory.presence(UUID.randomUUID(), "Steve", true);
+        first.directory.refresh();
+        assertEquals(List.of(Suggestion.suggestion("Alex"), Suggestion.suggestion("Steve")), first.directory.suggestions(""));
+    }
+
+    @Test
+    void repeatedOnlineIdentityStillInvalidatesTheOldRosterAfterALostQuit() {
+        FakeRedis redis = new FakeRedis();
+        Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        UUID steve = UUID.randomUUID();
+        second.directory.presence(UUID.randomUUID(), "Alex", true);
+        second.directory.presence(steve, "Steve", true);
+        redis.listeners.clear();
+        second.directory.presence(steve, "Steve", false);
+        redis.listeners.add(first.directory::acceptPresence);
+        assertTrue(first.directory.cached("Steve").isPresent());
+        redis.rosterReadKey = "ss:online-players:" + second.serverId;
+        redis.afterRosterRead = () -> second.directory.presence(steve, "Steve", true);
+        first.directory.refresh();
+        assertEquals(second.serverId, first.directory.server("Steve").orElseThrow());
+    }
+
+    @Test
+    void quitRemovesActiveSessionBeforeSubmittingOfflinePresence() throws Exception {
+        FakeRedis redis = new FakeRedis();
+        Fixture server = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        UUID steve = UUID.randomUUID();
+        PlayerSession session = server.join(steve, "Steve");
+        server.directory.presence(steve, "Steve", true);
+        SparrowSync plugin = (SparrowSync) field(server.directory, "plugin");
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "playerDirectory", server.directory);
+        RegionExecutor<?> region = proxy(RegionExecutor.class, (instance, method, args) -> {
+            assertEquals("runLater", method.getName());
+            return null;
+        });
+        SchedulerAdapter<?> scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> switch (method.getName()) {
+            case "async" -> (Executor) Runnable::run;
+            case "sync" -> region;
+            default -> throw new AssertionError(method.getName());
+        });
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "scheduler", scheduler);
+        Player player = proxy(Player.class, (instance, method, args) -> switch (method.getName()) {
+            case "getUniqueId" -> steve;
+            case "getName" -> "Steve";
+            case "getLocation" -> new Location(null, 0, 64, 0);
+            case "getWorld" -> null;
+            default -> throw new AssertionError(method.getName());
+        });
+        List<SessionState> statesAtRemoval = new ArrayList<>();
+        redis.afterRosterRemoval = () -> statesAtRemoval.add(session.state());
+        new SessionListener(plugin, server.sessions).onQuit(new PlayerQuitEvent(player, Component.empty(), PlayerQuitEvent.QuitReason.DISCONNECTED));
+        assertEquals(List.of(SessionState.SAVING), statesAtRemoval);
+        server.directory.refresh();
+        assertFalse(redis.hashes.containsKey("ss:online-players:" + server.serverId));
+        assertTrue(server.directory.onlinePlayers().isEmpty());
+    }
+
+    @Test
+    void shutdownDuringFullRewriteDeletesTheRosterAfterTheOldWrite() {
+        FakeRedis redis = new FakeRedis();
+        Fixture server = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
+        server.join(UUID.randomUUID(), "Steve");
+        redis.afterRosterDelete = server.directory::shutdown;
+        server.directory.refresh();
+        assertFalse(redis.hashes.containsKey("ss:online-players:" + server.serverId));
+        assertTrue(server.directory.onlinePlayers().isEmpty());
     }
 
     @Test
@@ -346,7 +488,12 @@ class PlayerDirectoryTest {
         });
         NmsPlayerFixture.set(SparrowSync.class, plugin, "storageProvider", storage);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", new SyncLogger(proxy(PluginLogger.class, (instance, method, args) -> null)));
-        SessionManager sessions = new SessionManager(null);
+        SchedulerAdapter<?> scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> {
+            assertEquals("async", method.getName());
+            return (Executor) Runnable::run;
+        });
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "scheduler", scheduler);
+        SessionManager sessions = new SessionManager(plugin);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "sessionManager", sessions);
         String serverId = UUID.randomUUID().toString();
         PlayerDirectory directory = new PlayerDirectory(plugin);
@@ -393,6 +540,10 @@ class PlayerDirectoryTest {
         private long now;
         private int calls;
         private boolean failed;
+        private Runnable afterRosterRemoval;
+        private Runnable afterRosterDelete;
+        private String rosterReadKey;
+        private Runnable afterRosterRead; // 校准读完一批远端名单后触发一次, 供测试注入并发通知
 
         @SuppressWarnings("unchecked")
         private StatefulRedisConnection<byte[], byte[]> connection() {
@@ -418,7 +569,7 @@ class PlayerDirectoryTest {
             this.calls++;
             if (this.failed) throw new RedisException("offline");
             this.data.entrySet().removeIf(entry -> entry.getValue().expires <= this.now);
-            return switch (command) {
+            Object outcome = switch (command) {
                 case "hset" -> {
                     Map<String, byte[]> hash = this.hashes.computeIfAbsent(new String((byte[]) args[0], StandardCharsets.UTF_8), ignored -> new HashMap<>());
                     if (args.length == 2) {
@@ -495,6 +646,23 @@ class PlayerDirectoryTest {
                 }
                 default -> throw new AssertionError(command);
             };
+            // 名单读取完成后触发一次, 供测试在远端名单已读出后注入通知.
+            if ("hgetall".equals(command) && this.afterRosterRead != null && (this.rosterReadKey == null || this.rosterReadKey.equals(new String((byte[]) args[0], StandardCharsets.UTF_8)))) {
+                Runnable hook = this.afterRosterRead;
+                this.afterRosterRead = null;
+                hook.run();
+            }
+            if ("hdel".equals(command) && this.afterRosterRemoval != null) {
+                Runnable hook = this.afterRosterRemoval;
+                this.afterRosterRemoval = null;
+                hook.run();
+            }
+            if ("del".equals(command) && this.afterRosterDelete != null) {
+                Runnable hook = this.afterRosterDelete;
+                this.afterRosterDelete = null;
+                hook.run();
+            }
+            return outcome;
         }
     }
 

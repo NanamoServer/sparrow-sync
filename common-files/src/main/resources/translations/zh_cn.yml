@@ -171,7 +171,7 @@ command.panel.unpinned: '<color:#C8E4E9>未固定</color>'
 
 # command.reload
 command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>配置重载失败，请查看控制台日志</color>'
-command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>配置已重载</color><color:#C8E4E9>（异步耗时 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>插件已完成 reload</color><color:#C8E4E9>（异步耗时 </color><color:#FFE08A><arg:1></color><color:#C8E4E9> 毫秒）</color>'
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>正在重载，请稍候</color>'
 
 # command.snapshot

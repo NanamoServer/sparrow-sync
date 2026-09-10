@@ -171,7 +171,7 @@ command.panel.unpinned: '<color:#C8E4E9>Unpinned</color>'
 
 # command.reload
 command.reload.config.failure: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Reload failed. Check the console log.</color>'
-command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Configuration reloaded</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
+command.reload.config.success: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#F2F4FF>Plugin reload completed</color><color:#C8E4E9> (async </color><color:#FFE08A><arg:1></color><color:#C8E4E9> ms)</color>'
 command.reload.too_fast: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFE3A3>Reload in progress, please wait.</color>'
 
 # command.snapshot
