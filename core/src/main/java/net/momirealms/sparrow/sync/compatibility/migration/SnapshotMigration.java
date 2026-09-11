@@ -159,7 +159,7 @@ public final class SnapshotMigration {
     /** 一次同步迁移调用的计数, 消费回调返回后才推进对应数量. */
     private static final class Progress {
         private final long started = System.nanoTime();
-        private long nextReport = this.started + 5_000_000_000L;
+        private long nextReport = this.started + 1_000_000_000L;
         private Runnable listener;
         private long users;                            // 已写入暂存文件的名字记录数
         private long converted;                        // 已写入 ZIP 的完整玩家记录数
@@ -169,7 +169,7 @@ public final class SnapshotMigration {
         private void report() {
             long now = System.nanoTime();
             if (now < this.nextReport) return;
-            this.nextReport = now + 5_000_000_000L;
+            this.nextReport = now + 1_000_000_000L;
             this.listener.run();
         }
 
