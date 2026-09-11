@@ -37,6 +37,7 @@ import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -159,7 +160,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "playerDataPipeline", pipeline);
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "serialExecutor", this.executor);
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "logger", logger);
-        NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "writer", new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), logger), this.executor));
+        NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "writer", new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), logger), this.executor, new NoopSnapshotCache()));
         this.sessions = new SessionManager(null);
         NmsPlayerFixture.set(SessionManager.class, this.sessions, "snapshotService", this.service);
         this.session = this.sessions.tryOpen(this.player.getUniqueId(), this.player.getName(), ConnectionFixture.create());

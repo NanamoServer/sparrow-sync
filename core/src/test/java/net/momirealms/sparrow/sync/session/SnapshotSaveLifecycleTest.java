@@ -10,6 +10,7 @@ import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -127,7 +128,7 @@ class SnapshotSaveLifecycleTest {
             }
             default -> throw new AssertionError(method.getName());
         });
-        this.writer = new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, this.codec, logger), this.executor);
+        this.writer = new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, this.codec, logger), this.executor, new NoopSnapshotCache());
     }
 
     /**

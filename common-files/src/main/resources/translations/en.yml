@@ -359,6 +359,12 @@ log.storage.write_retriable: 'Failed to write the snapshot of <arg:0>, it will b
 # log.sync
 log.sync.applied: 'Applied a snapshot to <arg:0> synchronously on the player thread (<arg:1> data type(s), <arg:2> skipped, preceding async load <arg:3>ms, synchronous apply <arg:4>ms)'
 log.sync.apply_started: 'Starting to apply a snapshot to <arg:0> synchronously on the player thread'
+log.sync.cache_corrupted: 'The cross-server fast path of <arg:0> held unreadable data (<arg:1>), reading from the database: <arg:2>'
+log.sync.cache_hit: 'Took the snapshot <arg:1> of <arg:0> from the cross-server fast path (<arg:2>ms)'
+log.sync.cache_invalidate_failed: 'Failed to clear the cross-server fast path of <arg:0>, a stale entry may remain until it expires: <arg:1>'
+log.sync.cache_publish_failed: 'Failed to write the cross-server fast path of <arg:0>, the next server reads the database instead: <arg:1>'
+log.sync.cache_published: 'Wrote the snapshot <arg:1> of <arg:0> to the cross-server fast path (TTL <arg:2>s)'
+log.sync.cache_read_failed: 'Cross-server fast path lookup failed for <arg:0>, reading from the database: <arg:1>'
 log.sync.disconnect_saved: 'Saved the disconnect data of <arg:0> (async capture <arg:1>ms, async store <arg:2>ms)'
 log.sync.load_empty: 'Queried the database asynchronously but found no snapshot history for <arg:0> (<arg:1>ms), they enter with the local state'
 log.sync.load_failed: 'An error occurred while loading or pre-decoding the remote snapshot of <arg:0> asynchronously (<arg:1>ms): <arg:2>'

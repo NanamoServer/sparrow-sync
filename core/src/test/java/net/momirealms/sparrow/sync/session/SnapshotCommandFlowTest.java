@@ -57,6 +57,7 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.entity.Player;
@@ -226,6 +227,7 @@ class SnapshotCommandFlowTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "playerDataPipeline", pipeline);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "storageProvider", storage);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotCache", new NoopSnapshotCache());
         SnapshotService service = new SnapshotService(plugin);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
         service.onLoad();

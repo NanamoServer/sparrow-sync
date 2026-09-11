@@ -4,6 +4,8 @@ import com.mysql.cj.conf.ConnectionUrl;
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.cluster.cache.RedisSnapshotCache;
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
@@ -110,6 +112,7 @@ public class SparrowSync implements Plugin {
     private final SessionLock sessionLock;
     private final MessageBrokerManager messageBrokerManager;
     private final ServerHeartBeats serverHeartBeats;
+    private final SnapshotCache snapshotCache;
     private final HandoffManager handoffManager;
     private final SessionManager sessionManager;
     private final PlayerDirectory playerDirectory;
@@ -162,6 +165,7 @@ public class SparrowSync implements Plugin {
         this.sessionLock = new SessionLock(this);
         this.messageBrokerManager = new MessageBrokerManager(this);
         this.serverHeartBeats = new ServerHeartBeats(this);
+        this.snapshotCache = new RedisSnapshotCache(this);
         this.sessionManager = new SessionManager(this);
         this.playerDirectory = new PlayerDirectory(this);
         this.handoffManager = new HandoffManager(this);
@@ -778,6 +782,10 @@ public class SparrowSync implements Plugin {
 
     public ServerHeartBeats serverRegistry() {
         return this.serverHeartBeats;
+    }
+
+    public SnapshotCache snapshotCache() {
+        return this.snapshotCache;
     }
 
     public HandoffManager handoffManager() {

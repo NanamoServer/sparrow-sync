@@ -56,6 +56,13 @@ public interface LogConstants {
     String GATE_RELEASED = "log.gate.released";
     String GATE_KICKED = "log.gate.kicked";
 
+    String SYNC_CACHE_PUBLISHED = "log.sync.cache_published";
+    String SYNC_CACHE_PUBLISH_FAILED = "log.sync.cache_publish_failed";
+    String SYNC_CACHE_HIT = "log.sync.cache_hit";
+    String SYNC_CACHE_READ_FAILED = "log.sync.cache_read_failed";
+    String SYNC_CACHE_CORRUPTED = "log.sync.cache_corrupted";
+    String SYNC_CACHE_INVALIDATE_FAILED = "log.sync.cache_invalidate_failed";
+
     String SYNC_LOAD_READY = "log.sync.load_ready";
     String SYNC_LOAD_EMPTY = "log.sync.load_empty";
     String SYNC_LOCAL_DATA_READY = "log.sync.local_data_ready";

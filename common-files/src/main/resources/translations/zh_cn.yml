@@ -359,6 +359,12 @@ log.storage.write_retriable: '写入 <arg:0> 的快照失败，数据库恢复�
 # log.sync
 log.sync.applied: '已在玩家线程同步应用 <arg:0> 的快照（一共 <arg:1> 种数据，失败跳过 <arg:2> 种非关键数据，异步加载 <arg:3> 毫秒，同步应用 <arg:4> 毫秒）'
 log.sync.apply_started: '开始在玩家线程同步应用 <arg:0> 的快照'
+log.sync.cache_corrupted: '<arg:0> 的跨服快路径数据无法读取（<arg:1>），将改为读取数据库：<arg:2>'
+log.sync.cache_hit: '已从跨服快路径取得 <arg:0> 的快照 <arg:1>（<arg:2> 毫秒）'
+log.sync.cache_invalidate_failed: '清理 <arg:0> 的跨服快路径失败，残留条目可能会保留到过期：<arg:1>'
+log.sync.cache_publish_failed: '写入 <arg:0> 的跨服快路径失败，下一台服务器将改为读取数据库：<arg:1>'
+log.sync.cache_published: '已把 <arg:0> 的快照 <arg:1> 写入跨服快路径（TTL <arg:2> 秒）'
+log.sync.cache_read_failed: '查询 <arg:0> 的跨服快路径失败，将改为读取数据库：<arg:1>'
 log.sync.disconnect_saved: '<arg:0> 的离服数据已保存（异步采集 <arg:1> 毫秒，异步落库 <arg:2> 毫秒）'
 log.sync.load_empty: '已异步查询数据库，但没有找到 <arg:0> 的历史快照（<arg:1> 毫秒），将以本服现状进入'
 log.sync.load_failed: '异步读取或预解码 <arg:0> 的远端快照时发生错误（<arg:1> 毫秒）：<arg:2>'

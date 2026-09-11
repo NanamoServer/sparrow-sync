@@ -13,6 +13,7 @@ import net.momirealms.sparrow.sync.session.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.session.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.snapshot.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
@@ -40,6 +41,7 @@ final class SnapshotApplier {
     private final DataRegistry dataRegistry;
     private final PlayerDataPipeline playerDataPipeline;
     private final StorageProvider storage;
+    private final SnapshotCache cache; // 跨服快路径, 未启用或未命中时读数据库
     private volatile boolean operationsClosed; // 停服后拒绝新的在线恢复
 
     SnapshotApplier(@NotNull SparrowSync plugin) {
@@ -48,10 +50,11 @@ final class SnapshotApplier {
         this.dataRegistry = plugin.dataRegistry();
         this.playerDataPipeline = plugin.playerDataPipeline();
         this.storage = plugin.storageProvider();
+        this.cache = plugin.snapshotCache();
     }
 
     /**
-     * 读取玩家最新快照并完成地图准备与类型解码, 供登录流程消费.
+     * 读取玩家最新快照并完成地图准备与类型解码, 供玩家登录时消费.
      *
      * @param player 目标玩家 UUID
      * @param playerName 日志使用的玩家名
@@ -60,7 +63,7 @@ final class SnapshotApplier {
     @NotNull
     CompletableFuture<SnapshotLoadResult> loadLatest(@NotNull UUID player, @NotNull String playerName) {
         long loadStart = System.nanoTime();
-        return this.storage.latestSnapshot(player)
+        return this.cachedLatest(player, playerName, loadStart)
                 .thenCompose(latest -> latest
                         .map(snapshot -> this.prepareSnapshot(snapshot, playerName, loadStart))
                         .orElseGet(() -> {
@@ -72,6 +75,18 @@ final class SnapshotApplier {
                         this.logger.error(LogCategory.APPLY, player, playerName, throwable, LogConstants.SYNC_LOAD_FAILED, playerName, millis(loadStart, System.nanoTime()), String.valueOf(throwable));
                     }
                 });
+    }
+
+    // 优先取跨服快路径, 未启用、未命中或 Redis 失败时读数据库.
+    @NotNull
+    private CompletableFuture<Optional<Snapshot>> cachedLatest(@NotNull UUID player, @NotNull String playerName, long loadStart) {
+        if (!PluginConfig.synchronization$snapshotCache().enabled()) return this.storage.latestSnapshot(player);
+        return this.cache.consume(player).thenCompose(cached -> {
+            if (cached.isEmpty()) return this.storage.latestSnapshot(player);
+            Snapshot snapshot = cached.get();
+            this.logger.file(LogCategory.APPLY, player, playerName, LogConstants.SYNC_CACHE_HIT, playerName, snapshot.meta().id().toString(), millis(loadStart, System.nanoTime()));
+            return CompletableFuture.completedFuture(cached);
+        });
     }
 
     /**

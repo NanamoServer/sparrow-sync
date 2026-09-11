@@ -8,6 +8,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
@@ -32,14 +33,16 @@ final class SnapshotWriter {
     private final StorageProvider storage;
     private final SnapshotStash stash; // 完整正文的 pending 或异常档案写入入口
     private final PlayerSerialExecutor serialExecutor;
+    private final SnapshotCache cache; // 跨服快路径 Redis 缓存
     private final Set<SaveRequest> pending = new HashSet<>(); // 已接收但尚未完成的保存请求, 用 pending 自身当锁协调并发访问
     private boolean sealed; // 在集合监视器内读写, 为 true 时拒绝新请求而继续已有保存
 
-    SnapshotWriter(@NotNull SyncLogger logger, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PlayerSerialExecutor serialExecutor) {
+    SnapshotWriter(@NotNull SyncLogger logger, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PlayerSerialExecutor serialExecutor, @NotNull SnapshotCache cache) {
         this.logger = logger;
         this.storage = storage;
         this.stash = stash;
         this.serialExecutor = serialExecutor;
+        this.cache = cache;
     }
 
     // 在采集或投递任务前登记请求, 使停服等待包含尚未生成正文的保存.
@@ -97,6 +100,8 @@ final class SnapshotWriter {
                 if (!request.beginFinish()) return;
                 this.logSaved(attempt, result, System.nanoTime() - submittedAt);
                 this.rotateHistory(attempt.player(), request.playerName());
+                // request.completion() 完成时会释放锁, 缓存更新投递必须排在之前
+                this.publishCache(attempt, result);
                 request.completion().complete(new SnapshotSaveResult.Settled(result, request.meta().id()));
                 return;
             }
@@ -192,6 +197,32 @@ final class SnapshotWriter {
             });
         } catch (RejectedExecutionException ignored) {
         }
+    }
+
+    // 会话收尾保存的落库结果投递到跨服快路径, 其余落库结果只清掉可能残留的旧条目.
+    private void publishCache(@NotNull WriteAttempt attempt, @NotNull SaveResult result) {
+        if (!shouldPublish(result, attempt.request().meta().cause())) {
+            this.cache.invalidate(attempt.player());
+            return;
+        }
+        PluginConfig.SnapshotCacheOptions options = PluginConfig.synchronization$snapshotCache();
+        if (!options.enabled()) return;
+        Snapshot snapshot = attempt.request().snapshot();
+        if (snapshot == null) return;
+        int ttlSeconds = options.ttlSeconds();
+        this.cache.publish(snapshot, ttlSeconds).whenComplete((ignored, failure) -> {
+            if (failure != null) {
+                this.logger.file(LogCategory.SAVE, attempt.player(), attempt.playerName(), failure, LogConstants.SYNC_CACHE_PUBLISH_FAILED, attempt.playerName(), String.valueOf(failure.getMessage()));
+                return;
+            }
+            this.logger.file(LogCategory.SAVE, attempt.player(), attempt.playerName(), LogConstants.SYNC_CACHE_PUBLISHED, attempt.playerName(), attempt.request().meta().id().toString(), String.valueOf(ttlSeconds));
+        });
+    }
+
+    // 只有会话收尾保存里确认落在库内最新的结果才投递, SAVED_OUT_OF_ORDER 明确位于历史中段.
+    static boolean shouldPublish(@NotNull SaveResult result, @NotNull SaveCause cause) {
+        if (!result.stored() || result == SaveResult.SAVED_OUT_OF_ORDER) return false;
+        return cause == SaveCause.DISCONNECT || cause == SaveCause.SHUTDOWN;
     }
 
     /**

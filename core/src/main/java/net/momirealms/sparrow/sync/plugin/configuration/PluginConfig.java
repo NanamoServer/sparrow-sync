@@ -362,6 +362,11 @@ public final class PluginConfig {
         NativeAsyncApplyOptions nativeAsyncApply = new NativeAsyncApplyOptions();
 
         @BlankLineBefore
+        @Comment("Cross-server snapshot cache settings")
+        @Comment(lang = "zh-CN", value = "跨服快照缓存设置")
+        SnapshotCacheOptions snapshotCache = new SnapshotCacheOptions();
+
+        @BlankLineBefore
         @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
         @Comment(lang = "zh-CN", value = "在线回滚快照时可以选择不同步部分数据, 不影响登录同步")
         OnlineRestoreOptions onlineRestore = new OnlineRestoreOptions();
@@ -406,6 +411,38 @@ public final class PluginConfig {
 
         @YamlIgnore
         SaveTriggers compiledSaveTriggers = SaveTriggers.of(this.saveTriggers);
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class SnapshotCacheOptions {
+        @Comment({
+                "Writes the snapshot into Redis after a disconnect or shutdown save is confirmed, so the next server can take",
+                "the snapshot body from Redis instead of reading it from the database when the player hops over",
+                "Best effort only: a failed write, a missing entry or an unreachable Redis always falls back to the database"
+        })
+        @Comment(lang = "zh-CN", value = {
+                "在退出或关服的保存确认落库后把这份快照写入 Redis, 玩家跨服时接手服可以直接取用, 无需从数据库读取整份正文",
+                "仅作尽力而为的快路径: 写入失败、未命中或 Redis 不可用时一律回退数据库",
+        })
+        boolean enabled = true;
+
+        @Comment({
+                "Lifetime of a cached entry, in seconds",
+                "An entry only needs to survive the gap between leaving one server and entering the next"
+        })
+        @Comment(lang = "zh-CN", value = {
+                "缓存条目的存活时间, 单位为秒",
+                "条目只需要活过玩家离开一台服务器到进入下一台之间的间隔"
+        })
+        int ttlSeconds = 15;
+
+        public boolean enabled() {
+            return this.enabled;
+        }
+
+        public int ttlSeconds() {
+            return this.ttlSeconds;
+        }
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
@@ -1131,6 +1168,11 @@ public final class PluginConfig {
     @NotNull
     public static NativeAsyncApplyOptions synchronization$nativeAsyncApply() {
         return config.synchronization.nativeAsyncApply;
+    }
+
+    @NotNull
+    public static SnapshotCacheOptions synchronization$snapshotCache() {
+        return config.synchronization.snapshotCache;
     }
 
     @NotNull

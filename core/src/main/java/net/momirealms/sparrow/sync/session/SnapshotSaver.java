@@ -44,7 +44,7 @@ final class SnapshotSaver {
         this.logger = plugin.logger();
         this.playerDataPipeline = plugin.playerDataPipeline();
         this.serialExecutor = plugin.playerExecutor();
-        this.writer = new SnapshotWriter(this.logger, plugin.storageProvider(), plugin.snapshotStash(), this.serialExecutor);
+        this.writer = new SnapshotWriter(this.logger, plugin.storageProvider(), plugin.snapshotStash(), this.serialExecutor, plugin.snapshotCache());
     }
 
     /**
