@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

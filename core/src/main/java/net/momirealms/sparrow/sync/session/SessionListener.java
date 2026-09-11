@@ -5,7 +5,7 @@ import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
-import net.momirealms.sparrow.sync.session.operation.SnapshotApplyResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;

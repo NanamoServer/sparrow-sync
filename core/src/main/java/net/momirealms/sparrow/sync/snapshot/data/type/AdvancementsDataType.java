@@ -15,10 +15,10 @@ import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProx
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
-import net.momirealms.sparrow.sync.util.GsonUtils;
+import net.momirealms.sparrow.sync.util.GsonHelper;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
@@ -433,7 +433,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
             appendNativeJson(root, advancement);
         }
         root.addProperty("DataVersion", VersionHelper.WORLD_VERSION);
-        byte[] json = GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
+        byte[] json = GsonHelper.DEFAULT_GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
         return new NativeEncoding(json, unknownCount == unknown.length ? unknown : Arrays.copyOf(unknown, unknownCount));
     }
 

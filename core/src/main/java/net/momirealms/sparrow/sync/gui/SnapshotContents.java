@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.gui;
 
-import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;

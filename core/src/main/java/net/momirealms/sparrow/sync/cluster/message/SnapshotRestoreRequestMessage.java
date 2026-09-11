@@ -6,7 +6,8 @@ import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayRequestMessage;
 import net.momirealms.sparrow.sync.cluster.RemoteSnapshotManager;
-import net.momirealms.sparrow.sync.session.operation.SnapshotRestoreResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,9 +51,10 @@ public final class SnapshotRestoreRequestMessage extends TwoWayRequestMessage<By
         return ID;
     }
 
+    @ApiStatus.Internal
     @Override
     @NotNull
-    protected CompletableFuture<SnapshotRestoreResponseMessage> handleRequest() {
+    public CompletableFuture<SnapshotRestoreResponseMessage> handleRequest() {
         RemoteSnapshotManager current = receiver;
         if (current == null) return CompletableFuture.completedFuture(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
         return current.receiveRestore(this.playerId, this.snapshotId).thenApply(SnapshotRestoreResponseMessage::new);

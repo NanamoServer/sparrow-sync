@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.compatibility.migration.invsync;
 
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
 import org.bukkit.Bukkit;

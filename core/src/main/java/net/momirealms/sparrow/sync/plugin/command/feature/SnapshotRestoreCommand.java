@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.plugin.command.feature;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
-import net.momirealms.sparrow.sync.session.operation.SnapshotRestoreResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;

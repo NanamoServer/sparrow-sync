@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.sync.event;
 
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
-import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.junit.jupiter.api.Test;

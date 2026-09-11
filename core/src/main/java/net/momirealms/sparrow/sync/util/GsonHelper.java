@@ -16,6 +16,7 @@ import java.util.Map;
  */
 public final class GsonHelper {
     private static final Gson GSON;
+    public static final Gson DEFAULT_GSON = new Gson(); // 默认配置的 Gson, 会转义 HTML 字符, 供生成原版数据文件使用
 
     private GsonHelper() {}
 
@@ -26,7 +27,7 @@ public final class GsonHelper {
     }
 
     /**
-     * 获取全局的 Gson 实例.
+     * 获取全局的 Gson 实例, 不转义 HTML 字符.
      *
      * @return 配置好的 Gson 对象
      */

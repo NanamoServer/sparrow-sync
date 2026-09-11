@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.network.Connection;
-import net.momirealms.sparrow.sync.session.operation.SessionPrepareResult;
-import net.momirealms.sparrow.sync.session.operation.SnapshotSaveResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SessionPrepareResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.junit.jupiter.api.Test;
 

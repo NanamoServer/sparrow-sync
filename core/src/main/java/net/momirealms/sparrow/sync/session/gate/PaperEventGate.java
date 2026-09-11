@@ -16,7 +16,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.paper.connection.PaperCommonConnectionProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.operation.SessionPrepareResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
 import org.bukkit.Bukkit;

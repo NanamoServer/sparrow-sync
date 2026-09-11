@@ -6,8 +6,8 @@ import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreRequestMessage
 import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreResponseMessage;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.session.operation.SnapshotCaptureResult;
-import net.momirealms.sparrow.sync.session.operation.SnapshotRestoreResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;

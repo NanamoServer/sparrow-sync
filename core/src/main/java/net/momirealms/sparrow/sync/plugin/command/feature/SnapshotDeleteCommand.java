@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.plugin.command.feature;
 
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.session.operation.SnapshotDeleteResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.Command;
 import org.incendo.cloud.parser.standard.UUIDParser;

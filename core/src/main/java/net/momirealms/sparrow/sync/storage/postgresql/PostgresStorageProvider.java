@@ -17,7 +17,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
-import net.momirealms.sparrow.sync.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.postgresql.upgrade.PostgresSchemaMigration;
 import org.jdbi.v3.core.Handle;

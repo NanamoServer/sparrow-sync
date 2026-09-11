@@ -25,10 +25,10 @@ import net.momirealms.sparrow.sync.proxy.minecraft.stats.StatsCounterProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
-import net.momirealms.sparrow.sync.util.GsonUtils;
+import net.momirealms.sparrow.sync.util.GsonHelper;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
@@ -202,7 +202,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
         JsonObject root = new JsonObject();
         root.add("stats", groups);
         root.addProperty("DataVersion", VersionHelper.WORLD_VERSION);
-        return GsonUtils.GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
+        return GsonHelper.DEFAULT_GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
     }
 
     @Override

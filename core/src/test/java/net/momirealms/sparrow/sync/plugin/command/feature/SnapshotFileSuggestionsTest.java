@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.plugin.command.feature;
 
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
-import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.snapshot.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;

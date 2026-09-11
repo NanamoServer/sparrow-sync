@@ -4,7 +4,6 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DynamicOps;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 

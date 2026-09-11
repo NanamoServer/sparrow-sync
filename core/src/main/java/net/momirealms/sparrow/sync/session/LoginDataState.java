@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
-import net.momirealms.sparrow.sync.session.operation.SnapshotLoadResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

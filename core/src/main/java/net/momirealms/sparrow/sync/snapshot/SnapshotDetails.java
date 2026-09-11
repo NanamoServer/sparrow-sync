@@ -1,12 +1,10 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.exception.FormatException;
-import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult.Preview;
-import net.momirealms.sparrow.sync.session.operation.SnapshotDetailResult;
+import net.momirealms.sparrow.sync.snapshot.data.*;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.data.DecodedSnapshotData;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;

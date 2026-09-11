@@ -6,6 +6,7 @@ import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayRequestMessage;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -40,9 +41,10 @@ public final class HandoffRequestMessage extends TwoWayRequestMessage<ByteBuf, H
         return ID;
     }
 
+    @ApiStatus.Internal
     @Override
     @NotNull
-    protected CompletableFuture<HandoffResponseMessage> handleRequest() {
+    public CompletableFuture<HandoffResponseMessage> handleRequest() {
         HandoffManager service = HandoffRequestMessage.service;
         return CompletableFuture.completedFuture(service == null ? HandoffResponseMessage.unknown() : service.answer(this.player));
     }

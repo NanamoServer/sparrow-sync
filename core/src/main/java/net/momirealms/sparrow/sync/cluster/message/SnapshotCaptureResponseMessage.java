@@ -5,7 +5,7 @@ import net.momirealms.sparrow.redis.messagebroker.MessageIdentifier;
 import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayResponseMessage;
-import net.momirealms.sparrow.sync.session.operation.SnapshotCaptureResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;

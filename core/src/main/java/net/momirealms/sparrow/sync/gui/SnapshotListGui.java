@@ -10,7 +10,7 @@ import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
-import net.momirealms.sparrow.sync.snapshot.page.SnapshotPagination;
+import net.momirealms.sparrow.sync.gui.page.SnapshotPagination;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.Element;

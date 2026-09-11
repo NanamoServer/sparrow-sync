@@ -4,8 +4,9 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataEntry;
-import net.momirealms.sparrow.sync.session.operation.SnapshotLoadResult;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,13 +59,14 @@ public final class PlayerSession implements PlayerDataEntry {
         return this.state;
     }
 
-    synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState target) {
+    public synchronized boolean tryTransition(@NotNull SessionState expected, @NotNull SessionState target) {
         if (this.state != expected || !this.state.canTransitionTo(target)) return false;
         this.state = target;
         return true;
     }
 
-    synchronized void transition(@NotNull SessionState target) {
+    @ApiStatus.Internal
+    public synchronized void transition(@NotNull SessionState target) {
         if (!this.state.canTransitionTo(target)) {
             throw new IllegalStateException("illegal session transition " + this.state + " -> " + target + " for " + this.playerName);
         }
@@ -118,12 +120,14 @@ public final class PlayerSession implements PlayerDataEntry {
         return original.get();
     }
 
+    @ApiStatus.Internal
     @NotNull
-    synchronized Map<DataKey, Tag> retainedData() {
+    public synchronized Map<DataKey, Tag> retainedData() {
         return this.retainedData;
     }
 
-    synchronized void retainedData(@NotNull Map<DataKey, Tag> retainedData) {
+    @ApiStatus.Internal
+    public synchronized void retainedData(@NotNull Map<DataKey, Tag> retainedData) {
         this.retainedData = retainedData;
     }
 

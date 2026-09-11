@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.compatibility.migration.husksync;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.momirealms.sparrow.sync.util.VersionHelper;

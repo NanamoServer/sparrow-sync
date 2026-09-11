@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;

@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.storage;
 
 import com.mongodb.client.MongoClients;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.compatibility.migration.SnapshotMigration;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;

@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.util;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;

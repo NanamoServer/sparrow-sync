@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.DataKey;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -9,7 +8,7 @@ import java.io.IOException;
 import java.util.Set;
 
 /**
- * 一类玩家数据的声明、采集、编解码与应用, 也是 {@link net.momirealms.sparrow.sync.snapshot.DataRegistry} 唯一接受的注册类型.
+ * 一类玩家数据的声明、采集、编解码与应用, 也是 {@link DataRegistry} 唯一接受的注册类型.
  * capture 按采集模式选择读取路径, encode 与 decode 可在任意线程执行, apply 在玩家线程执行.
  * 登录前可异步写入原版数据的类型另行实现 {@link NativePlayerDataType}.
  *

@@ -7,11 +7,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * 玩家最新快照的跨服短时缓存, <strong>只作为读取快路径, 不承担正确性</strong>.
- * <p>条目顺序由会话锁的互斥与同一条 Redis 连接的按序入队提供, 所以取到的必然是上一台服收尾保存写下的那一份.
- * <p>任何读写失败都静默降级为直接读数据库.
- */
 public interface SnapshotCache {
 
     // 投递一份已确认落库的快照.

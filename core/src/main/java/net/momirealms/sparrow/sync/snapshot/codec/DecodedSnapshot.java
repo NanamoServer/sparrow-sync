@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
-import net.momirealms.sparrow.sync.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.jetbrains.annotations.NotNull;
 

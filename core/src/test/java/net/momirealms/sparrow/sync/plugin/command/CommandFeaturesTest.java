@@ -12,9 +12,9 @@ import net.momirealms.sparrow.sync.plugin.command.feature.ExceptionDeleteCommand
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotDetails;
-import net.momirealms.sparrow.sync.snapshot.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
-import net.momirealms.sparrow.sync.snapshot.page.SnapshotPage;
+import net.momirealms.sparrow.sync.gui.page.SnapshotPage;
 import net.momirealms.sparrow.sync.util.ChatTextUtils;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.entity.Player;
@@ -44,7 +44,7 @@ import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotUnpinCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotDeleteCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotExportCommand;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
-import net.momirealms.sparrow.sync.session.SnapshotService;
+import net.momirealms.sparrow.sync.snapshot.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
@@ -196,7 +196,7 @@ class CommandFeaturesTest {
     void defaultFeaturesOnlyRegisterTheCanonicalRoot() throws Exception {
         CommandsConfig.ConfigDefinition configs = new CommandsConfig.ConfigDefinition();
         AtomicInteger calls = new AtomicInteger();
-        for (String feature : List.of("status", "reload", "test", "snapshot_capture", "snapshot_restore", "snapshot_pin", "snapshot_unpin", "snapshot_delete", "snapshot_export", "snapshot_import", "exception_delete")) {
+        for (String feature : List.of("status", "reload", "snapshot_capture", "snapshot_restore", "snapshot_pin", "snapshot_unpin", "snapshot_delete", "snapshot_export", "snapshot_import", "exception_delete")) {
             CommandConfig config = configs.command(feature);
             for (var builder : this.manager.buildCommandBuilders(config)) {
                 this.manager.getCommandManager().command(builder.handler(context -> calls.incrementAndGet()));

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

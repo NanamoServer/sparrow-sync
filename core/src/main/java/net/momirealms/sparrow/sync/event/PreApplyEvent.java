@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.event;
 
-import net.momirealms.sparrow.sync.snapshot.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.Snapshot;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
