@@ -23,7 +23,7 @@ final class PostgresRowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
     @NotNull
     @Override
     public SnapshotRow encode(@NotNull Snapshot snapshot) throws IOException {
-        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frameData(snapshot.allData()));
+        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frameData(snapshot.content()));
     }
 
     @NotNull

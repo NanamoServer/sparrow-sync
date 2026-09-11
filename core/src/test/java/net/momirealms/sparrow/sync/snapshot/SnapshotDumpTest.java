@@ -1,5 +1,13 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import java.io.DataInputStream;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.zip.CRC32;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
@@ -248,6 +256,81 @@ class SnapshotDumpTest {
         assertNotNull(this.dump(new Memory()).importFile("../output/file.snapshot").failure());
     }
 
+    /**
+     * 将数据库中的快照导出到 ZIP 后, 验证导出帧包含元数据, 且索引和所有数据块与数据库中的字节相同.
+     * 导出期间不应将任何数据块解析为 Tag.
+     *
+     * @throws Exception 当 ZIP 文件或测试快照的读写失败时
+     */
+    @Test
+    void dumpCopiesDatabaseBlockRegionWithoutDecoding() throws Exception {
+        Snapshot fixture = snapshot(1);
+        byte[] databaseFrame = this.codec.frameData(fixture.allData());
+        Snapshot source = new Snapshot(fixture.meta(), this.codec.deframeData(databaseFrame));
+        Memory memory = new Memory();
+        memory.snapshots.put(source.meta().id(), source);
+        SnapshotDump.Result result = this.dump(memory).dump("raw.zip", 2);
+        assertNull(result.failure());
+        assertEquals(1, result.snapshots());
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
+        try (ZipFile zip = new ZipFile(result.file().toFile());
+             DataInputStream input = new DataInputStream(zip.getInputStream(zip.getEntry("snapshots.bin")))) {
+            assertTrue(input.readBoolean());
+            byte[] exported = input.readNBytes(input.readInt());
+            int exportedIndex = 14 + Short.toUnsignedInt(ByteBuffer.wrap(exported).getShort(4));
+            assertArrayEquals(Arrays.copyOfRange(databaseFrame, 14, databaseFrame.length), Arrays.copyOfRange(exported, exportedIndex, exported.length));
+            assertEquals(source.meta(), assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(exported)).snapshot().meta());
+            assertFalse(input.readBoolean());
+        }
+    }
+
+    /**
+     * 导出含损坏数据块的快照时保留原字节; 再导入时应发现损坏并将这份快照归档, 不写入数据库.
+     * 验证同一 ZIP 中后面的正常快照仍能继续导入.
+     *
+     * @param damage 要制造的数据块损坏, 也覆盖 CRC 正确但 NBT 或压缩数据无法读取的情况
+     * @throws Exception 当测试快照或归档文件读写失败时
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"crc", "nbt", "compression", "compressed", "truncated"})
+    void importValidatesEveryBlockBeforeWritingAndContinuesAfterArchiving(String damage) throws Exception {
+        BinarySnapshotCodec writer = damage.equals("compressed") ? new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0) : this.codec;
+        byte[] broken = writer.encode(snapshot(1));
+        Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(broken)).snapshot();
+        RawBlock block = located.content().raw(located.keys().iterator().next());
+        int offset = (int) block.offset();
+        if (damage.equals("truncated")) {
+            broken = Arrays.copyOf(broken, offset + 9 + block.entry().length() / 2);
+        } else if (damage.equals("compression")) {
+            broken[offset] = 99;
+        } else {
+            broken[offset + 9] = damage.equals("nbt") ? (byte) 0 : (byte) (broken[offset + 9] ^ 1);
+            if (!damage.equals("crc")) {
+                CRC32 crc = new CRC32();
+                crc.update(broken, offset + 9, block.entry().length());
+                ByteBuffer.wrap(broken).putInt(offset + 5, (int) crc.getValue());
+            }
+        }
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(broken)).snapshot();
+        Memory exporting = new Memory();
+        exporting.snapshots.put(source.meta().id(), source);
+        exporting.snapshots.put(id(2), snapshot(2));
+        assertNull(this.dump(exporting).dump("damaged.zip", 3).failure());
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
+        Memory target = new Memory();
+        SnapshotDump.Result imported = this.dump(target).importFile("damaged.zip");
+        assertNull(imported.failure());
+        assertEquals(1, imported.snapshots());
+        assertEquals(1, imported.failed());
+        assertEquals(1, target.imports);
+        assertFalse(target.snapshots.containsKey(id(1)));
+        assertTrue(target.snapshots.containsKey(id(2)));
+        try (var paths = Files.list(this.files().exceptions().resolve("malformed"))) {
+            Path body = paths.filter(path -> path.toString().endsWith(".snapshot")).findFirst().orElseThrow();
+            assertArrayEquals(broken, Files.readAllBytes(body));
+            assertEquals(source.meta(), ExceptionHeader.read(body).meta());
+        }
+    }
     private SnapshotFiles files() {
         return new SnapshotFiles(this.directory, this.codec);
     }

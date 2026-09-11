@@ -1,5 +1,10 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import java.io.UncheckedIOException;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
@@ -106,10 +111,37 @@ class SnapshotDecoderTest {
     }
 
     /**
-     * 建立测试所需的稳定槽位顺序.
+     * 破坏关键类型的数据块, 验证读取失败会记录在该类型的结果中.
+     * 用于应用快照时应停止读取后续类型; 用于预览时应继续读取其他选中的类型.
      *
-     * @param types 本次测试的解码类型
-     * @return 已冻结注册表
+     * @throws Exception 当测试快照编解码或读取已解析块数失败时
+     */
+    @Test
+    void lazyBlockFailureUsesTheSameCriticalAndPreviewBoundaries() throws Exception {
+        List<DataKey> calls = new ArrayList<>();
+        DataRegistry registry = registry(new TestType(FIRST, true, false, calls), new TestType(LAST, false, false, calls));
+        BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
+        byte[] bytes = codec.encode(snapshot());
+        Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(bytes)).snapshot();
+        bytes[(int) located.content().raw(FIRST).offset() + 9] ^= 1;
+        Snapshot applying = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(bytes)).snapshot();
+        SnapshotDecoder decoder = new SnapshotDecoder(registry);
+        DecodedSnapshotData failed = decoder.decodeForApply(applying);
+        assertEquals(FIRST, failed.criticalFailure());
+        assertInstanceOf(UncheckedIOException.class, failed.failure(FIRST));
+        assertTrue(calls.isEmpty());
+        Snapshot previewing = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(bytes)).snapshot();
+        DecodedSnapshotData preview = decoder.decodeSelected(previewing, type -> true);
+        assertInstanceOf(UncheckedIOException.class, preview.failure(FIRST));
+        assertNotNull(preview.value(LAST));
+        assertEquals(List.of(LAST), calls);
+        assertEquals(1, SnapshotFixtures.decodedBlockCount(previewing));
+    }
+    /**
+     * 注册本次测试需要的数据类型, 冻结注册表以确定后续的解码顺序.
+     *
+     * @param types 本次测试使用的数据类型
+     * @return 完成注册并已冻结的注册表
      */
     @NotNull
     private static DataRegistry registry(TestType @NotNull ... types) {

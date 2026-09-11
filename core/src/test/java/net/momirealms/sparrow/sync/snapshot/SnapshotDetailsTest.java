@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -122,8 +124,8 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(snapshot.meta().id()).join());
         assertInstanceOf(Preview.Failed.class, ready.previews().get(HealthDataType.HEALTH));
         assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE));
-        assertEquals(new Preview.Unsupported(true), ready.previews().get(custom));
-        assertEquals(new Preview.Unsupported(false), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(true, -1), ready.previews().get(custom));
+        assertEquals(new Preview.Unsupported(false, -1), ready.previews().get(unknown));
         assertSame(raw, ready.snapshot().data(unknown));
         assertEquals(4, ready.snapshot().allData().size());
     }
@@ -222,9 +224,35 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, archive.result());
         assertEquals(snapshot, ready.snapshot());
         assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
-        assertEquals(new Preview.Unsupported(false), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown)), ready.previews().get(unknown));
     }
 
+    /**
+     * 破坏不支持预览及未注册类型的数据块, 验证详情页仍能展示其他已支持的类型.
+     * 被跳过的类型只从索引取得未压缩 NBT 的字节数, 损坏的数据块不会被读取.
+     *
+     * @throws Exception 当测试快照编解码或读取已解析块数失败时
+     */
+    @Test
+    void lazyPreviewSkipsUnsupportedPayloadsAndReportsIndexedSizes() throws Exception {
+        this.registry.register(new EnchantmentSeedDataType());
+        DataKey unsupported = DataKey.of("test", "unsupported");
+        DataKey unknown = DataKey.of("external", "unknown");
+        this.registry.register(new UnsupportedType(unsupported));
+        Snapshot fixture = this.snapshot(Map.of(EnchantmentSeedDataType.ENCHANTMENT_SEED, NBT.createInt(12),
+                unsupported, NBT.createString("unsupported"), unknown, NBT.createString("unknown")));
+        byte[] bytes = this.binary.encode(fixture);
+        Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
+        bytes[(int) located.content().raw(unsupported).offset() + 9] ^= 1;
+        bytes[(int) located.content().raw(unknown).offset() + 9] ^= 1;
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
+        this.reader = id -> CompletableFuture.completedFuture(Optional.of(source));
+        var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(source.meta().id()).join());
+        assertEquals(12, assertInstanceOf(Preview.Ready.class, ready.previews().get(EnchantmentSeedDataType.ENCHANTMENT_SEED)).value());
+        assertEquals(source.content().rawLength(unsupported), assertInstanceOf(Preview.Unsupported.class, ready.previews().get(unsupported)).rawLength());
+        assertTrue(assertInstanceOf(Preview.Unsupported.class, ready.previews().get(unknown)).rawLength() > 0);
+        assertEquals(1, SnapshotFixtures.decodedBlockCount(source));
+    }
     private SnapshotDetails details(Executor executor) {
         this.registry.freeze();
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (instance, method, args) -> {

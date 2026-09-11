@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import org.jetbrains.annotations.ApiStatus;
@@ -26,7 +27,6 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -206,22 +206,21 @@ public final class MapPipeline {
         return result;
     }
 
-    // 在已启用的背包与末影箱数据中查找地图, 按需要复制快照节点.
+    // 只读取已注册的背包和末影箱数据, 替换其中改过地图的部分; 没有变化时返回原快照.
     private Snapshot rewrite(Snapshot snapshot, UnaryOperator<CompoundTag> operation) {
-        Map<DataKey, Tag> changed = null;
+        SnapshotData changed = snapshot.content();
         for (int i = 0; i < ITEM_DATA_KEYS.length; i++) {
             DataKey key = ITEM_DATA_KEYS[i];
             if (!this.registry.registered(key)) continue;
             if (!(snapshot.data(key) instanceof CompoundTag container)) continue;
             CompoundTag prepared = this.rewriteList(container, "items", false, operation);
             if (prepared == container) continue;
-            if (changed == null) changed = new LinkedHashMap<>(snapshot.allData());
-            changed.put(key, prepared);
+            changed = changed.with(key, prepared);
         }
-        return changed == null ? snapshot : new Snapshot(snapshot.meta(), changed);
+        return changed == snapshot.content() ? snapshot : new Snapshot(snapshot.meta(), changed);
     }
 
-    // 处理一件地图及原版组件承载的嵌套物品.
+    // 改写当前物品中的地图信息, 并递归处理潜影盒等原版物品组件中存放的物品.
     private CompoundTag rewriteItem(CompoundTag item, UnaryOperator<CompoundTag> operation) {
         if (!(item.get("components") instanceof CompoundTag components)) return item;
         CompoundTag changed = components;

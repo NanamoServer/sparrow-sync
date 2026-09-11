@@ -19,6 +19,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -164,7 +165,7 @@ public final class SnapshotDump {
             for (int i = 0; i < batch.size(); i++) {
                 Snapshot snapshot = batch.get(i);
                 progress.current = "snapshot " + snapshot.meta().id();
-                // 每次编码一份快照, 长度前缀保留这份快照在连续记录中的边界.
+                // 导出时直接复制未修改的数据块; 每份快照前写入长度, 供导入时从 ZIP 中逐条读取.
                 byte[] data = this.codec.encode(snapshot);
                 writeSnapshot(output, data);
                 after = snapshot.meta().id();
@@ -256,6 +257,17 @@ public final class SnapshotDump {
             }
             Snapshot snapshot = ((DecodedSnapshot.Valid) decoded).snapshot();
             progress.current = "snapshot " + snapshot.meta().id();
+            // 逐个读取所有类型, 完成 CRC 校验, 解压和 NBT 解析后才写入数据库; 任一块损坏则归档这份快照.
+            try {
+                for (var key : snapshot.keys()) {
+                    snapshot.data(key);
+                }
+            } catch (UncheckedIOException failure) {
+                this.files.archiveImport(data, snapshot.meta(), "malformed", failure.getCause().toString());
+                progress.failed++;
+                progress.report();
+                continue;
+            }
             StorageProvider.SaveOutcome saved = this.storage.importSnapshot(snapshot).join();
             if (saved.result().stored()) {
                 progress.snapshots++;

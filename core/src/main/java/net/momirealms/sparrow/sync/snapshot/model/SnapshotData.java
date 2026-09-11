@@ -18,18 +18,61 @@ public interface SnapshotData {
     Set<DataKey> keys();
 
     /**
-     * 取一个类型的值, 数据体中没有这个类型时返回 null.
+     * 读取指定类型的 NBT 值, 类型不存在时返回 null.
+     * 若该类型仍保存为原始字节, 首次读取会校验数据块, 解压并解析 NBT, 后续读取复用已解析的 Tag.
      *
-     * @throws UncheckedIOException 当该类型的数据损坏, 无法还原时
+     * @param key 要读取的数据类型标识
+     * @return 该类型的 Tag 或 null; <strong>调用方不得修改返回的 Tag</strong>, 替换值应调用 with
+     * @throws UncheckedIOException 当该类型的数据块校验, 解压或 NBT 解析失败时
      */
     @Nullable
     Tag get(@NotNull DataKey key);
 
     /**
-     * 全部类型的值, <strong>会还原数据体中的每一个类型</strong>, 用于确实需要完整内容的路径.
+     * 读取全部类型的 NBT 值并返回只读 Map.
+     * 尚未读取的数据块会在此时校验, 解压并解析; 任一类型读取失败都会使此方法抛出异常.
      *
-     * @throws UncheckedIOException 当任一类型的数据损坏, 无法还原时
+     * @return 包含全部类型及其 Tag 的只读 Map, <strong>其中的 Tag 也不得修改</strong>
+     * @throws UncheckedIOException 当任一类型的数据块校验, 解压或 NBT 解析失败时
      */
     @NotNull
     Map<DataKey, Tag> all();
+
+    /**
+     * 取得指定类型的数据块在原字节数组中的位置及索引信息, 供编码器直接复制.
+     * 此方法不检查块内的 CRC, 不解压或解析 NBT; 能取得原始块并不表示其中的数据可正常读取.
+     *
+     * @param key 要查找的数据类型标识
+     * @return 引用原帧字节的 RawBlock; 类型不存在, 或该类型仅保存为 Tag 而没有原始字节时返回 null
+     */
+    @Nullable
+    default RawBlock raw(@NotNull DataKey key) {
+        return null;
+    }
+
+    /**
+     * 读取索引中记录的该类型 NBT 在压缩前的字节数, 无需读取数据块.
+     * 长度包含包裹该类型值的 CompoundTag 及类型名, 对应序列化后的 {类型名: 值}, 可用于详情页显示大小.
+     *
+     * @param key 要查询大小的数据类型标识
+     * @return 未压缩的 NBT 字节数; 类型不存在或没有原始块索引时返回 -1
+     */
+    default int rawLength(@NotNull DataKey key) {
+        RawBlock block = this.raw(key);
+        return block == null ? -1 : block.entry().rawLength();
+    }
+
+    /**
+     * 创建一个新的 SnapshotData, 将指定类型的值设为 value, 原对象保持不变.
+     * 类型已存在时替换其值, 不存在时追加到类型列表末尾; 其他类型仍从原对象读取.
+     * 调用本方法不会读取或解析其他类型的 NBT, 保存时仍可直接复制它们的原始数据块.
+     *
+     * @param key 要替换或追加的数据类型标识
+     * @param value 新的 NBT 值, 直接保存其引用, <strong>传入后调用方不得修改此 Tag</strong>
+     * @return 读取 key 时返回 value 的新对象, 原对象及先前 with 返回的对象均不受影响
+     */
+    @NotNull
+    default SnapshotData with(@NotNull DataKey key, @NotNull Tag value) {
+        return new OverlaySnapshotData(this, Map.of(key, value));
+    }
 }

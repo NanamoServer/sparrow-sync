@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndex;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
@@ -77,32 +78,61 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     }
 
     /**
-     * 将各类型的值封为 HAS_META=0 的数据帧, 元数据由数据库列或文档外层保存.
+     * 将 Map 中的每个 Tag 编码为独立的数据块, 自动生成索引, 返回供数据库保存的完整二进制帧, 帧内不包含快照元数据;
      *
-     * @param data 各类型的原始 Tag, 按 Map 的迭代顺序逐块写出
-     * @return 元数据长度为零, 自带版本和索引的数据帧
-     * @throws IOException 当 NBT 序列化或块压缩失败时
+     * @param data 按 Map 迭代顺序写出的类型标识及对应 NBT 值
+     * @return 依次包含帧头, 索引和所有数据块的字节数组, 帧头的 HAS_META 标志为 0
+     * @throws IOException 当 NBT 序列化或数据块压缩失败时
      */
     @NotNull
     public byte[] frameData(@NotNull Map<DataKey, Tag> data) throws IOException {
-        return this.encodeFrame(new byte[0], new EagerSnapshotData(data));
+        return this.frameData(new EagerSnapshotData(data));
     }
 
     /**
-     * 写出元数据, 索引与块区, 两种载体共用相同的块布局.
+     * 将快照中各类型的数据写成供数据库保存的二进制帧, 元数据由数据库单独保存.
+     * 已有原始字节的类型直接复制数据块, 保留原来的压缩方式, CRC 和类型版本;
+     * 新增或替换的 Tag 按当前压缩配置编码.
      *
-     * @param meta 已序列化的元数据, 空数组表示元数据由外层载体提供
-     * @param data 按 keys 的迭代顺序编码的数据体
-     * @return 各段紧密排列的容器
-     * @throws IOException 当 NBT 序列化或块压缩失败时
+     * @param data 要保存的各类型数据, 可以同时包含原始数据块和修改后的 Tag
+     * @return 依次包含帧头, 索引和所有数据块的完整字节数组, 帧头的 HAS_META 标志为 0
+     * @throws IOException 当 NBT 序列化或压缩失败, 或逐块复制时发现数据块超出原数组范围
+     */
+    @NotNull
+    public byte[] frameData(@NotNull SnapshotData data) throws IOException {
+        return this.encodeFrame(new byte[0], data);
+    }
+
+    /**
+     * 构建完整的二进制帧, 传入元数据时生成可用于文件保存和跨服传输的完整快照; 传入空数组时生成数据库数据字段的内容.
+     *
+     * @param meta 已序列化的元数据 NBT, 长度须不超过 65535 字节; 空数组表示帧内不保存元数据
+     * @param data 本次要写出的全部类型数据, 可包含原始数据块及新增或替换的 Tag
+     * @return 按帧头, 可选元数据, 索引, 所有数据块的顺序排列的完整字节数组
+     * @throws IOException 当 NBT 序列化或压缩失败, 或逐块复制时发现数据块超出原数组范围
      */
     @NotNull
     private byte[] encodeFrame(byte @NotNull [] meta, @NotNull SnapshotData data) throws IOException {
+        //  LazySnapshotData 已有完整帧, 直接复制其中的索引和所有数据块;
+        if (data instanceof LazySnapshotData lazy) return copyFrame(meta, lazy.encodedFrame());
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex.Entry> entries = new LinkedHashMap<>();
-        // 偏移以块区起点为零, l 仅计 payload, 块头的 9 字节单独参与寻址.
+        // 按 keys 的顺序写出数据块, 自动记录每块的位置, 长度, 压缩方式和类型版本并生成新索引
+        // 索引中的位置从第一个数据块起计算; 每块占用 9 字节块头加实际数据长度, 索引的 length 只记录后者
         for (DataKey key : data.keys()) {
             String name = key.asString();
+            RawBlock raw = data.raw(key);
+            if (raw != null) {
+                BlockIndex.Entry entry = raw.entry();
+                long length = BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.length();
+                if (raw.offset() < 0 || raw.offset() + length > raw.bytes().length) {
+                    throw new FormatException(InvalidReason.CORRUPTED, "raw block out of bounds for " + name);
+                }
+                // 前面的块修改后长度可能变化, 因此重算此块的位置; 复制的内容没变, 其余索引信息沿用原值.
+                entries.put(name, new BlockIndex.Entry(blocks.size(), entry.length(), entry.rawLength(), entry.compressorId(), entry.version()));
+                blocks.write(raw.bytes(), (int) raw.offset(), (int) length);
+                continue;
+            }
             byte[] block = BlockCodec.encode(name, data.get(key), this.compressor, this.compressThreshold);
             ByteBuffer header = ByteBuffer.wrap(block);
             byte compressorId = header.get();
@@ -114,7 +144,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         CRC32 crc = new CRC32();
         crc.update(meta);
         crc.update(index);
-        // meta 和 index 共用连续校验区, 块内 CRC 各自覆盖压缩后的 payload.
+        // 帧头的 CRC 校验元数据和索引; 每个数据块另有 CRC, 校验该块实际保存的数据字节.
         ByteArrayOutputStream output = new ByteArrayOutputStream(HEADER_LENGTH + meta.length + index.length + blocks.size());
         byte[] header = ByteBuffer.allocate(HEADER_LENGTH)
                 .put(MAGIC_0).put(MAGIC_1).put((byte) CURRENT_VERSION).put((byte) (meta.length == 0 ? 0 : FLAG_HAS_META))
@@ -126,7 +156,30 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         return output.toByteArray();
     }
 
-    // 解码完整快照的元数据和索引, 数据块留到首次取值时还原.
+    /**
+     * 替换已有帧的元数据, 返回重新组装的完整帧.
+     * 重新写入帧头并计算元数据与索引的 CRC, 原索引和所有数据块连续复制到新数组中.
+     *
+     * @param meta 新的元数据 NBT 字节, 空数组表示移除帧内元数据
+     * @param original 已读取并校验过帧头和索引的原帧, 包括帧头, 可选元数据, 索引和数据块
+     * @return 包含新帧头, 新元数据以及原索引和原数据块的新字节数组
+     */
+    @NotNull
+    private static byte[] copyFrame(byte @NotNull [] meta, byte @NotNull [] original) {
+        ByteBuffer source = ByteBuffer.wrap(original);
+        int indexOffset = HEADER_LENGTH + Short.toUnsignedInt(source.getShort(4));
+        int indexLength = source.getInt(6);
+        CRC32 crc = new CRC32();
+        crc.update(meta);
+        crc.update(original, indexOffset, indexLength);
+        // 元数据变化后需更新帧头中的 CRC; 各块的内容没变, 块内原有的 CRC 随数据一起复制.
+        return ByteBuffer.allocate(HEADER_LENGTH + meta.length + original.length - indexOffset)
+                .put(MAGIC_0).put(MAGIC_1).put((byte) CURRENT_VERSION).put((byte) (meta.length == 0 ? 0 : FLAG_HAS_META))
+                .putShort((short) meta.length).putInt(indexLength).putInt((int) crc.getValue())
+                .put(meta).put(original, indexOffset, original.length - indexOffset).array();
+    }
+
+    // 读取并校验帧头, 元数据和索引后返回快照; 各类型的数据块在首次取值时才校验, 解压并解析 NBT.
     @Override
     @NotNull
     public DecodedSnapshot decode(byte @NotNull [] encoded) {

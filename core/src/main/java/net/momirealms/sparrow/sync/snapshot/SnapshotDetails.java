@@ -89,20 +89,27 @@ public final class SnapshotDetails {
         }, this.executor);
     }
 
-    // 将选择性解码结果组合为详情, 原快照继续保存全部类型的 Tag.
+    /**
+     * 为快照中的每个类型生成详情页预览结果, 并保留快照中的类型顺序.
+     * 支持预览的类型会读取并转换为玩家数据对象, 读取失败则记录错误.
+     * 其余类型只记录是否已注册以及索引中的未压缩 NBT 字节数, 不读取该类型的数据块.
+     *
+     * @param snapshot 要展示的快照
+     * @return 原快照和只读的预览结果表, 每个类型对应可展示, 读取失败或不支持预览三种结果之一
+     */
     @NotNull
     private SnapshotDetailResult.Ready prepare(@NotNull Snapshot snapshot) {
         DecodedSnapshotData decoded = this.decoder.decodeSelected(snapshot, SnapshotDetails::supportsPreview);
         Map<DataKey, Preview> previews = new LinkedHashMap<>();
-        for (var entry : snapshot.allData().entrySet()) {
-            PlayerDataType<?> type = this.registry.type(entry.getKey());
+        for (DataKey key : snapshot.keys()) {
+            PlayerDataType<?> type = this.registry.type(key);
             if (!supportsPreview(type)) {
-                previews.put(entry.getKey(), new Preview.Unsupported(type != null));
+                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key)));
                 continue;
             }
-            Throwable failure = decoded.failure(entry.getKey());
-            previews.put(entry.getKey(), failure == null
-                    ? new Preview.Ready(decoded.value(entry.getKey()))
+            Throwable failure = decoded.failure(key);
+            previews.put(key, failure == null
+                    ? new Preview.Ready(decoded.value(key))
                     : new Preview.Failed(String.valueOf(failure.getMessage())));
         }
         return new SnapshotDetailResult.Ready(snapshot, Collections.unmodifiableMap(previews));

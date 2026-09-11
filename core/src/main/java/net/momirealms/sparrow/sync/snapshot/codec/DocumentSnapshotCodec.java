@@ -59,8 +59,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_SERVER, meta.server());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
-        // 数据体独立封帧, 元数据保留在文档外层供列表和索引查询.
-        document.append(FIELD_DATA, new Binary(this.binary.frameData(snapshot.allData())));
+        // data 字段保存各类型的数据帧, 元数据保存在文档的其他字段, 便于直接查询快照信息.
+        document.append(FIELD_DATA, new Binary(this.binary.frameData(snapshot.content())));
         return document;
     }
 

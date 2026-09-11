@@ -30,10 +30,25 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 验证行快照的数据保真、元信息独立性和无效内容的错误分类.
+ * 验证数据库行编解码后各类型的 NBT 值保持一致, 元数据可单独修改, 损坏数据返回对应的错误原因.
  */
 class PostgresRowSnapshotCodecTest {
-    private final PostgresRowSnapshotCodec codec = new PostgresRowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 统一使用的读取入口, 用于验证不同写入压缩方式的兼容性
+    private final PostgresRowSnapshotCodec codec = new PostgresRowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 用同一个解码器读取各压缩方式生成的快照, 验证读取结果与写入时的压缩配置无关
+
+    /**
+     * 读取数据库格式的快照后直接重新编码, 验证保存的帧字节保持一致.
+     * 重新保存期间不应将任何数据块解析为 Tag.
+     *
+     * @throws Exception 当快照编码或读取已解析块数失败时
+     */
+    @Test
+    void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
+        SnapshotRow original = this.codec.encode(SnapshotFixtures.snapshot());
+        Snapshot lazy = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(original)).snapshot();
+        SnapshotRow rewritten = this.codec.encode(lazy);
+        assertArrayEquals(original.data(), rewritten.data());
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(lazy));
+    }
 
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)

@@ -41,25 +41,25 @@ public final class SnapshotDecoder {
         return this.decode(snapshot, selected, false);
     }
 
-    // 按注册表布局解码数据, 将场景差异限定在类型选择与失败处置.
+    // 按注册表确定的顺序读取选中的类型并转换为玩家数据对象; 数据块读取失败和类型转换失败都记在该类型的结果中.
     @NotNull
     private DecodedSnapshotData decode(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected, boolean applying) {
-        Tag[] tags = new Tag[this.registry.size()];
         Map<DataKey, Tag> passthrough = null;
-        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
-            int slot = this.registry.slot(entry.getKey());
-            if (slot < 0) {
-                if (passthrough == null) {
-                    passthrough = new LinkedHashMap<>();
+        // 应用快照时先读取未注册类型的 Tag, 交给会话在后续保存时保留; 预览无需读取它们, 原快照仍持有这些数据.
+        if (applying) {
+            for (DataKey key : snapshot.keys()) {
+                if (this.registry.slot(key) < 0) {
+                    if (passthrough == null) {
+                        passthrough = new LinkedHashMap<>();
+                    }
+                    passthrough.put(key, snapshot.data(key));
                 }
-                passthrough.put(entry.getKey(), entry.getValue());
-            } else {
-                tags[slot] = entry.getValue();
             }
         }
         DecodedSnapshotData result = new DecodedSnapshotData(this.registry, passthrough == null ? Map.of() : passthrough);
-        for (int i = 0; i < tags.length; i++) {
-            if (tags[i] == null) {
+        for (int i = 0; i < this.registry.size(); i++) {
+            DataKey key = this.registry.keyAt(i);
+            if (!snapshot.keys().contains(key)) {
                 continue;
             }
             PlayerDataType<?> type = this.registry.typeAt(i);
@@ -67,9 +67,11 @@ public final class SnapshotDecoder {
                 continue;
             }
             try {
-                result.values[i] = type.decode(tags[i], snapshot.meta().mcDataVersion());
+                Tag tag = snapshot.data(key);
+                if (tag == null) continue;
+                result.values[i] = type.decode(tag, snapshot.meta().mcDataVersion());
             } catch (Throwable failure) {
-                // 预览沿用内容异常的处理范围, 虚拟机等 Error 继续交给调用边界.
+                // 预览只把 IOException 和 RuntimeException 记为该类型的读取失败, Error 继续向外抛出.
                 if (!applying && !(failure instanceof IOException || failure instanceof RuntimeException)) {
                     throw (Error) failure;
                 }

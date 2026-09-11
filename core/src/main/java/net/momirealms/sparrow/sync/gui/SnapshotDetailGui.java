@@ -510,9 +510,10 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 按手持槽位、饥饿、游戏模式、经验、生命、附魔种子和货币余额的顺序汇总可读取值.
+     * 生成详情页摘要图标的说明文字, 包括已读取的经验, 生命值等玩家状态.
+     * 末尾列出无法预览的类型; 已知 NBT 字节数时一并显示, 长度未知时只显示类型名.
      *
-     * @return 状态摘要图标使用的 Lore 行
+     * @return 按显示顺序排列的物品说明行
      */
     private List<Component> summary() {
         List<Component> lines = new ArrayList<>();
@@ -537,6 +538,14 @@ public final class SnapshotDetailGui {
         }
         if (previews.get(EmoneyDataType.EMONEY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof EmoneyDataType.Money money) {
             lines.add(this.text("additional.emoney", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
+        }
+        // 大小已在准备预览时从索引中取得; 此处直接显示, 无需读取这些类型的 NBT.
+        for (var entry : previews.entrySet()) {
+            if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
+                lines.add(unsupported.rawLength() < 0
+                        ? this.text("additional.unsupported", entry.getKey().asString())
+                        : this.text("additional.unsupported_size", entry.getKey().asString(), unsupported.rawLength()));
+            }
         }
         return lines;
     }

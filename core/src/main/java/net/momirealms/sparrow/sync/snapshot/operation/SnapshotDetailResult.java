@@ -32,7 +32,7 @@ public sealed interface SnapshotDetailResult {
         record Ready(@NotNull Object value) implements Preview {
         }
 
-        record Unsupported(boolean registered) implements Preview {
+        record Unsupported(boolean registered, int rawLength) implements Preview {
         }
 
         record Failed(@NotNull String detail) implements Preview {

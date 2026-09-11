@@ -7,6 +7,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 
 import java.util.Map;
@@ -29,10 +30,23 @@ public final class SnapshotFixtures {
     }
 
     /**
-     * 根据头部的段长定位第一块, 供测试修改块头.
+     * 通过反射读取 LazySnapshotData 中已成功解析并缓存的类型数量, 供测试检查是否多读了数据块.
      *
-     * @param frame 合法分块帧
-     * @return 块区的绝对起点
+     * @param snapshot content 为 LazySnapshotData 的快照
+     * @return 已成功解析为 Tag 的数据块数量, 尚未读取任何块时为 0
+     * @throws ReflectiveOperationException 当无法访问或调用 decodedBlockCount 方法时
+     */
+    public static int decodedBlockCount(Snapshot snapshot) throws ReflectiveOperationException {
+        var counter = LazySnapshotData.class.getDeclaredMethod("decodedBlockCount");
+        counter.setAccessible(true);
+        return (int) counter.invoke(snapshot.content());
+    }
+
+    /**
+     * 从帧头读取元数据和索引的长度, 计算第一个数据块的起点, 供测试修改块头或块内数据.
+     *
+     * @param frame 格式正确的二进制帧
+     * @return 第一个数据块的块头在 frame 数组中的起始下标
      */
     public static int blockBase(byte[] frame) {
         ByteBuffer header = ByteBuffer.wrap(frame);

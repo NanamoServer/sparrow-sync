@@ -38,6 +38,20 @@ public final class LazySnapshotData implements SnapshotData {
         return this.keys;
     }
 
+    // 返回构造时传入的完整帧字节, 供编码器直接复制已有的索引和数据块.
+    @NotNull
+    public byte[] encodedFrame() {
+        return this.frame;
+    }
+
+    @Override
+    @Nullable
+    public RawBlock raw(@NotNull DataKey key) {
+        BlockIndex.Entry entry = this.index.get(key);
+        if (entry == null) return null;
+        return new RawBlock(this.frame, (long) this.blockBase + entry.offset(), entry);
+    }
+
     @Override
     @Nullable
     public Tag get(@NotNull DataKey key) {

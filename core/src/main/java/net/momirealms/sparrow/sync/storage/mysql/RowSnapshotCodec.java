@@ -24,10 +24,10 @@ final class RowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
     @NotNull
     @Override
     public SnapshotRow encode(@NotNull Snapshot snapshot) throws IOException {
-        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frameData(snapshot.allData()));
+        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frameData(snapshot.content()));
     }
 
-    // 将数据库行恢复为快照, 数据格式或内容错误以无效结果返回.
+    // 读取数据库行中的元数据, 帧头和索引并返回快照; 这些内容无效时返回 Invalid, 数据块在取值时才检查.
     @NotNull
     @Override
     public DecodedSnapshot decode(@NotNull SnapshotRow row) {

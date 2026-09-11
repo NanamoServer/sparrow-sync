@@ -1,5 +1,10 @@
 package net.momirealms.sparrow.sync.map;
 
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import java.util.LinkedHashMap;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -581,6 +586,43 @@ class MapPipelineTest {
         }
     }
 
+    /**
+     * 连续执行两次地图处理后, 验证只有背包和末影箱的两个数据块被解析为 NBT.
+     * 无论是否存在需要改写的地图, 随后保存快照都不应解析其余十三个类型的数据块.
+     *
+     * @param hasMap 是否在背包中放入需要改写的地图
+     * @throws Exception 当测试快照编解码或读取已解析块数失败时
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void lazyRewriteOnlyDecodesTwoContainers(boolean hasMap) throws Exception {
+        Snapshot fixture = snapshot(hasMap ? map(7) : item("minecraft:stone"));
+        Map<DataKey, Tag> values = new LinkedHashMap<>(fixture.allData());
+        CompoundTag ender = NBT.createCompound();
+        ender.put("items", list(item("minecraft:stone")));
+        values.put(EnderChestDataType.ENDER_CHEST, ender);
+        for (int i = 0; i < 13; i++) {
+            values.put(DataKey.of("external", "type_" + i), NBT.createString("untouched " + i));
+        }
+        BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(new Snapshot(fixture.meta(), values)))).snapshot();
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
+        Snapshot changed = PIPELINE.encodeAsync(source, MapType.HIDE, OWNER, id -> {
+            throw new AssertionError("HIDE must not publish");
+        }).join();
+        assertEquals(2, SnapshotFixtures.decodedBlockCount(source));
+        if (hasMap) {
+            assertNotSame(source, changed);
+            assertNull(changed.content().raw(InventoryDataType.INVENTORY));
+            assertEquals("HIDE", marker(changed).getString("map-type"));
+        } else {
+            assertSame(source, changed);
+        }
+        assertNotNull(changed.content().raw(DataKey.of("external", "type_0")));
+        byte[] output = codec.encode(changed);
+        assertEquals(2, SnapshotFixtures.decodedBlockCount(source));
+        assertEquals(15, assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(output)).snapshot().keys().size());
+    }
     private static Snapshot snapshot(CompoundTag item) {
         CompoundTag inventory = NBT.createCompound();
         inventory.putInt("size", 43);

@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -44,6 +45,21 @@ class DocumentSnapshotCodecTest {
     @BeforeAll
     static void initializeProxy() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
+    }
+
+    /**
+     * 读取数据库格式的快照后直接重新编码, 验证保存的帧字节保持一致.
+     * 重新保存期间不应将任何数据块解析为 Tag.
+     *
+     * @throws Exception 当快照编码或读取已解析块数失败时
+     */
+    @Test
+    void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
+        Document original = this.codec.encode(SnapshotFixtures.snapshot());
+        Snapshot lazy = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(original)).snapshot();
+        Document rewritten = this.codec.encode(lazy);
+        assertArrayEquals(original.get("data", Binary.class).getData(), rewritten.get("data", Binary.class).getData());
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(lazy));
     }
 
     @ParameterizedTest
