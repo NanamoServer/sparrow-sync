@@ -8,6 +8,9 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bson.BsonDocument;
@@ -22,16 +25,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DocumentSnapshotCodecTest {
     private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
@@ -68,12 +73,10 @@ class DocumentSnapshotCodecTest {
         Document document = this.codec.encode(snapshot);
 
         Binary payload = assertInstanceOf(Binary.class, document.get("data"));
-        CompoundTag data = assertInstanceOf(CompoundTag.class, new BinarySnapshotCodec(CompressorRegistry.NONE).deframe(payload.getData()));
+        SnapshotData data = new BinarySnapshotCodec(CompressorRegistry.NONE).deframeData(payload.getData());
 
-        assertEquals(snapshot.allData().size(), data.size());
-        snapshot.allData().forEach((key, value) -> assertEquals(value, data.get(key.asString())));
-        assertFalse(data.containsKey("player"));
-        assertFalse(data.containsKey("id"));
+        assertEquals(snapshot.keys(), data.keys());
+        assertEquals(snapshot.allData(), data.all());
     }
 
     @Test
@@ -188,16 +191,37 @@ class DocumentSnapshotCodecTest {
         assertEquals(InvalidReason.BAD_MAGIC, invalid.reason());
     }
 
-    @Test
-    void binaryFieldWithUnknownCompressionReportsUnsupportedCompression() throws IOException {
-        Document document = this.codec.encode(SnapshotFixtures.snapshot());
+    /**
+     * 数据帧先返回惰性快照, 坏块取值时才报告具体原因, 其他类型仍可读取.
+     *
+     * @param corruption 0 表示翻转载荷, 99 表示未知压缩算法
+     * @throws IOException 当对照快照编码失败时
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {0, 99})
+    void damagedBlocksFailOnAccessAndLeaveOtherTypesReadable(int corruption) throws IOException {
+        Snapshot source = SnapshotFixtures.snapshot();
+        Document document = this.codec.encode(source);
         byte[] bytes = document.get("data", Binary.class).getData();
-        bytes[SnapshotFixtures.blockBase(bytes)] = 99;
+        int blockBase = SnapshotFixtures.blockBase(bytes);
+        // 两种损坏都保留容器头和索引, 只改变首块中的字节.
+        if (corruption == 0) {
+            bytes[blockBase + 9] ^= 1;
+        } else {
+            bytes[blockBase] = (byte) corruption;
+        }
         document.put("data", new Binary(bytes));
-
-        DecodedSnapshot decoded = this.codec.decode(document);
-
-        assertEquals(InvalidReason.UNSUPPORTED_COMPRESSION, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
+        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(document)).snapshot();
+        DataKey broken = restored.keys().iterator().next();
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class, () -> restored.data(broken));
+        FormatException cause = assertInstanceOf(FormatException.class, failure.getCause());
+        assertEquals(corruption == 0 ? InvalidReason.CORRUPTED : InvalidReason.UNSUPPORTED_COMPRESSION, cause.reason());
+        assertTrue(cause.getMessage().contains(broken.asString()));
+        for (DataKey key : source.keys()) {
+            if (!key.equals(broken)) {
+                assertEquals(source.data(key), restored.data(key));
+            }
+        }
     }
 
     @Test

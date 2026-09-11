@@ -170,13 +170,30 @@ class BlockFrameTest {
         assertTrue(entries(bytes).isEmpty());
         assertEquals(base(bytes), bytes.length);
         assertEquals(empty, this.valid(bytes));
-        CompoundTag data = NBT.createCompound();
-        data.put("other:data", NBT.createInt(8));
-        byte[] framed = this.codec.frame(data);
+        DataKey key = DataKey.parse("other:data");
+        Map<DataKey, Tag> data = Map.of(key, NBT.createInt(8));
+        byte[] framed = this.codec.frameData(data);
         assertEquals(0, framed[3]);
         assertEquals(0, ByteBuffer.wrap(framed).getShort(4));
-        assertEquals(data, this.codec.deframe(framed));
+        LazySnapshotData restored = assertInstanceOf(LazySnapshotData.class, this.codec.deframeData(framed));
+        assertEquals(data.keySet(), restored.keys());
+        assertEquals(0, restored.decodedBlockCount());
+        assertEquals(data, restored.all());
+        assertEquals(1, restored.decodedBlockCount());
+        assertSame(restored.get(key), restored.get(key));
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
+    }
+
+    /**
+     * 数据帧入口拒绝含元数据的完整快照, 让两种容器的用途保持明确.
+     *
+     * @throws IOException 当测试快照编码失败时
+     */
+    @Test
+    void dataFrameReaderRejectsSnapshotContainer() throws IOException {
+        byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
+        FormatException failure = assertThrows(FormatException.class, () -> this.codec.deframeData(bytes));
+        assertEquals(InvalidReason.CORRUPTED, failure.reason());
     }
 
     /**

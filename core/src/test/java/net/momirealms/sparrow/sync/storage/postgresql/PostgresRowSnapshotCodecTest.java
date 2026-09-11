@@ -7,6 +7,9 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
@@ -19,6 +22,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
@@ -84,9 +88,9 @@ class PostgresRowSnapshotCodecTest {
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, data));
         SnapshotRow row = this.codec.encode(snapshot);
         // 检查帧内数据结构, 再验证完整快照往返结果.
-        CompoundTag frame = assertInstanceOf(CompoundTag.class, new BinarySnapshotCodec(CompressorRegistry.NONE).deframe(row.data()));
-        assertEquals(1, frame.size());
-        assertEquals(data, frame.get(SnapshotFixtures.UNKNOWN_DOC.asString()));
+        SnapshotData frame = new BinarySnapshotCodec(CompressorRegistry.NONE).deframeData(row.data());
+        assertEquals(1, frame.keys().size());
+        assertEquals(data, frame.get(SnapshotFixtures.UNKNOWN_DOC));
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());
     }
 
@@ -136,9 +140,6 @@ class PostgresRowSnapshotCodecTest {
         bytes[2] = 99;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
         bytes = row.data().clone();
-        bytes[SnapshotFixtures.blockBase(bytes)] = 99;
-        assertEquals(InvalidReason.UNSUPPORTED_COMPRESSION, this.reason(bytes));
-        bytes = row.data().clone();
         bytes[2] = 2;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
         assertEquals(InvalidReason.CORRUPTED, this.reason(SnapshotFixtures.nonCompoundIndexFrame()));
@@ -165,5 +166,36 @@ class PostgresRowSnapshotCodecTest {
      */
     private InvalidReason reason(byte[] bytes) {
         return assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(new SnapshotRow(SnapshotFixtures.meta(), SnapshotCodec.CURRENT_VERSION, bytes))).reason();
+    }
+
+    /**
+     * 数据帧先返回惰性快照, 坏块取值时才报告具体原因, 其他类型仍可读取.
+     *
+     * @param corruption 0 表示翻转载荷, 99 表示未知压缩算法
+     * @throws IOException 当对照快照编码失败时
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {0, 99})
+    void damagedBlocksFailOnAccessAndLeaveOtherTypesReadable(int corruption) throws IOException {
+        Snapshot source = SnapshotFixtures.snapshot();
+        SnapshotRow row = this.codec.encode(source);
+        int blockBase = SnapshotFixtures.blockBase(row.data());
+        // 两种损坏都保留容器头和索引, 只改变首块中的字节.
+        if (corruption == 0) {
+            row.data()[blockBase + 9] ^= 1;
+        } else {
+            row.data()[blockBase] = (byte) corruption;
+        }
+        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot();
+        DataKey broken = restored.keys().iterator().next();
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class, () -> restored.data(broken));
+        FormatException cause = assertInstanceOf(FormatException.class, failure.getCause());
+        assertEquals(corruption == 0 ? InvalidReason.CORRUPTED : InvalidReason.UNSUPPORTED_COMPRESSION, cause.reason());
+        assertTrue(cause.getMessage().contains(broken.asString()));
+        for (DataKey key : source.keys()) {
+            if (!key.equals(broken)) {
+                assertEquals(source.data(key), restored.data(key));
+            }
+        }
     }
 }

@@ -73,26 +73,19 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (meta.length > 0xFFFF) {
             throw new IOException("snapshot meta exceeds unsigned short length: " + meta.length);
         }
-        return this.frame(meta, snapshot.content());
+        return this.encodeFrame(meta, snapshot.content());
     }
 
     /**
-     * 将数据树封为 HAS_META=0 的容器, 供元数据和内容数据分离的数据库格式调用.
+     * 将各类型的值封为 HAS_META=0 的数据帧, 元数据由数据库列或文档外层保存.
      *
-     * @param tag 以完整 DataKey 文本为键的 CompoundTag, 每个值独立成块
-     * @return 元数据长度为零的完整数据帧
-     * @throws IOException 当根不是 compound, 序列化或压缩失败时
+     * @param data 各类型的原始 Tag, 按 Map 的迭代顺序逐块写出
+     * @return 元数据长度为零, 自带版本和索引的数据帧
+     * @throws IOException 当 NBT 序列化或块压缩失败时
      */
     @NotNull
-    public byte[] frame(@NotNull Tag tag) throws IOException {
-        if (!(tag instanceof CompoundTag compound)) {
-            throw new IOException("data root must be a compound");
-        }
-        Map<DataKey, Tag> values = new LinkedHashMap<>();
-        for (Map.Entry<String, Tag> entry : compound.entrySet()) {
-            values.put(DataKey.parse(entry.getKey()), entry.getValue());
-        }
-        return this.frame(new byte[0], new EagerSnapshotData(values));
+    public byte[] frameData(@NotNull Map<DataKey, Tag> data) throws IOException {
+        return this.encodeFrame(new byte[0], new EagerSnapshotData(data));
     }
 
     /**
@@ -104,7 +97,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      * @throws IOException 当 NBT 序列化或块压缩失败时
      */
     @NotNull
-    private byte[] frame(byte @NotNull [] meta, @NotNull SnapshotData data) throws IOException {
+    private byte[] encodeFrame(byte @NotNull [] meta, @NotNull SnapshotData data) throws IOException {
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex.Entry> entries = new LinkedHashMap<>();
         // 偏移以块区起点为零, l 仅计 payload, 块头的 9 字节单独参与寻址.
@@ -151,23 +144,19 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     }
 
     /**
-     * 还原数据库数据帧, 遍历全部块后返回以类型名为键的树.
+     * 读取数据库数据帧的头部与索引, 各类型的块留到首次取值时校验和解压.
      *
-     * @param bytes HAS_META=0 的数据帧
-     * @return 各类型已完整还原的 CompoundTag
-     * @throws IOException 当容器或任一块不可读时, 原因保留在 FormatException 中
+     * @param bytes HAS_META=0 的数据帧, <strong>成功返回后调用方不得修改其字节</strong>
+     * @return 惰性数据体, 通过 get 读取单个类型或通过 all 读取全部类型
+     * @throws IOException 当容器头或索引不可读, 或输入含有帧内元数据时
      */
     @NotNull
-    public Tag deframe(byte @NotNull [] bytes) throws IOException {
+    public SnapshotData deframeData(byte @NotNull [] bytes) throws IOException {
         Frame frame = readFrame(bytes);
         if (frame.meta() != null) {
             throw new FormatException(InvalidReason.CORRUPTED, "expected a data-only frame");
         }
-        CompoundTag values = NBT.createCompound(new LinkedHashMap<>());
-        for (Map.Entry<String, BlockIndex.Entry> entry : frame.index().entrySet()) {
-            values.put(entry.getKey(), BlockCodec.decode(bytes, frame.blockBase(), entry.getKey(), entry.getValue()));
-        }
-        return values;
+        return new LazySnapshotData(bytes, frame.blockBase(), frame.index());
     }
 
     /**

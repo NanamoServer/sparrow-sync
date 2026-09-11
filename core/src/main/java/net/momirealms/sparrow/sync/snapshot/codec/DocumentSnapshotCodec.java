@@ -1,13 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
-import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -17,8 +13,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -65,12 +59,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_SERVER, meta.server());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
-        // data 以 DataKey 为键封成一个帧, 元数据单独保留供列表和索引查询.
-        CompoundTag data = NBT.createCompound();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
-            data.put(entry.getKey().asString(), entry.getValue());
-        }
-        document.append(FIELD_DATA, new Binary(this.binary.frame(data)));
+        // 数据体独立封帧, 元数据保留在文档外层供列表和索引查询.
+        document.append(FIELD_DATA, new Binary(this.binary.frameData(snapshot.allData())));
         return document;
     }
 
@@ -93,14 +83,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
                 case byte[] payload -> payload;
                 case null, default -> throw new IOException("missing or non-binary data field");
             };
-            if (!(this.binary.deframe(bytes) instanceof CompoundTag values)) {
-                return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "data tag is not a compound");
-            }
-            Map<DataKey, Tag> data = new LinkedHashMap<>();
-            for (Map.Entry<String, Tag> entry : values.entrySet()) {
-                data.put(DataKey.parse(entry.getKey()), entry.getValue());
-            }
-            return new DecodedSnapshot.Valid(new Snapshot(meta, data));
+            return new DecodedSnapshot.Valid(new Snapshot(meta, this.binary.deframeData(bytes)));
         } catch (FormatException exception) {
             return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
         } catch (Exception exception) {
