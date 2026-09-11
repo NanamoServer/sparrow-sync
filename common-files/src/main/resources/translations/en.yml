@@ -345,6 +345,7 @@ log.storage.constraint_conflict: 'Writing the snapshot of <arg:0> hit a unique c
 log.storage.encode_failed: 'Failed to encode the snapshot of <arg:0>, this data cannot reach the database'
 log.storage.mysql_schema_initializing: 'Initializing the MySQL schema at v<arg:1> (table prefix: "<arg:0>")'
 log.storage.mysql_schema_migrating: 'Upgrading the MySQL schema v<arg:1> -> v<arg:2> (table prefix: "<arg:0>")'
+log.storage.mysql_version_unsupported: 'The MySQL server is version <arg:0>, but this plugin needs MySQL <arg:1> or later. Shutting the server down.'
 log.storage.order_check_failed: 'Snapshot <arg:0> of <arg:1> was saved, but its position in the history could not be checked'
 log.storage.out_of_order: 'The snapshot <arg:0> of <arg:1> (captured at <arg:2>) landed behind a newer one from <arg:3> captured at <arg:4>'
 log.storage.oversized: 'The snapshot of <arg:0> carries <arg:1> bytes, over the per-snapshot limit, it cannot be written'

@@ -20,6 +20,7 @@ import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.upgrade.MysqlSchemaMigration;
+import net.momirealms.sparrow.sync.util.MysqlServerVersion;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
@@ -44,6 +45,7 @@ import java.util.concurrent.Executor;
 @ApiStatus.Internal
 public final class MysqlStorageProvider implements StorageProvider {
     private static final int MAX_PAYLOAD_BYTES = 15 * 1024 * 1024; // 编码后的完整 data 帧上限, 等于上限允许写入
+    private static final MysqlServerVersion MINIMUM_SERVER_VERSION = new MysqlServerVersion(8, 4, 0); // Connector/J 26.7 只支持 MySQL Server 8.4 及以上
     private static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
     private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
     private static final String NEWEST_FIRST = " ORDER BY `ts` DESC, `id` DESC";
@@ -130,9 +132,10 @@ public final class MysqlStorageProvider implements StorageProvider {
                     })
                     .registerRowMapper(SnapshotRow.class, new SnapshotRowMapper())
                     .registerRowMapper(SnapshotMeta.class, (result, context) -> SnapshotRowMapper.readMeta(result));
+            this.verifyServerVersion(connected);
             new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, MIGRATIONS).migrate(connected, this.options.tablePrefix());
             MysqlMapStorage mapStorage = new MysqlMapStorage(connected, this.options.tablePrefix(), this.asyncExecutor);
-            // 所有准备成功后才转交连接池所有权, 此时 Jdbi 对应的表结构已经可用.
+            // 所有准备成功后转交连接池所有权.
             this.dataSource = pool;
             this.jdbi = connected;
             this.maps = mapStorage;
@@ -140,9 +143,17 @@ public final class MysqlStorageProvider implements StorageProvider {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to initialize MySQL storage", exception);
         } finally {
-            // 初始化期间发生的连接异常和迁移异常都在此释放本次连接池.
             if (!ready) pool.close();
         }
+    }
+
+    // 服务端版本低于驱动支持范围时在改表前停下, 抛给插件层记录并关闭服务器.
+    private void verifyServerVersion(@NotNull Jdbi jdbi) {
+        String reported = jdbi.withHandle(handle -> handle.createQuery("SELECT VERSION()").mapTo(String.class).one());
+        MysqlServerVersion version = MysqlServerVersion.parse(reported);
+        if (version != null && version.atLeast(MINIMUM_SERVER_VERSION)) return;
+        this.logger.error(LogCategory.STORAGE, LogConstants.STORAGE_MYSQL_VERSION_UNSUPPORTED, reported, MINIMUM_SERVER_VERSION.toString());
+        throw new IllegalStateException("MySQL server version " + reported + " is not supported, MySQL " + MINIMUM_SERVER_VERSION + " or later is required");
     }
 
     @Override

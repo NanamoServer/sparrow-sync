@@ -31,6 +31,7 @@ public interface LogConstants {
     String STORAGE_SCHEMA_TOO_NEW = "log.storage.schema_too_new";
     String STORAGE_MYSQL_SCHEMA_INITIALIZING = "log.storage.mysql_schema_initializing";
     String STORAGE_MYSQL_SCHEMA_MIGRATING = "log.storage.mysql_schema_migrating";
+    String STORAGE_MYSQL_VERSION_UNSUPPORTED = "log.storage.mysql_version_unsupported";
     String STORAGE_POSTGRESQL_SCHEMA_INITIALIZING = "log.storage.postgresql_schema_initializing";
     String STORAGE_POSTGRESQL_SCHEMA_MIGRATING = "log.storage.postgresql_schema_migrating";
 
