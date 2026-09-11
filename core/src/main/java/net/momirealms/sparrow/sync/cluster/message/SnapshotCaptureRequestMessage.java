@@ -46,9 +46,9 @@ public final class SnapshotCaptureRequestMessage extends TwoWayRequestMessage<By
         return ID;
     }
 
-    @ApiStatus.Internal
     @Override
     @NotNull
+    @ApiStatus.Internal
     public CompletableFuture<SnapshotCaptureResponseMessage> handleRequest() {
         RemoteSnapshotManager current = receiver;
         if (current == null) return CompletableFuture.completedFuture(new SnapshotCaptureResponseMessage(SnapshotCaptureResult.OFFLINE));

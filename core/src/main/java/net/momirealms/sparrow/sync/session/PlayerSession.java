@@ -120,8 +120,8 @@ public final class PlayerSession implements PlayerDataEntry {
         return original.get();
     }
 
-    @ApiStatus.Internal
     @NotNull
+    @ApiStatus.Internal
     public synchronized Map<DataKey, Tag> retainedData() {
         return this.retainedData;
     }

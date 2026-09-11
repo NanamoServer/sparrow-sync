@@ -41,9 +41,9 @@ public final class HandoffRequestMessage extends TwoWayRequestMessage<ByteBuf, H
         return ID;
     }
 
-    @ApiStatus.Internal
     @Override
     @NotNull
+    @ApiStatus.Internal
     public CompletableFuture<HandoffResponseMessage> handleRequest() {
         HandoffManager service = HandoffRequestMessage.service;
         return CompletableFuture.completedFuture(service == null ? HandoffResponseMessage.unknown() : service.answer(this.player));

@@ -308,6 +308,7 @@ public class SparrowSync implements Plugin {
         this.playerDataPipeline.onDelayedEnable();
         this.mapSyncService.onDelayedEnable();
         this.sessionManager.onDelayedEnable();
+        this.snapshotService.onDelayedEnable();
         this.playerDirectory.onDelayedEnable();
         this.remoteSnapshotManager.onDelayedEnable();
         // 注入读取器

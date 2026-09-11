@@ -17,7 +17,9 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.trigger.SaveTriggerListener;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -53,6 +55,10 @@ public final class SnapshotService {
         this.applier = new SnapshotApplier(this.plugin);
         this.restorer = new SnapshotRestorer(this.plugin, this.saver, this.applier);
         this.transfer = new SnapshotTransfer(this.storage, this.files, this.plugin.scheduler().async());
+    }
+
+    public void onDelayedEnable() {
+        Bukkit.getPluginManager().registerEvents(new SaveTriggerListener(this.plugin, this.plugin.sessionManager()), this.plugin.javaPlugin());
     }
 
     /**
