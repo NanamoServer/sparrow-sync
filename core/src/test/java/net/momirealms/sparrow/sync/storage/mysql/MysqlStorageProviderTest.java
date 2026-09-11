@@ -783,7 +783,7 @@ class MysqlStorageProviderTest {
         assertTrue(provider.setPinned(first.meta().id(), true).join());
         Snapshot replay = new Snapshot(first.meta(), Map.of(DataKey.of("test", "other"), NBT.createString("different")));
         assertEquals(SaveResult.DUPLICATE, provider.saveSnapshot(replay).join());
-        assertEquals(new Snapshot(first.meta().withPinned(true), first.data()), provider.snapshot(first.meta().id()).join().orElseThrow());
+        assertEquals(new Snapshot(first.meta().withPinned(true), first.allData()), provider.snapshot(first.meta().id()).join().orElseThrow());
         assertEquals(newest, provider.latestSnapshot(player).join().orElseThrow());
         assertEquals(3, provider.listSnapshots(SnapshotQuery.of(player)).join().size());
     }
@@ -931,7 +931,7 @@ class MysqlStorageProviderTest {
         provider.initialize();
         Snapshot snapshot = this.snapshot(UUID.randomUUID(), 10, false);
         SnapshotMeta meta = snapshot.meta();
-        Snapshot tooLong = new Snapshot(new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), false, "😀".repeat(256), 4440), snapshot.data());
+        Snapshot tooLong = new Snapshot(new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), false, "😀".repeat(256), 4440), snapshot.allData());
         assertEquals(SaveResult.REJECTED_MALFORMED, provider.saveSnapshot(tooLong).join());
         Snapshot badEncoding = new Snapshot(meta, Map.of(DataKey.of("test", "long"), NBT.createString("a".repeat(70_000))));
         assertThrows(IOException.class, () -> this.codec.encode(badEncoding));

@@ -122,7 +122,7 @@ class SnapshotDetailsTest {
         assertEquals(new Preview.Unsupported(true), ready.previews().get(custom));
         assertEquals(new Preview.Unsupported(false), ready.previews().get(unknown));
         assertSame(raw, ready.snapshot().data(unknown));
-        assertEquals(4, ready.snapshot().data().size());
+        assertEquals(4, ready.snapshot().allData().size());
     }
 
     @Test

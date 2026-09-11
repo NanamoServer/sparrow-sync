@@ -156,7 +156,7 @@ class InvSyncSourceTest {
         var decoded = new SnapshotDecoder(runtime).decodeForApply(snapshot);
         assertNotNull(decoded.value(InventoryDataType.INVENTORY));
         for (var key : List.of(HealthDataType.HEALTH, AttributesDataType.ATTRIBUTES, HungerDataType.HUNGER, ExperienceDataType.EXPERIENCE)) {
-            assertNotNull(snapshot.data().get(key));
+            assertNotNull(snapshot.allData().get(key));
             assertNull(runtime.type(key));
             assertNull(decoded.value(key));
         }

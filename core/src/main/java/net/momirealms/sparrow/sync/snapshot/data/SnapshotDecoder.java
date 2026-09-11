@@ -46,7 +46,7 @@ public final class SnapshotDecoder {
     private DecodedSnapshotData decode(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected, boolean applying) {
         Tag[] tags = new Tag[this.registry.size()];
         Map<DataKey, Tag> passthrough = null;
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             int slot = this.registry.slot(entry.getKey());
             if (slot < 0) {
                 if (passthrough == null) {

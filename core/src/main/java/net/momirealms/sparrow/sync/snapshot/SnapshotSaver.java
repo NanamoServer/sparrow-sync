@@ -231,7 +231,7 @@ final class SnapshotSaver {
                 .server(ServerConfig.serverId())
                 .mcDataVersion(source.meta().mcDataVersion())
                 .build();
-        Snapshot restored = new Snapshot(meta, source.data());
+        Snapshot restored = new Snapshot(meta, source.content());
         SaveRequest request = new SaveRequest(meta, playerName, Map.of(), null);
         request.updateSnapshot(restored);
         this.writer.register(request);

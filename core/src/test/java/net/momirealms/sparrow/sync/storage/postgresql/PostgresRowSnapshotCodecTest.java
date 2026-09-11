@@ -103,7 +103,7 @@ class PostgresRowSnapshotCodecTest {
         SnapshotRow pinned = new SnapshotRow(row.meta().withPinned(true), row.format(), row.data());
         Snapshot decoded = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(pinned)).snapshot();
         assertTrue(decoded.meta().pinned());
-        assertEquals(Map.of(), decoded.data());
+        assertEquals(Map.of(), decoded.allData());
         assertSame(row.data(), pinned.data());
     }
 

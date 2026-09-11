@@ -203,7 +203,7 @@ class NativeMapAdapterTest {
         assertNull(encoded.get("minecraft:map_id"));
         assertEquals("HIDE", encoded.getCompound("minecraft:custom_data").getCompound("sparrow-sync").getString("map-type"));
         assertEquals(1, components.getInt("minecraft:map_id"));
-        assertEquals(snapshot.data(), service.decodeAsync(compiled).join().data());
+        assertEquals(snapshot.allData(), service.decodeAsync(compiled).join().allData());
     }
 
     @Test

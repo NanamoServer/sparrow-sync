@@ -350,7 +350,7 @@ class SnapshotCommandFlowTest {
         assertEquals("history", this.value.get());
         Write write = this.nextWrite();
         assertFalse(completion.isDone());
-        assertEquals(source.data(), write.snapshot.data());
+        assertEquals(source.allData(), write.snapshot.allData());
         assertEquals(SaveCause.RESTORE, write.snapshot.meta().cause());
         assertNotEquals(source.meta().id(), write.snapshot.meta().id());
         write.complete();

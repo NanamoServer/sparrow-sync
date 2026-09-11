@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
@@ -31,6 +32,14 @@ class BinarySnapshotCodecTest {
         assertEquals(CompressorRegistry.DEFLATE.id(), bytes[3]);
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot, restored);
+    }
+
+    @Test
+    void encodingTheSameSnapshotTwiceYieldsIdenticalBytes() throws IOException {
+        Snapshot snapshot = SnapshotFixtures.snapshot();
+
+        // 数据体隔了一层取用后, 迭代顺序仍跟随构造时的 Map, 编码结果逐字节可重复
+        assertArrayEquals(this.codec.encode(snapshot), this.codec.encode(snapshot));
     }
 
     @Test

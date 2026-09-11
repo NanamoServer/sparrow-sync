@@ -75,8 +75,8 @@ class DocumentSnapshotCodecTest {
         Binary payload = assertInstanceOf(Binary.class, document.get("data"));
         CompoundTag data = assertInstanceOf(CompoundTag.class, new BinarySnapshotCodec(CompressorRegistry.NONE).deframe(payload.getData()));
 
-        assertEquals(snapshot.data().size(), data.size());
-        snapshot.data().forEach((key, value) -> assertEquals(value, data.get(key.asString())));
+        assertEquals(snapshot.allData().size(), data.size());
+        snapshot.allData().forEach((key, value) -> assertEquals(value, data.get(key.asString())));
         assertFalse(data.containsKey("player"));
         assertFalse(data.containsKey("id"));
     }

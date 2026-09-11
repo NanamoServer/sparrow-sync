@@ -67,7 +67,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
         // data 以 DataKey 为键封成一个帧, 元数据单独保留供列表和索引查询.
         CompoundTag data = NBT.createCompound();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             data.put(entry.getKey().asString(), entry.getValue());
         }
         document.append(FIELD_DATA, new Binary(this.binary.frame(data)));

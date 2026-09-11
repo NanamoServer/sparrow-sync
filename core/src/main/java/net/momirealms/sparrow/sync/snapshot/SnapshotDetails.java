@@ -93,7 +93,7 @@ public final class SnapshotDetails {
     private SnapshotDetailResult.Ready prepare(@NotNull Snapshot snapshot) {
         DecodedSnapshotData decoded = this.decoder.decodeSelected(snapshot, SnapshotDetails::supportsPreview);
         Map<DataKey, Preview> previews = new LinkedHashMap<>();
-        for (var entry : snapshot.data().entrySet()) {
+        for (var entry : snapshot.allData().entrySet()) {
             PlayerDataType<?> type = this.registry.type(entry.getKey());
             if (!supportsPreview(type)) {
                 previews.put(entry.getKey(), new Preview.Unsupported(type != null));
@@ -101,7 +101,8 @@ public final class SnapshotDetails {
             }
             Throwable failure = decoded.failure(entry.getKey());
             previews.put(entry.getKey(), failure == null
-                    ? new Preview.Ready(decoded.value(entry.getKey())) : new Preview.Failed(String.valueOf(failure.getMessage())));
+                    ? new Preview.Ready(decoded.value(entry.getKey()))
+                    : new Preview.Failed(String.valueOf(failure.getMessage())));
         }
         return new SnapshotDetailResult.Ready(snapshot, Collections.unmodifiableMap(previews));
     }

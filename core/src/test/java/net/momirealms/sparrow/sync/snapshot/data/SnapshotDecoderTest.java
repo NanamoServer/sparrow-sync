@@ -56,7 +56,7 @@ class SnapshotDecoderTest {
         List<DataKey> calls = new ArrayList<>();
         DataRegistry registry = registry(new TestType(FIRST, true, true, calls), new TestType(LAST, false, false, calls));
         Snapshot original = snapshot();
-        Map<DataKey, Tag> raw = original.data();
+        Map<DataKey, Tag> raw = original.allData();
 
         DecodedSnapshotData preview = new SnapshotDecoder(registry).decodeSelected(original, type -> type.key().equals(LAST));
 
@@ -64,7 +64,7 @@ class SnapshotDecoderTest {
         assertNull(preview.value(FIRST));
         assertNull(preview.failure(FIRST));
         assertNull(preview.value(UNKNOWN));
-        assertSame(raw, original.data());
+        assertSame(raw, original.allData());
         assertEquals("external", original.data(UNKNOWN).getAsString());
     }
 

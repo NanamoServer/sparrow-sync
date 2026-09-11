@@ -49,7 +49,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         document.append(BinarySnapshotCodec.FIELD_MC_DATA, meta.mcDataVersion());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         Document data = new Document();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             data.append(entry.getKey().asString(), new CompactStringTagVisitor().visit(entry.getValue()));
         }
         document.append(BinarySnapshotCodec.FIELD_DATA, data);

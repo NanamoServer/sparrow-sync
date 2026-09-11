@@ -63,7 +63,7 @@ class SnapshotMigrationTest {
         assertEquals(4189, first.meta().mcDataVersion());
         assertEquals("migration-server", first.meta().server());
         assertFalse(first.meta().pinned());
-        assertEquals(SnapshotFixtures.snapshot().data(), first.data());
+        assertEquals(SnapshotFixtures.snapshot().allData(), first.allData());
         assertEquals(new StoredUser(id(1), "Player1", 501), this.users.get(id(1)));
         Map<UUID, Snapshot> once = Map.copyOf(this.snapshots);
         this.snapshots.put(first.meta().id(), new Snapshot(first.meta(), Map.of()));
@@ -76,7 +76,7 @@ class SnapshotMigrationTest {
     @Test
     void unknownLastSeenSurvivesZipAndRepeatedImport() {
         StoredUser user = new StoredUser(id(1), "Player1", 0);
-        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), user, null, 4189, SnapshotFixtures.snapshot().data())));
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), user, null, 4189, SnapshotFixtures.snapshot().allData())));
         assertNull(result.failure());
         assertNull(result.imported().failure());
         assertEquals(1, result.users());
@@ -88,7 +88,7 @@ class SnapshotMigrationTest {
 
     @Test
     void missingSourceTimeUsesBatchTimeWithoutInventingUserMapping() {
-        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, 4189, SnapshotFixtures.snapshot().data())));
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, 4189, SnapshotFixtures.snapshot().allData())));
         assertNull(result.failure());
         assertEquals(0, result.users());
         assertTrue(this.users.isEmpty());
@@ -241,7 +241,7 @@ class SnapshotMigrationTest {
         assertSame(unrelated, recovered.get(unrelated.meta().id()));
         assertNull(this.importer().importFile("migration.zip").failure());
         assertEquals(recovered, this.snapshots);
-        for (Snapshot snapshot : this.snapshots.values()) assertEquals(SnapshotFixtures.snapshot().data(), snapshot.data());
+        for (Snapshot snapshot : this.snapshots.values()) assertEquals(SnapshotFixtures.snapshot().allData(), snapshot.allData());
     }
 
     @Test
@@ -361,7 +361,7 @@ class SnapshotMigrationTest {
     }
 
     private static MigrationSource.PlayerData data(int value) {
-        return new MigrationSource.PlayerData(id(value), new StoredUser(id(value), "Player" + value, 500 + value), 1000L + value, 4189, SnapshotFixtures.snapshot().data());
+        return new MigrationSource.PlayerData(id(value), new StoredUser(id(value), "Player" + value, 500 + value), 1000L + value, 4189, SnapshotFixtures.snapshot().allData());
     }
 
     private static UUID id(int value) { return new UUID(0, value); }

@@ -216,7 +216,7 @@ class MapPipelineTest {
         this.nativeMaps.sourcePresent(true);
         CompletableFuture<Snapshot> returned = pipeline.decodeAsync(compiled, OWNER);
         nativeThread.runAll();
-        assertEquals(original.data(), returned.join().data());
+        assertEquals(original.allData(), returned.join().allData());
         assertEquals(-1, components(compiled).getInt("minecraft:map_id"));
     }
 
@@ -269,7 +269,7 @@ class MapPipelineTest {
 
             Snapshot original = snapshot(map(7));
             Snapshot hidden = pipeline.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
-            assertEquals(original.data(), pipeline.decodeAsync(hidden, OWNER).join().data());
+            assertEquals(original.allData(), pipeline.decodeAsync(hidden, OWNER).join().allData());
             assertEquals(0, closed.getNumberOfDependents());
 
             CompletableFuture<StoredMap> published = new CompletableFuture<>();
@@ -284,7 +284,7 @@ class MapPipelineTest {
             CompletableFuture<Snapshot> decoding = pipeline.decodeAsync(compiled, OWNER);
             assertFalse(decoding.isDone());
             nativeThread.runAll();
-            assertEquals(original.data(), decoding.join().data());
+            assertEquals(original.allData(), decoding.join().allData());
             assertEquals(0, closed.getNumberOfDependents());
         }
         assertFalse(closed.isDone());
@@ -357,7 +357,7 @@ class MapPipelineTest {
         assertEquals(-1, components(missing).getInt("minecraft:map_id"));
         assertEquals(OWNER, marker(missing).getString("origin-server"));
         restore[0] = true;
-        assertEquals(original.data(), pipeline.decodeAsync(compiled, OWNER).join().data());
+        assertEquals(original.allData(), pipeline.decodeAsync(compiled, OWNER).join().allData());
     }
 
     @Test
@@ -380,7 +380,7 @@ class MapPipelineTest {
         assertEquals(OWNER, marker(compiled).getString("origin-server"));
         assertEquals(0, marker(compiled).getInt("origin-id"));
         assertEquals(expected, firstItem(original));
-        assertEquals(original.data(), PIPELINE.decodeAsync(compiled, OWNER).join().data());
+        assertEquals(original.allData(), PIPELINE.decodeAsync(compiled, OWNER).join().allData());
     }
 
     @Test
@@ -388,14 +388,14 @@ class MapPipelineTest {
         Snapshot original = snapshot(map(42));
         Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot inB = PIPELINE.decodeAsync(compiled, "B-world-2").join();
-        Snapshot savedByB = new Snapshot(meta("B"), inB.data());
+        Snapshot savedByB = new Snapshot(meta("B"), inB.allData());
         Snapshot inC = PIPELINE.encodeAsync(savedByB, MapType.HIDE, "B-world-2", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
 
         assertSame(savedByB, inC);
         assertSame(inC, PIPELINE.decodeAsync(inC, "C-world-3").join());
         assertSame(inC, PIPELINE.decodeAsync(inC, "A-rebuilt-world").join());
         assertFalse(components(inC).containsKey("minecraft:map_id"));
-        assertEquals(original.data(), PIPELINE.decodeAsync(inC, OWNER).join().data());
+        assertEquals(original.allData(), PIPELINE.decodeAsync(inC, OWNER).join().allData());
     }
 
     @Test
@@ -419,7 +419,7 @@ class MapPipelineTest {
         for (MapType type : MapType.values()) {
             Snapshot compiled = pipeline.encodeAsync(original, type, OWNER, nativeMapId -> Map.<Integer, CompletableFuture<StoredMap>>of(7, CompletableFuture.completedFuture(storage.current)).get(nativeMapId)).join();
             assertEquals(type.name(), marker(compiled).getString("map-type"));
-            assertEquals(original.data(), pipeline.decodeAsync(compiled, OWNER).join().data());
+            assertEquals(original.allData(), pipeline.decodeAsync(compiled, OWNER).join().allData());
         }
     }
 
@@ -441,14 +441,14 @@ class MapPipelineTest {
         Snapshot original = new Snapshot(meta("A"), Map.of(InventoryDataType.INVENTORY, contents, EnderChestDataType.ENDER_CHEST, contents));
 
         Snapshot compiled = PIPELINE.encodeAsync(original, MapType.HIDE, OWNER, nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
-        for (Tag value : compiled.data().values()) {
+        for (Tag value : compiled.allData().values()) {
             ListTag items = ((CompoundTag) value).getList("items");
             CompoundTag hiddenBundle = items.getCompound(0).getCompound("components").getList("minecraft:container").getCompound(0).getCompound("item");
             assertFalse(hiddenBundle.getCompound("components").getList("minecraft:bundle_contents").getCompound(1).getCompound("components").containsKey("minecraft:map_id"));
             assertFalse(items.getCompound(1).getCompound("components").getList("minecraft:charged_projectiles").getCompound(0).getCompound("components").containsKey("minecraft:map_id"));
             assertFalse(items.getCompound(2).getCompound("components").getCompound("minecraft:use_remainder").getCompound("components").containsKey("minecraft:map_id"));
         }
-        assertEquals(original.data(), PIPELINE.decodeAsync(compiled, OWNER).join().data());
+        assertEquals(original.allData(), PIPELINE.decodeAsync(compiled, OWNER).join().allData());
     }
 
     @Test

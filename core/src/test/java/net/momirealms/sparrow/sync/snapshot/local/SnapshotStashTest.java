@@ -68,7 +68,7 @@ class SnapshotStashTest {
         DecodedSnapshot decoded = codec.decode(Files.readAllBytes(files.get(0)));
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot.meta(), restored.meta());
-        assertEquals(snapshot.data(), restored.data());
+        assertEquals(snapshot.allData(), restored.allData());
         assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(files.getFirst()));
     }
 

@@ -18,8 +18,8 @@ class SnapshotTest {
     @Test
     void dataIsReadOnly() {
         Snapshot snapshot = this.snapshot(Map.of(DataKey.sparrow("inventory"), NBT.createString("first")));
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.data().clear());
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.data().put(DataKey.sparrow("health"), NBT.createString("second")));
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.allData().clear());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.allData().put(DataKey.sparrow("health"), NBT.createString("second")));
     }
 
     @Test
@@ -30,7 +30,7 @@ class SnapshotTest {
         Snapshot snapshot = this.snapshot(data);
         assertEquals(
                 new ArrayList<>(data.keySet()),
-                new ArrayList<>(snapshot.data().keySet())
+                new ArrayList<>(snapshot.allData().keySet())
         );
     }
 

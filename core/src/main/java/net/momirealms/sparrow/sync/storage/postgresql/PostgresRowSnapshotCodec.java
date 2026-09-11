@@ -31,7 +31,7 @@ final class PostgresRowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
     public SnapshotRow encode(@NotNull Snapshot snapshot) throws IOException {
         // 完整 DataKey 文本作为标签名, 未注册的数据类型也能原样保存.
         CompoundTag data = NBT.createCompound();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             data.put(entry.getKey().asString(), entry.getValue());
         }
         return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frame(data));

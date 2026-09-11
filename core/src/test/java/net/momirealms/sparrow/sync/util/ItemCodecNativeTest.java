@@ -244,7 +244,7 @@ class ItemCodecNativeTest {
                 EnderChestDataType.ENDER_CHEST, enderChestType.encode(decodedEnder)));
         Snapshot forwarded = pipeline.encodeAsync(saved, MapType.HIDE, "B-world", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot restored = pipeline.decodeAsync(forwarded, "A-world").join();
-        assertEquals(original.data(), restored.data());
+        assertEquals(original.allData(), restored.allData());
         InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
         assertTrue(ItemStack.matches(map, decodedRestored.contents()[0]));
         assertTrue(ItemStack.matches(box, decodedRestored.contents()[40]));

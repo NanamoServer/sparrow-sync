@@ -42,7 +42,7 @@ public class SnapshotFilesTest {
         String output = files.export(original, format);
         assertTrue(output.startsWith("snapshot/output/" + original.meta().player() + "/" + original.meta().id() + "."));
         assertEquals(original, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(output.substring("snapshot/output/".length()))).snapshot());
-        Snapshot updated = new Snapshot(original.meta().withPinned(false), original.data());
+        Snapshot updated = new Snapshot(original.meta().withPinned(false), original.allData());
         assertEquals(output, files.export(updated, format));
         assertEquals(updated, assertInstanceOf(DecodedSnapshot.Valid.class, files.read(output.substring("snapshot/output/".length()))).snapshot());
     }

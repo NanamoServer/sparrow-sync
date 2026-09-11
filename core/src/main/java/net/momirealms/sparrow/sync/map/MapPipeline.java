@@ -215,7 +215,7 @@ public final class MapPipeline {
             if (!(snapshot.data(key) instanceof CompoundTag container)) continue;
             CompoundTag prepared = this.rewriteList(container, "items", false, operation);
             if (prepared == container) continue;
-            if (changed == null) changed = new LinkedHashMap<>(snapshot.data());
+            if (changed == null) changed = new LinkedHashMap<>(snapshot.allData());
             changed.put(key, prepared);
         }
         return changed == null ? snapshot : new Snapshot(snapshot.meta(), changed);

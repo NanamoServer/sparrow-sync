@@ -73,7 +73,7 @@ class StorageDumpIntegrationTest {
             public String id() { return "fixture"; }
             @Override
             public void read(Sink sink) throws Exception {
-                sink.accept(new PlayerData(player, new StoredUser(player, "Migrated", 123), 456L, 4189, SnapshotFixtures.snapshot().data()));
+                sink.accept(new PlayerData(player, new StoredUser(player, "Migrated", 123), 456L, 4189, SnapshotFixtures.snapshot().allData()));
             }
         };
         SnapshotMigration.Result migrated = new SnapshotMigration(files, this.codec, importer, "source-server").migrate("migration.zip", source, 999);
@@ -82,7 +82,7 @@ class StorageDumpIntegrationTest {
         Snapshot first = target.latestSnapshot(player).join().orElseThrow();
         assertEquals(SaveCause.MIGRATION, first.meta().cause());
         assertEquals(456, first.meta().timestamp());
-        assertEquals(SnapshotFixtures.snapshot().data(), first.data());
+        assertEquals(SnapshotFixtures.snapshot().allData(), first.allData());
         List<Snapshot> once = target.scanSnapshots(Long.MAX_VALUE, null, 100).join();
         assertEquals(2, once.size());
         assertNull(importer.importFile("migration.zip").failure());
@@ -102,7 +102,7 @@ class StorageDumpIntegrationTest {
         UUID player = UUID.randomUUID();
         Map<UUID, Snapshot> expected = new HashMap<>();
         for (int i = 0; i < 12; i++) {
-            Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 100 + i, SaveCause.COMMAND, i % 2 == 0, "origin", 4189), SnapshotFixtures.snapshot().data());
+            Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 100 + i, SaveCause.COMMAND, i % 2 == 0, "origin", 4189), SnapshotFixtures.snapshot().allData());
             assertTrue(source.importSnapshot(snapshot).join().result().stored());
             if (i < 10) expected.put(snapshot.meta().id(), snapshot);
         }

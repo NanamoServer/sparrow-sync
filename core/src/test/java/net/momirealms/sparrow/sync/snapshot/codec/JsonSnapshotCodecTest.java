@@ -33,7 +33,7 @@ class JsonSnapshotCodecTest {
         // SNBT 往返对 Tag 类型保真, 数组与数值后缀原样回来
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot.meta(), restored.meta());
-        assertEquals(snapshot.data(), restored.data());
+        assertEquals(snapshot.allData(), restored.allData());
     }
 
     @Test

@@ -276,7 +276,7 @@ class CaptureSchedulingTest {
             this.releaseWorker.countDown();
             this.awaitSubmissions();
             assertEquals(1, mapStarted.getCount(), "RESTORE 原内容不得再次准备或发布地图");
-            assertEquals(source.data(), this.written.getFirst().data());
+            assertEquals(source.allData(), this.written.getFirst().allData());
             assertEquals(SaveCause.RESTORE, this.written.getFirst().meta().cause());
             this.finishWrites();
             assertTrue(this.service.sealAndAwaitSaves(2, TimeUnit.SECONDS));
@@ -398,9 +398,9 @@ class CaptureSchedulingTest {
 
         assertEquals(List.of(SaveCause.WORLD_SAVE, SaveCause.DEATH), this.written.stream().map(snapshot -> snapshot.meta().cause()).toList());
         assertTrue(this.written.get(0).meta().timestamp() < this.written.get(1).meta().timestamp());
-        assertEquals("1", this.written.get(0).data().get(this.sync.key()).getAsString());
-        assertEquals("3", this.written.get(0).data().get(this.async.key()).getAsString());
-        assertEquals("2", this.written.get(1).data().get(this.async.key()).getAsString());
+        assertEquals("1", this.written.get(0).allData().get(this.sync.key()).getAsString());
+        assertEquals("3", this.written.get(0).allData().get(this.async.key()).getAsString());
+        assertEquals("2", this.written.get(1).allData().get(this.async.key()).getAsString());
         assertEquals(List.of(CaptureMode.SYNC, CaptureMode.ASYNC), this.async.modes);
         assertSame(Thread.currentThread(), this.sync.threads.getFirst());
         assertSame(Thread.currentThread(), this.async.threads.getFirst());
@@ -531,7 +531,7 @@ class CaptureSchedulingTest {
         assertEquals(SaveCause.RESTORE, restored.meta().cause());
         assertNotEquals(source.meta().id(), restored.meta().id());
         assertFalse(restored.meta().pinned());
-        assertEquals(source.data(), restored.data());
+        assertEquals(source.allData(), restored.allData());
         assertTrue(this.written.get(0).meta().timestamp() < restored.meta().timestamp());
         assertTrue(restored.meta().timestamp() < this.written.get(2).meta().timestamp());
         assertEquals(1, source.meta().timestamp());

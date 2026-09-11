@@ -273,7 +273,7 @@ class SnapshotDumpTest {
 
     private static Snapshot snapshot(int value) {
         Snapshot original = SnapshotFixtures.snapshot();
-        return new Snapshot(new SnapshotMeta(id(value), original.meta().player(), value, SaveCause.COMMAND, true, "source", original.meta().mcDataVersion()), original.data());
+        return new Snapshot(new SnapshotMeta(id(value), original.meta().player(), value, SaveCause.COMMAND, true, "source", original.meta().mcDataVersion()), original.allData());
     }
 
     @SuppressWarnings("unchecked")

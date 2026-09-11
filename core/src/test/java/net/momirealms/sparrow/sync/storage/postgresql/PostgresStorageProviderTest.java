@@ -322,7 +322,7 @@ class PostgresStorageProviderTest {
         PostgresStorageProvider storage = this.open();
         Snapshot valid = snapshot(UUID.randomUUID(), 1, false);
         SnapshotMeta meta = valid.meta();
-        Snapshot invalid = new Snapshot(new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), false, "a\0b", meta.mcDataVersion()), valid.data());
+        Snapshot invalid = new Snapshot(new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), false, "a\0b", meta.mcDataVersion()), valid.allData());
         assertEquals(SaveResult.REJECTED_MALFORMED, storage.saveSnapshot(invalid).join());
         byte[] bytes = new byte[16 * 1024 * 1024];
         new Random(1).nextBytes(bytes);
@@ -541,7 +541,7 @@ class PostgresStorageProviderTest {
 
     private static Snapshot withId(Snapshot source, UUID id) {
         SnapshotMeta meta = source.meta();
-        return new Snapshot(new SnapshotMeta(id, meta.player(), meta.timestamp(), meta.cause(), meta.pinned(), meta.server(), meta.mcDataVersion()), source.data());
+        return new Snapshot(new SnapshotMeta(id, meta.player(), meta.timestamp(), meta.cause(), meta.pinned(), meta.server(), meta.mcDataVersion()), source.allData());
     }
 
     private static MapData mapData(int color) {

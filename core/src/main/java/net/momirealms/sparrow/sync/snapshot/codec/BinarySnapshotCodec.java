@@ -156,7 +156,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         root.putString(FIELD_SERVER, meta.server());
         root.putInt(FIELD_MC_DATA, meta.mcDataVersion());
         CompoundTag data = NBT.createCompound();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.data().entrySet()) {
+        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             data.put(entry.getKey().asString(), entry.getValue());
         }
         root.put(FIELD_DATA, data);

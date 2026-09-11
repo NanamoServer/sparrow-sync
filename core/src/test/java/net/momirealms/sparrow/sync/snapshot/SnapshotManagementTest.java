@@ -68,7 +68,7 @@ class SnapshotManagementTest {
                     Snapshot old = this.stored.get((UUID) args[0]);
                     boolean pinned = (boolean) args[1];
                     boolean changed = old != null && old.meta().pinned() != pinned;
-                    if (changed) this.stored.put(old.meta().id(), new Snapshot(old.meta().withPinned(pinned), old.data()));
+                    if (changed) this.stored.put(old.meta().id(), new Snapshot(old.meta().withPinned(pinned), old.allData()));
                     yield CompletableFuture.completedFuture(changed);
                 }
                 case "deleteSnapshot" -> CompletableFuture.completedFuture(this.stored.remove((UUID) args[0]) != null);
@@ -122,7 +122,7 @@ class SnapshotManagementTest {
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
-        this.stored.put(snapshot.meta().id(), new Snapshot(snapshot.meta().withPinned(false), snapshot.data()));
+        this.stored.put(snapshot.meta().id(), new Snapshot(snapshot.meta().withPinned(false), snapshot.allData()));
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
         assertEquals(3, this.writes.get());
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));

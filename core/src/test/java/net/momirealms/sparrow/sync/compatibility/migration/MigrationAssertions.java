@@ -46,7 +46,7 @@ public final class MigrationAssertions {
         }
         assertEquals(1, imported.size());
         Snapshot snapshot = imported.getFirst();
-        assertEquals(expected, snapshot.data());
+        assertEquals(expected, snapshot.allData());
         imported.clear();
         assertNull(dump.importFile("migration.zip").failure());
         assertEquals(snapshot, imported.getFirst());
