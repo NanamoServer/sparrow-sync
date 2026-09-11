@@ -1,122 +1,97 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
-import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
-import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.util.Date;
-import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
-// 升级管线覆盖二进制快照与文档元数据, 文档的 data 必须符合当前二进制布局.
+/** 版本门控与元数据浏览分别验收, 开发期格式不会进入升级管线. */
 class SnapshotUpgradeTest {
-    private static final UUID PLAYER = UUID.fromString("7f2b3c1d-0a9e-4b8c-9d6f-112233445566");
-    private static final long TIMESTAMP = 1_756_300_000_000L;
+    private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE); // 测试用二进制载体
+    private final DocumentSnapshotCodec document = new DocumentSnapshotCodec(this.binary); // 共享同一帧实现
 
-    private final DocumentSnapshotCodec documentCodec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
-    private final BinarySnapshotCodec binaryCodec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
-
+    /**
+     * 分块格式重新从 1 起步, 范围外版本明确拒绝.
+     *
+     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
+     */
     @Test
-    void legacyDocumentDataIsRejectedButMetadataRemainsReadable() {
-        DecodedSnapshot decoded = this.documentCodec.decode(v1Document(7L));
-
-        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
-        SnapshotMeta meta = DocumentSnapshotCodec.decodeMeta(v1Document(7L));
-        assertEquals(PLAYER, meta.player());
-        assertEquals(TIMESTAMP, meta.timestamp());
+    void legacyBinaryFormatsAreRejected() throws IOException {
+        for (int version : new int[]{0, 2, 3, 255}) {
+            byte[] bytes = this.binary.encode(SnapshotFixtures.snapshot());
+            bytes[2] = (byte) version;
+            DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.binary.decode(bytes));
+            assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
+            assertTrue(invalid.detail().contains("supported range"));
+        }
     }
 
+    /**
+     * 旧文档的数据拒绝读取, 具有有效 UUID 的元数据仍可供列表显示.
+     *
+     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
+     */
     @Test
-    void derivedIdIsStableAcrossReadsAndDistinctPerVersion() {
-        // 同一份 v1 数据反复读出的 id 必须一致, 否则插回时会产生副本
-        UUID first = DocumentSnapshotCodec.decodeMeta(v1Document(7L)).id();
-        UUID again = DocumentSnapshotCodec.decodeMeta(v1Document(7L)).id();
-        UUID other = DocumentSnapshotCodec.decodeMeta(v1Document(8L)).id();
-
-        assertEquals(first, again);
-        assertNotEquals(first, other);
+    void legacyDocumentDataIsRejectedButMetadataRemainsReadable() throws IOException {
+        for (int version : new int[]{0, 2, 3}) {
+            Document encoded = this.document.encode(SnapshotFixtures.snapshot());
+            encoded.put("format", version);
+            assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.document.decode(encoded)).reason());
+            assertEquals(SnapshotFixtures.meta(), DocumentSnapshotCodec.decodeMeta(encoded));
+        }
     }
 
+    /**
+     * 旧元数据若使用非 UUID 身份, 按 BSON 字段契约抛错.
+     *
+     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
+     */
     @Test
-    void v1BinaryFrameGainsDerivedId() throws IOException {
-        CompoundTag root = NBT.createCompound();
-        root.putUUID("player", PLAYER);
-        root.putLong("version", 3L);
-        root.putLong("ts", TIMESTAMP);
-        root.putString("cause", "DISCONNECT");
-        root.put("data", NBT.createCompound());
-
-        DecodedSnapshot decoded = this.binaryCodec.decode(frameAs(root, 1));
-
-        assertEquals(PLAYER, assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot().meta().player());
+    void legacyNonUuidIdIsNotSynthesized() throws IOException {
+        Document encoded = this.document.encode(SnapshotFixtures.snapshot());
+        encoded.put("format", 1);
+        encoded.put("_id", "legacy-object-id");
+        assertThrows(ClassCastException.class, () -> DocumentSnapshotCodec.decodeMeta(encoded));
     }
 
+    /**
+     * 未来版本即使字段可解析也不能作为当前快照读取.
+     *
+     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
+     */
     @Test
-    void futureFormatIsRejectedEvenWhenItWouldStillParse() {
-        // 布局看着能读也不读: 未来版本的字段语义无从预知, 猜着读会把错误数据当好数据用
-        Document document = currentDocument();
-        document.put("format", SnapshotCodec.CURRENT_VERSION + 1);
-
-        DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.documentCodec.decode(document));
-
-        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
-        assertTrue(invalid.detail().contains("supported up to " + SnapshotCodec.CURRENT_VERSION));
+    void futureFormatIsRejectedEvenWhenItWouldStillParse() throws IOException {
+        Document encoded = this.document.encode(SnapshotFixtures.snapshot());
+        encoded.put("format", SnapshotCodec.CURRENT_VERSION + 1);
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.document.decode(encoded)).reason());
     }
 
+    /**
+     * 版本门控不影响管理员查看未来版本的元数据.
+     *
+     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
+     */
     @Test
-    void futureFormatStillListsInMetadata() {
-        // 门控只在 decode 上: 只读元数据不会写到玩家身上, 管理员仍应能看见这份快照
-        Document document = currentDocument();
-        document.put("format", SnapshotCodec.CURRENT_VERSION + 1);
-
-        assertEquals(PLAYER, DocumentSnapshotCodec.decodeMeta(document).player());
+    void futureFormatStillListsInMetadata() throws IOException {
+        Document encoded = this.document.encode(SnapshotFixtures.snapshot());
+        encoded.put("format", SnapshotCodec.CURRENT_VERSION + 1);
+        assertEquals(SnapshotFixtures.meta(), DocumentSnapshotCodec.decodeMeta(encoded));
     }
 
-    // v1 布局: 有 version 没有 id, _id 是驱动生成的 ObjectId 形态 (这里用一个非 UUID 值代表)
-    private static Document v1Document(long version) {
-        return new Document()
-                .append("_id", "legacy-object-id")
-                .append("player", PLAYER)
-                .append("version", version)
-                .append("ts", new Date(TIMESTAMP))
-                .append("cause", "DISCONNECT")
-                .append("pinned", false)
-                .append("server", "lobby-1")
-                .append("format", 1)
-                .append("mcData", 4189)
-                .append("data", new Document());
-    }
-
-    private static Document currentDocument() {
-        return new Document()
-                .append("_id", UUID.randomUUID())
-                .append("player", PLAYER)
-                .append("ts", new Date(TIMESTAMP))
-                .append("cause", "DISCONNECT")
-                .append("pinned", false)
-                .append("server", "lobby-1")
-                .append("format", SnapshotCodec.CURRENT_VERSION)
-                .append("mcData", 4189)
-                .append("data", new Document());
-    }
-
-    // 按指定 format 手工封帧, frame() 只会写当前版本
-    private byte[] frameAs(CompoundTag root, int format) throws IOException {
-        byte[] framed = this.binaryCodec.frame(root);
-        framed[2] = (byte) format;
-        return framed;
+    /** 当前版本和高版本在升级入口原样返回, 不要求不存在的历史升级步. */
+    @Test
+    void emptyUpgradePipelineReturnsOriginalObjects() {
+        var tree = NBT.createCompound();
+        Document document = new Document();
+        assertSame(tree, SnapshotUpgradePipeline.upgrade(tree, SnapshotCodec.CURRENT_VERSION));
+        assertSame(tree, SnapshotUpgradePipeline.upgrade(tree, SnapshotCodec.CURRENT_VERSION + 1));
+        assertSame(document, SnapshotUpgradePipeline.upgrade(document, SnapshotCodec.CURRENT_VERSION));
+        assertSame(document, SnapshotUpgradePipeline.upgrade(document, SnapshotCodec.CURRENT_VERSION + 1));
     }
 }

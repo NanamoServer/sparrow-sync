@@ -11,6 +11,9 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
 
 import java.util.Map;
 import java.util.UUID;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.zip.CRC32;
 
 // 编解码测试共享的标准快照
 public final class SnapshotFixtures {
@@ -23,6 +26,32 @@ public final class SnapshotFixtures {
     static final UUID SNAPSHOT_ID = UUID.fromString("11112222-3333-4444-5555-666677778888");
 
     private SnapshotFixtures() {
+    }
+
+    /**
+     * 根据头部的段长定位第一块, 供测试修改块头.
+     *
+     * @param frame 合法分块帧
+     * @return 块区的绝对起点
+     */
+    public static int blockBase(byte[] frame) {
+        ByteBuffer header = ByteBuffer.wrap(frame);
+        return 14 + Short.toUnsignedInt(header.getShort(4)) + header.getInt(6);
+    }
+
+    /**
+     * 构造 CRC 正确但索引根为整数的数据帧, 检查载体是否拒绝非法 NBT 结构.
+     *
+     * @return 仅索引结构非法的分块帧
+     * @throws IOException 当测试 NBT 序列化失败时
+     */
+    public static byte[] nonCompoundIndexFrame() throws IOException {
+        byte[] index = NBT.toBytes(NBT.createInt(3), false);
+        CRC32 crc = new CRC32();
+        crc.update(index);
+        return ByteBuffer.allocate(14 + index.length).put((byte) 'S').put((byte) 'S')
+                .put((byte) SnapshotCodec.CURRENT_VERSION).put((byte) 0).putShort((short) 0)
+                .putInt(index.length).putInt((int) crc.getValue()).put(index).array();
     }
 
     public static SnapshotMeta meta() {

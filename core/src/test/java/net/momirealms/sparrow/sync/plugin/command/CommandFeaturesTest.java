@@ -174,12 +174,12 @@ class CommandFeaturesTest {
         ConsoleCommandSender console = proxy(ConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
         this.execute(console, "sparrow-sync data migrate HuskSync");
         assertTrue(this.text().contains("husksync"));
-        assertTrue(this.text().contains("未就绪"));
+        assertTrue(this.text().contains("还不可用"));
         this.messages.clear();
         this.manager.locale = Locale.ENGLISH;
         RemoteConsoleCommandSender remote = proxy(RemoteConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
         this.execute(remote, "sparrow-sync data migrate invsync");
-        assertTrue(this.text().contains("Source invsync is unavailable"));
+        assertTrue(this.text().contains("invsync is not available"));
     }
 
     @Test

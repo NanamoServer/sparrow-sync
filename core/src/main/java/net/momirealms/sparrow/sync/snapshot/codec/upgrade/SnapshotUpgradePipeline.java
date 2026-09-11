@@ -7,9 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 public final class SnapshotUpgradePipeline {
     // 下标即 targetVersion, 下标 0 与 1 恒为 null
-    private static final SnapshotUpgrade[] BY_TARGET = indexByTarget(
-            new SnapshotUpgradeV1ToV2()
-    );
+    private static final SnapshotUpgrade[] BY_TARGET = indexByTarget();
 
     private SnapshotUpgradePipeline() {
     }
@@ -17,6 +15,7 @@ public final class SnapshotUpgradePipeline {
     /**
      * 把二进制形态的快照树升到当前布局.
      *
+     * @param root 已读取的快照树
      * @param fromVersion 快照自带的格式版本, 必须不小于 1.
      */
     @NotNull
@@ -32,6 +31,7 @@ public final class SnapshotUpgradePipeline {
     /**
      * 把文档形态的快照升到当前布局.
      *
+     * @param document 已读取的文档
      * @param fromVersion 快照自带的格式版本, 必须不小于 1.
      */
     @NotNull
@@ -44,7 +44,8 @@ public final class SnapshotUpgradePipeline {
         return current;
     }
 
-    // 2..CURRENT_VERSION 每一级都必须恰好有一个实现, 缺一级就意味着某个版本的旧数据无路可升
+    // 按目标版本建立直接索引, 并检查每个升级步恰好注册一次.
+    @NotNull
     private static SnapshotUpgrade[] indexByTarget(SnapshotUpgrade... registered) {
         SnapshotUpgrade[] byTarget = new SnapshotUpgrade[SnapshotCodec.CURRENT_VERSION + 1];
         for (int i = 0; i < registered.length; i++) {

@@ -46,7 +46,7 @@ class JsonSnapshotCodecTest {
 
     @Test
     void missingIdReportsFieldName() {
-        String json = "{\"player\": \"" + SnapshotFixtures.PLAYER + "\", \"ts\": 1, \"mcData\": 1, \"format\": 2, \"data\": {}}";
+        String json = "{\"player\": \"" + SnapshotFixtures.PLAYER + "\", \"ts\": 1, \"mcData\": 1, \"format\": " + SnapshotCodec.CURRENT_VERSION + ", \"data\": {}}";
 
         DecodedSnapshot decoded = codec.decode(json);
 
@@ -63,6 +63,13 @@ class JsonSnapshotCodecTest {
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
     }
 
+    /** 版本检查先于字段读取, 零版本与旧开发期的 format 2 都明确拒绝. */
+    @Test
+    void versionsOutsideTheNewFormatRangeAreRejected() {
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode("{\"format\": 0}")).reason());
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode("{\"format\": 2}")).reason());
+    }
+
     @Test
     void malformedJsonIsCorrupted() {
         DecodedSnapshot decoded = codec.decode("definitely not json");
@@ -74,7 +81,7 @@ class JsonSnapshotCodecTest {
     void brokenSnbtReportsDataKey() {
         // 手改坏某个类型的 SNBT 时要点名是哪个 key, 这里的 compound 少了闭合花括号
         String json = "{\"id\": \"" + SnapshotFixtures.SNAPSHOT_ID + "\", \"player\": \"" + SnapshotFixtures.PLAYER
-                + "\", \"ts\": 1, \"mcData\": 1, \"format\": 2, \"data\": {\"other:doc\": \"{origin:1\"}}";
+                + "\", \"ts\": 1, \"mcData\": 1, \"format\": " + SnapshotCodec.CURRENT_VERSION + ", \"data\": {\"other:doc\": \"{origin:1\"}}";
 
         DecodedSnapshot decoded = codec.decode(json);
 

@@ -82,12 +82,12 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
             int format = formatNumber.intValue();
-            // 低版本经升级管线读入, 高版本一律拒绝.
-            if (format < 1 || format > CURRENT_VERSION) {
-                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported up to " + CURRENT_VERSION);
+            // 仅在支持范围内进入读取流程, 历史开发格式与未来版本均拒绝.
+            if (format < MINIMUM_SUPPORTED_VERSION || format > CURRENT_VERSION) {
+                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
             Document document = SnapshotUpgradePipeline.upgrade(encoded, format);
-            SnapshotMeta meta = decodeMetaFields(document);
+            SnapshotMeta meta = decodeMeta(document);
             byte[] bytes = switch (document.get(FIELD_DATA)) {
                 case Binary binary -> binary.getData();
                 case byte[] payload -> payload;
@@ -115,11 +115,6 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
      */
     @NotNull
     public static SnapshotMeta decodeMeta(@NotNull Document document) {
-        int format = document.get(FIELD_FORMAT) instanceof Number number ? number.intValue() : CURRENT_VERSION;
-        return decodeMetaFields(SnapshotUpgradePipeline.upgrade(document, format));
-    }
-
-    private static SnapshotMeta decodeMetaFields(Document document) {
         UUID player = document.get(FIELD_PLAYER, UUID.class);
         if (player == null) throw new IllegalArgumentException("missing player field");
         UUID id = document.get(FIELD_ID, UUID.class);

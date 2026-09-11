@@ -151,7 +151,7 @@ class DocumentSnapshotCodecTest {
     @Test
     void decodeRejectsNonCompoundDataFrame() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.put("data", new Binary(new BinarySnapshotCodec(CompressorRegistry.NONE).frame(NBT.createInt(3))));
+        document.put("data", new Binary(SnapshotFixtures.nonCompoundIndexFrame()));
 
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document)).reason());
     }
@@ -176,7 +176,7 @@ class DocumentSnapshotCodecTest {
 
     @Test
     void decodeRejectsMissingPlayer() {
-        Document document = new Document().append("format", 1);
+        Document document = new Document().append("format", SnapshotCodec.CURRENT_VERSION);
 
         DecodedSnapshot decoded = this.codec.decode(document);
 
@@ -186,7 +186,7 @@ class DocumentSnapshotCodecTest {
     @Test
     void binaryFieldWithBadMagicReportsBadMagic() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.put("data", new Binary(new byte[]{99, 1, 2, 3}));
+        document.put("data", new Binary(new byte[]{99, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document));
 
@@ -196,7 +196,9 @@ class DocumentSnapshotCodecTest {
     @Test
     void binaryFieldWithUnknownCompressionReportsUnsupportedCompression() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
-        document.put("data", new Binary(new byte[]{'S', 'S', 1, 9}));
+        byte[] bytes = document.get("data", Binary.class).getData();
+        bytes[SnapshotFixtures.blockBase(bytes)] = 99;
+        document.put("data", new Binary(bytes));
 
         DecodedSnapshot decoded = this.codec.decode(document);
 

@@ -113,7 +113,7 @@ class PostgresRowSnapshotCodecTest {
      * @param format 当前行编解码器不支持的版本
      */
     @ParameterizedTest
-    @ValueSource(ints = {-1, 0, 1, 3, 255})
+    @ValueSource(ints = {-1, 0, 2, 3, 255})
     void unsupportedRowFormatsFailBeforeReadingData(int format) {
         DecodedSnapshot decoded = this.codec.decode(new SnapshotRow(SnapshotFixtures.meta(), format, new byte[0]));
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
@@ -136,12 +136,12 @@ class PostgresRowSnapshotCodecTest {
         bytes[2] = 99;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
         bytes = row.data().clone();
-        bytes[3] = 99;
+        bytes[SnapshotFixtures.blockBase(bytes)] = 99;
         assertEquals(InvalidReason.UNSUPPORTED_COMPRESSION, this.reason(bytes));
         bytes = row.data().clone();
-        bytes[2] = 1;
-        assertEquals(InvalidReason.CORRUPTED, this.reason(bytes));
-        assertEquals(InvalidReason.CORRUPTED, this.reason(new BinarySnapshotCodec(CompressorRegistry.NONE).frame(NBT.createInt(3))));
+        bytes[2] = 2;
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
+        assertEquals(InvalidReason.CORRUPTED, this.reason(SnapshotFixtures.nonCompoundIndexFrame()));
     }
 
     /**
@@ -164,6 +164,6 @@ class PostgresRowSnapshotCodecTest {
      * @return 解码返回的无效原因
      */
     private InvalidReason reason(byte[] bytes) {
-        return assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(new SnapshotRow(SnapshotFixtures.meta(), 2, bytes))).reason();
+        return assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(new SnapshotRow(SnapshotFixtures.meta(), SnapshotCodec.CURRENT_VERSION, bytes))).reason();
     }
 }

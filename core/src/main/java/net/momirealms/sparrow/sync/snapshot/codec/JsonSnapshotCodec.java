@@ -40,19 +40,19 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     public String encode(@NotNull Snapshot snapshot) {
         SnapshotMeta meta = snapshot.meta();
         Document document = new Document();
-        document.append(BinarySnapshotCodec.FIELD_ID, meta.id().toString());
-        document.append(BinarySnapshotCodec.FIELD_PLAYER, meta.player().toString());
-        document.append(BinarySnapshotCodec.FIELD_TIMESTAMP, meta.timestamp());
-        document.append(BinarySnapshotCodec.FIELD_CAUSE, meta.cause().name());
-        document.append(BinarySnapshotCodec.FIELD_PINNED, meta.pinned());
-        document.append(BinarySnapshotCodec.FIELD_SERVER, meta.server());
-        document.append(BinarySnapshotCodec.FIELD_MC_DATA, meta.mcDataVersion());
+        document.append(SnapshotNBT.FIELD_ID, meta.id().toString());
+        document.append(SnapshotNBT.FIELD_PLAYER, meta.player().toString());
+        document.append(SnapshotNBT.FIELD_TIMESTAMP, meta.timestamp());
+        document.append(SnapshotNBT.FIELD_CAUSE, meta.cause().name());
+        document.append(SnapshotNBT.FIELD_PINNED, meta.pinned());
+        document.append(SnapshotNBT.FIELD_SERVER, meta.server());
+        document.append(SnapshotNBT.FIELD_MC_DATA, meta.mcDataVersion());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         Document data = new Document();
         for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
             data.append(entry.getKey().asString(), new CompactStringTagVisitor().visit(entry.getValue()));
         }
-        document.append(BinarySnapshotCodec.FIELD_DATA, data);
+        document.append(SnapshotNBT.FIELD_DATA, data);
         return document.toJson(JSON_WRITER);
     }
 
@@ -65,12 +65,12 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
             int format = formatNumber.intValue();
-            // 低版本经升级管线读入, 高版本一律拒绝.
-            if (format < 1 || format > CURRENT_VERSION) {
-                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported up to " + CURRENT_VERSION);
+            // 仅在支持范围内进入读取流程, 历史开发格式与未来版本均拒绝.
+            if (format < MINIMUM_SUPPORTED_VERSION || format > CURRENT_VERSION) {
+                return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
             CompoundTag tree = toTagTree(document);
-            return new DecodedSnapshot.Valid(BinarySnapshotCodec.fromTagTree(SnapshotUpgradePipeline.upgrade(tree, format)));
+            return new DecodedSnapshot.Valid(SnapshotNBT.fromTagTree(SnapshotUpgradePipeline.upgrade(tree, format)));
         } catch (FormatException exception) {
             return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
         } catch (Exception exception) {
@@ -82,15 +82,15 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     // cause 等其余元数据沿用树读取的宽容缺省; 手改坏的文件报错直接点名问题字段
     private static CompoundTag toTagTree(Document document) throws IOException {
         CompoundTag root = NBT.createCompound();
-        root.putUUID(BinarySnapshotCodec.FIELD_ID, UUID.fromString(requireString(document, BinarySnapshotCodec.FIELD_ID)));
-        root.putUUID(BinarySnapshotCodec.FIELD_PLAYER, UUID.fromString(requireString(document, BinarySnapshotCodec.FIELD_PLAYER)));
-        root.putLong(BinarySnapshotCodec.FIELD_TIMESTAMP, requireNumber(document, BinarySnapshotCodec.FIELD_TIMESTAMP).longValue());
-        root.putInt(BinarySnapshotCodec.FIELD_MC_DATA, requireNumber(document, BinarySnapshotCodec.FIELD_MC_DATA).intValue());
-        if (document.get(BinarySnapshotCodec.FIELD_CAUSE) instanceof String cause) root.putString(BinarySnapshotCodec.FIELD_CAUSE, cause);
-        if (document.get(BinarySnapshotCodec.FIELD_SERVER) instanceof String server) root.putString(BinarySnapshotCodec.FIELD_SERVER, server);
-        if (Boolean.TRUE.equals(document.getBoolean(BinarySnapshotCodec.FIELD_PINNED))) root.putBoolean(BinarySnapshotCodec.FIELD_PINNED, true);
+        root.putUUID(SnapshotNBT.FIELD_ID, UUID.fromString(requireString(document, SnapshotNBT.FIELD_ID)));
+        root.putUUID(SnapshotNBT.FIELD_PLAYER, UUID.fromString(requireString(document, SnapshotNBT.FIELD_PLAYER)));
+        root.putLong(SnapshotNBT.FIELD_TIMESTAMP, requireNumber(document, SnapshotNBT.FIELD_TIMESTAMP).longValue());
+        root.putInt(SnapshotNBT.FIELD_MC_DATA, requireNumber(document, SnapshotNBT.FIELD_MC_DATA).intValue());
+        if (document.get(SnapshotNBT.FIELD_CAUSE) instanceof String cause) root.putString(SnapshotNBT.FIELD_CAUSE, cause);
+        if (document.get(SnapshotNBT.FIELD_SERVER) instanceof String server) root.putString(SnapshotNBT.FIELD_SERVER, server);
+        if (Boolean.TRUE.equals(document.getBoolean(SnapshotNBT.FIELD_PINNED))) root.putBoolean(SnapshotNBT.FIELD_PINNED, true);
         CompoundTag data = NBT.createCompound();
-        Document values = document.get(BinarySnapshotCodec.FIELD_DATA, Document.class);
+        Document values = document.get(SnapshotNBT.FIELD_DATA, Document.class);
         if (values != null) {
             for (Map.Entry<String, Object> entry : values.entrySet()) {
                 if (entry.getValue() == null) continue;
@@ -104,7 +104,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                 }
             }
         }
-        root.put(BinarySnapshotCodec.FIELD_DATA, data);
+        root.put(SnapshotNBT.FIELD_DATA, data);
         return root;
     }
 

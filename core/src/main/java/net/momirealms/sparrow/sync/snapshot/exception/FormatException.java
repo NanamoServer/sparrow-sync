@@ -25,7 +25,7 @@ public class FormatException extends IOException {
      */
     public enum InvalidReason {
         BAD_MAGIC,              // 字节头的魔数不匹配, 数据来源不是本插件的快照
-        UNSUPPORTED_FORMAT,     // 快照格式版本高于本版本能解析的范围
+        UNSUPPORTED_FORMAT,     // 快照格式版本或标志位超出当前可读范围
         UNSUPPORTED_COMPRESSION,// 字节头声明的压缩算法本版本不认识
         CORRUPTED               // 数据损坏或结构不完整
     }

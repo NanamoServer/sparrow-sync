@@ -14,6 +14,7 @@ import java.io.IOException;
  * @param <T> 载体类型
  */
 public interface SnapshotCodec<T> {
+    int MINIMUM_SUPPORTED_VERSION = 1; // 最早可读的格式, 更早版本在解码入口拒绝
     int CURRENT_VERSION = DependencyVersions.SNAPSHOT_FORMAT_VERSION;    // 快照格式版本, 以 1 字节写入帧头, 取值必须保持在 1..255
 
     @NotNull
