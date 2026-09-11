@@ -34,7 +34,7 @@ public final class RemoteSnapshotManager {
     @NotNull
     public CompletableFuture<SnapshotCaptureResult> capture(@NotNull String serverId, @NotNull UUID playerId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
-        byte[] heartbeat = ("ss:server:" + serverId).getBytes(StandardCharsets.UTF_8);
+        byte[] heartbeat = ("sparrow-sync:server:" + serverId).getBytes(StandardCharsets.UTF_8);
         return this.plugin.redisConnector().connection().async().get(heartbeat).toCompletableFuture().thenCompose(value -> {
             if (value == null) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
             return this.plugin.messageBrokerManager().broker()
@@ -59,7 +59,7 @@ public final class RemoteSnapshotManager {
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull String serverId, @NotNull UUID playerId, @NotNull UUID snapshotId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
-        byte[] heartbeat = ("ss:server:" + serverId).getBytes(StandardCharsets.UTF_8);
+        byte[] heartbeat = ("sparrow-sync:server:" + serverId).getBytes(StandardCharsets.UTF_8);
         return this.plugin.redisConnector().connection().async().get(heartbeat).toCompletableFuture().thenCompose(value -> {
             if (value == null) return CompletableFuture.<SnapshotRestoreResult>completedFuture(SnapshotRestoreResult.OFFLINE);
             return this.plugin.messageBrokerManager().broker()

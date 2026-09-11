@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class SessionLock {
-    private static final String KEY_PREFIX = "ss:lock:";
+    private static final String KEY_PREFIX = "sparrow-sync:lock:";
     // TTL 仅回收崩溃后再无人登录的残留键
     private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);
     private static final String RELEASE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";

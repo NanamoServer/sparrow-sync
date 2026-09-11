@@ -94,7 +94,7 @@ class ServerHeartBeatsTest {
     void disconnect() {
         this.heartbeatExecutor.shutdownNow();
         if (this.inspection != null) {
-            List<String> keys = this.inspection.sync().keys("ss:*");
+            List<String> keys = this.inspection.sync().keys("sparrow-sync:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
             this.inspection.close();
         }
@@ -254,11 +254,11 @@ class ServerHeartBeatsTest {
     }
 
     private String serverKey(String serverId) {
-        return "ss:server:" + serverId;
+        return "sparrow-sync:server:" + serverId;
     }
 
     private String lockKey(UUID player) {
-        return "ss:lock:" + player;
+        return "sparrow-sync:lock:" + player;
     }
 
     private static final class QuietLogger implements PluginLogger {

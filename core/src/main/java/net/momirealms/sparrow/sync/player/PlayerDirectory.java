@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 public final class PlayerDirectory {
-    private static final String ROSTER_PREFIX = "ss:online-players:";
+    private static final String ROSTER_PREFIX = "sparrow-sync:online-players:";
     private static final long REFRESH_MILLIS = 30000;
     private static final long NAME_TTL_SECONDS = 300;
 
@@ -92,7 +92,7 @@ public final class PlayerDirectory {
                     byte[][] heartbeatKeys = new byte[keys.size()][];
                     for (int i = 0; i < keys.size(); i++) {
                         String id = new String(keys.get(i), StandardCharsets.UTF_8).substring(ROSTER_PREFIX.length());
-                        heartbeatKeys[i] = ("ss:server:" + id).getBytes(StandardCharsets.UTF_8);
+                        heartbeatKeys[i] = ("sparrow-sync:server:" + id).getBytes(StandardCharsets.UTF_8);
                     }
                     List<KeyValue<byte[], byte[]>> heartbeats = commands.mget(heartbeatKeys);
                     for (int i = 0; i < keys.size(); i++) {
@@ -323,7 +323,7 @@ public final class PlayerDirectory {
 
     private static byte[] nameKey(String name) {
         // 保留数据库名字比较语义, 历史名字缓存不按大小写折叠.
-        return ("ss:user-name:" + HexFormat.of().formatHex(name.getBytes(StandardCharsets.UTF_8))).getBytes(StandardCharsets.UTF_8);
+        return ("sparrow-sync:user-name:" + HexFormat.of().formatHex(name.getBytes(StandardCharsets.UTF_8))).getBytes(StandardCharsets.UTF_8);
     }
 
     private record OnlineView(Map<String, PlayerIdentity> byName, List<PlayerIdentity> players, List<Suggestion> suggestions, Map<Character, List<Suggestion>> prefixes) {

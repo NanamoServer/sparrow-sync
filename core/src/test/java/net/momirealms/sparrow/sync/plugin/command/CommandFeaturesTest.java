@@ -335,8 +335,8 @@ class CommandFeaturesTest {
         RedisAsyncCommands<byte[], byte[]> commands = proxy(RedisAsyncCommands.class, (instance, method, args) -> {
             assertEquals("get", method.getName());
             String key = new String((byte[]) args[0], StandardCharsets.UTF_8);
-            assertTrue(key.startsWith("ss:user-name:"));
-            assertEquals(name, new String(HexFormat.of().parseHex(key.substring("ss:user-name:".length())), StandardCharsets.UTF_8));
+            assertTrue(key.startsWith("sparrow-sync:user-name:"));
+            assertEquals(name, new String(HexFormat.of().parseHex(key.substring("sparrow-sync:user-name:".length())), StandardCharsets.UTF_8));
             AsyncCommand<byte[], byte[], byte[]> response = new AsyncCommand<>(new Command<>(CommandType.GET, new ByteArrayOutput<>(ByteArrayCodec.INSTANCE)));
             response.complete(uuid == null ? null : UUIDUtils.toBytes(uuid));
             return response;

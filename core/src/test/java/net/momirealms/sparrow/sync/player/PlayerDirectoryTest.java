@@ -131,7 +131,7 @@ class PlayerDirectoryTest {
         second.join(UUID.randomUUID(), "Steve");
         first.directory.refresh();
         second.directory.refresh();
-        redis.data.remove("ss:server:" + first.serverId);
+        redis.data.remove("sparrow-sync:server:" + first.serverId);
         second.directory.refresh();
         assertEquals(List.of(Suggestion.suggestion("Steve")), second.directory.suggestions(""));
         first.directory.refresh();
@@ -162,12 +162,12 @@ class PlayerDirectoryTest {
         UUID uuid = UUID.randomUUID();
         first.directory.presence(uuid, "Steve", true);
         assertEquals(List.of(Suggestion.suggestion("Steve")), second.directory.suggestions(""));
-        assertEquals(1, redis.hashes.get("ss:online-players:" + first.serverId).size());
+        assertEquals(1, redis.hashes.get("sparrow-sync:online-players:" + first.serverId).size());
         second.directory.presence(uuid, "Steve", true);
         first.directory.presence(uuid, "Steve", false);
         assertEquals(List.of(Suggestion.suggestion("Steve")), first.directory.suggestions(""));
         assertEquals(List.of(Suggestion.suggestion("Steve")), second.directory.suggestions(""));
-        assertFalse(redis.hashes.containsKey("ss:online-players:" + first.serverId));
+        assertFalse(redis.hashes.containsKey("sparrow-sync:online-players:" + first.serverId));
         second.directory.presence(uuid, "Steve", false);
         assertTrue(first.directory.onlinePlayers().isEmpty());
         assertTrue(second.directory.suggestions("S").isEmpty());
@@ -224,7 +224,7 @@ class PlayerDirectoryTest {
         };
         first.directory.refresh();
         String field = HexFormat.of().formatHex("Steve".getBytes(StandardCharsets.UTF_8));
-        assertEquals(joined, redis.hashes.get("ss:online-players:" + first.serverId).containsKey(field));
+        assertEquals(joined, redis.hashes.get("sparrow-sync:online-players:" + first.serverId).containsKey(field));
         second.directory.refresh();
         assertEquals(joined, second.directory.cached("Steve").isPresent());
     }
@@ -235,7 +235,7 @@ class PlayerDirectoryTest {
         Fixture first = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
         Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
         second.directory.presence(UUID.randomUUID(), "Alex", true);
-        redis.rosterReadKey = "ss:online-players:" + second.serverId;
+        redis.rosterReadKey = "sparrow-sync:online-players:" + second.serverId;
         redis.afterRosterRead = () -> second.directory.presence(UUID.randomUUID(), "Steve", true);
         first.directory.refresh();
         assertEquals(List.of(Suggestion.suggestion("Alex"), Suggestion.suggestion("Steve")), first.directory.suggestions(""));
@@ -253,7 +253,7 @@ class PlayerDirectoryTest {
         second.directory.presence(steve, "Steve", false);
         redis.listeners.add(first.directory::acceptPresence);
         assertTrue(first.directory.cached("Steve").isPresent());
-        redis.rosterReadKey = "ss:online-players:" + second.serverId;
+        redis.rosterReadKey = "sparrow-sync:online-players:" + second.serverId;
         redis.afterRosterRead = () -> second.directory.presence(steve, "Steve", true);
         first.directory.refresh();
         assertEquals(second.serverId, first.directory.server("Steve").orElseThrow());
@@ -290,7 +290,7 @@ class PlayerDirectoryTest {
         new SessionListener(plugin, server.sessions).onQuit(new PlayerQuitEvent(player, Component.empty(), PlayerQuitEvent.QuitReason.DISCONNECTED));
         assertEquals(List.of(SessionState.SAVING), statesAtRemoval);
         server.directory.refresh();
-        assertFalse(redis.hashes.containsKey("ss:online-players:" + server.serverId));
+        assertFalse(redis.hashes.containsKey("sparrow-sync:online-players:" + server.serverId));
         assertTrue(server.directory.onlinePlayers().isEmpty());
     }
 
@@ -301,7 +301,7 @@ class PlayerDirectoryTest {
         server.join(UUID.randomUUID(), "Steve");
         redis.afterRosterDelete = server.directory::shutdown;
         server.directory.refresh();
-        assertFalse(redis.hashes.containsKey("ss:online-players:" + server.serverId));
+        assertFalse(redis.hashes.containsKey("sparrow-sync:online-players:" + server.serverId));
         assertTrue(server.directory.onlinePlayers().isEmpty());
     }
 
@@ -498,8 +498,8 @@ class PlayerDirectoryTest {
         String serverId = UUID.randomUUID().toString();
         PlayerDirectory directory = new PlayerDirectory(plugin);
         NmsPlayerFixture.set(PlayerDirectory.class, directory, "serverId", serverId);
-        NmsPlayerFixture.set(PlayerDirectory.class, directory, "rosterKey", ("ss:online-players:" + serverId).getBytes(StandardCharsets.UTF_8));
-        redis.data.put("ss:server:" + serverId, new Value(new byte[]{1}, Long.MAX_VALUE));
+        NmsPlayerFixture.set(PlayerDirectory.class, directory, "rosterKey", ("sparrow-sync:online-players:" + serverId).getBytes(StandardCharsets.UTF_8));
+        redis.data.put("sparrow-sync:server:" + serverId, new Value(new byte[]{1}, Long.MAX_VALUE));
         redis.listeners.add(directory::acceptPresence);
         MessageBrokerManager manager = NmsPlayerFixture.allocate(MessageBrokerManager.class);
         MessageBroker<?> broker = proxy(MessageBroker.class, (instance, method, args) -> switch (method.getName()) {
@@ -624,7 +624,7 @@ class PlayerDirectoryTest {
                     KeyScanCursor<byte[]> cursor = new KeyScanCursor<>();
                     cursor.setCursor("0");
                     cursor.setFinished(true);
-                    this.hashes.keySet().stream().filter(key -> key.startsWith("ss:online-players:"))
+                    this.hashes.keySet().stream().filter(key -> key.startsWith("sparrow-sync:online-players:"))
                             .map(key -> key.getBytes(StandardCharsets.UTF_8)).forEach(cursor.getKeys()::add);
                     yield cursor;
                 }

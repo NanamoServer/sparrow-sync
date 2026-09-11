@@ -87,7 +87,7 @@ class HandoffManagerTest {
     void disconnect() {
         this.probeExecutor.shutdownNow();
         if (this.inspection != null) {
-            List<String> keys = this.inspection.sync().keys("ss:lock:*");
+            List<String> keys = this.inspection.sync().keys("sparrow-sync:lock:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
             this.inspection.close();
         }
@@ -223,7 +223,7 @@ class HandoffManagerTest {
     }
 
     private String key(UUID player) {
-        return "ss:lock:" + player;
+        return "sparrow-sync:lock:" + player;
     }
 
     private static final class QuietLogger implements PluginLogger {
