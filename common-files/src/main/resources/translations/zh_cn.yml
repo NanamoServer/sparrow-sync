@@ -315,10 +315,12 @@ log.plugin.stopped: 'SparrowSync 已关闭'
 
 # log.redis
 log.redis.ready: '已连接 Redis'
-log.redis.setup_failed: '连接 Redis 时发生错误。跨服同步依赖 Redis，请检查 redis 配置段。正在关闭服务器。'
+log.redis.setup_failed: '连接 Redis 时发生错误。跨服同步依赖 Redis，请检查 redis 配置段，正在关闭服务器。'
+log.redis.version_check_failed: '无法从 INFO 读取 Redis 版本，已跳过版本检查'
+log.redis.version_unsupported: 'Redis 服务端版本为 <arg:0>，但本插件需要 Redis <arg:1> 及以上，正在关闭服务器。'
 
 # log.server
-log.server.id_duplicate: 'server-id“<arg:0>”已被集群里另一台在线的服务器占用。共用同一个数据库的每台服务器都需要自己的 id，请修改本服 server.yml 里的 server-id。正在关闭服务器。'
+log.server.id_duplicate: 'server-id“<arg:0>”已被集群里另一台在线的服务器占用。共用同一个数据库的每台服务器都需要自己的 id，请修改本服 server.yml 里的 server-id，正在关闭服务器。'
 log.server.id_missing: 'server.yml 里的 server-id 为空。请为共用同一个数据库的每台服务器分别填写唯一 id。正在关闭服务器。'
 log.server.id_seized: '上一次运行的服务器身份没有正常注销（token <arg:0>），已接管'
 

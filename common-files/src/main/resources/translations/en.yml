@@ -316,6 +316,8 @@ log.plugin.stopped: 'SparrowSync stopped'
 # log.redis
 log.redis.ready: 'Connected to Redis'
 log.redis.setup_failed: Failed to connect Redis. Cross server synchronization depends on it, check the redis section. Shutting the server down.
+log.redis.version_check_failed: Failed to read the Redis version from INFO, skipping the version check
+log.redis.version_unsupported: 'The Redis server is version <arg:0>, but this plugin needs Redis <arg:1> or later. Shutting the server down.'
 
 # log.server
 log.server.id_duplicate: 'The server-id "<arg:0>" is taken by another live server in the cluster. Every server sharing the database needs its own id, change server-id in server.yml of this server. Shutting the server down.'

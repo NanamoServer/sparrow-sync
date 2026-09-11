@@ -37,6 +37,8 @@ public interface LogConstants {
 
     String REDIS_READY = "log.redis.ready";
     String REDIS_SETUP_FAILED = "log.redis.setup_failed";
+    String REDIS_VERSION_UNSUPPORTED = "log.redis.version_unsupported";
+    String REDIS_VERSION_CHECK_FAILED = "log.redis.version_check_failed";
 
     String LOCK_ACQUIRED = "log.lock.acquired";
     String LOCK_WAITING = "log.lock.waiting";

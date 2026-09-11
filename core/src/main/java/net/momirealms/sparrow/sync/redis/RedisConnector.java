@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.redis;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisCredentials;
 import io.lettuce.core.RedisCredentialsProvider;
+import io.lettuce.core.RedisException;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
@@ -18,6 +19,9 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.TimeUnit;
 
 public final class RedisConnector {
+    private static final RedisServerVersion MINIMUM_SERVER_VERSION = new RedisServerVersion(8, 0, 0);
+    private static final String SERVER_INFO_SECTION = "server";
+
     private SparrowSync plugin;
     private PluginConfig.RedisOptions options;
     private SyncLogger logger;
@@ -49,7 +53,27 @@ public final class RedisConnector {
         this.client = RedisClient.create(uri);
         this.connection = this.client.connect(ByteArrayCodec.INSTANCE);
         this.brokerConnection = new PubSubRedisConnection(this.client);
+        this.verifyRedisVersion();
         this.logger.info(LogCategory.LIFECYCLE, LogConstants.REDIS_READY);
+    }
+
+    // 版本低于最低支持版本时在连接阶段停下, 抛给插件层记录并关闭服务器
+    private void verifyRedisVersion() {
+        RedisServerVersion reported;
+        try {
+            reported = RedisServerVersion.parse(this.connection.sync().info(SERVER_INFO_SECTION));
+        } catch (RedisException exception) {
+            // INFO 可能被 ACL 或中间代理禁用, 探测失败仅做警告
+            this.logger.warnWithFileCause(LogCategory.LIFECYCLE, null, null, exception, LogConstants.REDIS_VERSION_CHECK_FAILED);
+            return;
+        }
+        if (reported == null) {
+            this.logger.warn(LogCategory.LIFECYCLE, LogConstants.REDIS_VERSION_CHECK_FAILED);
+            return;
+        }
+        if (reported.atLeast(MINIMUM_SERVER_VERSION)) return;
+        this.logger.error(LogCategory.LIFECYCLE, LogConstants.REDIS_VERSION_UNSUPPORTED, reported.toString(), MINIMUM_SERVER_VERSION.toString());
+        throw new IllegalStateException("Redis server version " + reported + " is not supported, Redis " + MINIMUM_SERVER_VERSION + " or later is required");
     }
 
     private static RedisURI buildUri(PluginConfig.RedisOptions options) {
