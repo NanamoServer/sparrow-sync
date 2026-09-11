@@ -146,18 +146,27 @@ public final class SessionListener implements Listener {
         }, () -> {});
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onDeath(PlayerDeathEvent event) {
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBeforeDeath(PlayerDeathEvent event) {
         PluginConfig.DeathTrigger settings = PluginConfig.synchronization$saveTriggers().deathTrigger();
+        if (!settings.saveBeforeDeath()) return;
         Player player = event.getPlayer();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;
-        if (settings.saveBeforeDeath()) this.sessions.captureNowAndSave(session, player, SaveCause.PRE_DEATH);
-        if (settings.saveAfterDeath()) {
-            this.plugin.scheduler().entity().run(player, () -> {
-                if (player.isDead()) this.sessions.captureNowAndSave(session, player, SaveCause.DEATH);
-            }, () -> {});
-        }
+        this.sessions.captureNowAndSave(session, player, SaveCause.PRE_DEATH);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onAfterDeath(PlayerDeathEvent event) {
+        PluginConfig.DeathTrigger settings = PluginConfig.synchronization$saveTriggers().deathTrigger();
+        if (!settings.saveAfterDeath()) return;
+        Player player = event.getPlayer();
+        if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
+        PlayerSession session = this.sessions.find(player.getUniqueId());
+        if (session == null || session.state() != SessionState.ACTIVE) return;
+        this.plugin.scheduler().entity().run(player, () -> {
+            if (player.isDead()) this.sessions.captureNowAndSave(session, player, SaveCause.DEATH);
+        }, () -> {});
     }
 }
