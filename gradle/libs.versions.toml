@@ -1,6 +1,6 @@
 [versions]
 project-version = "26.9-bata.2"
-config-version = "2"
+config-version = "3"
 commands-config-version = "2"
 server-config-version = "1"
 lang-version = "46"
@@ -44,6 +44,7 @@ netty = "4.1.132.Final"
 reactive-streams = "1.0.4"
 reactor = "3.8.5"
 zstd = "1.5.7-15"
+vaultapi = "1.7.1"
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
@@ -67,6 +68,7 @@ checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "ch
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
 husksync = { module = "net.william278.husksync:husksync-bukkit", version = "4.0.0+1.21.10" }
+vaultapi = { module = "com.github.MilkBowl:VaultAPI", version.ref = "vaultapi" }
 
 bstats-base = { module = "org.bstats:bstats-base", version.ref = "bstats" }
 bstats-bukkit = { module = "org.bstats:bstats-bukkit", version.ref = "bstats" }

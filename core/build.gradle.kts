@@ -36,6 +36,7 @@ dependencies {
     compileOnly(libs.postgresql.driver)
     compileOnly(libs.zstd.jni)
     compileOnly(libs.husksync)
+    compileOnly(libs.vaultapi)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -49,6 +50,7 @@ dependencies {
     testImplementation(libs.lettuce.core)
     testImplementation(libs.caffeine)
     testImplementation(libs.husksync)
+    testImplementation(libs.vaultapi)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
     testImplementation(project(":bukkit-proxy"))
@@ -144,6 +146,11 @@ paper {
             joinClasspath = true
         }
         register("HuskSync") {
+            load = RelativeLoadOrder.BEFORE
+            required = false
+            joinClasspath = true
+        }
+        register("Vault") {
             load = RelativeLoadOrder.BEFORE
             required = false
             joinClasspath = true

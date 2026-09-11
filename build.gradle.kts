@@ -41,6 +41,7 @@ subprojects {
 
     repositories {
         mavenCentral()
+        maven("https://jitpack.io")
         maven("https://libraries.minecraft.net/")
         maven("https://repo.catnies.top/releases/")
         maven("https://repo.momirealms.net/releases/")

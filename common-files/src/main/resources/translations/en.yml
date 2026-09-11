@@ -15,6 +15,7 @@ gui.additional.game_mode: '<color:#C8E4E9>· Game mode <color:#FFE08A><arg:0></c
 gui.additional.experience: '<color:#C8E4E9>· Level <color:#FFE08A><arg:0></color>, total XP <color:#FFE08A><arg:1></color>, progress <color:#FFE08A><arg:2></color></color>'
 gui.additional.health: '<color:#C8E4E9>· Health <color:#FFE08A><arg:0></color></color>'
 gui.additional.enchantment_seed: '<color:#C8E4E9>· Enchantment seed <color:#FFE08A><arg:0></color></color>'
+gui.additional.emoney: '<color:#C8E4E9>· Currency balance <color:#FFE08A><arg:0></color></color>'
 gui.restore_target: '<color:#C8E4E9>• Restore target: </color><color:#F2F4FF><arg:0></color>'
 gui.unpin_mark: '<color:#C8E4E9>☆</color>'
 gui.pin_mark: '<color:#FFE08A>★</color>'
@@ -253,6 +254,7 @@ sync.kick.too_fast: <color:#E75FA8>You reconnected too quickly, your previous da
 # plugin
 plugin.compatibility: '[Compatibility] Hooked <arg:0>'
 plugin.compatibility_failed: '[Compatibility] Failed to hook <arg:0>'
+plugin.economy_ready: 'Player balances will be synchronized; the economy plugin in use is <arg:0>'
 
 
 

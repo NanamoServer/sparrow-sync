@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.locale;
 public interface LogConstants {
     String PLUGIN_COMPATIBILITY = "plugin.compatibility";
     String PLUGIN_COMPATIBILITY_FAILED = "plugin.compatibility_failed";
+    String PLUGIN_ECONOMY_READY = "plugin.economy_ready";
 
     String PLUGIN_RELOAD_AT_RUNTIME = "log.plugin.reload_at_runtime";
     String PLUGIN_LOAD_FAILED = "log.plugin.load_failed";

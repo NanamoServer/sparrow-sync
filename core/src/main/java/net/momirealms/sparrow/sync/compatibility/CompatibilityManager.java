@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility;
 
+import net.momirealms.sparrow.sync.compatibility.economy.VaultEconomyService;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationDataTypes;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV3;
@@ -8,6 +9,7 @@ import net.momirealms.sparrow.sync.compatibility.migration.invsync.InvSyncSource
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.Nullable;
@@ -16,12 +18,16 @@ public final class CompatibilityManager {
     private final SparrowSync plugin;
     private MigrationSource huskSyncMigration;
     private MigrationSource invSyncMigration;
+    private VaultEconomyService vaultEconomy;
 
     public CompatibilityManager(SparrowSync plugin) {
         this.plugin = plugin;
     }
 
     public void onLoad() {
+        if (this.isPluginEnabled("Vault") && PluginConfig.synchronization$dataTypes().vaultEmoney()) {
+            this.vaultEconomy = new VaultEconomyService(this.plugin, Bukkit.getServicesManager(), this.plugin.dataRegistry());
+        }
     }
 
     public void onEnable() {
@@ -41,6 +47,14 @@ public final class CompatibilityManager {
                     ? new HuskSyncSourceV3(huskSync, MigrationDataTypes.createRegistry())
                     : new HuskSyncSourceV4(huskSync, MigrationDataTypes.createRegistry()), "HuskSync");
         }
+        if (this.isPluginEnabled("Vault") && this.vaultEconomy != null) {
+            this.runCatchingHook(() -> this.vaultEconomy.onDelayedEnable(), "Vault");
+        }
+    }
+
+    @Nullable
+    public VaultEconomyService vaultEconomy() {
+        return this.vaultEconomy;
     }
 
     @Nullable

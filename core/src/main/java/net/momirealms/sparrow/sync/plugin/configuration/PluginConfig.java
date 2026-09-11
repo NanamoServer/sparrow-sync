@@ -587,6 +587,9 @@ public final class PluginConfig {
         boolean persistentData = true;
         boolean potionEffects = true;
         boolean statistics = true;
+        @Comment("Synchronizes the player's Vault currency balance; requires the Vault plugin and an economy plugin")
+        @Comment(lang = "zh-CN", value = "是否同步玩家在 Vault 经济体系中的货币余额, 需要服务端安装 Vault 与经济插件")
+        boolean vaultEmoney = false;
 
         public boolean advancements() {
             return this.advancements;
@@ -602,6 +605,10 @@ public final class PluginConfig {
 
         public boolean enderChest() {
             return this.enderChest;
+        }
+
+        public boolean vaultEmoney() {
+            return this.vaultEmoney;
         }
 
         public boolean experience() {

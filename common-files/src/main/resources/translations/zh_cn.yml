@@ -15,6 +15,7 @@ gui.additional.game_mode: '<color:#C8E4E9>· 游戏模式 <color:#FFE08A><arg:0>
 gui.additional.experience: '<color:#C8E4E9>· 等级 <color:#FFE08A><arg:0></color>，总经验 <color:#FFE08A><arg:1></color>，进度 <color:#FFE08A><arg:2></color></color>'
 gui.additional.health: '<color:#C8E4E9>· 生命值 <color:#FFE08A><arg:0></color></color>'
 gui.additional.enchantment_seed: '<color:#C8E4E9>· 附魔种子 <color:#FFE08A><arg:0></color></color>'
+gui.additional.emoney: '<color:#C8E4E9>· 货币余额 <color:#FFE08A><arg:0></color></color>'
 gui.restore_target: '<color:#C8E4E9>• 恢复目标：</color><color:#F2F4FF><arg:0></color>'
 gui.unpin_mark: '<color:#C8E4E9>☆</color>'
 gui.pin_mark: '<color:#FFE08A>★</color>'
@@ -253,6 +254,7 @@ sync.kick.too_fast: <color:#E75FA8>你重新连接得太快了，上一次的数
 # plugin
 plugin.compatibility: '[兼容性] 已挂钩 <arg:0>'
 plugin.compatibility_failed: '[兼容性] 挂钩 <arg:0> 失败'
+plugin.economy_ready: '货币将随玩家同步，当前使用的经济插件是 <arg:0>'
 
 
 

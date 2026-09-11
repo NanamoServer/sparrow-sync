@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
@@ -49,6 +50,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -508,7 +510,7 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 按手持槽位、饥饿、游戏模式、经验、生命和附魔种子的顺序汇总可读取值.
+     * 按手持槽位、饥饿、游戏模式、经验、生命、附魔种子和货币余额的顺序汇总可读取值.
      *
      * @return 状态摘要图标使用的 Lore 行
      */
@@ -532,6 +534,9 @@ public final class SnapshotDetailGui {
         }
         if (previews.get(EnchantmentSeedDataType.ENCHANTMENT_SEED) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof Integer seed) {
             lines.add(this.text("additional.enchantment_seed", seed));
+        }
+        if (previews.get(EmoneyDataType.EMONEY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof EmoneyDataType.Money money) {
+            lines.add(this.text("additional.emoney", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
         }
         return lines;
     }

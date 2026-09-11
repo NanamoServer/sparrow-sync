@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
 import net.momirealms.sparrow.sync.snapshot.data.*;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
@@ -110,7 +111,8 @@ public final class SnapshotDetails {
         return type instanceof InventoryDataType || type instanceof EnderChestDataType
                 || type instanceof ExperienceDataType || type instanceof HealthDataType
                 || type instanceof HungerDataType || type instanceof GameModeDataType
-                || type instanceof EnchantmentSeedDataType || type instanceof LocationDataType;
+                || type instanceof EnchantmentSeedDataType || type instanceof LocationDataType
+                || type instanceof EmoneyDataType;
     }
 
     // 将读取错误转换为详情状态, 保留格式错误的结构化原因.
