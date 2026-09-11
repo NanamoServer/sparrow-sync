@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.map.handler.MapType;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.jetbrains.annotations.NotNull;

@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.operation;
 
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

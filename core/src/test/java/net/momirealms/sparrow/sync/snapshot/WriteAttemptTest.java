@@ -1,10 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.SaveRequest;
 import net.momirealms.sparrow.sync.snapshot.SnapshotWriter.WriteAttempt;
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;

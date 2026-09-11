@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.cluster.cache;
 
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;

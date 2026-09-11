@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.operation;
 
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

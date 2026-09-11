@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.storage;
 
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.StatementContext;

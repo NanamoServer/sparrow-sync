@@ -5,6 +5,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;

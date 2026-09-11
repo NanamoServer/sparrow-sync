@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotDump;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;

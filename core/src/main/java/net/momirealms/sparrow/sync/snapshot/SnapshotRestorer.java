@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
@@ -17,10 +18,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 编排指定历史快照的在线与离线恢复, 回执等待新的 RESTORE 记录完成保存.
- * 离线恢复集合与会话锁共同标识正在处理的玩家, 原历史内容保持不变.
- */
 final class SnapshotRestorer {
     private final SparrowSync plugin;
     private final StorageProvider storage;

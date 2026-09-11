@@ -2,7 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

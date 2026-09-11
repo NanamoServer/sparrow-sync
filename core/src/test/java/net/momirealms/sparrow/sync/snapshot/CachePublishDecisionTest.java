@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.SnapshotWriter;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.junit.jupiter.api.Test;
 

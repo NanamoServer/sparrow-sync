@@ -1,10 +1,7 @@
 package net.momirealms.sparrow.sync.gui.page;
 
-import net.momirealms.sparrow.sync.gui.page.SnapshotPage;
-import net.momirealms.sparrow.sync.gui.page.SnapshotPageSession;
-import net.momirealms.sparrow.sync.gui.page.SnapshotPagination;
-import net.momirealms.sparrow.sync.snapshot.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.junit.jupiter.api.Test;

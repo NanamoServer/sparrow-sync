@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.snapshot;
+package net.momirealms.sparrow.sync.snapshot.model;
 
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;

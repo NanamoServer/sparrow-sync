@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;

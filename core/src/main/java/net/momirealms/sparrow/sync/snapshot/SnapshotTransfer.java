@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotImportResult;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;

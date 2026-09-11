@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
 import net.momirealms.sparrow.sync.snapshot.data.*;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;

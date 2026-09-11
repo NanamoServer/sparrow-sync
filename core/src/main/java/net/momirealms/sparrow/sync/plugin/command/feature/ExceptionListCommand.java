@@ -7,7 +7,7 @@ import net.momirealms.sparrow.sync.plugin.command.CommandConfig;
 import net.momirealms.sparrow.sync.plugin.command.CommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
-import net.momirealms.sparrow.sync.snapshot.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.gui.page.SnapshotPagination;
 import org.bukkit.command.CommandSender;

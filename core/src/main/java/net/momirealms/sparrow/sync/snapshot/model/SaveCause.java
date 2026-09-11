@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.snapshot;
+package net.momirealms.sparrow.sync.snapshot.model;
 
 import org.jetbrains.annotations.NotNull;
 

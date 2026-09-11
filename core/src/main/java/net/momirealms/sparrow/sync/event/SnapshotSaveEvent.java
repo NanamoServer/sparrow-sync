@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.event;
 
-import net.momirealms.sparrow.sync.snapshot.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
