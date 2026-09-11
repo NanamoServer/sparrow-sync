@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -95,7 +96,7 @@ public record SnapshotMeta(@NotNull UUID id,
         public SnapshotMeta build() {
             if (this.player == null) throw new IllegalStateException("snapshot meta requires a player");
             if (this.cause == null) throw new IllegalStateException("snapshot meta requires a save cause");
-            UUID id = this.id != null ? this.id : UUID.randomUUID();
+            UUID id = this.id != null ? this.id : UUIDUtils.timeOrdered();
             return new SnapshotMeta(id, this.player, this.timestamp, this.cause, this.pinned, this.server, this.mcDataVersion);
         }
     }
