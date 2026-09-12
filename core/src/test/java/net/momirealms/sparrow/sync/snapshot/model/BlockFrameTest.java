@@ -10,8 +10,8 @@ import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndex;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -137,7 +137,7 @@ class BlockFrameTest {
     }
 
     /**
-     * 陌生类型仍按原顺序保存, 默认版本保持为 1.
+     * 陌生类型仍按原顺序保存, 索引只描述块的位置和编码信息.
      *
      * @throws Exception 当测试帧构造, 编解码或并发任务失败时
      */
@@ -153,7 +153,6 @@ class BlockFrameTest {
         assertEquals(source, restored);
         assertArrayEquals(bytes, this.codec.encode(restored));
         for (BlockIndex.Entry entry : entries(bytes).values()) {
-            assertEquals(1, entry.version());
             assertEquals(CompressorRegistry.NONE.id(), entry.compressorId());
         }
     }
@@ -218,7 +217,7 @@ class BlockFrameTest {
     void indexCompressorMustBeSupported() throws IOException {
         String key = "other:value";
         byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
-        BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, ByteBuffer.wrap(block).getInt(1), (byte) 99, 1);
+        BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, ByteBuffer.wrap(block).getInt(1), (byte) 99);
         assertEquals(InvalidReason.UNSUPPORTED_COMPRESSION, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
     }
 
@@ -236,7 +235,7 @@ class BlockFrameTest {
         int rawLength = NBT.toBytes(tree, false).length;
         for (CompressorRegistry compressor : CompressorRegistry.values()) {
             byte[] block = BlockCodec.encode(key, value, compressor, rawLength);
-            BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, rawLength, compressor.id(), 1);
+            BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, rawLength, compressor.id());
             assertEquals(value, BlockCodec.decode(block, 0, key, entry));
             assertEquals(compressor.id(), block[0]);
             assertEquals(CompressorRegistry.NONE.id(), BlockCodec.encode(key, value, compressor, rawLength + 1)[0]);
@@ -254,9 +253,9 @@ class BlockFrameTest {
         byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
         int raw = ByteBuffer.wrap(block).getInt(1);
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key,
-                new BlockIndex.Entry(0, block.length - 9, raw + 1, (byte) 0, 1))).reason());
+                new BlockIndex.Entry(0, block.length - 9, raw + 1, (byte) 0))).reason());
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 14, key,
-                new BlockIndex.Entry(Integer.MAX_VALUE, Integer.MAX_VALUE, raw, (byte) 0, 1))).reason());
+                new BlockIndex.Entry(Integer.MAX_VALUE, Integer.MAX_VALUE, raw, (byte) 0))).reason());
     }
 
     /**
@@ -278,7 +277,7 @@ class BlockFrameTest {
             CRC32 crc = new CRC32();
             crc.update(raw);
             byte[] block = ByteBuffer.allocate(9 + raw.length).put((byte) 0).putInt(raw.length).putInt((int) crc.getValue()).put(raw).array();
-            BlockIndex.Entry entry = new BlockIndex.Entry(0, raw.length, raw.length, (byte) 0, 1);
+            BlockIndex.Entry entry = new BlockIndex.Entry(0, raw.length, raw.length, (byte) 0);
             assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
         }
     }
@@ -291,11 +290,12 @@ class BlockFrameTest {
     @Test
     void indexRoundTripAndValidation() throws IOException {
         LinkedHashMap<String, BlockIndex.Entry> values = new LinkedHashMap<>();
-        values.put("other:z", new BlockIndex.Entry(0, 12, 12, (byte) 0, 1));
-        values.put("other:a", new BlockIndex.Entry(21, 15, 30, (byte) 1, 1));
+        values.put("other:z", new BlockIndex.Entry(0, 12, 12, (byte) 0));
+        values.put("other:a", new BlockIndex.Entry(21, 15, 30, (byte) 1));
+        assertFalse(BlockIndex.write(values).getCompound("other:z").containsKey("v"));
         assertEquals(values, BlockIndex.read(BlockIndex.write(values)));
         assertEquals(new ArrayList<>(values.keySet()), new ArrayList<>(BlockIndex.read(BlockIndex.write(values)).keySet()));
-        for (String field : List.of("o", "l", "n", "c", "v")) {
+        for (String field : List.of("o", "l", "n", "c")) {
             CompoundTag index = BlockIndex.write(values);
             index.getCompound("other:z").remove(field);
             assertThrows(FormatException.class, () -> BlockIndex.read(index));

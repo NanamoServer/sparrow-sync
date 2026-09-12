@@ -9,6 +9,9 @@ import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -377,7 +380,16 @@ class PlayerDataPipelineTest {
         SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA, unknown));
 
         assertEquals(Set.of(ALPHA), context.pendingValues().keySet());
-        assertEquals(Set.of(unknown), context.passthrough().keySet());
+        assertEquals(Set.of(unknown), context.passthrough().keys());
+    }
+
+    /** 全部类型都已注册时, 应用上下文复用无帧字节的空数据体. */
+    @Test
+    void knownTypesDoNotAllocateRetainedFrame() {
+        PlayerDataPipeline pipeline = this.createPipeline(new FakeType(ALPHA));
+        SnapshotApplyContext context = context(pipeline, snapshotWith(ALPHA));
+        assertSame(EagerSnapshotData.EMPTY, context.passthrough());
+        assertTrue(context.passthrough().keys().isEmpty());
     }
 
     private PlayerDataPipeline createPipeline(FakeType... types) {
@@ -389,6 +401,7 @@ class PlayerDataPipelineTest {
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         setField(pipeline, "dataRegistry", registry);
         setField(pipeline, "decoder", new SnapshotDecoder(registry));
+        setField(pipeline, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
         setField(pipeline, "logger", this.logger);
         return pipeline;
     }

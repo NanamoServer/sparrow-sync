@@ -6,8 +6,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 public interface SnapshotData {
 
@@ -73,6 +76,34 @@ public interface SnapshotData {
      */
     @NotNull
     default SnapshotData with(@NotNull DataKey key, @NotNull Tag value) {
-        return new OverlaySnapshotData(this, Map.of(key, value));
+        return this.with(Map.of(key, value));
+    }
+
+    /**
+     * 将一组新值覆盖到当前数据体上, 未覆盖的类型继续保留原始块.
+     * 原有类型位置不变, 新增类型按传入 Map 的顺序追加; 空 Map 返回当前对象.
+     *
+     * @param values 要替换或追加的值, Map 会被复制, <strong>其中的 Tag 交付后不得修改</strong>
+     * @return 合并后的只读数据体, 当前对象保持不变
+     */
+    @NotNull
+    default SnapshotData with(@NotNull Map<DataKey, Tag> values) {
+        return values.isEmpty() ? this : new OverlaySnapshotData(this, new LinkedHashMap<>(values));
+    }
+
+    /**
+     * 按来源顺序选择部分类型, 筛选期间不读取 Tag 或校验数据块.
+     * 返回的非空视图仍引用来源; 长期持有前应将选中的块复制到独立帧.
+     *
+     * @param selected 按类型标识判断是否保留
+     * @return 只暴露选中类型的视图; 没有匹配项时返回共享空数据体
+     */
+    @NotNull
+    default SnapshotData select(@NotNull Predicate<DataKey> selected) {
+        Set<DataKey> keys = new LinkedHashSet<>();
+        for (DataKey key : this.keys()) {
+            if (selected.test(key)) keys.add(key);
+        }
+        return keys.isEmpty() ? EagerSnapshotData.EMPTY : new SubsetSnapshotData(this, keys);
     }
 }

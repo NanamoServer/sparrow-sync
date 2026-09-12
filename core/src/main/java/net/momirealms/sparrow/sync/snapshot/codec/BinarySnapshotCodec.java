@@ -5,17 +5,17 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
-import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
-import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndex;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -91,7 +91,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
 
     /**
      * 将快照中各类型的数据写成供数据库保存的二进制帧, 元数据由数据库单独保存.
-     * 已有原始字节的类型直接复制数据块, 保留原来的压缩方式, CRC 和类型版本;
+     * 已有原始字节的类型直接复制数据块, 保留原来的压缩方式和 CRC;
      * 新增或替换的 Tag 按当前压缩配置编码.
      *
      * @param data 要保存的各类型数据, 可以同时包含原始数据块和修改后的 Tag
@@ -117,7 +117,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (data instanceof LazySnapshotData lazy) return copyFrame(meta, lazy.encodedFrame());
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex.Entry> entries = new LinkedHashMap<>();
-        // 按 keys 的顺序写出数据块, 自动记录每块的位置, 长度, 压缩方式和类型版本并生成新索引
+        // 按 keys 的顺序写出数据块, 自动记录每块的位置, 长度, 压缩方式并生成新索引
         // 索引中的位置从第一个数据块起计算; 每块占用 9 字节块头加实际数据长度, 索引的 length 只记录后者
         for (DataKey key : data.keys()) {
             String name = key.asString();
@@ -129,7 +129,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
                     throw new FormatException(InvalidReason.CORRUPTED, "raw block out of bounds for " + name);
                 }
                 // 前面的块修改后长度可能变化, 因此重算此块的位置; 复制的内容没变, 其余索引信息沿用原值.
-                entries.put(name, new BlockIndex.Entry(blocks.size(), entry.length(), entry.rawLength(), entry.compressorId(), entry.version()));
+                entries.put(name, new BlockIndex.Entry(blocks.size(), entry.length(), entry.rawLength(), entry.compressorId()));
                 blocks.write(raw.bytes(), (int) raw.offset(), (int) length);
                 continue;
             }
@@ -137,7 +137,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
             ByteBuffer header = ByteBuffer.wrap(block);
             byte compressorId = header.get();
             int rawLength = header.getInt();
-            entries.put(name, new BlockIndex.Entry(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength, compressorId, 1));
+            entries.put(name, new BlockIndex.Entry(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength, compressorId));
             blocks.write(block);
         }
         byte[] index = NBT.toBytes(BlockIndex.write(entries), false);

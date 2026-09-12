@@ -1,11 +1,12 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.minecraft.nbt.CompoundTag;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
@@ -16,8 +17,6 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.trigger.SaveTriggerListener;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.bukkit.Bukkit;
@@ -27,7 +26,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -123,7 +121,7 @@ public final class SnapshotService {
      */
     @NotNull
     @ApiStatus.Internal
-    public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         return this.saver.captureNowAndSave(player, cause, retainedData);
     }
 
@@ -137,7 +135,7 @@ public final class SnapshotService {
      */
     @NotNull
     @ApiStatus.Internal
-    public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         return this.saver.captureLaterAndSave(player, cause, retainedData);
     }
 
@@ -151,7 +149,7 @@ public final class SnapshotService {
      */
     @NotNull
     @ApiStatus.Internal
-    public CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    public CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         return this.saver.captureLogoutAndSave(player, cause, retainedData);
     }
 

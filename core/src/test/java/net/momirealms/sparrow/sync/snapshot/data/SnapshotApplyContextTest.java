@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ class SnapshotApplyContextTest {
         DataRegistry registry = registry();
         Object[] values = new Object[registry.size()];
         values[registry.slot(FIRST)] = "first";
-        SnapshotApplyContext context = new SnapshotApplyContext(registry, Map.of(UNKNOWN, NBT.createString("unknown")), values);
+        SnapshotApplyContext context = new SnapshotApplyContext(registry, new EagerSnapshotData(Map.of(UNKNOWN, NBT.createString("unknown"))), values);
         context.decodeSkipped(registry.slot(SECOND), new IllegalStateException("corrupted"));
         context.appliedNative(registry.slot(FIRST), null);
         Map<DataKey, Object> eventData = new LinkedHashMap<>();
@@ -32,7 +33,7 @@ class SnapshotApplyContextTest {
         context.acceptEventValues(eventData);
 
         assertEquals(Map.of(SECOND, "recovered"), context.pendingValues());
-        assertEquals(Map.of(UNKNOWN, NBT.createString("unknown")), context.passthrough());
+        assertEquals(Map.of(UNKNOWN, NBT.createString("unknown")), context.passthrough().all());
         assertEquals(1, context.failures().size());
         assertEquals(SnapshotApplyContext.FailureStage.DECODE, context.failures().getFirst().stage());
     }

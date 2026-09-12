@@ -1,19 +1,19 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.minecraft.world.item.ItemStack;
-import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
-import net.momirealms.sparrow.sync.map.data.MapOrigin;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.MapPipeline;
 import net.momirealms.sparrow.sync.map.MapSyncService;
+import net.momirealms.sparrow.sync.map.data.MapOrigin;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.MapHandler;
 import net.momirealms.sparrow.sync.map.handler.MapType;
-import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
@@ -21,22 +21,29 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
-import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
@@ -56,13 +63,17 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.IntFunction;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -70,6 +81,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -89,6 +101,7 @@ class CaptureSchedulingTest {
     private SnapshotSaver saver;
     private SessionManager sessions;
     private PlayerSession session;
+    private PlayerDataPipeline pipeline; // 测试装配的真实解码、应用和采集流水线
     private Object previousServer;
     private Object previousConfig;
     private Object previousServerConfig;
@@ -137,8 +150,10 @@ class CaptureSchedulingTest {
         assertEquals(this.sync.key(), registry.keyAt(registry.syncCaptureSlots()[0]));
         assertEquals(this.async.key(), registry.keyAt(registry.asyncCaptureSlots()[0]));
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
+        this.pipeline = pipeline;
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", NmsPlayerFixture.allocate(MapSyncService.class));
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (proxy, method, args) -> {
@@ -168,6 +183,79 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(SessionManager.class, this.sessions, "snapshotService", this.service);
         this.session = this.sessions.tryOpen(this.player.getUniqueId(), this.player.getName(), ConnectionFixture.create());
         this.session.transition(SessionState.ACTIVE);
+    }
+
+    /**
+     * 未注册类型经解码、应用、会话交接和实际保存后保持原块字节, 会话只持有紧凑的小帧.
+     *
+     * @param mode 本次往返采用的采集方式
+     * @throws Exception 当测试快照编解码或保存任务失败时
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"SYNC", "ASYNC", "OFFLINE"})
+    void unknownBlocksSurviveSessionSaveWithoutDecoding(String mode) throws Exception {
+        DataKey first = DataKey.of("external", "z");
+        DataKey second = DataKey.of("external", "a");
+        byte[] large = new byte[30000];
+        new Random(42).nextBytes(large);
+        String knownValue = Base64.getEncoder().encodeToString(large);
+        Map<DataKey, Tag> values = new LinkedHashMap<>();
+        values.put(first, NBT.createString("unknown z"));
+        values.put(this.sync.key(), NBT.createString(knownValue));
+        values.put(second, NBT.createString("unknown a"));
+        values.put(this.async.key(), NBT.createString(knownValue));
+        BinarySnapshotCodec sourceCodec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0);
+        byte[] original = sourceCodec.encode(new Snapshot(SnapshotFixtures.meta(), values));
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, sourceCodec.decode(original)).snapshot();
+        SnapshotApplyContext context = assertInstanceOf(PlayerDataPipeline.DecodeResult.Ready.class, this.pipeline.decode(source)).context();
+        assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, this.pipeline.apply(this.player, context));
+        this.session.retainedData(context.passthrough());
+        SnapshotData retained = this.session.retainedData();
+        assertEquals(List.of(first, second), new ArrayList<>(retained.keys()));
+        assertNull(retained.raw(this.sync.key()));
+        assertNull(retained.get(this.sync.key()));
+        byte[] compact = assertInstanceOf(LazySnapshotData.class, retained).encodedFrame();
+        assertTrue(compact.length < original.length / 2);
+        assertNotSame(original, compact);
+        assertSame(compact, retained.raw(first).bytes());
+        assertSame(compact, retained.raw(second).bytes());
+        assertEquals(2, SnapshotFixtures.decodedBlockCount(source));
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(new Snapshot(source.meta(), retained)));
+
+        CompletableFuture<SnapshotSaveResult> saved = switch (CaptureMode.valueOf(mode)) {
+            case SYNC -> this.sessions.captureNowAndSave(this.session, this.player, SaveCause.WORLD_SAVE);
+            case ASYNC -> this.sessions.captureLaterAndSave(this.session, this.player, SaveCause.WORLD_SAVE);
+            case OFFLINE -> this.service.captureLogoutAndSave(this.player, SaveCause.DISCONNECT, retained);
+        };
+        this.releaseWorker.countDown();
+        this.awaitSubmissions();
+        this.finishWrites();
+        assertEquals(StorageProvider.SaveResult.SAVED, assertInstanceOf(SnapshotSaveResult.Settled.class, saved.get(2, TimeUnit.SECONDS)).result());
+        Snapshot written = this.written.getFirst();
+        BinarySnapshotCodec targetCodec = new BinarySnapshotCodec(CompressorRegistry.NONE);
+        byte[] firstSave = targetCodec.encode(written);
+        assertArrayEquals(firstSave, targetCodec.encode(written));
+        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, targetCodec.decode(firstSave)).snapshot();
+        assertEquals(List.of(first, second, this.async.key(), this.sync.key()), new ArrayList<>(restored.keys()));
+        for (DataKey key : List.of(first, second)) {
+            assertArrayEquals(blockBytes(source.content().raw(key)), blockBytes(restored.content().raw(key)));
+            assertEquals(CompressorRegistry.DEFLATE.id(), restored.content().raw(key).entry().compressorId());
+        }
+        assertEquals(2, SnapshotFixtures.decodedBlockCount(source));
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(new Snapshot(source.meta(), retained)));
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(restored));
+        assertEquals("0", restored.data(this.sync.key()).getAsString());
+    }
+
+    /**
+     * 提取块头和载荷, 用于比较跨服往返时实际复制的字节.
+     *
+     * @param block 原始块的位置及其来源数组
+     * @return 只包含该块的独立字节数组
+     */
+    private static byte[] blockBytes(RawBlock block) {
+        int start = (int) block.offset();
+        return Arrays.copyOfRange(block.bytes(), start, start + BlockCodec.BLOCK_HEADER_LENGTH + block.entry().length());
     }
 
     @AfterEach
@@ -284,8 +372,8 @@ class CaptureSchedulingTest {
             assertTrue(this.service.sealAndAwaitSaves(2, TimeUnit.SECONDS));
             return;
         }
-        CompletableFuture<SnapshotSaveResult> first = this.service.captureNowAndSave(this.player, SaveCause.WORLD_SAVE, Map.of());
-        CompletableFuture<SnapshotSaveResult> second = this.service.captureNowAndSave(this.player, SaveCause.WORLD_SAVE, Map.of());
+        CompletableFuture<SnapshotSaveResult> first = this.service.captureNowAndSave(this.player, SaveCause.WORLD_SAVE, EagerSnapshotData.EMPTY);
+        CompletableFuture<SnapshotSaveResult> second = this.service.captureNowAndSave(this.player, SaveCause.WORLD_SAVE, EagerSnapshotData.EMPTY);
         CountDownLatch afterSaves = new CountDownLatch(1);
         this.executor.submit(this.player.getUniqueId(), () -> {
             if (!outcome.equals("stash")) {
@@ -492,9 +580,9 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", maps);
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         switch (CaptureMode.valueOf(mode)) {
-            case SYNC -> this.service.captureNowAndSave(this.player, SaveCause.DEATH, Map.of());
-            case ASYNC -> this.service.captureLaterAndSave(this.player, SaveCause.WORLD_SAVE, Map.of());
-            case OFFLINE -> this.service.captureLogoutAndSave(this.player, SaveCause.DISCONNECT, Map.of());
+            case SYNC -> this.service.captureNowAndSave(this.player, SaveCause.DEATH, EagerSnapshotData.EMPTY);
+            case ASYNC -> this.service.captureLaterAndSave(this.player, SaveCause.WORLD_SAVE, EagerSnapshotData.EMPTY);
+            case OFFLINE -> this.service.captureLogoutAndSave(this.player, SaveCause.DISCONNECT, EagerSnapshotData.EMPTY);
         }
         assertNull(processedOn.get());
         if (mode.equals("OFFLINE")) {
@@ -521,9 +609,9 @@ class CaptureSchedulingTest {
     void restoreCreatesNewIdentityAndSharesTimestampOrderWithCaptures() throws Exception {
         Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 0),
                 Map.of(DataKey.of("external", "retained"), NBT.createCompound()));
-        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, EagerSnapshotData.EMPTY);
         this.saver.saveRestored(source, this.player.getName());
-        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        this.service.captureNowAndSave(this.player, SaveCause.COMMAND, EagerSnapshotData.EMPTY);
         this.releaseWorker.countDown();
         this.awaitSubmissions();
         this.finishWrites();
@@ -599,7 +687,7 @@ class CaptureSchedulingTest {
         this.releaseWorker.countDown();
         this.executor.shutdown(2, TimeUnit.SECONDS);
 
-        CompletableFuture<SnapshotSaveResult> result = this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        CompletableFuture<SnapshotSaveResult> result = this.service.captureNowAndSave(this.player, SaveCause.COMMAND, EagerSnapshotData.EMPTY);
 
         ExecutionException failure = assertThrows(ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
         assertInstanceOf(RejectedExecutionException.class, failure.getCause());
@@ -643,7 +731,7 @@ class CaptureSchedulingTest {
         assertNotNull(result);
         assertFalse(this.service.sealAndAwaitSaves(0, TimeUnit.NANOSECONDS));
         int captures = this.sync.modes.size();
-        assertThrows(RejectedExecutionException.class, () -> this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of()));
+        assertThrows(RejectedExecutionException.class, () -> this.service.captureNowAndSave(this.player, SaveCause.COMMAND, EagerSnapshotData.EMPTY));
         assertEquals(captures, this.sync.modes.size());
         this.releaseWorker.countDown();
         this.awaitSubmissions();
@@ -666,7 +754,7 @@ class CaptureSchedulingTest {
             returnFromEvent.join();
             event.setCancelled(true);
         };
-        CompletableFuture<SnapshotSaveResult> result = this.service.captureNowAndSave(this.player, SaveCause.COMMAND, Map.of());
+        CompletableFuture<SnapshotSaveResult> result = this.service.captureNowAndSave(this.player, SaveCause.COMMAND, EagerSnapshotData.EMPTY);
         this.releaseWorker.countDown();
         try {
             assertTrue(enteredEvent.await(2, TimeUnit.SECONDS));

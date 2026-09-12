@@ -5,8 +5,8 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.IntTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -15,14 +15,14 @@ import java.util.Map;
 
 /**
  * 数据类型到块位置的索引, 负责 NBT 字段与条目之间的转换.
- * 每个条目保存 o/l/n/c/v, 偏移和长度以字节为单位;
+ * 每个条目保存 o/l/n/c, 偏移和长度以字节为单位.
  */
 public final class BlockIndex {
     private BlockIndex() {
     }
 
     /**
-     * 读取各类型的块位置, 长度与版本, 保持传入索引的迭代顺序.
+     * 读取各类型的块位置, 长度与压缩方式, 保持传入索引的迭代顺序.
      *
      * @param index 索引 compoundTag
      * @return 保持输入迭代顺序的条目表
@@ -36,12 +36,11 @@ public final class BlockIndex {
             String key = tagEntry.getKey();
             if (!(tagEntry.getValue() instanceof CompoundTag value)
                     || !(value.get("o") instanceof IntTag) || !(value.get("l") instanceof IntTag)
-                    || !(value.get("n") instanceof IntTag) || !(value.get("c") instanceof ByteTag)
-                    || !(value.get("v") instanceof IntTag))
+                    || !(value.get("n") instanceof IntTag) || !(value.get("c") instanceof ByteTag))
             {
                 throw new FormatException(InvalidReason.CORRUPTED, "invalid index entry for " + key);
             }
-            Entry entry = new Entry(value.getInt("o"), value.getInt("l"), value.getInt("n"), value.getByte("c"), value.getInt("v"));
+            Entry entry = new Entry(value.getInt("o"), value.getInt("l"), value.getInt("n"), value.getByte("c"));
             if (entry.offset() < 0 || entry.length() < 0 || entry.rawLength() < 0) {
                 throw new FormatException(InvalidReason.CORRUPTED, "negative index length or offset for " + key);
             }
@@ -66,7 +65,6 @@ public final class BlockIndex {
             value.putInt("l", entry.length());
             value.putInt("n", entry.rawLength());
             value.putByte("c", entry.compressorId());
-            value.putInt("v", entry.version());
             index.put(item.getKey(), value);
         }
         return index;
@@ -79,8 +77,7 @@ public final class BlockIndex {
      * @param length 压缩后 payload 的字节数, 不含 9 字节块头
      * @param rawLength 解压后单键 compound 的字节数
      * @param compressorId 压缩注册表标识, 必须与块头一致
-     * @param version 类型自身的数据版本, 从 1 起
      */
-    public record Entry(int offset, int length, int rawLength, byte compressorId, int version) {
+    public record Entry(int offset, int length, int rawLength, byte compressorId) {
     }
 }

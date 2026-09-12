@@ -2,15 +2,14 @@ package net.momirealms.sparrow.sync.session;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerDataEntry;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -25,7 +24,7 @@ public final class PlayerSession implements PlayerDataEntry {
     private final CompletableFuture<Void> released = new CompletableFuture<>(); // 会话从注册表移除后完成
     private SessionState state = SessionState.PREPARING;
     private LoginDataState loginDataState = LoginDataState.PRELOADING;
-    private Map<DataKey, Tag> retainedData = Map.of(); // 本服不认识或已关闭的数据类型, 保存时原样写回快照
+    private SnapshotData retainedData = EagerSnapshotData.EMPTY; // 本服未注册类型的紧凑数据体, 保存时原样写回快照
     private String lockToken; // 分布式锁的持有值, 释放时原样传回
 
     PlayerSession(@NotNull UUID uuid, @NotNull String playerName, @NotNull Connection connection) {
@@ -122,12 +121,12 @@ public final class PlayerSession implements PlayerDataEntry {
 
     @NotNull
     @ApiStatus.Internal
-    public synchronized Map<DataKey, Tag> retainedData() {
+    public synchronized SnapshotData retainedData() {
         return this.retainedData;
     }
 
     @ApiStatus.Internal
-    public synchronized void retainedData(@NotNull Map<DataKey, Tag> retainedData) {
+    public synchronized void retainedData(@NotNull SnapshotData retainedData) {
         this.retainedData = retainedData;
     }
 

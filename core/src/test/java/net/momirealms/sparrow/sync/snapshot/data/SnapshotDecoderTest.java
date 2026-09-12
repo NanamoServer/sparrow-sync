@@ -1,12 +1,11 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import java.io.UncheckedIOException;
-import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -15,6 +14,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +86,7 @@ class SnapshotDecoderTest {
         List<String> previewValue = (List<String>) preview.value(FIRST);
         assertNotSame(applyValue, previewValue);
 
-        SnapshotApplyContext context = applying.intoApplyContext();
+        SnapshotApplyContext context = applying.intoApplyContext(applying.passthrough());
         assertSame(applyValue, context.takePending(FIRST));
         applyValue.add("changed by apply");
 
@@ -100,7 +100,7 @@ class SnapshotDecoderTest {
     void nonCriticalFailureCanBeRecoveredAfterContextCreation() {
         DataRegistry registry = registry(new TestType(FIRST, false, true, new ArrayList<>()), new TestType(LAST, false, false, new ArrayList<>()));
         DecodedSnapshotData decoded = new SnapshotDecoder(registry).decodeForApply(snapshot());
-        SnapshotApplyContext context = decoded.intoApplyContext();
+        SnapshotApplyContext context = decoded.intoApplyContext(decoded.passthrough());
         assertEquals(List.of(FIRST), context.skipped());
 
         context.acceptEventValues(Map.of(FIRST, List.of("recovered"), LAST, context.pendingValues().get(LAST)));

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
-import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -11,31 +11,31 @@ import java.util.function.Consumer;
 
 /**
  * 跟踪一份已解码快照的 Native、Join 或在线应用进度, 每个请求独占值缓冲.
- * 解码结果移交后由此处消费和释放值, 未注册类型的 Tag 保留供下次保存.
+ * 解码结果移交后由此处消费和释放值, 未注册类型的紧凑数据体保留供下次保存.
  */
 @ApiStatus.Internal
 public final class SnapshotApplyContext {
     private final DataRegistry dataRegistry;       // DataKey 与数据类型槽位的稳定映射
     private final Object[] values;                 // PENDING 存解码值, APPLIED_NATIVE 存可选的 Join 回调, 消费后释放
     private final ApplyState[] states;             // 每个槽位在本轮解码和应用中的进度
-    private final Map<DataKey, Tag> passthrough;   // 未注册类型原样保留到玩家后续保存
+    private final SnapshotData passthrough;        // 未注册类型的紧凑数据体, 原样保留到玩家后续保存
     private List<Failure> failures;                // 首次失败时创建, 按发生顺序记录
 
     /**
      * 接管当前请求的解码值, 按槽位建立本次应用进度.
      *
      * @param dataRegistry 已冻结的类型布局
-     * @param passthrough 未注册类型的原始数据
+     * @param passthrough 已脱离完整来源帧的未注册类型数据
      * @param values 当前请求移交的值缓冲, 后续由本 Context 独占
      */
-    SnapshotApplyContext(@NotNull DataRegistry dataRegistry, @NotNull Map<DataKey, Tag> passthrough, Object @NotNull [] values) {
+    SnapshotApplyContext(@NotNull DataRegistry dataRegistry, @NotNull SnapshotData passthrough, Object @NotNull [] values) {
         this.dataRegistry = dataRegistry;
         this.values = values;
         this.states = new ApplyState[values.length];
         for (int i = 0; i < values.length; i++) {
             this.states[i] = values[i] == null ? ApplyState.ABSENT : ApplyState.PENDING;
         }
-        this.passthrough = Collections.unmodifiableMap(new LinkedHashMap<>(passthrough));
+        this.passthrough = passthrough;
     }
 
     /** 返回仍需在玩家数据应用阶段处理的数据副本. */
@@ -72,7 +72,7 @@ public final class SnapshotApplyContext {
     }
 
     @NotNull
-    public Map<DataKey, Tag> passthrough() {
+    public SnapshotData passthrough() {
         return this.passthrough;
     }
 

@@ -4,13 +4,15 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import org.junit.jupiter.api.Test;
 
@@ -141,8 +143,8 @@ class PlayerSessionTest {
         assertSame(LoginDataState.CLEARED, session.finishLoginData());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
-        session.retainedData(replacement);
-        assertEquals(replacement, session.retainedData());
+        session.retainedData(new EagerSnapshotData(replacement));
+        assertEquals(replacement, session.retainedData().all());
     }
 
     @Test
@@ -224,9 +226,9 @@ class PlayerSessionTest {
 
     private static SnapshotApplyContext newApplyContext(DataRegistry registry, Map<DataKey, Tag> passthrough) {
         try {
-            Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, Map.class, Object[].class);
+            Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, SnapshotData.class, Object[].class);
             constructor.setAccessible(true);
-            return constructor.newInstance(registry, passthrough, new Object[registry.size()]);
+            return constructor.newInstance(registry, new EagerSnapshotData(passthrough), new Object[registry.size()]);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

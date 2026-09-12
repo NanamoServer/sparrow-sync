@@ -26,15 +26,26 @@ import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgr
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.AdvancementValue;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType.Advancements;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import org.bukkit.craftbukkit.entity.CraftEntity;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -42,6 +53,7 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -315,6 +327,63 @@ class AdvancementsDataTypeTest {
         Set<Object> ids = new HashSet<>();
         for (AdvancementValue value : forwarded.values()) ids.add(value.id());
         assertEquals(Set.of(localId, unknownId), ids);
+    }
+
+    /**
+     * 成就块中的未知 ID 与整个未知类型共同往返, 本服新增进度写入新成就块.
+     *
+     * @param nativeHandoff 是否通过原生 JSON 分类后的 Join 交接保留未知成就
+     * @throws Exception 当测试 NMS 装配或块编解码失败时
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void partialRetentionCoexistsWithUnknownRawBlocks(boolean nativeHandoff) throws Exception {
+        Object localId = IdentifierProxy.INSTANCE.tryParse("ce:local");
+        Object unknownId = IdentifierProxy.INSTANCE.tryParse("ce:remote");
+        AdvancementHolder localHolder = holder(localId);
+        AdvancementProgress localProgress = progress("done", null);
+        Map<Object, Object> progress = new LinkedHashMap<>();
+        Map<Object, Object> advancements = Map.of(localId, localHolder);
+        AdvancementSlots slots = new AdvancementSlots(() -> advancements);
+        PlayerFixture fixture = playerFixture(progress, slots);
+        Instant obtained = Instant.parse("2026-09-12T00:00:00Z");
+        AdvancementValue unknown = new AdvancementValue(unknownId, new String[]{"done"}, new Instant[]{obtained}, true);
+        DataKey external = DataKey.of("external", "book");
+        BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0);
+        Snapshot original = new Snapshot(SnapshotFixtures.meta(), Map.of(
+                AdvancementsDataType.ADVANCEMENTS, fixture.type.encode(new Advancements(new AdvancementValue[]{unknown})),
+                external, NBT.createString("opaque")));
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(original))).snapshot();
+        DataRegistry registry = new DataRegistry();
+        registry.register(fixture.type);
+        registry.freeze();
+        Advancements decoded = (Advancements) new SnapshotDecoder(registry).decodeForApply(source).value(AdvancementsDataType.ADVANCEMENTS);
+        if (nativeHandoff) {
+            AdvancementSlots.Layout layout = slots.current();
+            AdvancementsDataType.NativeEncoding nativeData = AdvancementsDataType.encodeNativeJson(decoded, layout);
+            nativeHandoff(fixture.type, layout, decoded, nativeData.unknown()).accept(fixture.player);
+        } else {
+            fixture.type.apply(fixture.player, decoded);
+        }
+        progress.put(localHolder, localProgress);
+        CriterionProgress criterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(localProgress).get("done");
+        CriterionProgressProxy.INSTANCE.setObtained(criterion, obtained.plusSeconds(10));
+        fixture.tracking.add(localHolder);
+        Advancements captured = fixture.type.capture(fixture.player, CaptureMode.SYNC);
+        SnapshotData retained = codec.deframeData(codec.frameData(source.content().select(external::equals)));
+        Snapshot outgoing = new Snapshot(source.meta(), retained.with(Map.of(AdvancementsDataType.ADVANCEMENTS, fixture.type.encode(captured))));
+        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(outgoing))).snapshot();
+        var before = source.content().raw(external);
+        var after = restored.content().raw(external);
+        assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.offset() + 9 + before.entry().length()),
+                Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.offset() + 9 + after.entry().length()));
+        Advancements forwarded = fixture.type.decode(restored.data(AdvancementsDataType.ADVANCEMENTS), 0);
+        assertEquals(2, forwarded.values().length);
+        assertEquals(obtained, findValue(forwarded, unknownId).obtained()[0]);
+        assertEquals(obtained.plusSeconds(10), findValue(forwarded, localId).obtained()[0]);
+        assertEquals(1, SnapshotFixtures.decodedBlockCount(source));
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(new Snapshot(source.meta(), retained)));
+        assertEquals(1, SnapshotFixtures.decodedBlockCount(restored));
     }
 
     /** 验证关闭 Native 时仍由保留配置决定 Player apply 是否转发未知进度. */

@@ -1,9 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.model;
 
-import net.momirealms.sparrow.nbt.CompoundTag;
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.util.zip.CRC32;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
@@ -108,35 +104,6 @@ class SnapshotDataOverlayTest {
         assertThrows(UncheckedIOException.class, () -> restored.data(SECOND));
     }
 
-    /**
-     * 把第二个类型在索引中的版本设为 7, 再修改第一个类型并保存快照.
-     * 验证第二个块仍保留原字节和版本 7, 只有重新编码的第一个块使用版本 1.
-     *
-     * @throws IOException 当测试索引或快照编解码失败时
-     */
-    @Test
-    void untouchedBlockKeepsItsVersionWhenAnotherTypeIsRewritten() throws IOException {
-        byte[] bytes = ((LazySnapshotData) this.source().content()).encodedFrame().clone();
-        ByteBuffer header = ByteBuffer.wrap(bytes);
-        int metaLength = Short.toUnsignedInt(header.getShort(4));
-        int indexLength = header.getInt(6);
-        int indexOffset = 14 + metaLength;
-        CompoundTag index = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, indexOffset, indexLength)), false);
-        index.getCompound(SECOND.asString()).putInt("v", 7);
-        byte[] changedIndex = NBT.toBytes(index, false);
-        assertEquals(indexLength, changedIndex.length);
-        System.arraycopy(changedIndex, 0, bytes, indexOffset, indexLength);
-        CRC32 crc = new CRC32();
-        crc.update(bytes, 14, metaLength + indexLength);
-        header.putInt(10, (int) crc.getValue());
-        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot();
-        Snapshot changed = new Snapshot(source.meta(), source.content().with(FIRST, NBT.createInt(5)));
-        Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(changed))).snapshot();
-        assertEquals(7, restored.content().raw(SECOND).entry().version());
-        assertEquals(1, restored.content().raw(FIRST).entry().version());
-        assertArrayEquals(blockBytes(source.content().raw(SECOND)), blockBytes(restored.content().raw(SECOND)));
-        assertEquals(0, ((LazySnapshotData) source.content()).decodedBlockCount());
-    }
     /** 验证直接持有 Tag 的 EagerSnapshotData 也能通过 with 替换和追加值, 原对象和传入的 Map 保持不变. */
     @Test
     void eagerDataUsesTheSameImmutableOverlayContract() {
@@ -148,6 +115,53 @@ class SnapshotDataOverlayTest {
         assertEquals(NBT.createInt(3), changed.get(ADDED));
         assertNull(changed.raw(FIRST));
         assertEquals(-1, eager.rawLength(FIRST));
+    }
+
+    /**
+     * 批量覆盖保留原位置并复制输入 Map, 连续覆盖仍能复用未修改块.
+     *
+     * @throws IOException 当测试快照编解码失败时
+     */
+    @Test
+    void bulkOverridesKeepRawBlocksAndOwnTheirMap() throws IOException {
+        Snapshot source = this.source();
+        Map<DataKey, Tag> values = new LinkedHashMap<>();
+        values.put(FIRST, NBT.createString("new"));
+        values.put(ADDED, NBT.createInt(3));
+        SnapshotData changed = source.content().with(values);
+        values.clear();
+        assertEquals("new", changed.get(FIRST).getAsString());
+        assertEquals(List.of(FIRST, SECOND, ADDED), new ArrayList<>(changed.keys()));
+        assertNull(changed.raw(FIRST));
+        assertArrayEquals(blockBytes(source.content().raw(SECOND)), blockBytes(changed.raw(SECOND)));
+        assertSame(changed, changed.with(Map.of()));
+        SnapshotData again = changed.with(Map.of(FIRST, NBT.createString("newer")));
+        assertEquals("new", changed.get(FIRST).getAsString());
+        assertEquals("newer", again.get(FIRST).getAsString());
+        assertEquals(0, ((LazySnapshotData) source.content()).decodedBlockCount());
+    }
+
+    /**
+     * 子集隐藏未选中的键, 选中类型保留原始块, 空子集释放来源引用.
+     *
+     * @throws IOException 当测试快照编解码失败时
+     */
+    @Test
+    void subsetOnlyExposesSelectedKeysAndDefersDecoding() throws IOException {
+        Snapshot source = this.source();
+        SnapshotData subset = source.content().select(SECOND::equals);
+        assertEquals(List.of(SECOND), new ArrayList<>(subset.keys()));
+        assertNull(subset.get(FIRST));
+        assertNull(subset.raw(FIRST));
+        assertEquals(-1, subset.rawLength(FIRST));
+        assertEquals(source.content().rawLength(SECOND), subset.rawLength(SECOND));
+        assertArrayEquals(blockBytes(source.content().raw(SECOND)), blockBytes(subset.raw(SECOND)));
+        assertEquals(0, ((LazySnapshotData) source.content()).decodedBlockCount());
+        assertThrows(UnsupportedOperationException.class, () -> subset.keys().clear());
+        assertEquals(Map.of(SECOND, NBT.createInt(2)), subset.all());
+        assertThrows(UnsupportedOperationException.class, () -> subset.all().clear());
+        assertSame(EagerSnapshotData.EMPTY, source.content().select(key -> false));
+        assertEquals(1, ((LazySnapshotData) source.content()).decodedBlockCount());
     }
 
     /**

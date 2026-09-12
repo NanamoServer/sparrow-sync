@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
@@ -10,21 +9,20 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
-import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.util.EventUtils;
-import net.momirealms.sparrow.sync.util.TagUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -97,7 +95,7 @@ final class SnapshotSaver {
 
     // 在玩家线程采集全部数据类型, 然后由 worker 编码, 处理地图并保存.
     @NotNull
-    CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);
         try {
             if (request.finishing()) return request.completion();
@@ -115,7 +113,7 @@ final class SnapshotSaver {
 
     // 在玩家线程采集必须同步的数据类型, 然后投递到 worker 补齐采集异步类型数据后保存.
     @NotNull
-    CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);
         try {
             if (request.finishing()) return request.completion();
@@ -139,7 +137,7 @@ final class SnapshotSaver {
 
     // 在异步线程采集离线玩家并保存数据.
     @NotNull
-    CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);
         this.submitSerial(request, () -> {
             if (!(this.playerDataPipeline.capture(player, CaptureMode.OFFLINE) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
@@ -161,7 +159,7 @@ final class SnapshotSaver {
             request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be encoded"));
             return;
         }
-        Snapshot snapshot = new Snapshot(request.meta(), TagUtils.mergeData(request.retainedData(), encoded.data()));
+        Snapshot snapshot = new Snapshot(request.meta(), request.retainedData().with(encoded.data()));
         request.captureNanos(captured.captureNanos());
         // 原正文在地图等待前发布, 停服线程通过 Writer 持有的同一请求取得它.
         if (!request.updateSnapshot(snapshot)) return;
@@ -235,7 +233,7 @@ final class SnapshotSaver {
                 .mcDataVersion(source.meta().mcDataVersion())
                 .build();
         Snapshot restored = new Snapshot(meta, source.content());
-        SaveRequest request = new SaveRequest(meta, playerName, Map.of(), null);
+        SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, null);
         request.updateSnapshot(restored);
         this.writer.register(request);
         this.submitSerial(request, () -> this.writePrepared(request, restored));
@@ -277,7 +275,7 @@ final class SnapshotSaver {
      * @throws RejectedExecutionException 当 Writer 已停止接收保存时
      */
     @NotNull
-    private SaveRequest newRequest(@NotNull Player player, @NotNull SaveCause cause, @NotNull Map<DataKey, Tag> retainedData) {
+    private SaveRequest newRequest(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         // 请求接受时分配逻辑时间戳, 同一玩家在并发调用下仍严格递增.
         Long ts = this.lastTimestampByPlayer.merge(player.getUniqueId(), System.currentTimeMillis(), (last, now) -> Math.max(now, last + 1));
         SnapshotMeta snapshotMeta = SnapshotMeta.builder()

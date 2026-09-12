@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.SnapshotWriter.WriteAttempt;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -95,7 +96,7 @@ class RetryLogTest {
                 .cause(SaveCause.DISCONNECT)
                 .server("test")
                 .build();
-        SaveRequest request = new SaveRequest(meta, "TestPlayer", Map.of(), null);
+        SaveRequest request = new SaveRequest(meta, "TestPlayer", EagerSnapshotData.EMPTY, null);
         request.updateSnapshot(new Snapshot(meta, Map.of()));
         return WriteAttempt.first(request, maxRetries);
     }

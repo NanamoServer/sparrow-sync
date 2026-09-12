@@ -3,8 +3,8 @@ package net.momirealms.sparrow.sync.snapshot.data;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.momirealms.sparrow.nbt.NBT;
-import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.map.MapSyncService;
@@ -13,7 +13,9 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
@@ -21,6 +23,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,6 +42,7 @@ public final class PlayerDataPipeline {
     private DataRegistry dataRegistry;
     private MapSyncService mapSync;
     private SnapshotDecoder decoder;
+    private BinarySnapshotCodec binaryCodec; // 将未注册类型复制成独立小帧, 会话只保留这些块
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -47,6 +51,7 @@ public final class PlayerDataPipeline {
     public void onLoad() {
         this.dataRegistry = this.plugin.dataRegistry();
         this.decoder = new SnapshotDecoder(this.dataRegistry);
+        this.binaryCodec = this.plugin.binaryCodec();
         this.logger = this.plugin.logger();
         this.mapSync = this.plugin.mapSyncService();
     }
@@ -198,6 +203,7 @@ public final class PlayerDataPipeline {
      *
      * @param snapshot 已完成地图准备的快照
      * @return 待应用 Context, 或首个关键类型的失败
+     * @throws UncheckedIOException 当未知类型的数据块越界或纯 Tag 编码失败时
      */
     @NotNull
     public DecodeResult decode(@NotNull Snapshot snapshot) {
@@ -213,7 +219,16 @@ public final class PlayerDataPipeline {
             }
             this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, failure, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
         }
-        return new DecodeResult.Ready(decoded.intoApplyContext());
+        SnapshotData passthrough = decoded.passthrough();
+        if (!passthrough.keys().isEmpty()) {
+            // 子集的 raw 仍指向来源, 编码器逐块复制后读回, Context 只持有未知类型的小帧.
+            try {
+                passthrough = this.binaryCodec.deframeData(this.binaryCodec.frameData(passthrough));
+            } catch (IOException exception) {
+                throw new UncheckedIOException("cannot retain unknown snapshot blocks", exception);
+            }
+        }
+        return new DecodeResult.Ready(decoded.intoApplyContext(passthrough));
     }
 
     /**

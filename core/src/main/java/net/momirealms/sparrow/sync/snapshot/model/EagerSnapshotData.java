@@ -14,6 +14,8 @@ import java.util.Set;
  * 取值不会失败, 迭代顺序跟随传入的 Map.
  */
 public final class EagerSnapshotData implements SnapshotData {
+    public static final EagerSnapshotData EMPTY = new EagerSnapshotData(Map.of()); // 空数据体共享实例
+
     private final Map<DataKey, Tag> values;
 
     /**

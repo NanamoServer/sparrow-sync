@@ -59,9 +59,11 @@ final class OverlaySnapshotData implements SnapshotData {
 
     @Override
     @NotNull
-    public SnapshotData with(@NotNull DataKey key, @NotNull Tag value) {
+    public SnapshotData with(@NotNull Map<DataKey, Tag> values) {
+        if (values.isEmpty()) return this;
+        // 将连续替换合并到同一张表, 保留最初来源的原始块读取能力.
         Map<DataKey, Tag> overrides = new LinkedHashMap<>(this.overrides);
-        overrides.put(key, value);
+        overrides.putAll(values);
         return new OverlaySnapshotData(this.source, overrides);
     }
 }

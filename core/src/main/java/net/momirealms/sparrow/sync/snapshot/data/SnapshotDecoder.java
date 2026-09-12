@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.function.Predicate;
 
 @ApiStatus.Internal
@@ -44,19 +44,11 @@ public final class SnapshotDecoder {
     // 按注册表确定的顺序读取选中的类型并转换为玩家数据对象; 数据块读取失败和类型转换失败都记在该类型的结果中.
     @NotNull
     private DecodedSnapshotData decode(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected, boolean applying) {
-        Map<DataKey, Tag> passthrough = null;
-        // 应用快照时先读取未注册类型的 Tag, 交给会话在后续保存时保留; 预览无需读取它们, 原快照仍持有这些数据.
-        if (applying) {
-            for (DataKey key : snapshot.keys()) {
-                if (this.registry.slot(key) < 0) {
-                    if (passthrough == null) {
-                        passthrough = new LinkedHashMap<>();
-                    }
-                    passthrough.put(key, snapshot.data(key));
-                }
-            }
-        }
-        DecodedSnapshotData result = new DecodedSnapshotData(this.registry, passthrough == null ? Map.of() : passthrough);
+        // 未注册类型只筛选键并保留原始块引用, 长期持有前由数据流水线复制成紧凑帧.
+        SnapshotData passthrough = applying
+                ? snapshot.content().select(key -> this.registry.slot(key) < 0)
+                : EagerSnapshotData.EMPTY;
+        DecodedSnapshotData result = new DecodedSnapshotData(this.registry, passthrough);
         for (int i = 0; i < this.registry.size(); i++) {
             DataKey key = this.registry.keyAt(i);
             if (!snapshot.keys().contains(key)) {
