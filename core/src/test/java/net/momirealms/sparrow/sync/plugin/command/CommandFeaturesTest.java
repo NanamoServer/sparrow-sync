@@ -177,7 +177,7 @@ class CommandFeaturesTest {
         ConsoleCommandSender console = proxy(ConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
         this.execute(console, "sparrow-sync data migrate HuskSync");
         assertTrue(this.text().contains("husksync"));
-        assertTrue(this.text().contains("还不可用"));
+        assertTrue(this.text().contains("暂不可用"));
         this.messages.clear();
         this.manager.locale = Locale.ENGLISH;
         RemoteConsoleCommandSender remote = proxy(RemoteConsoleCommandSender.class, (instance, method, args) -> method.getName().equals("hasPermission") ? true : null);
@@ -386,9 +386,9 @@ class CommandFeaturesTest {
                 Component.text(999), Component.text(18), Component.text(981));
         assertEquals(1, this.text().lines().count());
         assertTrue(this.text().startsWith(">> SparrowSync · "));
-        assertTrue(this.text().contains(language.equals("zh") ? "异步耗时 18 毫秒" : "async 18 ms"));
+        assertTrue(this.text().contains(language.equals("zh") ? "耗时 18 毫秒" : "18 ms"));
         // 只说明重载流程走完了, 不对配置是否全部生效下结论
-        assertTrue(this.text().contains(language.equals("zh") ? "插件已完成 reload" : "Plugin reload completed"));
+        assertTrue(this.text().contains(language.equals("zh") ? "配置已重载" : "Configuration reloaded"));
         assertFalse(this.text().contains("999"));
         assertFalse(this.text().contains("981"));
     }
@@ -584,7 +584,7 @@ class CommandFeaturesTest {
         this.execute(viewer, "sparrow-sync exception list Steve 99");
         assertTrue(this.text().contains("2/2"));
         assertFalse(this.text().contains("legacy.snapshot"));
-        assertTrue(this.text().contains("Body unchecked"));
+        assertTrue(this.text().contains("Snapshot data not checked yet"));
         this.messages.clear();
         this.execute(viewer, "sparrow-sync exception list 0");
         assertTrue(this.text().contains("Page must be an integer"));
@@ -610,7 +610,7 @@ class CommandFeaturesTest {
         assertTrue(this.text().contains("test:zero · 0 bytes"));
         assertTrue(this.text().contains("test:unknown · Size unknown"));
         assertFalse(this.text().contains("-1 bytes"));
-        assertTrue(this.text().contains("Body missing"));
+        assertTrue(this.text().contains("Snapshot data missing"));
     }
 
     @Test
@@ -622,13 +622,13 @@ class CommandFeaturesTest {
         this.manager.registerFeature(new ExceptionViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("exception_view"));
         CommandSender viewer = sender(Set.of("sparrow_sync.command.view"));
         this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
-        assertTrue(this.text().contains("Body unchecked"));
+        assertTrue(this.text().contains("Snapshot data not checked yet"));
         assertFalse(this.text().contains("Cannot decode body"));
-        assertTrue(this.text().contains("Header missing"));
+        assertTrue(this.text().contains("Snapshot information missing"));
         this.messages.clear();
         Files.delete(body);
         this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
-        assertTrue(this.text().contains("Body missing"));
+        assertTrue(this.text().contains("Snapshot data missing"));
         this.messages.clear();
         AtomicInteger scheduled = this.installGuiScheduler();
         this.execute(player(Set.of("sparrow_sync.command.view")), "sparrow-sync exception view corrupted/archive.snapshot");
@@ -679,7 +679,7 @@ class CommandFeaturesTest {
         assertEquals(0, scheduled.get());
         assertEquals(1, this.messages.size());
         assertTrue(this.text().contains(language.equals("zh_cn")
-                ? "未找到该玩家的数据，这位玩家可能从未在本服登录过。"
+                ? "没有找到该玩家的数据，可能还没有在本服登录过。"
                 : "No data was found for this player. They may never have joined this server."));
     }
 
@@ -724,8 +724,8 @@ class CommandFeaturesTest {
         String path = "corrupted/archive with spaces.snapshot";
         SnapshotFiles.ExceptionEntry entry = new SnapshotFiles.ExceptionEntry(path, "corrupted", null, SnapshotFiles.HeadStatus.UNREADABLE, false, null);
         this.showExceptions(player(Set.of("custom.archive")), null, new SnapshotFiles.ExceptionPage(0, 5, 1, 1, List.of(entry)));
-        assertTrue(this.text().contains("Header unreadable"));
-        assertTrue(this.text().contains("Body missing"));
+        assertTrue(this.text().contains("Cannot read snapshot information"));
+        assertTrue(this.text().contains("Snapshot data missing"));
         assertTrue(this.text().contains("Unknown player"));
         assertTrue(this.messages.stream().anyMatch(message -> hasEvent(message, ClickEvent.suggestCommand("/archive remove " + path))));
         assertFalse(this.text().contains("[Binary]"));
