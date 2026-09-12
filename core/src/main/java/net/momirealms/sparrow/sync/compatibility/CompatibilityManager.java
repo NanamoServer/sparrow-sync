@@ -25,9 +25,6 @@ public final class CompatibilityManager {
     }
 
     public void onLoad() {
-        if (this.isPluginEnabled("Vault") && PluginConfig.synchronization$dataTypes().vaultEmoney()) {
-            this.vaultEconomy = new VaultEconomyService(this.plugin, Bukkit.getServicesManager(), this.plugin.dataRegistry());
-        }
     }
 
     public void onEnable() {
@@ -47,8 +44,12 @@ public final class CompatibilityManager {
                     ? new HuskSyncSourceV3(huskSync, MigrationDataTypes.createRegistry())
                     : new HuskSyncSourceV4(huskSync, MigrationDataTypes.createRegistry()), "HuskSync");
         }
-        if (this.isPluginEnabled("Vault") && this.vaultEconomy != null) {
-            this.runCatchingHook(() -> this.vaultEconomy.onDelayedEnable(), "Vault");
+        // 此时各插件已完成启用, 经济服务可供查询, 同步类型仍可在注册表冻结前加入.
+        if (this.isPluginEnabled("Vault") && PluginConfig.synchronization$dataTypes().vaultEmoney()) {
+            this.runCatchingHook(() -> {
+                this.vaultEconomy = new VaultEconomyService(this.plugin, Bukkit.getServicesManager(), this.plugin.dataRegistry());
+                this.vaultEconomy.onDelayedEnable();
+            }, "Vault");
         }
     }
 
