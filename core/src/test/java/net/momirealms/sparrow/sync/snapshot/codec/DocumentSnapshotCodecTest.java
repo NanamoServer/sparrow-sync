@@ -198,13 +198,13 @@ class DocumentSnapshotCodecTest {
     }
 
     @Test
-    void binaryFieldWithBadMagicReportsBadMagic() throws IOException {
+    void binaryFieldWithUnsupportedVersionReportsUnsupportedFormat() throws IOException {
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
         document.put("data", new Binary(new byte[]{99, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(document));
 
-        assertEquals(InvalidReason.BAD_MAGIC, invalid.reason());
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
     }
 
     /**
@@ -219,7 +219,7 @@ class DocumentSnapshotCodecTest {
         Snapshot source = SnapshotFixtures.snapshot();
         Document document = this.codec.encode(source);
         byte[] bytes = document.get("data", Binary.class).getData();
-        int blockBase = SnapshotFixtures.blockBase(bytes);
+        int blockBase = SnapshotFixtures.dataBlockBase(bytes);
         // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
             bytes[blockBase + 13] ^= 1;

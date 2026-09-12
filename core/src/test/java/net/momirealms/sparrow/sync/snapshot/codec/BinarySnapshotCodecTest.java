@@ -29,10 +29,10 @@ class BinarySnapshotCodecTest {
         byte[] bytes = this.codec.encode(snapshot);
         DecodedSnapshot decoded = this.codec.decode(bytes);
 
-        // SS 完整快照携带 Meta 和独立数据帧, 元数据与全部类型字段往返一致
-        assertEquals(SnapshotCodec.CURRENT_VERSION, bytes[2]);
-        assertEquals('S', bytes[1]);
-        assertEquals('D', bytes[SnapshotFixtures.dataOffset(bytes) + 1]);
+        // 完整快照携带 Meta 和独立数据帧, 元数据与全部类型字段往返一致
+        assertEquals(SnapshotCodec.CURRENT_VERSION, bytes[0]);
+        assertEquals(1, bytes[0]);
+        assertEquals(1, bytes[SnapshotFixtures.dataOffset(bytes)]);
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot, restored);
     }
@@ -52,8 +52,8 @@ class BinarySnapshotCodecTest {
 
         byte[] bytes = this.codec.encode(snapshot);
 
-        assertEquals('S', bytes[1]);
-        assertEquals('D', bytes[SnapshotFixtures.dataOffset(bytes) + 1]);
+        assertEquals(1, bytes[0]);
+        assertEquals(1, bytes[SnapshotFixtures.dataOffset(bytes)]);
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot());
     }
 
@@ -104,7 +104,7 @@ class BinarySnapshotCodecTest {
         Snapshot source = SnapshotFixtures.snapshot();
         byte[] complete = this.codec.encode(source);
         int dataOffset = SnapshotFixtures.dataOffset(complete);
-        complete[9] ^= 1;
+        complete[7] ^= 1;
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(complete));
         assertEquals(InvalidReason.CORRUPTED, invalid.reason());
         assertTrue(invalid.detail().contains("meta checksum"));
@@ -121,7 +121,7 @@ class BinarySnapshotCodecTest {
     void metadataLengthIsRequiredAndBounded() throws IOException {
         for (int length : new int[]{0, 65535}) {
             byte[] complete = this.codec.encode(SnapshotFixtures.snapshot());
-            ByteBuffer.wrap(complete).putShort(3, (short) length);
+            ByteBuffer.wrap(complete).putShort(1, (short) length);
             DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(complete));
             assertEquals(InvalidReason.CORRUPTED, invalid.reason());
             assertTrue(invalid.detail().contains("meta length"));
@@ -129,19 +129,19 @@ class BinarySnapshotCodecTest {
     }
 
     @Test
-    void decodeRejectsBadMagic() throws IOException {
+    void decodeRejectsZeroFormat() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        bytes[0] = 'X';
+        bytes[0] = 0;
 
         DecodedSnapshot decoded = this.codec.decode(bytes);
 
-        assertEquals(InvalidReason.BAD_MAGIC, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
     }
 
     @Test
     void decodeRejectsFutureFormat() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        bytes[2] = 99;
+        bytes[0] = 99;
 
         DecodedSnapshot decoded = this.codec.decode(bytes);
 

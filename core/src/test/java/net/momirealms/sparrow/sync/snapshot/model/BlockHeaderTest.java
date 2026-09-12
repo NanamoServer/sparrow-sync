@@ -111,7 +111,7 @@ class BlockHeaderTest {
     void offsetsAreSortedAndDuplicateOrNegativeOffsetsAreRejected() throws IOException {
         byte[] frame = this.frame();
         SnapshotData source = this.codec.decode(frame);
-        int base = SnapshotFixtures.blockBase(frame);
+        int base = SnapshotFixtures.dataBlockBase(frame);
         int secondOffset = (int) source.raw(LAST).offset() - base;
         CompoundTag index = NBT.createCompound(new LinkedHashMap<>());
         index.putInt(LAST.asString(), secondOffset);
@@ -142,7 +142,7 @@ class BlockHeaderTest {
     /**
      * 创建两个连续的压缩块, 输入顺序固定以便注入后块损坏.
      *
-     * @return 独立 SD 数据帧
+     * @return 独立数据帧
      * @throws IOException 当 NBT 编码或压缩失败时
      */
     private byte[] frame() throws IOException {
@@ -155,18 +155,18 @@ class BlockHeaderTest {
     /**
      * 用指定索引重建测试数据帧, 保留所有块字节并重新计算索引 CRC.
      *
-     * @param frame 独立 SD 数据帧
+     * @param frame 独立数据帧
      * @param index 要注入的索引树
      * @return 索引 CRC 正确的新数据帧
      * @throws IOException 当测试索引编码失败时
      */
     private static byte[] reindex(byte[] frame, CompoundTag index) throws IOException {
         byte[] encoded = NBT.toBytes(index, false);
-        int base = SnapshotFixtures.blockBase(frame);
+        int base = SnapshotFixtures.dataBlockBase(frame);
         CRC32 crc = new CRC32();
         crc.update(encoded);
-        return ByteBuffer.allocate(11 + encoded.length + frame.length - base)
-                .put((byte) 'S').put((byte) 'D').put((byte) 1)
+        return ByteBuffer.allocate(9 + encoded.length + frame.length - base)
+                .put((byte) 1)
                 .putInt(encoded.length).putInt((int) crc.getValue()).put(encoded)
                 .put(frame, base, frame.length - base).array();
     }

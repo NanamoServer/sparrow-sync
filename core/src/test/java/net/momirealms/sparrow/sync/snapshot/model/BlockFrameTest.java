@@ -92,7 +92,7 @@ class BlockFrameTest {
     @Test
     void indexChecksumRejectsWholeFrame() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        bytes[SnapshotFixtures.dataOffset(bytes) + 11] ^= 1;
+        bytes[SnapshotFixtures.dataOffset(bytes) + 9] ^= 1;
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes));
         assertEquals(InvalidReason.CORRUPTED, invalid.reason());
         assertTrue(invalid.detail().contains("index"));
@@ -107,7 +107,7 @@ class BlockFrameTest {
     void unsupportedDataVersionsAreRejected() throws IOException {
         for (int version : new int[]{0, 99}) {
             byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-            bytes[SnapshotFixtures.dataOffset(bytes) + 2] = (byte) version;
+            bytes[SnapshotFixtures.dataOffset(bytes)] = (byte) version;
             assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes)).reason());
         }
     }
@@ -175,15 +175,15 @@ class BlockFrameTest {
         DataKey key = DataKey.parse("other:data");
         Map<DataKey, Tag> data = Map.of(key, NBT.createInt(8));
         byte[] framed = this.dataCodec.encode(EagerSnapshotData.fromTags(data));
-        assertEquals('S', framed[0]);
-        assertEquals('D', framed[1]);
+        assertEquals(1, framed[0]);
+        assertEquals(9 + ByteBuffer.wrap(framed).getInt(1), SnapshotFixtures.dataBlockBase(framed));
         LazySnapshotData restored = assertInstanceOf(LazySnapshotData.class, this.dataCodec.decode(framed));
         assertEquals(data.keySet(), restored.keys());
         assertEquals(0, restored.decodedBlockCount());
         assertEquals(data, restored.all());
         assertEquals(1, restored.decodedBlockCount());
         assertSame(restored.get(key), restored.get(key));
-        assertEquals(InvalidReason.BAD_MAGIC, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
+        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
     }
 
     /**
@@ -195,7 +195,7 @@ class BlockFrameTest {
     void dataFrameReaderRejectsSnapshotContainer() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
         FormatException failure = assertThrows(FormatException.class, () -> this.dataCodec.decode(bytes));
-        assertEquals(InvalidReason.BAD_MAGIC, failure.reason());
+        assertEquals(InvalidReason.CORRUPTED, failure.reason());
     }
 
     /**
@@ -305,7 +305,7 @@ class BlockFrameTest {
     @Test
     void unsignedIndexLengthIsChecked() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        ByteBuffer.wrap(bytes).putInt(SnapshotFixtures.dataOffset(bytes) + 3, -1);
+        ByteBuffer.wrap(bytes).putInt(SnapshotFixtures.dataOffset(bytes) + 1, -1);
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes)).reason());
     }
 
@@ -335,8 +335,8 @@ class BlockFrameTest {
      */
     private static LinkedHashMap<String, BlockIndex> entries(byte[] bytes) throws IOException {
         int dataOffset = SnapshotFixtures.dataOffset(bytes);
-        int indexLength = ByteBuffer.wrap(bytes).getInt(dataOffset + 3);
-        CompoundTag tree = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, dataOffset + 11, indexLength)), false);
+        int indexLength = ByteBuffer.wrap(bytes).getInt(dataOffset + 1);
+        CompoundTag tree = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, dataOffset + 9, indexLength)), false);
         return BlockIndexCodec.read(tree);
     }
 

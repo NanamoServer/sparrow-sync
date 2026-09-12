@@ -29,10 +29,7 @@ import java.util.zip.CRC32;
 
 public final class SnapshotDataCodec {
     public static final int DEFAULT_COMPRESS_THRESHOLD = 256; // 单块原始 NBT 低于此字节数时明文保存
-
-    private static final byte MAGIC_0 = 'S';    // 数据帧标识的首字节
-    private static final byte MAGIC_1 = 'D';    // 数据帧标识的次字节
-    private static final int HEADER_LENGTH = 11; // SD, u8 版本, u32 索引长度, u32 索引 CRC
+    private static final int HEADER_LENGTH = 9; // u8 版本, u32 索引长度, u32 索引 CRC
 
     private CompressorRegistry compressor;
     private final int compressThreshold;   // 每块选择明文保存的字节阈值
@@ -62,7 +59,7 @@ public final class SnapshotDataCodec {
      * 已有原始块逐字节保留, 新增或替换的内容按当前压缩配置编码.
      *
      * @param data 本次要保存的完整类型数据, 可同时包含原始块和新增 Tag
-     * @return 依次包含 11 字节数据帧头, 索引和数据块的新数组
+     * @return 依次包含 9 字节数据帧头, 索引和数据块的新数组
      * @throws IOException 当 NBT 编码失败, 或逐块复制时发现块头损坏, 长度与区间不一致或越界时
      */
     @NotNull
@@ -107,7 +104,7 @@ public final class SnapshotDataCodec {
         crc.update(index);
         // 数据帧的 CRC 覆盖索引; 各块的 CRC 随块头一起保存, 在读取该类型时检查.
         byte[] header = ByteBuffer.allocate(HEADER_LENGTH)
-                .put(MAGIC_0).put(MAGIC_1).put((byte) SnapshotCodec.CURRENT_VERSION)
+                .put((byte) SnapshotCodec.CURRENT_VERSION)
                 .putInt(index.length).putInt((int) crc.getValue()).array();
         output.write(header);
         output.write(index);
@@ -119,7 +116,7 @@ public final class SnapshotDataCodec {
      *
      * @param bytes 数据帧, <strong>成功返回后调用方不得修改数组内容</strong>
      * @return 引用输入数组的惰性类型数据
-     * @throws IOException 当数据帧标识, 版本, 索引长度或索引内容无效时
+     * @throws IOException 当数据帧版本, 索引长度或索引内容无效时
      */
     @NotNull
     public SnapshotData decode(byte @NotNull [] bytes) throws IOException {
@@ -140,16 +137,13 @@ public final class SnapshotDataCodec {
         if (length < HEADER_LENGTH) {
             throw new FormatException(InvalidReason.CORRUPTED, "data frame too short: " + length + " bytes");
         }
-        if (bytes[offset] != MAGIC_0 || bytes[offset + 1] != MAGIC_1) {
-            throw new FormatException(InvalidReason.BAD_MAGIC, "expected SD data frame");
-        }
-        int version = bytes[offset + 2] & 0xFF;
+        int version = bytes[offset] & 0xFF;
         if (version < SnapshotCodec.MINIMUM_SUPPORTED_VERSION || version > SnapshotCodec.CURRENT_VERSION) {
             throw new FormatException(InvalidReason.UNSUPPORTED_FORMAT, "data frame format " + version + ", supported range "
                     + SnapshotCodec.MINIMUM_SUPPORTED_VERSION + ".." + SnapshotCodec.CURRENT_VERSION);
         }
         ByteBuffer header = ByteBuffer.wrap(bytes);
-        long indexLength = Integer.toUnsignedLong(header.getInt(offset + 3));
+        long indexLength = Integer.toUnsignedLong(header.getInt(offset + 1));
         if (indexLength > length - HEADER_LENGTH) {
             throw new FormatException(InvalidReason.CORRUPTED, "invalid index length");
         }
@@ -158,7 +152,7 @@ public final class SnapshotDataCodec {
         // 索引先通过 CRC 校验, 才能用其中的偏移定位各类型的数据块.
         CRC32 crc = new CRC32();
         crc.update(bytes, indexOffset, (int) indexLength);
-        if ((int) crc.getValue() != header.getInt(offset + 7)) {
+        if ((int) crc.getValue() != header.getInt(offset + 5)) {
             throw new FormatException(InvalidReason.CORRUPTED, "index checksum mismatch");
         }
         CompoundTag index = readIndex(bytes, indexOffset, (int) indexLength);

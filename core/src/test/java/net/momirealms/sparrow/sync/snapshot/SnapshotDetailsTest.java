@@ -214,7 +214,7 @@ class SnapshotDetailsTest {
         assertEquals(header, broken.entry().header());
         assertInstanceOf(SnapshotDetailResult.Invalid.class, broken.result());
         byte[] future = this.binary.encode(snapshot);
-        future[2] = 100;
+        future[0] = 100;
         Files.write(body, future);
         var unsupported = details.loadException("corrupted/selected.snapshot").join();
         assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(SnapshotDetailResult.Invalid.class, unsupported.result()).reason());

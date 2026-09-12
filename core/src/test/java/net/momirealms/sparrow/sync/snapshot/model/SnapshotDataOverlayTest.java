@@ -85,7 +85,7 @@ class SnapshotDataOverlayTest {
         assertSame(original, lazy.raw(FIRST).bytes());
         assertSame(dataFrame, ((LazySnapshotData) fromDataFrame).frameBytes());
         assertEquals(0, ((LazySnapshotData) fromDataFrame).frameOffset());
-        assertArrayEquals(indexAndBlocks(original), indexAndBlocks(dataFrame));
+        assertArrayEquals(indexAndBlocks(original), Arrays.copyOfRange(dataFrame, 9, dataFrame.length));
         assertArrayEquals(indexAndBlocks(original), indexAndBlocks(output));
         assertEquals(0, lazy.decodedBlockCount());
         assertEquals(0, ((LazySnapshotData) fromDataFrame).decodedBlockCount());
@@ -193,7 +193,7 @@ class SnapshotDataOverlayTest {
      * @return 索引和所有数据块的字节副本, 不含帧头及元数据
      */
     private static byte[] indexAndBlocks(byte[] frame) {
-        int offset = SnapshotFixtures.dataOffset(frame) + 11;
+        int offset = SnapshotFixtures.dataOffset(frame) + 9;
         return Arrays.copyOfRange(frame, offset, frame.length);
     }
 

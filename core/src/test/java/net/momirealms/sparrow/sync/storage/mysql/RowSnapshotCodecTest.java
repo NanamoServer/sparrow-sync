@@ -150,12 +150,12 @@ class RowSnapshotCodecTest {
         // 每种损坏都从有效帧重新复制, 让失败原因只对应当前注入的错误.
         byte[] bytes = row.data().clone();
         bytes[0] = 0;
-        assertEquals(InvalidReason.BAD_MAGIC, this.reason(bytes));
-        bytes = row.data().clone();
-        bytes[2] = 99;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
         bytes = row.data().clone();
-        bytes[2] = 2;
+        bytes[0] = 99;
+        assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
+        bytes = row.data().clone();
+        bytes[0] = 2;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
         assertEquals(InvalidReason.CORRUPTED, this.reason(SnapshotFixtures.nonCompoundIndexFrame()));
     }
@@ -194,7 +194,7 @@ class RowSnapshotCodecTest {
     void damagedBlocksFailOnAccessAndLeaveOtherTypesReadable(int corruption) throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
         SnapshotRow row = this.codec.encode(source);
-        int blockBase = SnapshotFixtures.blockBase(row.data());
+        int blockBase = SnapshotFixtures.dataBlockBase(row.data());
         // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
             row.data()[blockBase + 13] ^= 1;

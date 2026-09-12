@@ -25,7 +25,7 @@ class SnapshotUpgradeTest {
     void legacyBinaryFormatsAreRejected() throws IOException {
         for (int version : new int[]{0, 2, 3, 255}) {
             byte[] bytes = this.binary.encode(SnapshotFixtures.snapshot());
-            bytes[2] = (byte) version;
+            bytes[0] = (byte) version;
             DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.binary.decode(bytes));
             assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
             assertTrue(invalid.detail().contains("supported range"));

@@ -38,7 +38,7 @@ final class RowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
         try {
             SnapshotData data = this.dataCodec.decode(row.data());
             // 数据帧读取成功后帧头长度已校验, 列版本还需与帧头中的无符号版本字节一致.
-            if ((row.data()[2] & 0xFF) != row.format()) {
+            if ((row.data()[0] & 0xFF) != row.format()) {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "row and data frame formats differ");
             }
             return new DecodedSnapshot.Valid(new Snapshot(row.meta(), data));

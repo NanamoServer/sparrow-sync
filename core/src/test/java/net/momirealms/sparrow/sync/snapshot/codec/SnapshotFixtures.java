@@ -50,17 +50,27 @@ public final class SnapshotFixtures {
      */
     public static int blockBase(byte[] frame) {
         int dataOffset = dataOffset(frame);
-        return dataOffset + 11 + ByteBuffer.wrap(frame).getInt(dataOffset + 3);
+        return dataOffset + 9 + ByteBuffer.wrap(frame).getInt(dataOffset + 1);
     }
 
     /**
-     * 按两种固定布局定位数据帧, 测试可同时检查数据库字节和完整快照.
+     * 从完整快照的 Meta 长度定位内部数据帧.
      *
-     * @param frame 格式正确的 SD 数据帧或 SS 完整快照
+     * @param frame 格式正确的完整快照
      * @return 数据帧首字节在数组中的位置
      */
     public static int dataOffset(byte[] frame) {
-        return frame[1] == 'D' ? 0 : 9 + Short.toUnsignedInt(ByteBuffer.wrap(frame).getShort(3));
+        return 7 + Short.toUnsignedInt(ByteBuffer.wrap(frame).getShort(1));
+    }
+
+    /**
+     * 从独立数据帧的索引长度定位块区, 不尝试识别输入的帧种类.
+     *
+     * @param frame 格式正确的独立数据帧
+     * @return 块区在该数组中的起点
+     */
+    public static int dataBlockBase(byte[] frame) {
+        return 9 + ByteBuffer.wrap(frame).getInt(1);
     }
 
     /**
@@ -73,7 +83,7 @@ public final class SnapshotFixtures {
         byte[] index = NBT.toBytes(NBT.createInt(3), false);
         CRC32 crc = new CRC32();
         crc.update(index);
-        return ByteBuffer.allocate(11 + index.length).put((byte) 'S').put((byte) 'D')
+        return ByteBuffer.allocate(9 + index.length)
                 .put((byte) SnapshotCodec.CURRENT_VERSION)
                 .putInt(index.length).putInt((int) crc.getValue()).put(index).array();
     }

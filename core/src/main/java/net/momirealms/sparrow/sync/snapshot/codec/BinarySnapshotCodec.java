@@ -15,13 +15,11 @@ import java.util.zip.CRC32;
 
 /**
  * 完整快照的二进制读写, 用于本地文件和跨服缓存.
- * 9 字节快照头之后依次保存必需的 Meta 段和一个完整数据帧, 所有整数使用大端序.
+ * 7 字节快照头之后依次保存必需的 Meta 段和一个完整数据帧, 所有整数使用大端序.
  * Meta 和数据帧分别交给各自的编码器, 类型内容在首次取值时校验和解压.
  */
 public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
-    private static final byte MAGIC_0 = 'S';    // 完整快照标识的首字节
-    private static final byte MAGIC_1 = 'S';    // 完整快照标识的次字节
-    private static final int HEADER_LENGTH = 9; // SS, u8 版本, u16 Meta 长度, u32 Meta CRC
+    private static final int HEADER_LENGTH = 7; // u8 版本, u16 Meta 长度, u32 Meta CRC
 
     private final SnapshotDataCodec dataCodec; // 与数据库共用的数据帧编码器及压缩配置
 
@@ -47,7 +45,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         CRC32 crc = new CRC32();
         crc.update(meta);
         byte[] header = ByteBuffer.allocate(HEADER_LENGTH)
-                .put(MAGIC_0).put(MAGIC_1).put((byte) CURRENT_VERSION)
+                .put((byte) CURRENT_VERSION)
                 .putShort((short) meta.length).putInt((int) crc.getValue()).array();
         ByteArrayOutputStream output = new ByteArrayOutputStream(HEADER_LENGTH + meta.length);
         output.write(header);
@@ -70,22 +68,19 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
             if (encoded.length < HEADER_LENGTH) {
                 throw new FormatException(InvalidReason.CORRUPTED, "snapshot too short: " + encoded.length + " bytes");
             }
-            if (encoded[0] != MAGIC_0 || encoded[1] != MAGIC_1) {
-                throw new FormatException(InvalidReason.BAD_MAGIC, "expected SS snapshot");
-            }
-            int version = encoded[2] & 0xFF;
+            int version = encoded[0] & 0xFF;
             if (version < MINIMUM_SUPPORTED_VERSION || version > CURRENT_VERSION) {
                 throw new FormatException(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + version + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
             ByteBuffer header = ByteBuffer.wrap(encoded);
-            int metaLength = Short.toUnsignedInt(header.getShort(3));
+            int metaLength = Short.toUnsignedInt(header.getShort(1));
             int dataOffset = HEADER_LENGTH + metaLength;
             if (metaLength == 0 || dataOffset > encoded.length) {
                 throw new FormatException(InvalidReason.CORRUPTED, "invalid meta length");
             }
             CRC32 crc = new CRC32();
             crc.update(encoded, HEADER_LENGTH, metaLength);
-            if ((int) crc.getValue() != header.getInt(5)) {
+            if ((int) crc.getValue() != header.getInt(3)) {
                 throw new FormatException(InvalidReason.CORRUPTED, "meta checksum mismatch");
             }
             SnapshotMeta meta = SnapshotMetaCodec.decode(encoded, HEADER_LENGTH, metaLength);
