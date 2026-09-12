@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage.mongo;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import com.mongodb.client.MongoClient;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
@@ -16,7 +17,6 @@ import com.mongodb.client.model.CreateCollectionOptions;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -78,7 +78,7 @@ class MongoStorageProviderTest {
     @BeforeAll
     void connect() {
         PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+        DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
         this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
         // 读走内联执行, 写按玩家投递到 worker, 与运行期同构
         this.provider = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
@@ -199,7 +199,7 @@ class MongoStorageProviderTest {
             snapshots.createIndex(Indexes.ascending("cause"));
 
             PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
             MongoStorageProvider upgraded = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
             try {
                 upgraded.initialize();
@@ -237,7 +237,7 @@ class MongoStorageProviderTest {
             maps.createIndex(Indexes.ascending("updated_at"), new IndexOptions().name("existing_time"));
             maps.createIndex(Indexes.ascending("retired"));
             var options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", prefix);
-            var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
+            var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
             try {
                 for (int i = 0; i < 2; i++) {
                     upgraded.initialize();
@@ -325,7 +325,7 @@ class MongoStorageProviderTest {
                 meta.insertOne(sequence);
                 maps.insertMany(List.of(new Document("_id", -1).append("owner", "same").append("origin_id", 1), new Document("_id", -2).append("owner", "same").append("origin_id", 1)));
                 var options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", prefix);
-                var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
+                var upgraded = new MongoStorageProvider(options, new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE)), this.serialExecutor, Runnable::run, this.logger);
                 try {
                     assertThrows(IllegalStateException.class, upgraded::initialize);
                     assertThrows(IllegalStateException.class, upgraded::maps);
@@ -356,7 +356,7 @@ class MongoStorageProviderTest {
                     new com.mongodb.client.model.ReplaceOptions().upsert(true));
 
             PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
-            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+            DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
             MongoStorageProvider outdated = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
             try {
                 var maps = client.getDatabase(TEST_DATABASE).getCollection("it_maps");

@@ -16,6 +16,7 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
@@ -58,7 +59,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PostgresStorageProviderTest {
     private final SyncLogger logger = new SyncLogger(new QuietLogger());
-    private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+    private final SnapshotDataCodec binary = new SnapshotDataCodec(CompressorRegistry.DEFLATE);
     private final List<PostgresStorageProvider> providers = new ArrayList<>();
     private Jdbi admin;
     private String schema;
@@ -383,7 +384,7 @@ class PostgresStorageProviderTest {
     void pendingStashRestoresThroughTheExistingStorageContract() throws Exception {
         PostgresStorageProvider storage = this.open();
         Snapshot snapshot = snapshot(UUID.randomUUID(), 1, false);
-        SnapshotStash stash = new SnapshotStash(this.stashDirectory, this.binary, this.logger);
+        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(this.binary), this.logger);
         stash.stash(snapshot, "player", SaveResult.RETRY_LATER);
         stash.restorePending(storage);
         assertEquals(snapshot, storage.snapshot(snapshot.meta().id()).join().orElseThrow());

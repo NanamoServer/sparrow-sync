@@ -31,19 +31,18 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static final String FIELD_DATA = "data";
 
     private SparrowSync plugin;
-    private BinarySnapshotCodec binary;
+    private SnapshotDataCodec dataCodec;
 
     public DocumentSnapshotCodec(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
     }
 
-    public DocumentSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
-        this.binary = binary;
+    public DocumentSnapshotCodec(@NotNull SnapshotDataCodec dataCodec) {
+        this.dataCodec = dataCodec;
     }
 
-    /** 绑定启动期创建完成的二进制 codec. */
     public void onLoad() {
-        this.binary = this.plugin.binaryCodec();
+        this.dataCodec = this.plugin.dataCodec();
     }
 
     @Override
@@ -60,7 +59,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
         // data 字段保存各类型的数据帧, 元数据保存在文档的其他字段, 便于直接查询快照信息.
-        document.append(FIELD_DATA, new Binary(this.binary.frameData(snapshot.content())));
+        document.append(FIELD_DATA, new Binary(this.dataCodec.encode(snapshot.content())));
         return document;
     }
 
@@ -83,7 +82,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
                 case byte[] payload -> payload;
                 case null, default -> throw new IOException("missing or non-binary data field");
             };
-            return new DecodedSnapshot.Valid(new Snapshot(meta, this.binary.deframeData(bytes)));
+            return new DecodedSnapshot.Valid(new Snapshot(meta, this.dataCodec.decode(bytes)));
         } catch (FormatException exception) {
             return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
         } catch (Exception exception) {

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.model;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
@@ -11,7 +12,6 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -26,6 +26,7 @@ class SnapshotDataOverlayTest {
     private static final DataKey SECOND = DataKey.of("test", "second"); // 原快照中第二个类型, 用来检查未修改的数据块是否保持原样
     private static final DataKey ADDED = DataKey.of("test", "added"); // 原快照中不存在的类型, 用来检查追加后是否排在末尾
 
+    private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE); // 读写独立数据帧
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE); // 不压缩, 便于直接修改测试数据并比较保存前后的字节
 
     /**
@@ -62,7 +63,7 @@ class SnapshotDataOverlayTest {
     }
 
     /**
-     * 先移除帧内元数据以保存到数据库, 再添加修改后的元数据以生成完整快照.
+     * 提取完整快照内的数据帧保存到数据库, 再与修改后的元数据组合成完整快照.
      * 验证两次编码都保留原索引和数据块的全部字节, 且没有将数据块解析为 Tag.
      *
      * @throws IOException 当测试快照编解码失败时
@@ -71,11 +72,19 @@ class SnapshotDataOverlayTest {
     void wholeRegionCopyKeepsIndexAndBlocksWithoutDecoding() throws IOException {
         Snapshot source = this.source();
         LazySnapshotData lazy = (LazySnapshotData) source.content();
-        byte[] original = lazy.encodedFrame();
-        byte[] dataFrame = this.codec.frameData(lazy);
-        SnapshotData fromDataFrame = this.codec.deframeData(dataFrame);
-        Snapshot changedMeta = new Snapshot(source.meta().withPinned(true), fromDataFrame);
+        byte[] original = lazy.frameBytes();
+        byte[] dataFrame = this.dataCodec.encode(lazy);
+        SnapshotData fromDataFrame = this.dataCodec.decode(dataFrame);
+        SnapshotMeta meta = source.meta();
+        SnapshotMeta changed = new SnapshotMeta(meta.id(), meta.player(), meta.timestamp(), meta.cause(), true, "longer-server-name", meta.mcDataVersion());
+        Snapshot changedMeta = new Snapshot(changed, fromDataFrame);
         byte[] output = new BinarySnapshotCodec(CompressorRegistry.ZSTD, 0).encode(changedMeta);
+        assertArrayEquals(Arrays.copyOfRange(original, lazy.frameOffset(), lazy.frameOffset() + lazy.frameLength()), dataFrame);
+        assertArrayEquals(dataFrame, Arrays.copyOfRange(output, SnapshotFixtures.dataOffset(output), output.length));
+        assertNotEquals(SnapshotFixtures.dataOffset(original), SnapshotFixtures.dataOffset(output));
+        assertSame(original, lazy.raw(FIRST).bytes());
+        assertSame(dataFrame, ((LazySnapshotData) fromDataFrame).frameBytes());
+        assertEquals(0, ((LazySnapshotData) fromDataFrame).frameOffset());
         assertArrayEquals(indexAndBlocks(original), indexAndBlocks(dataFrame));
         assertArrayEquals(indexAndBlocks(original), indexAndBlocks(output));
         assertEquals(0, lazy.decodedBlockCount());
@@ -92,7 +101,7 @@ class SnapshotDataOverlayTest {
     @Test
     void partialRewriteCopiesUntouchedCorruptBlockWithoutDecodingIt() throws IOException {
         Snapshot source = this.source();
-        byte[] bytes = ((LazySnapshotData) source.content()).encodedFrame().clone();
+        byte[] bytes = ((LazySnapshotData) source.content()).frameBytes().clone();
         RawBlock second = source.content().raw(SECOND);
         bytes[(int) second.offset() + 9] ^= 1;
         Snapshot damaged = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot();
@@ -180,11 +189,11 @@ class SnapshotDataOverlayTest {
     /**
      * 复制从索引起点到帧末尾的字节, 供测试比较修改元数据前后的索引和数据块.
      *
-     * @param frame 包含帧头, 可选元数据, 索引和数据块的完整字节数组
+     * @param frame 独立数据帧或包含数据帧的完整快照
      * @return 索引和所有数据块的字节副本, 不含帧头及元数据
      */
     private static byte[] indexAndBlocks(byte[] frame) {
-        int offset = 14 + Short.toUnsignedInt(ByteBuffer.wrap(frame).getShort(4));
+        int offset = SnapshotFixtures.dataOffset(frame) + 11;
         return Arrays.copyOfRange(frame, offset, frame.length);
     }
 

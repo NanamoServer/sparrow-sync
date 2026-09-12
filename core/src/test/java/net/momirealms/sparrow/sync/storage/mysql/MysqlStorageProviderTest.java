@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage.mysql;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
@@ -88,7 +89,7 @@ class MysqlStorageProviderTest {
     private final QuietLogger console = new QuietLogger();
     private final SyncLogger logger = new SyncLogger(this.console);
     private final List<MysqlStorageProvider> providers = new ArrayList<>(); // 当前用例需要关闭的实例
-    private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+    private final SnapshotDataCodec binary = new SnapshotDataCodec(CompressorRegistry.DEFLATE);
     private final RowSnapshotCodec codec = new RowSnapshotCodec(this.binary); // 真实行写入前后的编码对照
     private Jdbi admin; // 创建和删除临时数据库的入口
     private Jdbi direct; // 绕过被测连接池检查数据库状态的入口
@@ -943,7 +944,7 @@ class MysqlStorageProviderTest {
 
     @Test
     void payloadLimitIncludesTheFrameAndAllowsEquality() throws Exception {
-        BinarySnapshotCodec uncompressedBinary = new BinarySnapshotCodec(CompressorRegistry.NONE);
+        SnapshotDataCodec uncompressedBinary = new SnapshotDataCodec(CompressorRegistry.NONE);
         RowSnapshotCodec uncompressed = new RowSnapshotCodec(uncompressedBinary);
         MysqlStorageProvider provider = this.provider(this.url, this.prefix, uncompressedBinary, ForkJoinPool.commonPool());
         provider.initialize();
@@ -1554,7 +1555,7 @@ class MysqlStorageProviderTest {
         return this.provider(url, prefix, this.binary, executor);
     }
 
-    private MysqlStorageProvider provider(String url, String prefix, BinarySnapshotCodec codec, Executor executor) throws Exception {
+    private MysqlStorageProvider provider(String url, String prefix, SnapshotDataCodec codec, Executor executor) throws Exception {
         // 复用配置加载器写入的字段, 在测试内构造所需连接参数.
         PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
         for (Map.Entry<String, String> entry : Map.of("url", url, "username", this.username, "password", this.password, "tablePrefix", prefix).entrySet()) {

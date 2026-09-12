@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 版本门控与元数据浏览分别验收, 开发期格式不会进入升级管线. */
 class SnapshotUpgradeTest {
     private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.DEFLATE); // 测试用二进制载体
-    private final DocumentSnapshotCodec document = new DocumentSnapshotCodec(this.binary); // 共享同一帧实现
+    private final DocumentSnapshotCodec document = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.NONE)); // 文档数据使用独立数据帧
 
     /**
      * 分块格式重新从 1 起步, 范围外版本明确拒绝.

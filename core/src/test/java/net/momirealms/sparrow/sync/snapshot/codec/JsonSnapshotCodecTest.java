@@ -46,7 +46,8 @@ class JsonSnapshotCodecTest {
         Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class,
                 binary.decode(binary.encode(new Snapshot(SnapshotFixtures.meta(), Map.of(unknown, value))))).snapshot();
         var subset = source.content().select(unknown::equals);
-        Snapshot retained = new Snapshot(source.meta(), binary.deframeData(binary.frameData(subset)));
+        SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.DEFLATE, 0);
+        Snapshot retained = new Snapshot(source.meta(), dataCodec.decode(dataCodec.encode(subset)));
         assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
         assertEquals(0, SnapshotFixtures.decodedBlockCount(retained));
         binary.encode(retained);

@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DocumentSnapshotCodecTest {
-    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+    private final DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
 
     @BeforeAll
     static void initializeProxy() {
@@ -65,7 +65,7 @@ class DocumentSnapshotCodecTest {
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)
     void largeRawDataRoundTripsAndOnlyEncodedFrameSizeDependsOnCompression(CompressorRegistry compressor) throws IOException {
-        var codec = new DocumentSnapshotCodec(new BinarySnapshotCodec(compressor));
+        var codec = new DocumentSnapshotCodec(new SnapshotDataCodec(compressor));
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, NBT.createByteArray(new byte[17 * 1024 * 1024])));
         var encoded = codec.encode(snapshot);
         int frameSize = encoded.get("data", Binary.class).getData().length;
@@ -89,7 +89,7 @@ class DocumentSnapshotCodecTest {
         Document document = this.codec.encode(snapshot);
 
         Binary payload = assertInstanceOf(Binary.class, document.get("data"));
-        SnapshotData data = new BinarySnapshotCodec(CompressorRegistry.NONE).deframeData(payload.getData());
+        SnapshotData data = new SnapshotDataCodec(CompressorRegistry.NONE).decode(payload.getData());
 
         assertEquals(snapshot.keys(), data.keys());
         assertEquals(snapshot.allData(), data.all());
@@ -296,7 +296,7 @@ class DocumentSnapshotCodecTest {
     void dataFrameUsesItsOwnCompressionHeader() throws IOException {
         Snapshot snapshot = SnapshotFixtures.snapshot();
         Document document = this.codec.encode(snapshot);
-        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.NONE));
+        DocumentSnapshotCodec plainCodec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.NONE));
 
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, plainCodec.decode(document)).snapshot();
 

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
@@ -368,7 +369,8 @@ class AdvancementsDataTypeTest {
         CriterionProgressProxy.INSTANCE.setObtained(criterion, obtained.plusSeconds(10));
         fixture.tracking.add(localHolder);
         Advancements captured = fixture.type.capture(fixture.player, CaptureMode.SYNC);
-        SnapshotData retained = codec.deframeData(codec.frameData(source.content().select(external::equals)));
+        SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.DEFLATE, 0);
+        SnapshotData retained = dataCodec.decode(dataCodec.encode(source.content().select(external::equals)));
         Snapshot outgoing = new Snapshot(source.meta(), retained.with(Map.of(AdvancementsDataType.ADVANCEMENTS, fixture.type.encode(captured))));
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(outgoing))).snapshot();
         var before = source.content().raw(external);

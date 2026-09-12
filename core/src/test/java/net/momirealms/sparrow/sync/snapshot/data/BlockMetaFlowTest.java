@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
@@ -205,7 +206,7 @@ class BlockMetaFlowTest {
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
-        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataCodec", new SnapshotDataCodec(CompressorRegistry.NONE));
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", this.logger);
         return pipeline;
     }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.network.Connection;
@@ -9,7 +10,6 @@ import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
@@ -401,7 +401,7 @@ class PlayerDataPipelineTest {
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);
         setField(pipeline, "dataRegistry", registry);
         setField(pipeline, "decoder", new SnapshotDecoder(registry));
-        setField(pipeline, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
+        setField(pipeline, "dataCodec", new SnapshotDataCodec(CompressorRegistry.DEFLATE));
         setField(pipeline, "logger", this.logger);
         return pipeline;
     }

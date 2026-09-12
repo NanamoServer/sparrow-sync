@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
@@ -50,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SnapshotDumpTest {
     @TempDir Path directory;
+    private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE); // 读写独立数据帧
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
 
     @Test
@@ -265,8 +267,8 @@ class SnapshotDumpTest {
     @Test
     void dumpCopiesDatabaseBlockRegionWithoutDecoding() throws Exception {
         Snapshot fixture = snapshot(1);
-        byte[] databaseFrame = this.codec.frameData(fixture.allData());
-        Snapshot source = new Snapshot(fixture.meta(), this.codec.deframeData(databaseFrame));
+        byte[] databaseFrame = this.dataCodec.encode(fixture.content());
+        Snapshot source = new Snapshot(fixture.meta(), this.dataCodec.decode(databaseFrame));
         Memory memory = new Memory();
         memory.snapshots.put(source.meta().id(), source);
         SnapshotDump.Result result = this.dump(memory).dump("raw.zip", 2);
@@ -277,8 +279,8 @@ class SnapshotDumpTest {
              DataInputStream input = new DataInputStream(zip.getInputStream(zip.getEntry("snapshots.bin")))) {
             assertTrue(input.readBoolean());
             byte[] exported = input.readNBytes(input.readInt());
-            int exportedIndex = 14 + Short.toUnsignedInt(ByteBuffer.wrap(exported).getShort(4));
-            assertArrayEquals(Arrays.copyOfRange(databaseFrame, 14, databaseFrame.length), Arrays.copyOfRange(exported, exportedIndex, exported.length));
+            int exportedIndex = SnapshotFixtures.dataOffset(exported);
+            assertArrayEquals(databaseFrame, Arrays.copyOfRange(exported, exportedIndex, exported.length));
             assertEquals(source.meta(), assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(exported)).snapshot().meta());
             assertFalse(input.readBoolean());
         }

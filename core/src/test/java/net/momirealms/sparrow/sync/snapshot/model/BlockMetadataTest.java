@@ -108,7 +108,7 @@ class BlockMetadataTest {
         BlockIndex index = raw.index();
         LinkedHashMap<String, BlockIndex> upgradedIndex = new LinkedHashMap<>();
         upgradedIndex.put(KEY.asString(), new BlockIndex(index.offset(), index.length(), index.rawLength(), BlockMeta.DISCARD_UNKNOWN));
-        LazySnapshotData upgraded = new LazySnapshotData(original.encodedFrame(), SnapshotFixtures.blockBase(original.encodedFrame()), upgradedIndex, true);
+        LazySnapshotData upgraded = new LazySnapshotData(original.frameBytes(), original.frameOffset(), original.frameLength(), SnapshotFixtures.blockBase(original.frameBytes()), upgradedIndex, true);
         Snapshot restored = this.roundTrip(upgraded);
         assertFalse(restored.content().meta(KEY).keepUnknown());
         RawBlock copied = restored.content().raw(KEY);

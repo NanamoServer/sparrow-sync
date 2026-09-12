@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.protocol.AsyncCommand;
@@ -32,7 +34,6 @@ import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
@@ -228,7 +229,9 @@ class SnapshotCommandFlowTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "dataRegistry", registry);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "playerDataPipeline", pipeline);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "storageProvider", storage);
-        NmsPlayerFixture.set(SparrowSync.class, plugin, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "dataCodec", dataCodec);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "binaryCodec", new BinarySnapshotCodec(dataCodec));
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotCache", new NoopSnapshotCache());
         SnapshotService service = new SnapshotService(plugin);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);

@@ -6,7 +6,7 @@ import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
 import org.jetbrains.annotations.NotNull;
@@ -14,16 +14,16 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 
 final class PostgresRowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
-    private final BinarySnapshotCodec binary;
+    private final SnapshotDataCodec dataCodec;
 
-    PostgresRowSnapshotCodec(@NotNull BinarySnapshotCodec binary) {
-        this.binary = binary;
+    PostgresRowSnapshotCodec(@NotNull SnapshotDataCodec dataCodec) {
+        this.dataCodec = dataCodec;
     }
 
     @NotNull
     @Override
     public SnapshotRow encode(@NotNull Snapshot snapshot) throws IOException {
-        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.binary.frameData(snapshot.content()));
+        return new SnapshotRow(snapshot.meta(), CURRENT_VERSION, this.dataCodec.encode(snapshot.content()));
     }
 
     @NotNull
@@ -34,8 +34,8 @@ final class PostgresRowSnapshotCodec implements SnapshotCodec<SnapshotRow> {
             return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "row snapshot format " + row.format() + ", supported: " + CURRENT_VERSION);
         }
         try {
-            SnapshotData data = this.binary.deframeData(row.data());
-            // deframeData 成功后帧头长度已校验, 列版本还需与帧头中的无符号版本字节一致.
+            SnapshotData data = this.dataCodec.decode(row.data());
+            // 数据帧读取成功后帧头长度已校验, 列版本还需与帧头中的无符号版本字节一致.
             if ((row.data()[2] & 0xFF) != row.format()) {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "row and data frame formats differ");
             }

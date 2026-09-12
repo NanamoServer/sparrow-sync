@@ -49,8 +49,18 @@ public final class SnapshotFixtures {
      * @return 第一个数据块的块头在 frame 数组中的起始下标
      */
     public static int blockBase(byte[] frame) {
-        ByteBuffer header = ByteBuffer.wrap(frame);
-        return 14 + Short.toUnsignedInt(header.getShort(4)) + header.getInt(6);
+        int dataOffset = dataOffset(frame);
+        return dataOffset + 11 + ByteBuffer.wrap(frame).getInt(dataOffset + 3);
+    }
+
+    /**
+     * 按两种固定布局定位数据帧, 测试可同时检查数据库字节和完整快照.
+     *
+     * @param frame 格式正确的 SD 数据帧或 SS 完整快照
+     * @return 数据帧首字节在数组中的位置
+     */
+    public static int dataOffset(byte[] frame) {
+        return frame[1] == 'D' ? 0 : 9 + Short.toUnsignedInt(ByteBuffer.wrap(frame).getShort(3));
     }
 
     /**
@@ -63,8 +73,8 @@ public final class SnapshotFixtures {
         byte[] index = NBT.toBytes(NBT.createInt(3), false);
         CRC32 crc = new CRC32();
         crc.update(index);
-        return ByteBuffer.allocate(14 + index.length).put((byte) 'S').put((byte) 'S')
-                .put((byte) SnapshotCodec.CURRENT_VERSION).put((byte) 0).putShort((short) 0)
+        return ByteBuffer.allocate(11 + index.length).put((byte) 'S').put((byte) 'D')
+                .put((byte) SnapshotCodec.CURRENT_VERSION)
                 .putInt(index.length).putInt((int) crc.getValue()).put(index).array();
     }
 

@@ -43,21 +43,21 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     public String encode(@NotNull Snapshot snapshot) {
         SnapshotMeta meta = snapshot.meta();
         Document document = new Document();
-        document.append(SnapshotNBT.FIELD_ID, meta.id().toString());
-        document.append(SnapshotNBT.FIELD_PLAYER, meta.player().toString());
-        document.append(SnapshotNBT.FIELD_TIMESTAMP, meta.timestamp());
-        document.append(SnapshotNBT.FIELD_CAUSE, meta.cause().name());
-        document.append(SnapshotNBT.FIELD_PINNED, meta.pinned());
-        document.append(SnapshotNBT.FIELD_SERVER, meta.server());
-        document.append(SnapshotNBT.FIELD_MC_DATA, meta.mcDataVersion());
+        document.append(SnapshotMetaCodec.FIELD_ID, meta.id().toString());
+        document.append(SnapshotMetaCodec.FIELD_PLAYER, meta.player().toString());
+        document.append(SnapshotMetaCodec.FIELD_TIMESTAMP, meta.timestamp());
+        document.append(SnapshotMetaCodec.FIELD_CAUSE, meta.cause().name());
+        document.append(SnapshotMetaCodec.FIELD_PINNED, meta.pinned());
+        document.append(SnapshotMetaCodec.FIELD_SERVER, meta.server());
+        document.append(SnapshotMetaCodec.FIELD_MC_DATA, meta.mcDataVersion());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         Document data = new Document();
         for (DataKey key : snapshot.keys()) {
             SnapshotBlock block = snapshot.content().block(key);
-            data.append(key.asString(), new Document(SnapshotNBT.FIELD_BLOCK_META, BlockMetaCodec.toJson(block.meta()))
-                    .append(SnapshotNBT.FIELD_DATA, new CompactStringTagVisitor().visit(block.data())));
+            data.append(key.asString(), new Document(SnapshotNBTCodec.FIELD_BLOCK_META, BlockMetaCodec.toJson(block.meta()))
+                    .append(SnapshotNBTCodec.FIELD_DATA, new CompactStringTagVisitor().visit(block.data())));
         }
-        document.append(SnapshotNBT.FIELD_DATA, data);
+        document.append(SnapshotNBTCodec.FIELD_DATA, data);
         return document.toJson(JSON_WRITER);
     }
 
@@ -75,7 +75,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                 return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
             CompoundTag tree = toTagTree(document);
-            return new DecodedSnapshot.Valid(SnapshotNBT.fromTagTree(SnapshotUpgradePipeline.upgrade(tree, format)));
+            return new DecodedSnapshot.Valid(SnapshotNBTCodec.fromCompoundTag(SnapshotUpgradePipeline.upgrade(tree, format)));
         } catch (FormatException exception) {
             return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
         } catch (Exception exception) {
@@ -87,26 +87,26 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     // cause 等其余元数据沿用树读取的宽容缺省; 手改坏的文件报错直接点名问题字段
     private static CompoundTag toTagTree(Document document) throws IOException {
         CompoundTag root = NBT.createCompound();
-        root.putUUID(SnapshotNBT.FIELD_ID, UUID.fromString(requireString(document, SnapshotNBT.FIELD_ID)));
-        root.putUUID(SnapshotNBT.FIELD_PLAYER, UUID.fromString(requireString(document, SnapshotNBT.FIELD_PLAYER)));
-        root.putLong(SnapshotNBT.FIELD_TIMESTAMP, requireNumber(document, SnapshotNBT.FIELD_TIMESTAMP).longValue());
-        root.putInt(SnapshotNBT.FIELD_MC_DATA, requireNumber(document, SnapshotNBT.FIELD_MC_DATA).intValue());
-        if (document.get(SnapshotNBT.FIELD_CAUSE) instanceof String cause) root.putString(SnapshotNBT.FIELD_CAUSE, cause);
-        if (document.get(SnapshotNBT.FIELD_SERVER) instanceof String server) root.putString(SnapshotNBT.FIELD_SERVER, server);
-        if (Boolean.TRUE.equals(document.getBoolean(SnapshotNBT.FIELD_PINNED))) root.putBoolean(SnapshotNBT.FIELD_PINNED, true);
+        root.putUUID(SnapshotMetaCodec.FIELD_ID, UUID.fromString(requireString(document, SnapshotMetaCodec.FIELD_ID)));
+        root.putUUID(SnapshotMetaCodec.FIELD_PLAYER, UUID.fromString(requireString(document, SnapshotMetaCodec.FIELD_PLAYER)));
+        root.putLong(SnapshotMetaCodec.FIELD_TIMESTAMP, requireNumber(document, SnapshotMetaCodec.FIELD_TIMESTAMP).longValue());
+        root.putInt(SnapshotMetaCodec.FIELD_MC_DATA, requireNumber(document, SnapshotMetaCodec.FIELD_MC_DATA).intValue());
+        if (document.get(SnapshotMetaCodec.FIELD_CAUSE) instanceof String cause) root.putString(SnapshotMetaCodec.FIELD_CAUSE, cause);
+        if (document.get(SnapshotMetaCodec.FIELD_SERVER) instanceof String server) root.putString(SnapshotMetaCodec.FIELD_SERVER, server);
+        if (Boolean.TRUE.equals(document.getBoolean(SnapshotMetaCodec.FIELD_PINNED))) root.putBoolean(SnapshotMetaCodec.FIELD_PINNED, true);
         CompoundTag data = NBT.createCompound(new LinkedHashMap<>());
-        Document values = document.get(SnapshotNBT.FIELD_DATA, Document.class);
+        Document values = document.get(SnapshotNBTCodec.FIELD_DATA, Document.class);
         if (values != null) {
             for (Map.Entry<String, Object> entry : values.entrySet()) {
                 if (!(entry.getValue() instanceof Document block)
-                        || !(block.get(SnapshotNBT.FIELD_BLOCK_META) instanceof Document blockMeta)
-                        || !(block.get(SnapshotNBT.FIELD_DATA) instanceof String snbt)) {
+                        || !(block.get(SnapshotNBTCodec.FIELD_BLOCK_META) instanceof Document blockMeta)
+                        || !(block.get(SnapshotNBTCodec.FIELD_DATA) instanceof String snbt)) {
                     throw new IOException("data block '" + entry.getKey() + "' must contain a meta object and a data SNBT string");
                 }
                 try {
                     CompoundTag value = NBT.createCompound();
-                    value.put(SnapshotNBT.FIELD_BLOCK_META, BlockMetaCodec.write(BlockMetaCodec.read(blockMeta)));
-                    value.put(SnapshotNBT.FIELD_DATA, parseSnbt(snbt));
+                    value.put(SnapshotNBTCodec.FIELD_BLOCK_META, BlockMetaCodec.write(BlockMetaCodec.read(blockMeta)));
+                    value.put(SnapshotNBTCodec.FIELD_DATA, parseSnbt(snbt));
                     data.put(entry.getKey(), value);
                 } catch (FormatException exception) {
                     throw new FormatException(exception.reason(), "data block '" + entry.getKey() + "': " + exception.getMessage());
@@ -115,7 +115,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                 }
             }
         }
-        root.put(SnapshotNBT.FIELD_DATA, data);
+        root.put(SnapshotNBTCodec.FIELD_DATA, data);
         return root;
     }
 

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import com.mongodb.client.MongoClients;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
@@ -253,7 +254,7 @@ class StorageDumpIntegrationTest {
         String name = "sparrow_dump_" + UUID.randomUUID().toString().replace("-", "");
         StorageProvider storage;
         if (kind.equals("mongo")) {
-            storage = new MongoStorageProvider(new PluginConfig.MongoOptions("mongodb://localhost:27017", name, "", "", "admin", "it_"), new DocumentSnapshotCodec(this.codec), this.serial, Runnable::run, this.logger);
+            storage = new MongoStorageProvider(new PluginConfig.MongoOptions("mongodb://localhost:27017", name, "", "", "admin", "it_"), new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE)), this.serial, Runnable::run, this.logger);
             this.cleanup.add(() -> {
                 try (var client = MongoClients.create("mongodb://localhost:27017")) {
                     client.getDatabase(name).drop();
@@ -274,14 +275,14 @@ class StorageDumpIntegrationTest {
                 url = address.substring(0, address.lastIndexOf('/') + 1) + name + (question < 0 ? "" : url.substring(question));
                 PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
                 configure(options, url, username, password);
-                storage = new MysqlStorageProvider(options, this.codec, this.serial, Runnable::run, this.logger);
+                storage = new MysqlStorageProvider(options, new SnapshotDataCodec(CompressorRegistry.DEFLATE), this.serial, Runnable::run, this.logger);
             } else {
                 admin.useHandle(handle -> handle.execute("CREATE SCHEMA " + name));
                 this.cleanup.add(() -> admin.useHandle(handle -> handle.execute("DROP SCHEMA " + name + " CASCADE")));
                 url += (url.contains("?") ? "&" : "?") + "currentSchema=" + name;
                 PluginConfig.PostgresOptions options = new PluginConfig.PostgresOptions();
                 configure(options, url, username, password);
-                storage = new PostgresStorageProvider(options, this.codec, this.serial, Runnable::run, this.logger);
+                storage = new PostgresStorageProvider(options, new SnapshotDataCodec(CompressorRegistry.DEFLATE), this.serial, Runnable::run, this.logger);
             }
         }
         this.providers.add(storage);

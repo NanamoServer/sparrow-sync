@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.model;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** 覆盖分块容器的字节布局, 惰性缓存和损坏边界, 直接修改帧来模拟存储损坏. */
 class BlockFrameTest {
+    private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE); // 读写独立数据帧
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE); // 固定写入算法
 
     /**
@@ -89,22 +91,22 @@ class BlockFrameTest {
     @Test
     void indexChecksumRejectsWholeFrame() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        bytes[14 + Short.toUnsignedInt(ByteBuffer.wrap(bytes).getShort(4))] ^= 1;
+        bytes[SnapshotFixtures.dataOffset(bytes) + 11] ^= 1;
         DecodedSnapshot.Invalid invalid = assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes));
         assertEquals(InvalidReason.CORRUPTED, invalid.reason());
         assertTrue(invalid.detail().contains("index"));
     }
 
     /**
-     * 每个保留位都必须拒绝, 即使其余字节是合法快照.
+     * 完整快照内的数据帧也检查版本, 过早或未来版本在解块前拒绝.
      *
      * @throws Exception 当测试帧构造, 编解码或并发任务失败时
      */
     @Test
-    void reservedFlagsAreRejected() throws IOException {
-        for (int bit = 1; bit < 8; bit++) {
+    void unsupportedDataVersionsAreRejected() throws IOException {
+        for (int version : new int[]{0, 99}) {
             byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-            bytes[3] |= (byte) (1 << bit);
+            bytes[SnapshotFixtures.dataOffset(bytes) + 2] = (byte) version;
             assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes)).reason());
         }
     }
@@ -171,16 +173,16 @@ class BlockFrameTest {
         assertEquals(empty, this.valid(bytes));
         DataKey key = DataKey.parse("other:data");
         Map<DataKey, Tag> data = Map.of(key, NBT.createInt(8));
-        byte[] framed = this.codec.frameData(data);
-        assertEquals(0, framed[3]);
-        assertEquals(0, ByteBuffer.wrap(framed).getShort(4));
-        LazySnapshotData restored = assertInstanceOf(LazySnapshotData.class, this.codec.deframeData(framed));
+        byte[] framed = this.dataCodec.encode(EagerSnapshotData.fromTags(data));
+        assertEquals('S', framed[0]);
+        assertEquals('D', framed[1]);
+        LazySnapshotData restored = assertInstanceOf(LazySnapshotData.class, this.dataCodec.decode(framed));
         assertEquals(data.keySet(), restored.keys());
         assertEquals(0, restored.decodedBlockCount());
         assertEquals(data, restored.all());
         assertEquals(1, restored.decodedBlockCount());
         assertSame(restored.get(key), restored.get(key));
-        assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
+        assertEquals(InvalidReason.BAD_MAGIC, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
     }
 
     /**
@@ -191,8 +193,8 @@ class BlockFrameTest {
     @Test
     void dataFrameReaderRejectsSnapshotContainer() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        FormatException failure = assertThrows(FormatException.class, () -> this.codec.deframeData(bytes));
-        assertEquals(InvalidReason.CORRUPTED, failure.reason());
+        FormatException failure = assertThrows(FormatException.class, () -> this.dataCodec.decode(bytes));
+        assertEquals(InvalidReason.BAD_MAGIC, failure.reason());
     }
 
     /**
@@ -302,7 +304,7 @@ class BlockFrameTest {
     @Test
     void unsignedIndexLengthIsChecked() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
-        ByteBuffer.wrap(bytes).putInt(6, -1);
+        ByteBuffer.wrap(bytes).putInt(SnapshotFixtures.dataOffset(bytes) + 3, -1);
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes)).reason());
     }
 
@@ -321,8 +323,7 @@ class BlockFrameTest {
      * @return 块区绝对偏移
      */
     private static int base(byte[] bytes) {
-        ByteBuffer header = ByteBuffer.wrap(bytes);
-        return 14 + Short.toUnsignedInt(header.getShort(4)) + header.getInt(6);
+        return SnapshotFixtures.blockBase(bytes);
     }
 
     /**
@@ -332,9 +333,9 @@ class BlockFrameTest {
      * @throws IOException 当测试输入无法解析时
      */
     private static LinkedHashMap<String, BlockIndex> entries(byte[] bytes) throws IOException {
-        int metaLength = Short.toUnsignedInt(ByteBuffer.wrap(bytes).getShort(4));
-        int indexLength = ByteBuffer.wrap(bytes).getInt(6);
-        CompoundTag tree = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, 14 + metaLength, indexLength)), false);
+        int dataOffset = SnapshotFixtures.dataOffset(bytes);
+        int indexLength = ByteBuffer.wrap(bytes).getInt(dataOffset + 3);
+        CompoundTag tree = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, dataOffset + 11, indexLength)), false);
         return BlockIndexCodec.read(tree);
     }
 

@@ -10,7 +10,7 @@ import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 验证数据库行编解码后各类型的 NBT 值保持一致, 元数据可单独修改, 损坏数据返回对应的错误原因.
  */
 class RowSnapshotCodecTest {
-    private final RowSnapshotCodec codec = new RowSnapshotCodec(new BinarySnapshotCodec(CompressorRegistry.DEFLATE)); // 用同一个解码器读取各压缩方式生成的快照, 验证读取结果与写入时的压缩配置无关
+    private final RowSnapshotCodec codec = new RowSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE)); // 用同一个解码器读取各压缩方式生成的快照, 验证读取结果与写入时的压缩配置无关
 
     /**
      * 读取数据库格式的快照后直接重新编码, 验证保存的帧字节保持一致.
@@ -53,7 +53,7 @@ class RowSnapshotCodecTest {
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)
     void largeRawDataRoundTripsAndOnlyEncodedFrameSizeDependsOnCompression(CompressorRegistry compressor) throws IOException {
-        var codec = new RowSnapshotCodec(new BinarySnapshotCodec(compressor));
+        var codec = new RowSnapshotCodec(new SnapshotDataCodec(compressor));
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, NBT.createByteArray(new byte[17 * 1024 * 1024])));
         var encoded = codec.encode(snapshot);
         int frameSize = encoded.data().length;
@@ -71,7 +71,7 @@ class RowSnapshotCodecTest {
     @EnumSource(CompressorRegistry.class)
     void everyCompressorCanBeReadByTheSameDecoder(CompressorRegistry compressor) throws IOException {
         Snapshot snapshot = SnapshotFixtures.snapshot();
-        SnapshotRow row = new RowSnapshotCodec(new BinarySnapshotCodec(compressor)).encode(snapshot);
+        SnapshotRow row = new RowSnapshotCodec(new SnapshotDataCodec(compressor)).encode(snapshot);
         assertSame(snapshot.meta(), row.meta());
         assertEquals(SnapshotCodec.CURRENT_VERSION, row.format());
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());
@@ -103,7 +103,7 @@ class RowSnapshotCodecTest {
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, data));
         SnapshotRow row = this.codec.encode(snapshot);
         // 检查帧内数据结构, 再验证完整快照往返结果.
-        SnapshotData frame = new BinarySnapshotCodec(CompressorRegistry.NONE).deframeData(row.data());
+        SnapshotData frame = new SnapshotDataCodec(CompressorRegistry.NONE).decode(row.data());
         assertEquals(1, frame.keys().size());
         assertEquals(data, frame.get(SnapshotFixtures.UNKNOWN_DOC));
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());

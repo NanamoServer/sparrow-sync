@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.minecraft.world.item.ItemStack;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
@@ -153,7 +154,7 @@ class CaptureSchedulingTest {
         this.pipeline = pipeline;
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataRegistry", registry);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "decoder", new SnapshotDecoder(registry));
-        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
+        NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "dataCodec", new SnapshotDataCodec(CompressorRegistry.NONE));
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", logger);
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", NmsPlayerFixture.allocate(MapSyncService.class));
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (proxy, method, args) -> {
@@ -214,7 +215,7 @@ class CaptureSchedulingTest {
         assertEquals(List.of(first, second), new ArrayList<>(retained.keys()));
         assertNull(retained.raw(this.sync.key()));
         assertNull(retained.get(this.sync.key()));
-        byte[] compact = assertInstanceOf(LazySnapshotData.class, retained).encodedFrame();
+        byte[] compact = assertInstanceOf(LazySnapshotData.class, retained).frameBytes();
         assertTrue(compact.length < original.length / 2);
         assertNotSame(original, compact);
         assertSame(compact, retained.raw(first).bytes());

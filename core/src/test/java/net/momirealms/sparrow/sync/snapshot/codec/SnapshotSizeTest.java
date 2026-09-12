@@ -52,7 +52,7 @@ class SnapshotSizeTest {
         RecordingLogger recorded = new RecordingLogger();
         SyncLogger logger = new SyncLogger(recorded);
         PlayerSerialExecutor serial = new PlayerSerialExecutor(logger, 1);
-        BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
+        SnapshotDataCodec codec = new SnapshotDataCodec(CompressorRegistry.NONE);
         // 不初始化连接池, 任何误入数据库的分支都会使本测试失败.
         List<StorageProvider> providers = List.of(
                 new MysqlStorageProvider(new PluginConfig.MysqlOptions(), codec, serial, Runnable::run, logger),

@@ -13,7 +13,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
@@ -43,7 +43,7 @@ public final class PlayerDataPipeline {
     private DataRegistry dataRegistry;
     private MapSyncService mapSync;
     private SnapshotDecoder decoder;
-    private BinarySnapshotCodec binaryCodec; // 将未注册类型复制成独立小帧, 会话只保留这些块
+    private SnapshotDataCodec dataCodec; // 将未注册类型复制成独立小帧, 会话只保留这些块
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -52,7 +52,7 @@ public final class PlayerDataPipeline {
     public void onLoad() {
         this.dataRegistry = this.plugin.dataRegistry();
         this.decoder = new SnapshotDecoder(this.dataRegistry);
-        this.binaryCodec = this.plugin.binaryCodec();
+        this.dataCodec = this.plugin.dataCodec();
         this.logger = this.plugin.logger();
         this.mapSync = this.plugin.mapSyncService();
     }
@@ -231,7 +231,7 @@ public final class PlayerDataPipeline {
         if (!passthrough.keys().isEmpty()) {
             // 子集的 raw 仍指向来源, 编码器逐块复制后读回, Context 只持有未知类型的小帧.
             try {
-                passthrough = this.binaryCodec.deframeData(this.binaryCodec.frameData(passthrough));
+                passthrough = this.dataCodec.decode(this.dataCodec.encode(passthrough));
             } catch (IOException exception) {
                 throw new UncheckedIOException("cannot retain unknown snapshot blocks", exception);
             }

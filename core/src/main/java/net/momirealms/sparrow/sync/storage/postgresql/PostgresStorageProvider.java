@@ -15,7 +15,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
@@ -62,7 +62,7 @@ public final class PostgresStorageProvider implements StorageProvider {
 
     public PostgresStorageProvider(
             @NotNull PluginConfig.PostgresOptions options,
-            @NotNull BinarySnapshotCodec codec,
+            @NotNull SnapshotDataCodec codec,
             @NotNull PlayerSerialExecutor serialExecutor,
             @NotNull Executor asyncExecutor,
             @NotNull SyncLogger logger

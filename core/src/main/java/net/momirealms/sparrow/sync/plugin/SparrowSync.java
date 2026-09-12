@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.cluster.cache.RedisSnapshotCache;
 import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandManager;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
@@ -101,6 +102,7 @@ public class SparrowSync implements Plugin {
 
     private final PlayerSerialExecutor playerExecutor;
     private final DataRegistry dataRegistry;
+    private final SnapshotDataCodec dataCodec;
     private final BinarySnapshotCodec binaryCodec;
     private final DocumentSnapshotCodec documentCodec;
     private final StorageProvider storageProvider;
@@ -149,13 +151,14 @@ public class SparrowSync implements Plugin {
 
         // 业务模块
         this.dataRegistry = new DataRegistry();
-        this.binaryCodec = new BinarySnapshotCodec(this);
+        this.dataCodec = new SnapshotDataCodec();
+        this.binaryCodec = new BinarySnapshotCodec(this.dataCodec);
         this.documentCodec = new DocumentSnapshotCodec(this);
         // 配置在构造业务模块前已加载, SnapshotService 绑定时后端已经确定.
         this.storageProvider = switch (PluginConfig.database$type()) {
             case MONGODB -> new MongoStorageProvider(PluginConfig.database$mongodb(), this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
-            case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
-            case POSTGRESQL -> new PostgresStorageProvider(PluginConfig.database$postgresql(), this.binaryCodec, this.playerExecutor, this.scheduler.async(), this.logger);
+            case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), this.dataCodec, this.playerExecutor, this.scheduler.async(), this.logger);
+            case POSTGRESQL -> new PostgresStorageProvider(PluginConfig.database$postgresql(), this.dataCodec, this.playerExecutor, this.scheduler.async(), this.logger);
         };
         this.snapshotStash = new SnapshotStash(this);
         this.mapSyncService = new MapSyncService(this);
@@ -221,7 +224,7 @@ public class SparrowSync implements Plugin {
         }
         // 加载并验证快照压缩器
         try {
-            this.binaryCodec.onLoad();
+            this.dataCodec.onLoad();
         } catch (Throwable throwable) {
             this.logger.error(TranslationManager.console(LogConstants.STORAGE_COMPRESSOR_FAILED), throwable);
             Bukkit.getServer().shutdown();
@@ -747,6 +750,11 @@ public class SparrowSync implements Plugin {
 
     public SnapshotStash snapshotStash() {
         return this.snapshotStash;
+    }
+
+    @NotNull
+    public SnapshotDataCodec dataCodec() {
+        return this.dataCodec;
     }
 
     public BinarySnapshotCodec binaryCodec() {
