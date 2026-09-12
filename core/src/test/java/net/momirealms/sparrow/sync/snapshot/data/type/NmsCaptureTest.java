@@ -34,7 +34,6 @@ import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
-import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import org.bukkit.GameMode;
@@ -220,7 +219,7 @@ class NmsCaptureTest {
             Map<DataKey, Tag> encoded = worker.submit(() -> {
                 PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.captureAsync(this.player, pending));
                 assertTrue(captured.skipped().isEmpty());
-                return new EagerSnapshotData(assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data()).all();
+                return assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data();
             }).get(2, TimeUnit.SECONDS);
 
             InventoryDataType.Inventory savedInventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(encoded.get(InventoryDataType.INVENTORY), 0);

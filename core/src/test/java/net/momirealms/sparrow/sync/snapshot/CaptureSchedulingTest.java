@@ -360,7 +360,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         if (outcome.equals("restore")) {
             PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, data.capture(this.player, CaptureMode.SYNC));
-            Tag inventory = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, data.encode(captured)).data().get(InventoryDataType.INVENTORY).data();
+            Tag inventory = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, data.encode(captured)).data().get(InventoryDataType.INVENTORY);
             Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 4440),
                     Map.of(InventoryDataType.INVENTORY, inventory, DataKey.of("external", "retained"), NBT.createString("unknown")));
             this.saver.saveRestored(source, this.player.getName());

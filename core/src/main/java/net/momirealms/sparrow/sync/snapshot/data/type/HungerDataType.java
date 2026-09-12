@@ -11,7 +11,6 @@ import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -24,12 +23,6 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
 
     public HungerDataType() {
         super(HUNGER, Hunger.CODEC);
-    }
-
-    @Override
-    @NotNull
-    public BlockMeta meta() {
-        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

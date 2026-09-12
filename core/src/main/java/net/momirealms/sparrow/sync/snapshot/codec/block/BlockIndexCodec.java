@@ -7,7 +7,6 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.model.BlockIndex;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -19,7 +18,7 @@ public final class BlockIndexCodec {
     }
 
     /**
-     * 读取各类型的块位置, 长度与元信息, 保持传入索引的迭代顺序.
+     * 读取各类型的块位置和长度, 保持传入索引的迭代顺序.
      *
      * @param index 索引 compoundTag
      * @return 保持输入迭代顺序的条目表
@@ -38,19 +37,7 @@ public final class BlockIndexCodec {
             {
                 throw new FormatException(InvalidReason.CORRUPTED, "invalid index entry for " + key);
             }
-            BlockMeta meta;
-            try {
-                Tag storedMeta = value.get("meta");
-                if (storedMeta != null && !(storedMeta instanceof CompoundTag)) {
-                    throw new IOException("block meta must be a compound");
-                }
-                meta = BlockMetaCodec.read(storedMeta == null ? NBT.createCompound() : (CompoundTag) storedMeta);
-            } catch (FormatException exception) {
-                throw new FormatException(exception.reason(), "invalid index metadata for " + key + ": " + exception.getMessage());
-            } catch (IOException exception) {
-                throw new FormatException(InvalidReason.CORRUPTED, "invalid index metadata for " + key + ": " + exception.getMessage());
-            }
-            BlockIndex entry = new BlockIndex(value.getInt("o"), value.getInt("l"), value.getInt("n"), meta);
+            BlockIndex entry = new BlockIndex(value.getInt("o"), value.getInt("l"), value.getInt("n"));
             if (entry.offset() < 0 || entry.length() < 0 || entry.rawLength() < 0) {
                 throw new FormatException(InvalidReason.CORRUPTED, "negative index length or offset for " + key);
             }
@@ -71,7 +58,6 @@ public final class BlockIndexCodec {
         for (Map.Entry<String, BlockIndex> item : entries.entrySet()) {
             BlockIndex entry = item.getValue();
             CompoundTag value = NBT.createCompound();
-            value.put("meta", BlockMetaCodec.write(entry.meta()));
             value.putInt("o", entry.offset());
             value.putInt("l", entry.length());
             value.putInt("n", entry.rawLength());

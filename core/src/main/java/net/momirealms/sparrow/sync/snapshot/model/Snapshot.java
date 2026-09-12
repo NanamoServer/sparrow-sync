@@ -9,8 +9,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 一份玩家数据快照, 由快照元数据与各类型的完整数据块组成.
- * 数据块同时携带类型数据与元信息, 未注册类型在正式加载时按元信息决定是否保留.
+ * 一份玩家数据快照, 由快照元数据与各类型的数据组成.
+ * 类型数据可以是已解码的 Tag, 也可以保留为按需解码的原始块字节.
  */
 public final class Snapshot {
     private final SnapshotMeta meta;
@@ -52,7 +52,7 @@ public final class Snapshot {
     }
 
     /**
-     * 全部类型的 Tag 投影, <strong>会还原数据体中的每一个类型</strong>.
+     * 全部类型的 Tag, <strong>会还原数据体中的每一个类型</strong>.
      */
     @NotNull
     public Map<DataKey, Tag> allData() {
@@ -63,16 +63,16 @@ public final class Snapshot {
     public boolean equals(@Nullable Object object) {
         if (this == object) return true;
         if (!(object instanceof Snapshot other)) return false;
-        return this.meta.equals(other.meta) && this.content.blocks().equals(other.content.blocks());
+        return this.meta.equals(other.meta) && this.content.all().equals(other.content.all());
     }
 
     @Override
     public int hashCode() {
-        return 31 * this.meta.hashCode() + this.content.blocks().hashCode();
+        return 31 * this.meta.hashCode() + this.content.all().hashCode();
     }
 
     @Override
     public String toString() {
-        return "Snapshot[meta=" + this.meta + ", data=" + this.content.blocks() + "]";
+        return "Snapshot[meta=" + this.meta + ", data=" + this.content.all() + "]";
     }
 }

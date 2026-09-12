@@ -20,7 +20,6 @@ import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.attribute.Attribute;
@@ -76,12 +75,6 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
     public AttributesDataType() {
         super(ATTRIBUTES, CODEC);
-    }
-
-    @Override
-    @NotNull
-    public BlockMeta meta() {
-        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

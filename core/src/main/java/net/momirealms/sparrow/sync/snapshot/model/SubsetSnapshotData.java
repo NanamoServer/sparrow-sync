@@ -25,12 +25,6 @@ final class SubsetSnapshotData implements SnapshotData {
 
     @Override
     @NotNull
-    public BlockMeta meta(@NotNull DataKey key) {
-        return this.keys.contains(key) ? this.source.meta(key) : BlockMeta.DEFAULT;
-    }
-
-    @Override
-    @NotNull
     public Set<DataKey> keys() {
         return this.keys;
     }

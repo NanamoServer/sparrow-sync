@@ -3,11 +3,9 @@ package net.momirealms.sparrow.sync.snapshot.codec;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,7 +19,6 @@ import java.util.Map;
  */
 final class SnapshotNBTCodec {
     static final String FIELD_DATA = "data";       // 完整树中的数据体, 元数据段省略此键
-    static final String FIELD_BLOCK_META = "meta"; // 类型块附加信息
 
     private SnapshotNBTCodec() {
     }
@@ -37,12 +34,7 @@ final class SnapshotNBTCodec {
         CompoundTag root = SnapshotMetaCodec.toCompoundTag(snapshot.meta());
         CompoundTag data = NBT.createCompound(new LinkedHashMap<>());
         for (DataKey key : snapshot.keys()) {
-            SnapshotBlock block = snapshot.content().block(key);
-            assert block != null;
-            CompoundTag value = NBT.createCompound();
-            value.put(FIELD_BLOCK_META, BlockMetaCodec.write(block.meta()));
-            value.put(FIELD_DATA, block.data());
-            data.put(key.asString(), value);
+            data.put(key.asString(), snapshot.data(key));
         }
         root.put(FIELD_DATA, data);
         return root;
@@ -58,15 +50,11 @@ final class SnapshotNBTCodec {
     @NotNull
     static Snapshot fromCompoundTag(@NotNull CompoundTag root) throws IOException {
         SnapshotMeta meta = SnapshotMetaCodec.fromCompoundTag(root);
-        Map<DataKey, SnapshotBlock> data = new LinkedHashMap<>();
+        Map<DataKey, Tag> data = new LinkedHashMap<>();
         CompoundTag values = root.getCompound(FIELD_DATA, null);
         if (values != null) {
             for (Map.Entry<String, Tag> entry : values.entrySet()) {
-                if (!(entry.getValue() instanceof CompoundTag block)
-                        || !(block.get(FIELD_BLOCK_META) instanceof CompoundTag blockMeta) || !block.containsKey(FIELD_DATA)) {
-                    throw new IOException("data block '" + entry.getKey() + "' must contain meta and data");
-                }
-                data.put(DataKey.parse(entry.getKey()), new SnapshotBlock(BlockMetaCodec.read(blockMeta), block.get(FIELD_DATA)));
+                data.put(DataKey.parse(entry.getKey()), entry.getValue());
             }
         }
         return new Snapshot(meta, new EagerSnapshotData(data));

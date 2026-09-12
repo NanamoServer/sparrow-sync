@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.zip.CRC32;
 
@@ -224,7 +225,7 @@ class BlockFrameTest {
         int rawLength = NBT.toBytes(tree, false).length;
         for (CompressorRegistry compressor : CompressorRegistry.values()) {
             byte[] block = BlockCodec.encode(key, value, compressor, rawLength);
-            BlockIndex entry = new BlockIndex(0, block.length - 9, rawLength, BlockMeta.DEFAULT);
+            BlockIndex entry = new BlockIndex(0, block.length - 9, rawLength);
             assertEquals(value, BlockCodec.decode(block, 0, key, entry));
             assertEquals(compressor.id(), block[0]);
             assertEquals(CompressorRegistry.NONE.id(), BlockCodec.encode(key, value, compressor, rawLength + 1)[0]);
@@ -242,9 +243,9 @@ class BlockFrameTest {
         byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
         int raw = ByteBuffer.wrap(block).getInt(1);
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key,
-                new BlockIndex(0, block.length - 9, raw + 1, BlockMeta.DEFAULT))).reason());
+                new BlockIndex(0, block.length - 9, raw + 1))).reason());
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 14, key,
-                new BlockIndex(Integer.MAX_VALUE, Integer.MAX_VALUE, raw, BlockMeta.DEFAULT))).reason());
+                new BlockIndex(Integer.MAX_VALUE, Integer.MAX_VALUE, raw))).reason());
     }
 
     /**
@@ -266,7 +267,7 @@ class BlockFrameTest {
             CRC32 crc = new CRC32();
             crc.update(raw);
             byte[] block = ByteBuffer.allocate(9 + raw.length).put((byte) 0).putInt(raw.length).putInt((int) crc.getValue()).put(raw).array();
-            BlockIndex entry = new BlockIndex(0, raw.length, raw.length, BlockMeta.DEFAULT);
+            BlockIndex entry = new BlockIndex(0, raw.length, raw.length);
             assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
         }
     }
@@ -279,9 +280,9 @@ class BlockFrameTest {
     @Test
     void indexRoundTripAndValidation() throws IOException {
         LinkedHashMap<String, BlockIndex> values = new LinkedHashMap<>();
-        values.put("other:z", new BlockIndex(0, 12, 12, BlockMeta.DEFAULT));
-        values.put("other:a", new BlockIndex(21, 15, 30, BlockMeta.DEFAULT));
-        assertFalse(BlockIndexCodec.write(values).getCompound("other:z").containsKey("v"));
+        values.put("other:z", new BlockIndex(0, 12, 12));
+        values.put("other:a", new BlockIndex(21, 15, 30));
+        assertEquals(Set.of("o", "l", "n"), BlockIndexCodec.write(values).getCompound("other:z").keySet());
         assertEquals(values, BlockIndexCodec.read(BlockIndexCodec.write(values)));
         assertEquals(new ArrayList<>(values.keySet()), new ArrayList<>(BlockIndexCodec.read(BlockIndexCodec.write(values)).keySet()));
         for (String field : List.of("o", "l", "n")) {

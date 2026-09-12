@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @param bytes 包含此块的完整帧字节数组, <strong>调用方不得修改</strong>
  * @param offset 此块块头在 bytes 数组中的起始下标
- * @param index 此块的位置, 长度和元信息; 其中的 offset 从原帧的第一个数据块起计算, 与数组下标不同
+ * @param index 此块的位置和长度; 其中的 offset 从原帧的第一个数据块起计算, 与数组下标不同
  */
 public record RawBlock(byte @NotNull [] bytes, long offset, @NotNull BlockIndex index) {
 }

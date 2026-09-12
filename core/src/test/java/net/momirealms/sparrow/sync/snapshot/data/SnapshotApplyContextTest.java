@@ -2,11 +2,15 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,6 +20,22 @@ class SnapshotApplyContextTest {
     private static final DataKey FIRST = DataKey.of("test", "first");
     private static final DataKey SECOND = DataKey.of("test", "second");
     private static final DataKey UNKNOWN = DataKey.of("other", "unknown");
+    private Field configField;
+    private Object previousConfig;
+
+    @BeforeEach
+    void setUp() throws ReflectiveOperationException {
+        // 注册表构造时读取启动配置, 每个用例使用独立的空丢弃名单.
+        this.configField = PluginConfig.class.getDeclaredField("config");
+        this.configField.setAccessible(true);
+        this.previousConfig = this.configField.get(null);
+        this.configField.set(null, new PluginConfig.ConfigDefinition());
+    }
+
+    @AfterEach
+    void tearDown() throws IllegalAccessException {
+        this.configField.set(null, this.previousConfig);
+    }
 
     @Test
     void eventCanOnlyReplacePendingOrRecoverDecodeSkippedSlots() {

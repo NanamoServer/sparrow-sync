@@ -1,23 +1,21 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
-import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
 import net.momirealms.sparrow.sync.locale.LogConstants;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.FileLogWriter;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.snapshot.data.type.*;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
@@ -26,12 +24,15 @@ import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,8 +47,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 验证块策略经过采集, 正式加载和再次保存后的行为, 包括真实 location 类型的关闭与重开. */
-class BlockMetaFlowTest {
+/** 验证本服丢弃名单经过正式加载和再次保存后的行为, 包括真实 location 类型的关闭与重开. */
+class UnknownDataFlowTest {
     private static final DataKey BOOK = DataKey.of("external", "book"); // 未安装插件时仍需保留的类型
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0); // 强制压缩, 便于比较原块
     private final List<String> consoleLogs = new ArrayList<>(); // 记录控制台输出, 用于验证丢弃日志只写文件
@@ -55,9 +56,25 @@ class BlockMetaFlowTest {
         this.consoleLogs.add(method.getName() + ": " + args[0]);
         return null;
     }));
+    private Field configField;
+    private Object previousConfig;
+
+    @BeforeEach
+    void setUp() throws ReflectiveOperationException {
+        // 注册表构造时读取启动配置, 每个用例从空名单开始, 再注册所需的丢弃类型.
+        this.configField = PluginConfig.class.getDeclaredField("config");
+        this.configField.setAccessible(true);
+        this.previousConfig = this.configField.get(null);
+        this.configField.set(null, new PluginConfig.ConfigDefinition());
+    }
+
+    @AfterEach
+    void tearDown() throws IllegalAccessException {
+        this.configField.set(null, this.previousConfig);
+    }
 
     /**
-     * location 关闭期间保存一次后, 重开同步不会恢复旧坐标, 同行的未知图鉴块仍保持原样.
+     * location 列入丢弃名单且关闭同步期间保存一次后, 重开同步不会恢复旧坐标, 同行的未知图鉴块仍保持原样.
      *
      * @throws Exception 当测试快照编解码或流水线装配失败时
      */
@@ -76,12 +93,11 @@ class BlockMetaFlowTest {
             case "teleport", "teleportAsync" -> { teleports.incrementAndGet(); throw new AssertionError("old location applied"); }
             default -> throw new AssertionError(method.getName());
         });
-        // 第一天由真实 location 类型采集, 策略随采集结果进入块元信息.
-        PlayerDataPipeline dayOne = this.pipeline(new LocationDataType(), new TextType(BOOK, true));
+        // 第一天由真实 location 类型采集坐标, 图鉴与坐标一起保存.
+        PlayerDataPipeline dayOne = this.pipeline(new LocationDataType(), new TextType(BOOK));
         Snapshot original = this.capture(dayOne, player, EagerSnapshotData.EMPTY);
-        assertEquals(false, original.content().raw(LocationDataType.LOCATION).index().meta().keepUnknown());
         byte[] book = bytes(original, BOOK);
-        // 第二天不注册 location, 它不会进入保留集合, 也不会被解块.
+        // 第二天不注册 location 并将其列入丢弃名单, 它不会进入保留集合, 也不会被解块.
         position.set(new Location(world, 200, 70, 300));
         PlayerDataPipeline dayTwo = this.pipeline(Set.of(LocationDataType.LOCATION));
         SnapshotApplyContext context = ready(dayTwo, original);
@@ -104,36 +120,34 @@ class BlockMetaFlowTest {
     }
 
     /**
-     * 已注册类型忽略历史策略进行应用, 新采集块使用本服当前声明.
+     * 已注册类型无论是否列入丢弃名单都正常应用, 新采集值覆盖旧值.
      *
-     * @param current 本服当前声明
+     * @param listed 是否将该类型加入本服丢弃名单
      * @throws Exception 当测试快照编解码失败时
      */
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void registeredTypeAppliesAndRefreshesHistoricalMeta(boolean current) throws Exception {
-        TextType type = new TextType(BOOK, current);
-        PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK), type);
-        boolean historical = !current;
-        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(new BlockMeta(historical), NBT.createString("old"))));
+    void registeredTypeAppliesAndRefreshesCapturedValue(boolean listed) throws Exception {
+        TextType type = new TextType(BOOK);
+        PlayerDataPipeline pipeline = this.pipeline(listed ? Set.of(BOOK) : Set.of(), type);
+        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, NBT.createString("old")));
         SnapshotApplyContext context = ready(pipeline, source);
         assertEquals("old", context.pendingValues().get(BOOK));
         assertTrue(context.passthrough().keys().isEmpty());
         pipeline.apply(this.player(source.meta().player()), context);
         assertEquals("old", type.applied);
         Snapshot saved = this.capture(pipeline, this.player(source.meta().player()), context.passthrough());
-        assertEquals(current, saved.content().meta(BOOK).keepUnknown());
         assertEquals("fresh", saved.data(BOOK).getAsString());
     }
 
     /**
-     * 损坏的 DROP 块仍能从保留集排除, 预览可以看到原块且不会执行丢弃.
+     * 列入丢弃名单的损坏块仍能从保留集排除, 预览可以看到原块且不会执行丢弃.
      *
      * @throws Exception 当测试快照编解码失败时
      */
     @Test
     void corruptedDropBlockIsDiscardedWithoutReadingPayload() throws Exception {
-        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createString("broken"))));
+        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, NBT.createString("broken")));
         var raw = source.content().raw(BOOK);
         raw.bytes()[(int) raw.offset() + 9] ^= 1;
         PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK));
@@ -144,7 +158,6 @@ class BlockMetaFlowTest {
         registry.freeze();
         new SnapshotDecoder(registry).decodeSelected(source, type -> true);
         assertTrue(source.keys().contains(BOOK));
-        assertEquals(false, source.content().meta(BOOK).keepUnknown());
         assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
     }
 
@@ -159,13 +172,13 @@ class BlockMetaFlowTest {
         PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK, DataKey.of("external", "other")));
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        Snapshot source = this.snapshot(first, Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createInt(1))));
+        Snapshot source = this.snapshot(first, Map.of(BOOK, NBT.createInt(1)));
         try (FileLogWriter writer = new FileLogWriter(directory, "HH:mm:ss", "'drops'", this.logger.console)) {
             this.logger.attachFile(writer);
             ready(pipeline, source);
             ready(pipeline, source);
-            ready(pipeline, this.snapshot(second, source.content().blocks()));
-            ready(pipeline, this.snapshot(first, Map.of(DataKey.of("external", "other"), new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createInt(1)))));
+            ready(pipeline, this.snapshot(second, source.content().all()));
+            ready(pipeline, this.snapshot(first, Map.of(DataKey.of("external", "other"), NBT.createInt(1))));
         }
         // close 会等待队列中的日志写完, 断言实际文件内容即可覆盖异步写入路径.
         List<String> lines = Files.readAllLines(directory.resolve("drops.log"));
@@ -184,30 +197,13 @@ class BlockMetaFlowTest {
      */
     @Test
     void receiverRegistryDeterminesUnknownRetention() throws Exception {
-        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createString("opaque"))));
+        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, NBT.createString("opaque")));
         SnapshotApplyContext kept = ready(this.pipeline(), source);
         SnapshotApplyContext dropped = ready(this.pipeline(Set.of(BOOK)), source);
         assertEquals(Set.of(BOOK), kept.passthrough().keys());
         assertTrue(dropped.passthrough().keys().isEmpty());
         assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
         assertArrayEquals(bytes(source, BOOK), bytes(new Snapshot(source.meta(), kept.passthrough()), BOOK));
-    }
-
-    /** 内置类型恰好九个声明 DROP, 七个使用接口默认 KEEP. */
-    @Test
-    void builtInMetadataMatchesTheOwnerClassification() throws Exception {
-        List<Class<? extends PlayerDataType<?>>> dropped = List.of(LocationDataType.class, GameModeDataType.class, FlightStatusDataType.class,
-                HealthDataType.class, HealthScaleDataType.class, HungerDataType.class, PotionEffectsDataType.class, AttributesDataType.class, EnchantmentSeedDataType.class);
-        List<Class<? extends PlayerDataType<?>>> kept = List.of(InventoryDataType.class, EnderChestDataType.class, PDCDataType.class,
-                ExperienceDataType.class, AdvancementsDataType.class, StatisticsDataType.class, EmoneyDataType.class);
-        for (Class<? extends PlayerDataType<?>> type : dropped) {
-            assertEquals(false, NmsPlayerFixture.allocate(type).meta().keepUnknown());
-            assertEquals(type, type.getMethod("meta").getDeclaringClass());
-        }
-        for (Class<? extends PlayerDataType<?>> type : kept) {
-            assertEquals(true, NmsPlayerFixture.allocate(type).meta().keepUnknown());
-            assertEquals(PlayerDataType.class, type.getMethod("meta").getDeclaringClass());
-        }
     }
 
     /**
@@ -243,7 +239,7 @@ class BlockMetaFlowTest {
     }
 
     /**
-     * 运行真实采集编码, 将完整块覆盖到保留数据后写出并读回二进制.
+     * 运行真实采集编码, 将本次 Tag 覆盖到保留数据后写出并读回二进制.
      *
      * @param pipeline 当前服务器的类型流水线
      * @param player 提供本服现值的玩家
@@ -254,20 +250,20 @@ class BlockMetaFlowTest {
     private Snapshot capture(PlayerDataPipeline pipeline, Player player, SnapshotData retained) throws IOException {
         var captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.capture(player, CaptureMode.SYNC));
         var encoded = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured));
-        Snapshot snapshot = new Snapshot(SnapshotMeta.builder().player(player.getUniqueId()).timestamp(1).cause(SaveCause.COMMAND).build(), retained.withBlocks(encoded.data()));
+        Snapshot snapshot = new Snapshot(SnapshotMeta.builder().player(player.getUniqueId()).timestamp(1).cause(SaveCause.COMMAND).build(), retained.with(encoded.data()));
         return assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
     }
 
     /**
-     * 构造带完整块元信息的二进制快照.
+     * 将类型 Tag 写入二进制帧, 供正式加载测试使用.
      *
      * @param player 数据所属玩家
-     * @param blocks 按输入顺序写入的逻辑块
+     * @param data 按输入顺序写入的类型 Tag
      * @return 尚未解块的快照
      * @throws IOException 当二进制编码失败时
      */
-    private Snapshot snapshot(UUID player, Map<DataKey, SnapshotBlock> blocks) throws IOException {
-        Snapshot snapshot = new Snapshot(SnapshotMeta.builder().player(player).timestamp(1).cause(SaveCause.COMMAND).build(), new EagerSnapshotData(blocks));
+    private Snapshot snapshot(UUID player, Map<DataKey, Tag> data) throws IOException {
+        Snapshot snapshot = new Snapshot(SnapshotMeta.builder().player(player).timestamp(1).cause(SaveCause.COMMAND).build(), new EagerSnapshotData(data));
         return assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
     }
 
@@ -308,31 +304,23 @@ class BlockMetaFlowTest {
         return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.offset() + 9 + block.index().length());
     }
 
-    /** 声明固定策略的外部类型, 用于观察应用与重新采集. */
+    /** 提供文本值的外部类型, 用于观察应用与重新采集. */
     private static final class TextType implements PlayerDataType<String> {
         private final DataKey key; // 外部类型标识
-        private final boolean keepUnknown; // 本服声明
         private String applied; // 最后一次应用值
 
         /**
          * 创建外部类型声明.
          *
          * @param key 类型标识
-         * @param keepUnknown 未注册时是否保留
          */
-        private TextType(DataKey key, boolean keepUnknown) {
+        private TextType(DataKey key) {
             this.key = key;
-            this.keepUnknown = keepUnknown;
         }
 
         @Override
         @NotNull
         public DataKey key() { return this.key; }
-
-        /** {@inheritDoc} */
-        @Override
-        @NotNull
-        public BlockMeta meta() { return new BlockMeta(this.keepUnknown); }
 
         /** {@inheritDoc} */
         @Override

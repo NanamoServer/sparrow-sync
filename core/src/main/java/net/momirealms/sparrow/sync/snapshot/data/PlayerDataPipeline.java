@@ -15,7 +15,6 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
@@ -400,7 +399,7 @@ public final class PlayerDataPipeline {
 
             @NotNull
             public Map<DataKey, Object> values() {
-                // 采集结果写入当前类型声明, 元信息与 Tag 一起交给快照组装
+                // 按注册表顺序返回已采集的值, 此处尚未编码为 Tag.
                 Map<DataKey, Object> values = new LinkedHashMap<>(this.values.length);
                 for (int i = 0; i < this.values.length; i++) {
                     Object value = this.values[i];
@@ -434,12 +433,12 @@ public final class PlayerDataPipeline {
             }
 
             @NotNull
-            public Map<DataKey, SnapshotBlock> data() {
-                // 采集结果写入当前类型声明, 元信息与 Tag 一起交给快照组装
-                Map<DataKey, SnapshotBlock> data = new LinkedHashMap<>(this.tags.length);
+            public Map<DataKey, Tag> data() {
+                // 按注册表顺序收集成功编码的 Tag, 供保存时覆盖同名保留数据
+                Map<DataKey, Tag> data = new LinkedHashMap<>(this.tags.length);
                 for (int i = 0; i < this.tags.length; i++) {
                     Tag tag = this.tags[i];
-                    if (tag != null) data.put(this.dataRegistry.keyAt(i), new SnapshotBlock(this.dataRegistry.typeAt(i).meta(), tag));
+                    if (tag != null) data.put(this.dataRegistry.keyAt(i), tag);
                 }
                 return Collections.unmodifiableMap(data);
             }

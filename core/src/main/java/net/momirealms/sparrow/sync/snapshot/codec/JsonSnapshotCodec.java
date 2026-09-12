@@ -9,13 +9,11 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.visitor.CompactStringTagVisitor;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bson.Document;
@@ -29,7 +27,7 @@ import java.util.UUID;
 
 /**
  * 人工可读的 JSON 形态快照编解码, 用于调试导出与手工修订, 不承担持久化.
- * 元数据为 JSON 字段, 数据体每个类型包含 meta 对象和 data SNBT 字符串, 类型后缀与数组标记保真,手改数值后可原样解码回快照.
+ * 元数据为 JSON 字段, data 中每个类型直接保存 SNBT 字符串, 保留数值类型后缀和数组标记.
  * 字段名与二进制形态的树排布一致, 解码把 JSON 还原成同构的树后进入升级管线与树读取.
  */
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
@@ -53,9 +51,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         Document data = new Document();
         for (DataKey key : snapshot.keys()) {
-            SnapshotBlock block = snapshot.content().block(key);
-            data.append(key.asString(), new Document(SnapshotNBTCodec.FIELD_BLOCK_META, BlockMetaCodec.toJson(block.meta()))
-                    .append(SnapshotNBTCodec.FIELD_DATA, new CompactStringTagVisitor().visit(block.data())));
+            data.append(key.asString(), new CompactStringTagVisitor().visit(snapshot.data(key)));
         }
         document.append(SnapshotNBTCodec.FIELD_DATA, data);
         return document.toJson(JSON_WRITER);
@@ -98,20 +94,13 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         Document values = document.get(SnapshotNBTCodec.FIELD_DATA, Document.class);
         if (values != null) {
             for (Map.Entry<String, Object> entry : values.entrySet()) {
-                if (!(entry.getValue() instanceof Document block)
-                        || !(block.get(SnapshotNBTCodec.FIELD_BLOCK_META) instanceof Document blockMeta)
-                        || !(block.get(SnapshotNBTCodec.FIELD_DATA) instanceof String snbt)) {
-                    throw new IOException("data block '" + entry.getKey() + "' must contain a meta object and a data SNBT string");
+                if (!(entry.getValue() instanceof String snbt)) {
+                    throw new IOException("data '" + entry.getKey() + "' must be an SNBT string");
                 }
                 try {
-                    CompoundTag value = NBT.createCompound();
-                    value.put(SnapshotNBTCodec.FIELD_BLOCK_META, BlockMetaCodec.write(BlockMetaCodec.read(blockMeta)));
-                    value.put(SnapshotNBTCodec.FIELD_DATA, parseSnbt(snbt));
-                    data.put(entry.getKey(), value);
-                } catch (FormatException exception) {
-                    throw new FormatException(exception.reason(), "data block '" + entry.getKey() + "': " + exception.getMessage());
-                } catch (CommandSyntaxException | IOException exception) {
-                    throw new IOException("data block '" + entry.getKey() + "': " + exception.getMessage());
+                    data.put(entry.getKey(), parseSnbt(snbt));
+                } catch (CommandSyntaxException exception) {
+                    throw new IOException("data '" + entry.getKey() + "': " + exception.getMessage());
                 }
             }
         }

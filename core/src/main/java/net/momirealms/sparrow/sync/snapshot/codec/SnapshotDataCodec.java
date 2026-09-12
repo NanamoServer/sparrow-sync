@@ -6,13 +6,11 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndexCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.model.BlockIndex;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
@@ -63,7 +61,7 @@ public final class SnapshotDataCodec {
      * 写出包含索引和全部类型块的数据帧, 用于数据库保存.
      * 已有原始块逐字节保留, 新增或替换的内容按当前压缩配置编码.
      *
-     * @param data 本次要保存的完整类型数据, 包含各块的元信息
+     * @param data 本次要保存的完整类型数据, 可同时包含原始块和新增 Tag
      * @return 依次包含 11 字节数据帧头, 索引和数据块的新数组
      * @throws IOException 当 NBT 编码失败或原始块超出来源数组范围时
      */
@@ -82,14 +80,14 @@ public final class SnapshotDataCodec {
      * @throws IOException 当块编码失败或原始块超出来源数组范围时
      */
     void write(@NotNull SnapshotData data, @NotNull ByteArrayOutputStream output) throws IOException {
-        // 索引元信息仍有效时, 从来源数组复制整个数据帧; 帧的起点由读取时保存的位置给出.
-        if (data instanceof LazySnapshotData lazy && !lazy.upgradedMeta()) {
+        // 从 Lazy 数据的来源数组复制整个数据帧, 起点和长度由读取时保存的区间给出.
+        if (data instanceof LazySnapshotData lazy) {
             output.write(lazy.frameBytes(), lazy.frameOffset(), lazy.frameLength());
             return;
         }
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
-        // 按 keys 的顺序写出数据块, 自动记录每块的位置, 长度和元信息并生成新索引
+        // 按 keys 的顺序写出数据块, 自动记录每块的位置和长度并生成新索引
         // 索引中的位置从第一个数据块起计算; 每块占用 9 字节块头加实际数据长度, 索引的 length 只记录后者
         for (DataKey key : data.keys()) {
             String name = key.asString();
@@ -101,14 +99,14 @@ public final class SnapshotDataCodec {
                     throw new FormatException(InvalidReason.CORRUPTED, "raw block out of bounds for " + name);
                 }
                 // 前面的块修改后长度可能变化, 因此重算此块的位置; 复制的内容没变, 其余索引信息沿用原值.
-                entries.put(name, new BlockIndex(blocks.size(), entry.length(), entry.rawLength(), entry.meta()));
+                entries.put(name, new BlockIndex(blocks.size(), entry.length(), entry.rawLength()));
                 blocks.write(raw.bytes(), (int) raw.offset(), (int) length);
                 continue;
             }
             byte[] block = BlockCodec.encode(name, data.get(key), this.compressor, this.compressThreshold);
             ByteBuffer header = ByteBuffer.wrap(block);
             int rawLength = header.getInt(1);
-            entries.put(name, new BlockIndex(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength, data.meta(key)));
+            entries.put(name, new BlockIndex(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength));
             blocks.write(block);
         }
         byte[] index = NBT.toBytes(BlockIndexCodec.write(entries), false);
@@ -171,15 +169,6 @@ public final class SnapshotDataCodec {
             throw new FormatException(InvalidReason.CORRUPTED, "index checksum mismatch");
         }
         CompoundTag index = readIndex(bytes, indexOffset, (int) indexLength);
-        // 在升级步骤可能修改元信息树之前记录来源版本, 保存时据此决定是否重建索引.
-        boolean upgradedMeta = false;
-        for (Tag value : index.values()) {
-            if (value instanceof CompoundTag entry && entry.get("meta") instanceof CompoundTag storedMeta) {
-                upgradedMeta |= BlockMetaCodec.version(storedMeta) < BlockMeta.CURRENT_VERSION;
-            } else {
-                upgradedMeta |= 1 < BlockMeta.CURRENT_VERSION;
-            }
-        }
         LinkedHashMap<String, BlockIndex> entries = BlockIndexCodec.read(index);
         // NBT 库读取 compound 使用 HashMap; o 保存了物理次序, 据此恢复 keys 的稳定顺序.
         var ordered = new ArrayList<>(entries.entrySet());
@@ -194,7 +183,7 @@ public final class SnapshotDataCodec {
             entries.put(entry.getKey(), entry.getValue());
             nextOffset += BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.getValue().length();
         }
-        return new LazySnapshotData(bytes, offset, length, blockBase, entries, upgradedMeta);
+        return new LazySnapshotData(bytes, offset, length, blockBase, entries);
     }
 
     // 在指定段的边界内读取一个 compound.

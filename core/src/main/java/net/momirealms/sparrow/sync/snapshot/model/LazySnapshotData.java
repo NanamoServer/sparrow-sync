@@ -18,7 +18,6 @@ public final class LazySnapshotData implements SnapshotData {
     private final byte[] frameBytes; // 交付后只读的来源数组, 可包含外层快照头和 Meta
     private final int frameOffset;  // 数据帧在来源数组中的起点
     private final int frameLength;  // 数据帧占用字节数, 供完整复制时限定范围
-    private final boolean upgradedMeta; // 元信息已经升级时, 原帧索引须在保存时重建
     private final int blockBase; // 块区在 frameBytes 中的绝对起点
     private final LinkedHashMap<DataKey, BlockIndex> index; // 已校验且按物理次序排列的数据块索引表
     private final Set<DataKey> keys; // 索引键集合的只读视图, 与索引共享顺序和内容
@@ -32,13 +31,11 @@ public final class LazySnapshotData implements SnapshotData {
      * @param frameLength 数据帧的字节数
      * @param blockBase 第一块在来源数组中的绝对起点
      * @param index 按物理顺序排列的已校验索引
-     * @param upgradedMeta 元信息是否已升级, 升级后保存时须重建索引
      */
-    public LazySnapshotData(byte @NotNull [] frameBytes, int frameOffset, int frameLength, int blockBase, @NotNull LinkedHashMap<String, BlockIndex> index, boolean upgradedMeta) {
+    public LazySnapshotData(byte @NotNull [] frameBytes, int frameOffset, int frameLength, int blockBase, @NotNull LinkedHashMap<String, BlockIndex> index) {
         this.frameBytes = frameBytes;
         this.frameOffset = frameOffset;
         this.frameLength = frameLength;
-        this.upgradedMeta = upgradedMeta;
         this.blockBase = blockBase;
         this.index = new LinkedHashMap<>(index.size());
         for (Map.Entry<String, BlockIndex> entry : index.entrySet()) {
@@ -51,10 +48,6 @@ public final class LazySnapshotData implements SnapshotData {
     @NotNull
     public Set<DataKey> keys() {
         return this.keys;
-    }
-
-    public boolean upgradedMeta() {
-        return this.upgradedMeta;
     }
 
     public byte @NotNull [] frameBytes() {
