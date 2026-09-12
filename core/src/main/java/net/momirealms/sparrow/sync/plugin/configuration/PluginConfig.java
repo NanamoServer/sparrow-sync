@@ -92,21 +92,21 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
         @YamlProperty("___version___")
-        @Comment("Configuration file version, do not modify this value")
+        @Comment("Configuration version. Do not edit.")
         @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改.")
         String version = DependencyVersions.CONFIG_VERSION;
 
-        @Comment("Enables or disables metrics collection via BStats")
+        @Comment("Send plugin usage statistics to bStats.")
         @Comment(lang = "zh-CN", value = "是否向 bStats 提交插件使用统计.")
         boolean metrics = true;
 
-        @Comment("Enables automatic update checks")
+        @Comment("Automatically check for new versions.")
         @Comment(lang = "zh-CN", value = "是否自动检查新版本.")
         boolean updateChecker = true;
 
         @Comment({
-                "Language of console messages, e.g. zh_CN or en_US",
-                "Leave empty to follow the system locale; if no matching translation file exists, fall back to en_US"
+                "Console message language, such as zh_CN or en_US.",
+                "Leave blank to use the system language. English is used when no matching translation is available."
         })
         @Comment(lang = "zh-CN", value = {
                 "控制台消息的语言, 例如 zh_CN 或 en_US.",
@@ -115,12 +115,12 @@ public final class PluginConfig {
         String forcedLocale = "";
 
         @BlankLineBefore
-        @Comment("Redis connection settings for cross-server session locks, messaging, and caching some data")
+        @Comment("Redis connection settings for data synchronization between servers.")
         @Comment(lang = "zh-CN", value = "Redis 连接设置, 用于服务器之间的数据同步.")
         RedisOptions redis = new RedisOptions();
 
         @BlankLineBefore
-        @Comment("Persistent storage settings for player data snapshots")
+        @Comment("Database settings for player data snapshots.")
         @Comment(lang = "zh-CN", value = "玩家数据快照的数据库设置.")
         DatabaseOptions database = new DatabaseOptions();
 
@@ -158,19 +158,19 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DatabaseOptions {
-        @Comment("Storage backend for player data snapshots, available values: MONGODB, MYSQL, POSTGRESQL")
+        @Comment("Database used to store player snapshots. Choose MONGODB, MYSQL or POSTGRESQL.")
         @Comment(lang = "zh-CN", value = "保存玩家数据快照的数据库, 可选 MONGODB、MYSQL、POSTGRESQL.")
         StorageType type = StorageType.MONGODB;
 
-        @Comment("MYSQL database settings")
+        @Comment("MySQL database settings")
         @Comment(lang = "zh-CN", value = "MYSQL 数据库设置")
         MysqlOptions mysql = new MysqlOptions();
 
-        @Comment("POSTGRESQL database settings")
+        @Comment("PostgreSQL database settings")
         @Comment(lang = "zh-CN", value = "POSTGRESQL 数据库设置")
         PostgresOptions postgresql = new PostgresOptions();
 
-        @Comment("MONGODB database settings")
+        @Comment("MongoDB database settings")
         @Comment(lang = "zh-CN", value = "MONGODB 数据库设置")
         MongoOptions mongodb = new MongoOptions();
     }
@@ -254,7 +254,7 @@ public final class PluginConfig {
         String url = "jdbc:postgresql://localhost:5432/minecraft?connectTimeout=5&socketTimeout=10"; // pgJDBC 超时单位为秒
         String username = "postgres";
         String password = "";
-        @Comment("Up to 40 lowercase ASCII letters, digits or underscores; leave room for PostgreSQL index names")
+        @Comment("Table name prefix, up to 40 characters. Use only lowercase English letters, digits and underscores.")
         @Comment(lang = "zh-CN", value = "数据表名前缀, 最多 40 个字符, 只能使用小写英文字母、数字和下划线.")
         String tablePrefix = "sparrow_sync_";
 
@@ -278,11 +278,9 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SynchronizationOptions {
         @Comment({
-                "Number of serial executor threads for player data tasks, limited to 1-64",
-                "Recommended values based on basic testing:",
-                "For <= 150 players online on this server, set this to 2.",
-                "For <= 350 players online on this server, set this to 4.",
-                "For <= 700 players online on this server, set this to 8."
+                "Number of threads for player data tasks, from 1 to 64.",
+                "Use this server's online player count as a starting point, then adjust as needed.",
+                "Suggested values are 2 for up to 150 players, 4 for up to 350, and 8 for up to 700."
         })
         @Comment(lang = "zh-CN", value = {
                 "处理玩家数据的线程数, 可填 1-64.",
@@ -292,11 +290,8 @@ public final class PluginConfig {
         int workerThreads = 4;
 
         @Comment({
-                "Maximum time without a completed save request during shutdown, in seconds; non-positive values skip waiting",
-                "Progress is reported every second; each increase resets the timeout, so total saving time may exceed this value",
-                "After all save requests finish, map publication and executor draining share one additional fixed budget of this length",
-                "On timeout or interruption, cleanup starts without an additional wait; unfinished complete snapshots are submitted for local stashing",
-                "External process or container shutdown limits must allow enough time for saving and cleanup"
+                "How long to wait, in seconds, when shutdown saves stop making progress. Values <= 0 skip the wait.",
+                "On timeout or interruption, the plugin tries to save any remaining complete snapshots locally and upload them to the database on the next startup."
         })
         @Comment(lang = "zh-CN", value = {
                 "关服保存长时间没有进展时, 最多再等待多少秒, <= 0 表示不等待.",
@@ -304,15 +299,14 @@ public final class PluginConfig {
         })
         int shutdownTimeoutSeconds = 30;
 
-        @Comment("Maximum number of unpinned snapshots kept per player; excess snapshots are removed at an appropriate time, starting with the oldest")
+        @Comment("Maximum number of unpinned snapshots per player. The oldest are removed when this limit is exceeded. Pinned snapshots are kept.")
         @Comment(lang = "zh-CN", value = "每名玩家最多保留多少份未固定的快照, 超出后会清理最旧的快照, 被固定的快照不受影响.")
         int maxSnapshots = 32;
 
         @Comment({
-                "Maximum number of save retries for snapshots being saved when the database goes down",
-                "-1 retries until the database recovers, typically suitable for temporary unavailability caused by network instability",
-                "Snapshots that exhaust their retries are saved to local disk with a warning and inserted into the database after a server restart, without discarding the data",
-                "Problems that retries cannot resolve, such as abnormal snapshot sizes or encoding errors, are not retried; the plugin saves the data to local disk where possible and alerts administrators"
+                "Maximum retries after a database save fails. Set to -1 to keep retrying through temporary network or database outages.",
+                "When retries run out, the plugin logs a warning and stores the snapshot locally for upload on the next startup.",
+                "Invalid data is not retried. The plugin tries to save it locally and alerts an administrator."
         })
         @Comment(lang = "zh-CN", value = {
                 "数据库保存失败后的最多重试次数, -1 表示一直重试, 适合应对临时断网或数据库宕机.",
@@ -321,16 +315,15 @@ public final class PluginConfig {
         })
         int maxSaveRetries = -1;
 
-        @Comment("Maximum time to wait for player data to be ready during login, in seconds")
+        @Comment("Maximum time, in seconds, to wait for player data during login.")
         @Comment(lang = "zh-CN", value = "玩家登录时最多等待多少秒来准备数据.")
         int loginTimeoutSeconds = 60;
 
         @Comment({
-                "Compression method for new snapshots; existing data remains readable after changing this",
-                "Available: ZSTD, DEFLATE, NONE",
-                "  ZSTD    - fast saves and loads with a high compression ratio, recommended",
-                "  DEFLATE - the JDK codec, requires no native library; use it if Zstd fails to load",
-                "  NONE    - no compression; larger snapshots take longer to transfer to the database"
+                "Compression for new snapshots. Choose ZSTD, DEFLATE or NONE.",
+                "  ZSTD    - fast saves and loads with good compression. Recommended.",
+                "  DEFLATE - built into Java and needs no native library. Use if ZSTD fails to load.",
+                "  NONE    - no compression. Larger snapshots take longer to send to the database."
         })
         @Comment(lang = "zh-CN", value = {
                 "新快照的压缩方式, 可选值: ZSTD、DEFLATE、NONE",
@@ -341,14 +334,14 @@ public final class PluginConfig {
         CompressorRegistry compression = CompressorRegistry.ZSTD;
 
         @BlankLineBefore
-        @Comment("Player data types enabled for synchronization; changes require a server restart")
+        @Comment("Choose which player data to synchronize. Restart the server after changing this.")
         @Comment(lang = "zh-CN", value = "选择需要同步的玩家数据, 修改后重启生效.")
         DataTypes dataTypes = new DataTypes();
 
         @BlankLineBefore
         @Comment({
-                "Discard these data types when they are not registered on this server; unknown types are kept by default",
-                "Use namespace:name, e.g. sparrow_sync:location; changes require a server restart"
+                "Data types to discard if this server does not recognize them. Unlisted types are kept.",
+                "Use namespace:name, such as sparrow_sync:location. Restart the server after changing this."
         })
         @Comment(lang = "zh-CN", value = {
                 "本服无法识别的数据类型中, 哪些需要丢弃, 未列出的会保留.",
@@ -367,10 +360,8 @@ public final class PluginConfig {
 
         @BlankLineBefore
         @Comment({
-                "Writes compatible snapshot data directly into player data that has not yet been loaded, on an asynchronous thread during login preparation",
-                "Strongly recommended: moves most of the synchronization work during login to a separate asynchronous thread and can also speed up vanilla player data loading",
-                "This option does not block Netty threads or the server main thread; try disabling it if your server encounters errors or compatibility issues while it is enabled",
-                "On Folia, disabling this leaves location to a best-effort asynchronous teleport whose result is neither awaited nor checked"
+                "Speed up data loading during login and reduce lag from synchronization. Recommended.",
+                "Try disabling this if it causes login errors or compatibility problems."
         })
         @Comment(lang = "zh-CN", value = {
                 "加快玩家登录时的数据加载, 减少同步造成的卡顿, 推荐开启.",
@@ -384,7 +375,10 @@ public final class PluginConfig {
         SnapshotCacheOptions snapshotCache = new SnapshotCacheOptions();
 
         @BlankLineBefore
-        @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
+        @Comment({
+                "Skip these data types when restoring a snapshot to an online player. Login synchronization is unaffected. Leave the list empty to restore all types.",
+                "Use the same format as discard-unknown-data, such as health or sparrow_sync:health."
+        })
         @Comment(lang = "zh-CN", value = {
                 "在线恢复快照时跳过这些数据, 不影响玩家登录时的同步, 留空则全部恢复.",
                 "填写方式与 discard-unknown-data 相同, 例如 health 或 sparrow_sync:health."
@@ -408,10 +402,10 @@ public final class PluginConfig {
 
         @BlankLineBefore
         @Comment({
-                "Player persistent data (PDC) merge blacklist; listed paths are neither captured nor merged during synchronization",
+                "Player custom data (PDC) to exclude from synchronization. Follow the examples below.",
                 "pdc-merge-namespaces:",
-                "  - \"sparrow-sync-ignore\" # represents custom_data -> sparrow-sync-ignore",
-                "  - [\"sparrow-sync\", \"ignore\"] # represents custom_data -> sparrow-sync -> ignore"
+                "  - \"sparrow-sync-ignore\" # Exclude the entire entry",
+                "  - [\"sparrow-sync\", \"ignore\"] # Exclude the ignore entry under sparrow-sync"
         })
         @Comment(lang = "zh-CN", value = {
                 "不参与同步的玩家自定义数据 (PDC), 可按下面的例子填写.",
@@ -422,7 +416,7 @@ public final class PluginConfig {
         List<Object> pdcMergeNamespaces = List.of();
 
         @BlankLineBefore
-        @Comment("Automatic data snapshot save settings")
+        @Comment("When to save snapshots automatically.")
         @Comment(lang = "zh-CN", value = "自动保存快照的时机.")
         SaveTriggerOptions saveTriggers = new SaveTriggerOptions();
 
@@ -435,20 +429,13 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SnapshotCacheOptions {
-        @Comment({
-                "Writes the snapshot into Redis after a disconnect or shutdown save is confirmed, so the next server can take",
-                "the snapshot body from Redis instead of reading it from the database when the player hops over",
-                "Best effort only: a failed write, a missing entry or an unreachable Redis always falls back to the database"
-        })
+        @Comment("Cache snapshots saved on logout or shutdown in Redis to speed up the player's next login on another server.")
         @Comment(lang = "zh-CN", value = {
                 "将玩家退出或关服时已保存的快照缓存到 Redis, 加快下次跨服登录."
         })
         boolean enabled = true;
 
-        @Comment({
-                "Lifetime of a cached entry, in seconds",
-                "An entry only needs to survive the gap between leaving one server and entering the next"
-        })
+        @Comment("How long to keep cached snapshots, in seconds. Allow enough time for players to leave one server and join the next.")
         @Comment(lang = "zh-CN", value = "快照缓存保留多少秒, 应留够玩家从退出一台服务器到进入下一台的时间.")
         int ttlSeconds = 15;
 
@@ -464,11 +451,9 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MapOptions {
         @Comment({
-                "Enables map item encoding and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
-                "Because of how Minecraft stores maps, map synchronization is best-effort; enabling it means",
-                "the plugin modifies map items, including updating and reassigning map-id values and recording required data in custom_data",
-                "If you use a \"cross-server auction house\" or a \"plugin-managed portable backpack\" to bypass map item scanning during synchronization, the plugin cannot guarantee that the bypassed maps will display correctly",
-                "Uninstalling the plugin cannot fully restore map data components, but we aim to keep maps viewable and functional; this feature comes with these trade-offs"
+                "Enable cross-server map handling. When disabled, the plugin leaves map items and map data alone. Restart the server after changing this.",
+                "Enabling this modifies map items. Uninstalling the plugin will not fully restore them.",
+                "Maps transferred through cross-server auction houses or plugin backpacks may display incorrectly if they bypass this plugin's synchronization."
         })
         @Comment(lang = "zh-CN", value = {
                 "是否处理跨服地图, 关闭后插件不处理地图物品和地图数据, 修改后重启生效.",
@@ -478,10 +463,9 @@ public final class PluginConfig {
         boolean enabled = false;
 
         @Comment({
-                "Map data synchronization mode, available values: HIDE, SYNC",
-                "HIDE does not synchronize map data between servers; when a player switches servers, it removes map-id and records custom_data, making the map unusable on the destination server to prevent players from using maps to steal other servers' map data",
-                "SYNC saves and synchronizes all map data; maps captured in snapshots receive reassigned map-id values and custom_data, source map data is saved to the database, and persistent negative-ID replicas are created on other servers",
-                "Map processing failures produce a warning and leave the original map data unchanged"
+                "How to handle cross-server maps. Choose HIDE or SYNC.",
+                "HIDE makes maps unusable on other servers so they cannot accidentally show another server's map content.",
+                "SYNC synchronizes map content so players can still view it after switching servers."
         })
         @Comment(lang = "zh-CN", value = {
                 "跨服地图的处理方式, 可选 HIDE 或 SYNC.",
@@ -492,10 +476,9 @@ public final class PluginConfig {
         MapType synchronization_mode = MapType.SYNC;
 
         @Comment({
-                "Map source ID for this server; supports ${server-id} and ${world-uuid}; changes require a server restart",
-                "server-id is the server ID configured in server.yml",
-                "world-uuid is the UUID of the overworld where the map data belongs",
-                "Maps use this value to determine ownership; changing it makes previously encoded map items count as maps from another server"
+                "Identifies which server a map comes from. Keeping the default is recommended. Restart the server after changing this.",
+                "${server-id} is the server ID in server.yml. ${world-uuid} is the UUID of the map's overworld.",
+                "Changing this makes existing maps count as maps from another server."
         })
         @Comment(lang = "zh-CN", value = {
                 "本服务器的地图标志, 用来区分地图来自哪台服务器, 修改后重启生效, 建议保留默认值.",
@@ -504,6 +487,7 @@ public final class PluginConfig {
         })
         String mapOwnerId = "${server-id}-${world-uuid}";
 
+        @Comment("Which operations players can perform on cross-server maps. Reload to apply changes.")
         @Comment(lang = "zh-CN", value = "玩家对跨服地图可以进行哪些操作, 重载生效.")
         MapPlayerOperationOptions playerOperation = new MapPlayerOperationOptions();
 
@@ -542,25 +526,34 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MapPlayerOperationOptions {
-        @Comment("Allows adding or removing banner markers on negative-ID maps; reloadable")
+        @Comment("Allow adding or removing banner markers on cross-server maps. Reload to apply changes.")
         @Comment(lang = "zh-CN", value = "是否允许在跨服地图上添加或移除旗帜标记, 重载生效.")
         boolean allowBannerModification = false;
 
-        @Comment({"Allows vanilla locking of negative-ID maps; reloadable", "Creates a new local map ID; this does not repair the derived map's cross-server identity"})
+        @Comment({
+                "Allow locking cross-server maps. Reload to apply changes.",
+                "Locking creates a new map on this server. The new map may not synchronize correctly across servers."
+        })
         @Comment(lang = "zh-CN", value = {
                 "是否允许锁定跨服地图, 重载生效.",
                 "锁定后会生成本服的新地图, 目前不保证新地图能正常跨服同步."
         })
         boolean allowLock = false;
 
-        @Comment({"Allows vanilla scaling of negative-ID maps; reloadable", "Creates a new local map ID; this does not repair the derived map's cross-server identity or dimension"})
+        @Comment({
+                "Allow scaling cross-server maps. Reload to apply changes.",
+                "Scaling creates a new map on this server. The new map may not synchronize or display correctly across servers."
+        })
         @Comment(lang = "zh-CN", value = {
                 "是否允许缩放跨服地图, 重载生效.",
                 "缩放后会生成本服的新地图, 目前不保证新地图能正常跨服同步和显示."
         })
         boolean allowScale = false;
 
-        @Comment({"Allows copying negative-ID maps with cartography, crafting, and crafter recipes; reloadable", "Creative cloning and copies made directly by other plugins are outside these controls"})
+        @Comment({
+                "Allow copying cross-server maps using a cartography table, crafting table or crafter. Reload to apply changes.",
+                "This does not block copies made in creative mode or by other plugins."
+        })
         @Comment(lang = "zh-CN", value = {
                 "是否允许用制图台、工作台或合成器复制跨服地图, 重载生效.",
                 "不阻止创造模式和其他插件复制地图."
@@ -600,7 +593,7 @@ public final class PluginConfig {
         boolean persistentData = true;
         boolean potionEffects = true;
         boolean statistics = true;
-        @Comment("Synchronizes the player's Vault currency balance; requires the Vault plugin and an economy plugin")
+        @Comment("Synchronize player balances. Requires Vault and an economy plugin.")
         @Comment(lang = "zh-CN", value = "是否同步玩家余额, 需要安装 Vault 和经济插件.")
         boolean vault = false;
 
@@ -687,9 +680,8 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class AdvancementsOptions {
         @Comment({
-                "Allows the plugin to inject into the player's PlayerAdvancements class",
-                "Enabling this speeds up advancement data capture on the main thread; disabling it uses regular full capture",
-                "Try disabling this option if your server encounters errors or compatibility issues while it is enabled"
+                "Speed up saving advancement progress and reduce lag from synchronization.",
+                "Try disabling this if it causes advancement sync errors or compatibility problems."
         })
         @Comment(lang = "zh-CN", value = {
                 "加快成就进度的保存, 减少同步造成的卡顿.",
@@ -698,10 +690,8 @@ public final class PluginConfig {
         boolean injectProgressChanged = true;
 
         @Comment({
-                "Preserves data and completion progress for advancement IDs unknown to this server",
-                "When servers have different advancement registries, vanilla discards unknown advancements and their completion progress",
-                "The plugin can retain this data while applying only advancements registered on the current server",
-                "Disable this if every server in your network has an identical advancement registry; skipping some scans and checks can improve synchronization speed"
+                "Keep advancements and their progress even if this server does not have them. Disabling this discards that progress.",
+                "If all servers have the same advancements, you can disable this to speed up synchronization."
         })
         @Comment(lang = "zh-CN", value = {
                 "是否保留本服没有的成就及其完成进度, 关闭后这部分进度会丢失.",
@@ -721,9 +711,8 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class AttributeOptions {
         @Comment({
-                "Allows the plugin to inject into the player's AttributeInstance class",
-                "Enabling this speeds up attribute data capture on the main thread; disabling it uses regular full capture",
-                "Try disabling this option if your server encounters errors or compatibility issues while it is enabled"
+                "Speed up saving player attributes and reduce lag from synchronization.",
+                "Try disabling this if it causes attribute sync errors or compatibility problems."
         })
         @Comment(lang = "zh-CN", value = {
                 "加快玩家属性的保存, 减少同步造成的卡顿.",
@@ -732,8 +721,8 @@ public final class PluginConfig {
         boolean injectOnDirtyConsumer = true;
 
         @Comment({
-                "Attribute keys to save in snapshots during attribute synchronization; supports * wildcards",
-                "The list includes both modern and legacy vanilla attribute keys used by supported Minecraft versions"
+                "Player attributes to synchronize. Use * to match multiple names.",
+                "The default list includes attribute names used by different Minecraft versions."
         })
         @Comment(lang = "zh-CN", value = {
                 "需要同步的玩家属性, 支持用 * 匹配多个名称.",
@@ -754,7 +743,7 @@ public final class PluginConfig {
                 "minecraft:gravity"
         );
 
-        @Comment("Attribute keys kept local to each server; supports * wildcards")
+        @Comment("Attribute modifiers to exclude from synchronization. Each server keeps its own values. Use * to match multiple names.")
         @Comment(lang = "zh-CN", value = "不同步的属性加成, 各服保留自己的数值, 支持用 * 匹配多个名称.")
         List<String> modifierBlacklist = List.of(
                 "minecraft:effect.*",
@@ -856,54 +845,54 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class SaveTriggerOptions {
-        @Comment("Snapshot save policy for world changes")
+        @Comment("Automatic save settings for world changes.")
         @Comment(lang = "zh-CN", value = "切换世界时的自动保存设置.")
         WorldChangeTriggerOptions worldChange = new WorldChangeTriggerOptions();
 
-        @Comment("Snapshot save policy for world saves")
+        @Comment("Automatic save settings for world saves.")
         @Comment(lang = "zh-CN", value = "世界保存时的自动保存设置.")
         WorldSaveTriggerOptions worldSave = new WorldSaveTriggerOptions();
 
-        @Comment("Snapshot save policy for game mode changes")
+        @Comment("Automatic save settings for game mode changes.")
         @Comment(lang = "zh-CN", value = "切换游戏模式时的自动保存设置.")
         GameModeChangeTriggerOptions gameModeChange = new GameModeChangeTriggerOptions();
 
-        @Comment("Snapshot save policy for player deaths")
+        @Comment("Automatic save settings for player deaths.")
         @Comment(lang = "zh-CN", value = "玩家死亡时的自动保存设置.")
         DeathTriggerOptions death = new DeathTriggerOptions();
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class WorldChangeTriggerOptions {
-        @Comment("Whether to create a data snapshot when a player changes worlds")
+        @Comment("Save a snapshot when a player changes worlds.")
         @Comment(lang = "zh-CN", value = "是否在玩家切换世界时保存快照.")
         boolean enabled = false;
 
-        @Comment("Worlds that do not trigger a snapshot save when a player leaves them")
+        @Comment("Skip saving a snapshot when a player leaves these worlds.")
         @Comment(lang = "zh-CN", value = "玩家离开这些世界时不保存快照.")
         List<String> ignoredFromWorlds = List.of();
 
-        @Comment("Worlds that do not trigger a snapshot save when a player enters them")
+        @Comment("Skip saving a snapshot when a player enters these worlds.")
         @Comment(lang = "zh-CN", value = "玩家进入这些世界时不保存快照.")
         List<String> ignoredToWorlds = List.of();
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class WorldSaveTriggerOptions {
-        @Comment("Whether to save snapshots for players in a world when that world is saved")
+        @Comment("Save snapshots for players in a world when that world is saved.")
         @Comment(lang = "zh-CN", value = "是否在世界保存时, 一并保存该世界内玩家的快照.")
         boolean enabled = true;
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class GameModeChangeTriggerOptions {
-        @Comment("Whether to save a snapshot when a player changes game mode")
+        @Comment("Save a snapshot when a player changes game mode.")
         @Comment(lang = "zh-CN", value = "是否在玩家切换游戏模式时保存快照.")
         boolean enabled = false;
 
         @Comment({
-                "Game modes that do not trigger a save when a player switches to them",
-                "Available: SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR"
+                "Skip saving a snapshot when a player switches to these game modes.",
+                "Choose from SURVIVAL, CREATIVE, ADVENTURE and SPECTATOR."
         })
         @Comment(lang = "zh-CN", value = {
                 "玩家切换到这些游戏模式时不保存快照.",
@@ -914,15 +903,15 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DeathTriggerOptions {
-        @Comment("Whether to record the player's pre-death data and create a data snapshot when they die")
+        @Comment("Save a snapshot of the player before death.")
         @Comment(lang = "zh-CN", value = "是否保存玩家死亡前的快照.")
         boolean saveBeforeDeath = false;
 
-        @Comment("Whether to record the player's post-death data and create a data snapshot when they die")
+        @Comment("Save a snapshot of the player after death.")
         @Comment(lang = "zh-CN", value = "是否保存玩家死亡后的快照.")
         boolean saveAfterDeath = true;
 
-        @Comment("Worlds where death snapshots are not created")
+        @Comment("Skip death snapshots in these worlds.")
         @Comment(lang = "zh-CN", value = "玩家在这些世界死亡时不保存快照.")
         List<String> ignoredWorlds = List.of();
     }
@@ -1059,9 +1048,8 @@ public final class PluginConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class LoggingOptions {
         @Comment({
-                "Records detailed daily data logs for troubleshooting, including logs not shown in the console",
-                "Logs are written to a <date>.log file, stored in plugins/sparrow-sync/logs by default",
-                "Disabling this is strongly discouraged because it makes plugin errors difficult to investigate; changes require a server restart"
+                "Save detailed logs to files, including entries not shown in the console. Restart the server after changing this.",
+                "Logs are stored in plugins/sparrow-sync/logs by default. Keep this enabled to help troubleshoot problems."
         })
         @Comment(lang = "zh-CN", value = {
                 "是否将详细日志保存到文件, 包括控制台中没有显示的记录, 修改后重启生效.",
@@ -1069,24 +1057,21 @@ public final class PluginConfig {
         })
         boolean localFile = true;
 
-        @Comment("Log directory, accepts absolute or relative paths; relative paths are resolved against the plugin data folder")
+        @Comment("Log directory. Relative paths start from the plugin's data folder. You can also use an absolute path.")
         @Comment(lang = "zh-CN", value = "日志保存目录, 相对路径从插件的数据目录算起, 也可以填写完整路径.")
         String directory = "logs";
 
-        @Comment({
-                "Local log retention in days (24 hours), based on the last modification time; <= 0 keeps all logs",
-                "Expired .log and .log.gz files are deleted only at server startup when local-file is enabled; changes require a server restart"
-        })
+        @Comment("How many days to keep local logs. Expired .log and .log.gz files are deleted at startup. Values <= 0 keep all logs.")
         @Comment(lang = "zh-CN", value = "本地日志保留天数, 服务器在启动时会删除过期的 .log 和 .log.gz 文件, <= 0 表示不清理.")
         int retentionDays = 0;
 
-        @Comment("Timestamp format for each log line, using a Java DateTimeFormatter pattern")
+        @Comment("Time format in log entries. HH:mm:ss shows hours, minutes and seconds; HH:mm:ss.SSS also includes milliseconds.")
         @Comment(lang = "zh-CN", value = "日志中的时间格式, 例如 HH:mm:ss 显示时分秒, HH:mm:ss.SSS 再加上毫秒.")
         String timeFormat = "HH:mm:ss.SSS";
 
         @Comment({
-                "Date format for log file names, using a Java DateTimeFormatter pattern",
-                "This determines when a new file is created, e.g. yyyy-MM rotates monthly; closed files are compressed as <date>-<index>.log.gz"
+                "Date format for log file names. yyyy-MM-dd creates daily files; yyyy-MM creates monthly files.",
+                "Old logs are compressed as <date>-<index>.log.gz."
         })
         @Comment(lang = "zh-CN", value = {
                 "日志文件名的日期格式, yyyy-MM-dd 按天分文件, yyyy-MM 按月分文件.",
@@ -1095,8 +1080,8 @@ public final class PluginConfig {
         String fileDateFormat = "yyyy-MM-dd";
 
         @Comment({
-                "Selects which snapshot save causes are reported to the console after a successful save",
-                "When local-file is enabled, all successful saves are still written to the log file"
+                "Choose which types of successful saves to report in the console.",
+                "When file logging is enabled, every successful save is recorded in the log file."
         })
         @Comment(lang = "zh-CN", value = {
                 "哪些情况下保存成功后要在控制台提示.",

@@ -124,7 +124,6 @@ public final class MapReceiver {
     // 为跨服中转续期 Redis 地图缓存, 无需重新采集或发布地图内容.
     @NotNull
     public CompletableFuture<Boolean> touch(int globalId) {
-        if (this.closed) return CompletableFuture.failedFuture(new CancellationException("map receiver is closed"));
         return this.redisCache.touch(globalId);
     }
 

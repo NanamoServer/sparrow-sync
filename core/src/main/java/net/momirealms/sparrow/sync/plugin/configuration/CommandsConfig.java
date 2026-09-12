@@ -54,14 +54,14 @@ public final class CommandsConfig {
     @Configuration(naming = Configuration.Naming.SNAKE_CASE)
     public static class ConfigDefinition {
         @YamlProperty("___version___")
-        @Comment("Do not modify this value")
+        @Comment("Configuration version. Do not edit.")
         @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改.")
         String version = DependencyVersions.COMMANDS_CONFIG_VERSION;
 
         @BlankLineBefore
         @Comment({
                 "",
-                "For safety reasons, editing this file requires a restart to apply",
+                "Restart the server after editing this file to apply your changes.",
                 ""
         })
         @Comment(lang = "zh-CN", value = {

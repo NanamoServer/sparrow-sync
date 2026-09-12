@@ -57,14 +57,14 @@ public final class ServerConfig {
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
         @YamlProperty("___version___")
-        @Comment("Configuration file version, do not modify this value")
+        @Comment("Configuration version. Do not edit.")
         @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改.")
         String version = DependencyVersions.SERVER_CONFIG_VERSION;
 
         @Comment({
-                "Unique identifier for this server in the synchronization cluster; every server participating in data synchronization must use a different value",
-                "Set this before startup; SparrowSync shuts down the server if this value is empty",
-                "Once set, changing this value is discouraged; a new value identifies a new server and may affect map data synchronization"
+                "A unique ID for this server. Each server taking part in synchronization must use a different value.",
+                "Set this before startup. Leaving it blank shuts down the server.",
+                "Avoid changing it later. A new ID is treated as a new server and may affect synchronization of existing maps."
         })
         @Comment(lang = "zh-CN", value = {
                 "本服的唯一 ID, 参与同步的每台服务器都要填不同的值.",
