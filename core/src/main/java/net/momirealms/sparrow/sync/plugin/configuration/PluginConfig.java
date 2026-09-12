@@ -356,7 +356,16 @@ public final class PluginConfig {
                 "这些类型在本服未注册时丢弃, 其余未知类型默认保留",
                 "使用 namespace:name, 例如 sparrow_sync:location; 修改后需要重启服务器"
         })
-        Set<DataKey> discardUnknownData = Set.of();
+        List<DataKey> discardUnknownData = List.of(
+                DataKey.sparrow("attributes"),
+                DataKey.sparrow("enchantment_seed"),
+                DataKey.sparrow("experience"),
+                DataKey.sparrow("flight_status"),
+                DataKey.sparrow("game_mode"),
+                DataKey.sparrow("health"),
+                DataKey.sparrow("hunger"),
+                DataKey.sparrow("location")
+        );
 
         @BlankLineBefore
         @Comment({
@@ -1227,7 +1236,7 @@ public final class PluginConfig {
     }
 
     @NotNull
-    public static Set<DataKey> synchronization$discardUnknownData() {
+    public static List<DataKey> synchronization$discardUnknownData() {
         return config.synchronization.discardUnknownData;
     }
 

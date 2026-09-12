@@ -110,7 +110,7 @@ class UnknownDataFlowTest {
         PluginConfig.ConfigDefinition config = (PluginConfig.ConfigDefinition) this.configField.get(null);
         Field synchronization = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
         synchronization.setAccessible(true);
-        NmsPlayerFixture.set(PluginConfig.SynchronizationOptions.class, synchronization.get(config), "discardUnknownData", discard ? Set.of(LocationDataType.LOCATION) : Set.of());
+        NmsPlayerFixture.set(PluginConfig.SynchronizationOptions.class, synchronization.get(config), "discardUnknownData", discard ? List.of(LocationDataType.LOCATION) : List.of());
         PlayerDataPipeline dayTwo = this.pipeline();
         SnapshotApplyContext context = ready(dayTwo, original);
         assertNull(context.takePending(LocationDataType.LOCATION));

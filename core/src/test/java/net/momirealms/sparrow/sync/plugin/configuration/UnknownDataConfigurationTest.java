@@ -11,7 +11,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,12 +36,21 @@ class UnknownDataConfigurationTest {
         Object previous = current.get(null);
         try {
             config.reload();
-            assertTrue(PluginConfig.synchronization$discardUnknownData().isEmpty());
+            assertEquals(List.of(
+                    DataKey.sparrow("attributes"),
+                    DataKey.sparrow("enchantment_seed"),
+                    DataKey.sparrow("experience"),
+                    DataKey.sparrow("flight_status"),
+                    DataKey.sparrow("game_mode"),
+                    DataKey.sparrow("health"),
+                    DataKey.sparrow("hunger"),
+                    DataKey.sparrow("location")
+            ), PluginConfig.synchronization$discardUnknownData());
             Path path = directory.resolve("config.yml");
             Files.writeString(path, "config-version: '4'\nsynchronization:\n  discard-unknown-data: [location, 'external:book']\n");
             config.reload();
-            Set<DataKey> configured = PluginConfig.synchronization$discardUnknownData();
-            assertEquals(Set.of(DataKey.sparrow("location"), DataKey.of("external", "book")), configured);
+            List<DataKey> configured = PluginConfig.synchronization$discardUnknownData();
+            assertEquals(List.of(DataKey.sparrow("location"), DataKey.of("external", "book")), configured);
             DataRegistry registry = new DataRegistry();
             assertTrue(registry.shouldDropUnknown(DataKey.sparrow("location")));
             assertTrue(registry.shouldDropUnknown(DataKey.of("external", "book")));
@@ -59,7 +68,7 @@ class UnknownDataConfigurationTest {
 
             Files.writeString(path, "config-version: '4'\nsynchronization:\n  discard-unknown-data: ['external:new']\n");
             config.reload();
-            assertEquals(Set.of(DataKey.of("external", "new")), PluginConfig.synchronization$discardUnknownData());
+            assertEquals(List.of(DataKey.of("external", "new")), PluginConfig.synchronization$discardUnknownData());
             assertTrue(registry.shouldDropUnknown(DataKey.sparrow("location")));
             assertTrue(registry.shouldDropUnknown(DataKey.of("external", "book")));
             assertTrue(registry.shouldDropUnknown(apiKey));
