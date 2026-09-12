@@ -7,6 +7,7 @@ import net.momirealms.sparrow.yaml.mapper.YamlMapper;
 import net.momirealms.sparrow.yaml.mapper.YamlMapperFactory;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Comment;
 import net.momirealms.sparrow.yaml.serializer.auto.annotation.Configuration;
+import net.momirealms.sparrow.yaml.serializer.auto.annotation.YamlProperty;
 import net.momirealms.sparrow.yaml.upgrade.YamlUpgradePipeline;
 import net.momirealms.sparrow.yaml.upgrade.version.FieldVersionExtractor;
 import org.jetbrains.annotations.NotNull;
@@ -27,7 +28,7 @@ public final class ServerConfig {
         this.plugin = plugin;
         this.configFilePath = plugin.dataFolderPath().resolve(CONFIG_FILE);
         YamlUpgradePipeline upgradePipeline = YamlUpgradePipeline.builder()
-                .versionExtractor(new FieldVersionExtractor("config-version"))
+                .versionExtractor(new FieldVersionExtractor("___version___"))
                 .build();
         YamlMapperFactory mapperFactory = YamlMapperFactory.builder()
                 .backupOnUpgrade(true)
@@ -55,9 +56,10 @@ public final class ServerConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class ConfigDefinition {
+        @YamlProperty("___version___")
         @Comment("Configuration file version, do not modify this value")
-        @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改此值")
-        String configVersion = DependencyVersions.SERVER_CONFIG_VERSION;
+        @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改.")
+        String version = DependencyVersions.SERVER_CONFIG_VERSION;
 
         @Comment({
                 "Unique identifier for this server in the synchronization cluster; every server participating in data synchronization must use a different value",
@@ -65,9 +67,9 @@ public final class ServerConfig {
                 "Once set, changing this value is discouraged; a new value identifies a new server and may affect map data synchronization"
         })
         @Comment(lang = "zh-CN", value = {
-                "本服务器在同步集群中的唯一标志符, 所有参与数据同步的服务器必须使用不同的值",
-                "请在启动前设置, 此值为空时 SparrowSync 会关闭服务器",
-                "注意: 一旦设置后, 不再推荐未来修改此值, 新的值会被视为新的服务器, 这可能会对地图数据同步造成一定的影响"
+                "本服的唯一 ID, 参与同步的每台服务器都要填不同的值.",
+                "请在启动前填写, 留空会导致服务器关闭.",
+                "设置后尽量不要修改, 改名会被当作一台新服务器, 可能影响已有地图的同步."
         })
         String serverId = ""; // 同时参与默认地图源 ID, 改名后旧地图按原来源身份保留
     }

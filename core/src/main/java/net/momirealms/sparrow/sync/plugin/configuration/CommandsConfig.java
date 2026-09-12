@@ -27,7 +27,7 @@ public final class CommandsConfig {
     CommandsConfig(Path dataFolderPath, SparrowYaml sparrowYaml) {
         this.configFilePath = dataFolderPath.resolve(CONFIG_FILE);
         YamlUpgradePipeline upgradePipeline = YamlUpgradePipeline.builder()
-                .versionExtractor(new FieldVersionExtractor("config-version"))
+                .versionExtractor(new FieldVersionExtractor("___version___"))
                 .build();
         YamlMapperFactory mapperFactory = YamlMapperFactory.builder()
                 .backupOnUpgrade(true)
@@ -53,10 +53,10 @@ public final class CommandsConfig {
 
     @Configuration(naming = Configuration.Naming.SNAKE_CASE)
     public static class ConfigDefinition {
-        @YamlProperty("config-version")
+        @YamlProperty("___version___")
         @Comment("Do not modify this value")
-        @Comment(lang = "zh-CN", value = "请勿修改此值")
-        String configVersion = DependencyVersions.COMMANDS_CONFIG_VERSION;
+        @Comment(lang = "zh-CN", value = "配置文件版本, 请勿修改.")
+        String version = DependencyVersions.COMMANDS_CONFIG_VERSION;
 
         @BlankLineBefore
         @Comment({
@@ -66,7 +66,7 @@ public final class CommandsConfig {
         })
         @Comment(lang = "zh-CN", value = {
                 "",
-                "出于安全考虑, 修改此文件后需要重启服务器才能生效",
+                "修改此文件后需要重启服务器才能生效.",
                 ""
         })
         CommandConfig reload = new CommandConfig(true, List.of("/sparrow-sync reload"), "sparrow_sync.command.reload");

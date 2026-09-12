@@ -2,6 +2,8 @@ package net.momirealms.sparrow.sync.plugin.logger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -12,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -124,6 +127,70 @@ class FileLogWriterTest {
     }
 
     @Test
+    void deletesExpiredLogsAndArchivesAtStartup() throws IOException {
+        FileTime expired = FileTime.fromMillis(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(8));
+        Path oldLog = Files.writeString(this.directory.resolve("old.log"), "expired log");
+        Path oldArchive = Files.writeString(this.directory.resolve("old-1.log.gz"), "expired archive");
+        Path recentArchive = Files.writeString(this.directory.resolve("recent-1.log.gz"), "recent archive");
+        Path unrelated = Files.writeString(this.directory.resolve("notes.txt"), "keep");
+        Path nested = Files.createDirectory(this.directory.resolve("nested.log"));
+        Path nestedLog = Files.writeString(nested.resolve("old.log"), "keep nested");
+        Path[] expiredFiles = {oldLog, oldArchive, unrelated, nestedLog};
+        for (int i = 0; i < expiredFiles.length; i++) {
+            Files.setLastModifiedTime(expiredFiles[i], expired);
+        }
+        RecordingLogger fallback = new RecordingLogger();
+
+        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM-dd", 7, fallback);
+        writer.submit(LogCategory.LIFECYCLE, null, null, "new session", null, null);
+        writer.close();
+
+        assertFalse(Files.exists(oldLog));
+        assertFalse(Files.exists(oldArchive));
+        assertFalse(Files.exists(this.archiveFile(oldLog, 2)));
+        assertEquals("recent archive", Files.readString(recentArchive));
+        assertEquals("keep", Files.readString(unrelated));
+        assertEquals("keep nested", Files.readString(nestedLog));
+        assertTrue(Files.readString(this.todayFile(System.currentTimeMillis())).contains("new session"));
+        assertTrue(fallback.warnings.isEmpty(), fallback.warnings.toString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, Integer.MIN_VALUE})
+    void nonPositiveRetentionKeepsExpiredLogs(int retentionDays) throws IOException {
+        FileTime expired = FileTime.fromMillis(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(365));
+        Path oldLog = Files.writeString(this.directory.resolve("old.log"), "old log");
+        Path oldArchive = Files.writeString(this.directory.resolve("old-1.log.gz"), "old archive");
+        Files.setLastModifiedTime(oldLog, expired);
+        Files.setLastModifiedTime(oldArchive, expired);
+
+        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM-dd", retentionDays, new QuietLogger());
+        writer.close();
+
+        assertEquals("old archive", Files.readString(oldArchive));
+        assertEquals("old log", readGzip(this.archiveFile(oldLog, 2)));
+    }
+
+    @Test
+    void compressionPreservesLogAgeForCleanupOnNextStartup() throws IOException {
+        Path log = Files.writeString(this.directory.resolve("custom-name.log"), "retained log");
+        Files.setLastModifiedTime(log, FileTime.fromMillis(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2)));
+        FileTime lastModified = Files.getLastModifiedTime(log);
+
+        FileLogWriter first = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM", 7, new QuietLogger());
+        first.close();
+
+        Path archive = this.archiveFile(log, 1);
+        assertEquals("retained log", readGzip(archive));
+        assertEquals(lastModified, Files.getLastModifiedTime(archive));
+
+        FileLogWriter second = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM", 1, new QuietLogger());
+        second.close();
+
+        assertFalse(Files.exists(archive));
+    }
+
+    @Test
     void customDatePatternKeepsOneFileWithinTheSamePeriod() throws IOException {
         LocalDate first = LocalDate.now().withDayOfMonth(1);
         LocalDate second = first.plusDays(1);
@@ -187,7 +254,7 @@ class FileLogWriterTest {
                 throw new UncheckedIOException(exception);
             }
         };
-        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM-dd", fallback, factory);
+        FileLogWriter writer = new FileLogWriter(this.directory, "HH:mm:ss", "yyyy-MM-dd", 0, fallback, factory);
         long now = System.currentTimeMillis();
 
         writer.submit(now, LogCategory.STORAGE, null, null, "failed write", null, null);

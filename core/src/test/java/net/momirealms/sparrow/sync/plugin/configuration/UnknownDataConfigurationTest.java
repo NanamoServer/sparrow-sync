@@ -47,7 +47,7 @@ class UnknownDataConfigurationTest {
                     DataKey.sparrow("location")
             ), PluginConfig.synchronization$discardUnknownData());
             Path path = directory.resolve("config.yml");
-            Files.writeString(path, "config-version: '4'\nsynchronization:\n  discard-unknown-data: [location, 'external:book']\n");
+            Files.writeString(path, "___version___: '4'\nsynchronization:\n  discard-unknown-data: [location, 'external:book']\n");
             config.reload();
             List<DataKey> configured = PluginConfig.synchronization$discardUnknownData();
             assertEquals(List.of(DataKey.sparrow("location"), DataKey.of("external", "book")), configured);
@@ -66,7 +66,7 @@ class UnknownDataConfigurationTest {
             config.reload();
             assertEquals(configured, PluginConfig.synchronization$discardUnknownData());
 
-            Files.writeString(path, "config-version: '4'\nsynchronization:\n  discard-unknown-data: ['external:new']\n");
+            Files.writeString(path, "___version___: '4'\nsynchronization:\n  discard-unknown-data: ['external:new']\n");
             config.reload();
             assertEquals(List.of(DataKey.of("external", "new")), PluginConfig.synchronization$discardUnknownData());
             assertTrue(registry.shouldDropUnknown(DataKey.sparrow("location")));

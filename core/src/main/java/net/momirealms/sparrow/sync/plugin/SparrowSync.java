@@ -136,6 +136,7 @@ public class SparrowSync implements Plugin {
             FileLogWriter fileWriter = new FileLogWriter(
                     this.dataFolderPath.resolve(PluginConfig.logging$directory()),
                     PluginConfig.logging$timeFormat(), PluginConfig.logging$fileDateFormat(),
+                    PluginConfig.logging$retentionDays(),
                     logger
             );
             this.logger.attachFile(fileWriter);

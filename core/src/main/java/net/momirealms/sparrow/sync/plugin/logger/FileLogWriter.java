@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
@@ -50,6 +52,7 @@ public final class FileLogWriter implements AutoCloseable {
     private final Path directory;
     private final DateTimeFormatter timeFormat;
     private final DateTimeFormatter dayFormat;
+    private final int retentionDays;
     private final Function<Path, BufferedWriter> writerFactory;
     private final ZoneId zone = ZoneId.systemDefault();
     private final PluginLogger fallback; // 磁盘写不进去时的告警出口, 必须是纯控制台的实现
@@ -67,14 +70,19 @@ public final class FileLogWriter implements AutoCloseable {
     }
 
     public FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, @NotNull PluginLogger fallback) {
-        this(directory, timePattern, fileDatePattern, fallback, FileLogWriter::openWriter);
+        this(directory, timePattern, fileDatePattern, 0, fallback);
     }
 
-    FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, @NotNull PluginLogger fallback, @NotNull Function<Path, BufferedWriter> writerFactory) {
+    public FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, int retentionDays, @NotNull PluginLogger fallback) {
+        this(directory, timePattern, fileDatePattern, retentionDays, fallback, FileLogWriter::openWriter);
+    }
+
+    FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, int retentionDays, @NotNull PluginLogger fallback, @NotNull Function<Path, BufferedWriter> writerFactory) {
         this.directory = directory;
         this.fallback = fallback;
         this.timeFormat = pattern(timePattern, DEFAULT_TIME_PATTERN, fallback);
         this.dayFormat = pattern(fileDatePattern, DEFAULT_DAY_PATTERN, fallback);
+        this.retentionDays = retentionDays;
         this.writerFactory = writerFactory;
         this.worker = new Thread(this::drainLoop, "sparrow-sync-file-log");
         this.worker.setDaemon(true);
@@ -116,7 +124,8 @@ public final class FileLogWriter implements AutoCloseable {
     private void drainLoop() {
         List<Entry> batch = new ArrayList<>(MAX_BATCH);
         try {
-            // 启动归档与后续写入在同一 worker 上串行
+            // 启动清理、归档与后续写入在同一 worker 上串行
+            this.deleteExpiredLogs();
             this.archiveOldLogs();
             while (true) {
                 try {
@@ -190,6 +199,29 @@ public final class FileLogWriter implements AutoCloseable {
         this.writerFile = file;
     }
 
+    // 按最后修改时间清理日志目录中的过期原文和压缩归档
+    private void deleteExpiredLogs() {
+        if (this.retentionDays <= 0) return;
+        FileTime cutoff = FileTime.fromMillis(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(this.retentionDays));
+        try {
+            Files.createDirectories(this.directory);
+            try (DirectoryStream<Path> logs = Files.newDirectoryStream(this.directory, "*.{log,log.gz}")) {
+                for (Path log : logs) {
+                    if (!Files.isRegularFile(log, LinkOption.NOFOLLOW_LINKS)) continue;
+                    try {
+                        if (Files.getLastModifiedTime(log, LinkOption.NOFOLLOW_LINKS).compareTo(cutoff) < 0) {
+                            Files.delete(log);
+                        }
+                    } catch (IOException exception) {
+                        this.fallback.warn("Failed to delete expired local log file '" + log.getFileName() + "'", exception);
+                    }
+                }
+            }
+        } catch (IOException exception) {
+            this.fallback.warn("Failed to scan local log files for cleanup", exception);
+        }
+    }
+
     private void archiveOldLogs() {
         try {
             Files.createDirectories(this.directory);
@@ -213,6 +245,7 @@ public final class FileLogWriter implements AutoCloseable {
     }
 
     private static void compressLog(Path log) throws IOException {
+        FileTime lastModified = Files.getLastModifiedTime(log);
         Path archive = nextArchive(log);
         Path temporary = Files.createTempFile(log.getParent(), ".sparrow-sync-log-", ".gz.tmp");
         try {
@@ -220,6 +253,8 @@ public final class FileLogWriter implements AutoCloseable {
                  GZIPOutputStream output = new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary, StandardOpenOption.TRUNCATE_EXISTING)))) {
                 input.transferTo(output);
             }
+            // 归档沿用原日志的修改时间, 保留期限从最后写入时计算
+            Files.setLastModifiedTime(temporary, lastModified);
             Files.move(temporary, archive);
             Files.delete(log);
         } finally {
