@@ -29,22 +29,29 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Previ
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,12 +62,18 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class SnapshotDetailsTest {
     @TempDir Path directory;
-    private final DataRegistry registry = new DataRegistry();
+    private DataRegistry registry;
     private final BinarySnapshotCodec binary = new BinarySnapshotCodec(CompressorRegistry.NONE);
     private final List<UUID> reads = new ArrayList<>();
     private Function<UUID, CompletableFuture<Optional<Snapshot>>> reader = id -> CompletableFuture.completedFuture(Optional.empty());
+
+    @BeforeEach
+    void setUpRegistry() {
+        this.registry = new DataRegistry();
+    }
 
     @BeforeAll
     static void initialize() {
@@ -231,12 +244,12 @@ class SnapshotDetailsTest {
 
     /**
      * 破坏不支持预览及未注册类型的数据块, 验证详情页仍能展示其他已支持的类型.
-     * 被跳过的类型只从索引取得未压缩 NBT 的字节数, 损坏的数据块不会被读取.
+     * 被跳过的类型只从块头取得未压缩 NBT 的字节数, 损坏的 payload 不会被解码.
      *
      * @throws Exception 当测试快照编解码或读取已解析块数失败时
      */
     @Test
-    void lazyPreviewSkipsUnsupportedPayloadsAndReportsIndexedSizes() throws Exception {
+    void lazyPreviewSkipsUnsupportedPayloadsAndReportsHeaderSizes() throws Exception {
         this.registry.register(new EnchantmentSeedDataType());
         DataKey unsupported = DataKey.of("test", "unsupported");
         DataKey unknown = DataKey.of("external", "unknown");
@@ -245,8 +258,8 @@ class SnapshotDetailsTest {
                 unsupported, NBT.createString("unsupported"), unknown, NBT.createString("unknown")));
         byte[] bytes = this.binary.encode(fixture);
         Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
-        bytes[(int) located.content().raw(unsupported).offset() + 9] ^= 1;
-        bytes[(int) located.content().raw(unknown).offset() + 9] ^= 1;
+        bytes[(int) located.content().raw(unsupported).offset() + 13] ^= 1;
+        bytes[(int) located.content().raw(unknown).offset() + 13] ^= 1;
         Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
         this.reader = id -> CompletableFuture.completedFuture(Optional.of(source));
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(source.meta().id()).join());
@@ -255,6 +268,46 @@ class SnapshotDetailsTest {
         assertTrue(assertInstanceOf(Preview.Unsupported.class, ready.previews().get(unknown)).rawLength() > 0);
         assertEquals(1, SnapshotFixtures.decodedBlockCount(source));
     }
+    /**
+     * 未适配或未注册类型的块头损坏只产生本项 Failed, 其他类型仍可展示.
+     *
+     * @param registered 是否注册损坏类型, 两种状态都没有适配内容预览
+     * @param damage 损坏位置, 覆盖 payload 长度, 原始长度与块头截断
+     * @throws Exception 当测试快照编解码或读取缓存计数失败时
+     */
+    @ParameterizedTest
+    @CsvSource({"false,payload", "true,payload", "false,raw", "true,raw", "false,truncated", "true,truncated"})
+    void badHeaderOnlyFailsItsOwnPreview(boolean registered, String damage) throws Exception {
+        DataKey intact = DataKey.of("external", "intact");
+        DataKey broken = DataKey.of("external", "broken");
+        this.registry.register(new EnchantmentSeedDataType());
+        this.registry.registerUnknownDrop(broken);
+        if (registered) {
+            this.registry.register(new UnsupportedType(broken));
+        }
+        Map<DataKey, Tag> values = new LinkedHashMap<>();
+        values.put(EnchantmentSeedDataType.ENCHANTMENT_SEED, NBT.createInt(12));
+        values.put(intact, NBT.createString("intact"));
+        values.put(broken, NBT.createString("broken"));
+        byte[] bytes = this.binary.encode(this.snapshot(values));
+        Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
+        int offset = (int) located.content().raw(broken).offset();
+        if (damage.equals("truncated")) {
+            bytes = Arrays.copyOf(bytes, offset + 12);
+        } else {
+            ByteBuffer.wrap(bytes).putInt(offset + (damage.equals("payload") ? 1 : 5), -1);
+        }
+        Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.binary.decode(bytes)).snapshot();
+        this.reader = id -> CompletableFuture.completedFuture(Optional.of(source));
+        var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(source.meta().id()).join());
+        assertEquals(3, ready.previews().size());
+        assertEquals(12, assertInstanceOf(Preview.Ready.class, ready.previews().get(EnchantmentSeedDataType.ENCHANTMENT_SEED)).value());
+        assertInstanceOf(Preview.Unsupported.class, ready.previews().get(intact));
+        assertInstanceOf(Preview.Failed.class, ready.previews().get(broken));
+        assertTrue(ready.snapshot().keys().contains(broken));
+        assertEquals(1, SnapshotFixtures.decodedBlockCount(source));
+    }
+
     private SnapshotDetails details(Executor executor) {
         this.registry.freeze();
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (instance, method, args) -> {

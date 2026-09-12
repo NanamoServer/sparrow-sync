@@ -22,6 +22,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthScaleDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import net.william278.husksync.data.BukkitData;
 import net.william278.husksync.data.Data;
 import org.bukkit.craftbukkit.CraftRegistry;
@@ -29,6 +30,7 @@ import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -45,6 +47,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class HuskSyncConverterTest {
     private final Map<Field, Object> previous = new LinkedHashMap<>();
     private DataRegistry registry;

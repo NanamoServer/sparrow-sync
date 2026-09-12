@@ -25,7 +25,6 @@ import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
@@ -256,7 +255,7 @@ class CaptureSchedulingTest {
      */
     private static byte[] blockBytes(RawBlock block) {
         int start = (int) block.offset();
-        return Arrays.copyOfRange(block.bytes(), start, start + BlockCodec.BLOCK_HEADER_LENGTH + block.index().length());
+        return Arrays.copyOfRange(block.bytes(), start, (int) block.end());
     }
 
     @AfterEach

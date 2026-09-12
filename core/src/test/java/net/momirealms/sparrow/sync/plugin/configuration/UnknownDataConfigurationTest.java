@@ -43,9 +43,8 @@ class UnknownDataConfigurationTest {
             Set<DataKey> configured = PluginConfig.synchronization$discardUnknownData();
             assertEquals(Set.of(DataKey.sparrow("location"), DataKey.of("external", "book")), configured);
             DataRegistry registry = new DataRegistry();
-            for (DataKey key : configured) {
-                registry.registerUnknownDrop(key);
-            }
+            assertTrue(registry.shouldDropUnknown(DataKey.sparrow("location")));
+            assertTrue(registry.shouldDropUnknown(DataKey.of("external", "book")));
             DataKey apiKey = DataKey.of("external", "api");
             registry.registerUnknownDrop(apiKey);
             registry.freeze();

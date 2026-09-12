@@ -63,7 +63,7 @@ public final class SnapshotDataCodec {
      *
      * @param data 本次要保存的完整类型数据, 可同时包含原始块和新增 Tag
      * @return 依次包含 11 字节数据帧头, 索引和数据块的新数组
-     * @throws IOException 当 NBT 编码失败或原始块超出来源数组范围时
+     * @throws IOException 当 NBT 编码失败, 或逐块复制时发现块头损坏, 长度与区间不一致或越界时
      */
     @NotNull
     public byte[] encode(@NotNull SnapshotData data) throws IOException {
@@ -77,7 +77,7 @@ public final class SnapshotDataCodec {
      *
      * @param data 本次要保存的类型数据
      * @param output 接收数据帧的缓冲区, 已有内容保留
-     * @throws IOException 当块编码失败或原始块超出来源数组范围时
+     * @throws IOException 当块编码失败, 或逐块复制时发现块头损坏, 长度与区间不一致或越界时
      */
     void write(@NotNull SnapshotData data, @NotNull ByteArrayOutputStream output) throws IOException {
         // 从 Lazy 数据的来源数组复制整个数据帧, 起点和长度由读取时保存的区间给出.
@@ -87,26 +87,19 @@ public final class SnapshotDataCodec {
         }
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
-        // 按 keys 的顺序写出数据块, 自动记录每块的位置和长度并生成新索引
-        // 索引中的位置从第一个数据块起计算; 每块占用 9 字节块头加实际数据长度, 索引的 length 只记录后者
+        // 按 keys 顺序写块, 索引只记录块头相对块区起点的偏移.
         for (DataKey key : data.keys()) {
             String name = key.asString();
             RawBlock raw = data.raw(key);
             if (raw != null) {
-                BlockIndex entry = raw.index();
-                long length = BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.length();
-                if (raw.offset() < 0 || raw.offset() + length > raw.bytes().length) {
-                    throw new FormatException(InvalidReason.CORRUPTED, "raw block out of bounds for " + name);
-                }
-                // 前面的块修改后长度可能变化, 因此重算此块的位置; 复制的内容没变, 其余索引信息沿用原值.
-                entries.put(name, new BlockIndex(blocks.size(), entry.length(), entry.rawLength()));
-                blocks.write(raw.bytes(), (int) raw.offset(), (int) length);
+                int length = BlockCodec.BLOCK_HEADER_LENGTH + BlockCodec.readHeader(raw, name).payloadLength();
+                // 只按块头的结构长度复制, 原压缩算法和 CRC 随字节保留, 此处不验证 payload.
+                entries.put(name, new BlockIndex(blocks.size()));
+                blocks.write(raw.bytes(), (int) raw.offset(), length);
                 continue;
             }
             byte[] block = BlockCodec.encode(name, data.get(key), this.compressor, this.compressThreshold);
-            ByteBuffer header = ByteBuffer.wrap(block);
-            int rawLength = header.getInt(1);
-            entries.put(name, new BlockIndex(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength));
+            entries.put(name, new BlockIndex(blocks.size()));
             blocks.write(block);
         }
         byte[] index = NBT.toBytes(BlockIndexCodec.write(entries), false);
@@ -170,18 +163,22 @@ public final class SnapshotDataCodec {
         }
         CompoundTag index = readIndex(bytes, indexOffset, (int) indexLength);
         LinkedHashMap<String, BlockIndex> entries = BlockIndexCodec.read(index);
-        // NBT 库读取 compound 使用 HashMap; o 保存了物理次序, 据此恢复 keys 的稳定顺序.
+        // NBT 库读取 compound 使用 HashMap, 按偏移排序恢复物理次序, 不提前访问块头.
         var ordered = new ArrayList<>(entries.entrySet());
         ordered.sort(Comparator.comparingInt(entry -> entry.getValue().offset()));
         entries.clear();
-        long nextOffset = 0;
+        int previousOffset = -1;
         for (int i = 0; i < ordered.size(); i++) {
             Map.Entry<String, BlockIndex> entry = ordered.get(i);
-            if (entry.getValue().offset() != nextOffset) {
-                throw new FormatException(InvalidReason.CORRUPTED, "non-contiguous index offset for " + entry.getKey());
+            int blockOffset = entry.getValue().offset();
+            if (blockOffset == previousOffset) {
+                throw new FormatException(InvalidReason.CORRUPTED, "duplicate index offset for " + entry.getKey());
+            }
+            if (i == 0 && blockOffset != 0) {
+                throw new FormatException(InvalidReason.CORRUPTED, "first index offset must be zero for " + entry.getKey());
             }
             entries.put(entry.getKey(), entry.getValue());
-            nextOffset += BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.getValue().length();
+            previousOffset = blockOffset;
         }
         return new LazySnapshotData(bytes, offset, length, blockBase, entries);
     }

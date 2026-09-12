@@ -103,7 +103,7 @@ class SnapshotDataOverlayTest {
         Snapshot source = this.source();
         byte[] bytes = ((LazySnapshotData) source.content()).frameBytes().clone();
         RawBlock second = source.content().raw(SECOND);
-        bytes[(int) second.offset() + 9] ^= 1;
+        bytes[(int) second.offset() + 13] ^= 1;
         Snapshot damaged = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot();
         SnapshotData modified = damaged.content().with(FIRST, NBT.createString("changed"));
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(new Snapshot(source.meta(), modified)))).snapshot();
@@ -198,12 +198,12 @@ class SnapshotDataOverlayTest {
     }
 
     /**
-     * 复制指定数据块的全部字节, 包括保存 CRC 的 9 字节块头和后面的 NBT 数据.
+     * 复制指定数据块的全部字节, 包括保存 CRC 的 13 字节块头和后面的 NBT 数据.
      *
      * @param block 指明原数组, 块起点及长度的原始数据块
      * @return 该块的独立字节副本, 供测试比较修改快照前后是否一致
      */
     private static byte[] blockBytes(RawBlock block) {
-        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.offset() + 9 + block.index().length());
+        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.end());
     }
 }

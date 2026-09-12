@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -74,12 +75,14 @@ class UnknownDataFlowTest {
     }
 
     /**
-     * location 列入丢弃名单且关闭同步期间保存一次后, 重开同步不会恢复旧坐标, 同行的未知图鉴块仍保持原样.
+     * location 关闭期间按接收服名单决定保留或丢弃, 重开同步只能恢复实际保留下来的旧坐标.
      *
+     * @param discard 是否在接收服配置中列入 location
      * @throws Exception 当测试快照编解码或流水线装配失败时
      */
-    @Test
-    void disablingAndReenablingLocationDoesNotRestoreOldCoordinates() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void disablingAndReenablingLocationUsesTheReceiverDropList(boolean discard) throws Exception {
         World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[]{World.class}, (proxy, method, args) -> "world");
         Server server = (Server) Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[]{Server.class}, (proxy, method, args) -> world);
         AtomicReference<Location> position = new AtomicReference<>(new Location(world, 10, 64, 10));
@@ -90,33 +93,45 @@ class UnknownDataFlowTest {
             case "getName" -> "PolicyPlayer";
             case "getLocation" -> position.get().clone();
             case "getServer" -> server;
-            case "teleport", "teleportAsync" -> { teleports.incrementAndGet(); throw new AssertionError("old location applied"); }
+            case "teleport", "teleportAsync" -> {
+                teleports.incrementAndGet();
+                position.set((Location) args[0]);
+                yield method.getName().equals("teleport") ? true : CompletableFuture.completedFuture(true);
+            }
             default -> throw new AssertionError(method.getName());
         });
         // 第一天由真实 location 类型采集坐标, 图鉴与坐标一起保存.
         PlayerDataPipeline dayOne = this.pipeline(new LocationDataType(), new TextType(BOOK));
         Snapshot original = this.capture(dayOne, player, EagerSnapshotData.EMPTY);
         byte[] book = bytes(original, BOOK);
-        // 第二天不注册 location 并将其列入丢弃名单, 它不会进入保留集合, 也不会被解块.
+        byte[] location = bytes(original, LocationDataType.LOCATION);
+        // 第二天关闭 location 同步, 配置名单决定它是否进入保留集合, 两条分支都不解码此块.
         position.set(new Location(world, 200, 70, 300));
-        PlayerDataPipeline dayTwo = this.pipeline(Set.of(LocationDataType.LOCATION));
+        PluginConfig.ConfigDefinition config = (PluginConfig.ConfigDefinition) this.configField.get(null);
+        Field synchronization = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
+        synchronization.setAccessible(true);
+        NmsPlayerFixture.set(PluginConfig.SynchronizationOptions.class, synchronization.get(config), "discardUnknownData", discard ? Set.of(LocationDataType.LOCATION) : Set.of());
+        PlayerDataPipeline dayTwo = this.pipeline();
         SnapshotApplyContext context = ready(dayTwo, original);
         assertNull(context.takePending(LocationDataType.LOCATION));
-        assertEquals(List.of(BOOK), new ArrayList<>(context.passthrough().keys()));
+        assertEquals(discard ? Set.of(BOOK) : Set.of(BOOK, LocationDataType.LOCATION), context.passthrough().keys());
         assertEquals(0, SnapshotFixtures.decodedBlockCount(original));
         dayTwo.apply(player, context);
         Snapshot saved = this.capture(dayTwo, player, context.passthrough());
-        assertFalse(saved.keys().contains(LocationDataType.LOCATION));
+        assertEquals(!discard, saved.keys().contains(LocationDataType.LOCATION));
+        if (!discard) {
+            assertArrayEquals(location, bytes(saved, LocationDataType.LOCATION));
+        }
         assertArrayEquals(book, bytes(saved, BOOK));
         assertEquals(0, SnapshotFixtures.decodedBlockCount(saved));
-        // 第三天重新注册, 快照已没有旧坐标可应用.
+        // 第三天重新注册, 空名单下保留的旧坐标会正常应用, 曾丢弃的坐标不会出现.
         PlayerDataPipeline dayThree = this.pipeline(new LocationDataType());
         SnapshotApplyContext next = ready(dayThree, saved);
-        assertFalse(next.pendingValues().containsKey(LocationDataType.LOCATION));
+        assertEquals(!discard, next.pendingValues().containsKey(LocationDataType.LOCATION));
         assertInstanceOf(PlayerDataPipeline.ApplyResult.Success.class, dayThree.apply(player, next));
-        assertEquals(200, position.get().getX());
-        assertEquals(300, position.get().getZ());
-        assertEquals(0, teleports.get());
+        assertEquals(discard ? 200 : 10, position.get().getX());
+        assertEquals(discard ? 300 : 10, position.get().getZ());
+        assertEquals(discard ? 0 : 1, teleports.get());
     }
 
     /**
@@ -149,7 +164,7 @@ class UnknownDataFlowTest {
     void corruptedDropBlockIsDiscardedWithoutReadingPayload() throws Exception {
         Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, NBT.createString("broken")));
         var raw = source.content().raw(BOOK);
-        raw.bytes()[(int) raw.offset() + 9] ^= 1;
+        raw.bytes()[(int) raw.offset() + 13] ^= 1;
         PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK));
         SnapshotApplyContext context = ready(pipeline, source);
         assertSame(EagerSnapshotData.EMPTY, context.passthrough());
@@ -301,7 +316,7 @@ class UnknownDataFlowTest {
      */
     private static byte[] bytes(Snapshot snapshot, DataKey key) {
         var block = snapshot.content().raw(key);
-        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.offset() + 9 + block.index().length());
+        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.end());
     }
 
     /** 提供文本值的外部类型, 用于观察应用与重新采集. */

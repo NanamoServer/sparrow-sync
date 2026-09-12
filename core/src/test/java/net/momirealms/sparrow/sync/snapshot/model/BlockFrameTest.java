@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.model;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.IntTag;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
@@ -25,7 +26,6 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.zip.CRC32;
 
@@ -47,7 +47,7 @@ class BlockFrameTest {
         byte[] original = this.codec.encode(source);
         for (Map.Entry<String, BlockIndex> item : entries(original).entrySet()) {
             byte[] damaged = original.clone();
-            damaged[base(damaged) + item.getValue().offset() + 9] ^= 1;
+            damaged[base(damaged) + item.getValue().offset() + 13] ^= 1;
             Snapshot restored = this.valid(damaged);
             DataKey broken = DataKey.parse(item.getKey());
             assertBlockFailure(restored, broken, InvalidReason.CORRUPTED);
@@ -71,11 +71,11 @@ class BlockFrameTest {
         byte[] original = this.codec.encode(source);
         LinkedHashMap<String, BlockIndex> entries = entries(original);
         for (BlockIndex cut : entries.values()) {
-            int length = base(original) + cut.offset() + 9 + cut.length() / 2;
+            int length = base(original) + cut.offset() + 13 + ByteBuffer.wrap(original).getInt(base(original) + cut.offset() + 1) / 2;
             Snapshot restored = this.valid(Arrays.copyOf(original, length));
             for (Map.Entry<String, BlockIndex> item : entries.entrySet()) {
                 DataKey key = DataKey.parse(item.getKey());
-                if (base(original) + item.getValue().offset() + 9 + item.getValue().length() <= length) {
+                if (base(original) + item.getValue().offset() + 13 + ByteBuffer.wrap(original).getInt(base(original) + item.getValue().offset() + 1) <= length) {
                     assertEquals(source.data(key), restored.data(key));
                 } else {
                     assertBlockFailure(restored, key, InvalidReason.CORRUPTED);
@@ -140,7 +140,7 @@ class BlockFrameTest {
     }
 
     /**
-     * 陌生类型仍按原顺序保存, 索引只描述块的位置和编码信息.
+     * 陌生类型仍按原顺序保存, 索引只描述块的位置.
      *
      * @throws Exception 当测试帧构造, 编解码或并发任务失败时
      */
@@ -225,8 +225,11 @@ class BlockFrameTest {
         int rawLength = NBT.toBytes(tree, false).length;
         for (CompressorRegistry compressor : CompressorRegistry.values()) {
             byte[] block = BlockCodec.encode(key, value, compressor, rawLength);
-            BlockIndex entry = new BlockIndex(0, block.length - 9, rawLength);
-            assertEquals(value, BlockCodec.decode(block, 0, key, entry));
+            RawBlock raw = new RawBlock(block, 0, block.length);
+            assertEquals(13, BlockCodec.BLOCK_HEADER_LENGTH);
+            assertEquals(block.length - 13, ByteBuffer.wrap(block).getInt(1));
+            assertEquals(rawLength, ByteBuffer.wrap(block).getInt(5));
+            assertEquals(value, BlockCodec.decode(raw, key));
             assertEquals(compressor.id(), block[0]);
             assertEquals(CompressorRegistry.NONE.id(), BlockCodec.encode(key, value, compressor, rawLength + 1)[0]);
         }
@@ -241,11 +244,12 @@ class BlockFrameTest {
     void blockLengthsAndOffsetsAreChecked() throws IOException {
         String key = "other:value";
         byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
-        int raw = ByteBuffer.wrap(block).getInt(1);
-        assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key,
-                new BlockIndex(0, block.length - 9, raw + 1))).reason());
-        assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 14, key,
-                new BlockIndex(Integer.MAX_VALUE, Integer.MAX_VALUE, raw))).reason());
+        int raw = ByteBuffer.wrap(block).getInt(5);
+        ByteBuffer.wrap(block).putInt(5, raw + 1);
+        assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class,
+                () -> BlockCodec.decode(new RawBlock(block, 0, block.length), key)).reason());
+        assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class,
+                () -> BlockCodec.decode(new RawBlock(block, 14L + Integer.MAX_VALUE, 28L + Integer.MAX_VALUE), key)).reason());
     }
 
     /**
@@ -266,33 +270,29 @@ class BlockFrameTest {
             byte[] raw = NBT.toBytes(roots.get(i), false);
             CRC32 crc = new CRC32();
             crc.update(raw);
-            byte[] block = ByteBuffer.allocate(9 + raw.length).put((byte) 0).putInt(raw.length).putInt((int) crc.getValue()).put(raw).array();
-            BlockIndex entry = new BlockIndex(0, raw.length, raw.length);
-            assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
+            byte[] block = ByteBuffer.allocate(13 + raw.length).put((byte) 0).putInt(raw.length).putInt(raw.length).putInt((int) crc.getValue()).put(raw).array();
+            RawBlock entry = new RawBlock(block, 0, block.length);
+            assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(entry, key)).reason());
         }
     }
 
     /**
-     * 索引字段必须具有指定 NBT 类型, 负长度不能进入惰性数据体.
+     * 索引偏移必须为 IntTag, 负偏移和旧 compound 条目不能进入惰性数据体.
      *
      * @throws Exception 当测试帧构造, 编解码或并发任务失败时
      */
     @Test
     void indexRoundTripAndValidation() throws IOException {
         LinkedHashMap<String, BlockIndex> values = new LinkedHashMap<>();
-        values.put("other:z", new BlockIndex(0, 12, 12));
-        values.put("other:a", new BlockIndex(21, 15, 30));
-        assertEquals(Set.of("o", "l", "n"), BlockIndexCodec.write(values).getCompound("other:z").keySet());
+        values.put("other:z", new BlockIndex(0));
+        values.put("other:a", new BlockIndex(25));
+        assertInstanceOf(IntTag.class, BlockIndexCodec.write(values).get("other:z"));
+        assertEquals(25, BlockIndexCodec.write(values).getInt("other:a"));
         assertEquals(values, BlockIndexCodec.read(BlockIndexCodec.write(values)));
         assertEquals(new ArrayList<>(values.keySet()), new ArrayList<>(BlockIndexCodec.read(BlockIndexCodec.write(values)).keySet()));
-        for (String field : List.of("o", "l", "n")) {
+        for (Tag invalid : List.of(NBT.createCompound(), NBT.createLong(0), NBT.createString("0"), NBT.createInt(-1))) {
             CompoundTag index = BlockIndexCodec.write(values);
-            index.getCompound("other:z").remove(field);
-            assertThrows(FormatException.class, () -> BlockIndexCodec.read(index));
-        }
-        for (String field : List.of("o", "l", "n")) {
-            CompoundTag index = BlockIndexCodec.write(values);
-            index.getCompound("other:z").putInt(field, -1);
+            index.put("other:z", invalid);
             assertThrows(FormatException.class, () -> BlockIndexCodec.read(index));
         }
     }

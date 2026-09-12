@@ -39,10 +39,12 @@ import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.lang.reflect.Field;
 import java.io.IOException;
@@ -53,6 +55,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class ItemCodecNativeTest {
     private static HolderLookup.Provider registries;
 

@@ -14,6 +14,8 @@ import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -27,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import static net.momirealms.sparrow.sync.map.MapFlowTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class MapSyncLifecycleTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})

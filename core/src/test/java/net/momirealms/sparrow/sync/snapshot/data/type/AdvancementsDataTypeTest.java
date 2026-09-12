@@ -375,8 +375,8 @@ class AdvancementsDataTypeTest {
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(outgoing))).snapshot();
         var before = source.content().raw(external);
         var after = restored.content().raw(external);
-        assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.offset() + 9 + before.index().length()),
-                Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.offset() + 9 + after.index().length()));
+        assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.end()),
+                Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.end()));
         Advancements forwarded = fixture.type.decode(restored.data(AdvancementsDataType.ADVANCEMENTS), 0);
         assertEquals(2, forwarded.values().length);
         assertEquals(obtained, findValue(forwarded, unknownId).obtained()[0]);

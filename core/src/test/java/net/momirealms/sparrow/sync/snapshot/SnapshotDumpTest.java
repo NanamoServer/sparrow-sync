@@ -302,15 +302,15 @@ class SnapshotDumpTest {
         RawBlock block = located.content().raw(located.keys().iterator().next());
         int offset = (int) block.offset();
         if (damage.equals("truncated")) {
-            broken = Arrays.copyOf(broken, offset + 9 + block.index().length() / 2);
+            broken = Arrays.copyOf(broken, offset + 13 + (int) (block.end() - block.offset() - 13) / 2);
         } else if (damage.equals("compression")) {
             broken[offset] = 99;
         } else {
-            broken[offset + 9] = damage.equals("nbt") ? (byte) 0 : (byte) (broken[offset + 9] ^ 1);
+            broken[offset + 13] = damage.equals("nbt") ? (byte) 0 : (byte) (broken[offset + 13] ^ 1);
             if (!damage.equals("crc")) {
                 CRC32 crc = new CRC32();
-                crc.update(broken, offset + 9, block.index().length());
-                ByteBuffer.wrap(broken).putInt(offset + 5, (int) crc.getValue());
+                crc.update(broken, offset + 13, (int) (block.end() - block.offset() - 13));
+                ByteBuffer.wrap(broken).putInt(offset + 9, (int) crc.getValue());
             }
         }
         Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(broken)).snapshot();

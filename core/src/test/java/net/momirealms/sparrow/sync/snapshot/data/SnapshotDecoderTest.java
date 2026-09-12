@@ -9,9 +9,11 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 验证正式加载与预览共用转换实现时的失败规则和请求所有权. */
+@ExtendWith(PluginConfigExtension.class)
 class SnapshotDecoderTest {
     private static final DataKey FIRST = DataKey.of("test", "first"); // 固定排序中较早的类型
     private static final DataKey LAST = DataKey.of("test", "last"); // 用于观察是否执行后续解码
@@ -123,7 +126,7 @@ class SnapshotDecoderTest {
         BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
         byte[] bytes = codec.encode(snapshot());
         Snapshot located = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(bytes)).snapshot();
-        bytes[(int) located.content().raw(FIRST).offset() + 9] ^= 1;
+        bytes[(int) located.content().raw(FIRST).offset() + 13] ^= 1;
         Snapshot applying = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(bytes)).snapshot();
         SnapshotDecoder decoder = new SnapshotDecoder(registry);
         DecodedSnapshotData failed = decoder.decodeForApply(applying);

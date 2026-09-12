@@ -20,6 +20,7 @@ import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
@@ -36,6 +37,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -57,6 +59,7 @@ import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class InvSyncSourceTest {
     private final List<MigrationSource.PlayerData> accepted = new ArrayList<>();
     private final List<byte[]> rejected = new ArrayList<>();

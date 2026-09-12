@@ -22,6 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -92,7 +93,8 @@ public final class SnapshotDetails {
     /**
      * 为快照中的每个类型生成详情页预览结果, 并保留快照中的类型顺序.
      * 支持预览的类型会读取并转换为玩家数据对象, 读取失败则记录错误.
-     * 其余类型只记录是否已注册以及索引中的未压缩 NBT 字节数, 不读取该类型的数据块.
+     * 其余类型记录是否已注册, 并从块头读取未压缩 NBT 字节数, 不解码 payload.
+     * 某个块头损坏时仅将该类型标为读取失败, 其余类型继续展示.
      *
      * @param snapshot 要展示的快照
      * @return 原快照和只读的预览结果表, 每个类型对应可展示, 读取失败或不支持预览三种结果之一
@@ -104,7 +106,12 @@ public final class SnapshotDetails {
         for (DataKey key : snapshot.keys()) {
             PlayerDataType<?> type = this.registry.type(key);
             if (!supportsPreview(type)) {
-                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key), this.registry.shouldDropUnknown(key)));
+                try {
+                    previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key), this.registry.shouldDropUnknown(key)));
+                } catch (UncheckedIOException exception) {
+                    // 未适配类型也需要读取块头显示大小, 单块损坏只影响这一项预览.
+                    previews.put(key, new Preview.Failed(String.valueOf(exception.getMessage())));
+                }
                 continue;
             }
             Throwable failure = decoded.failure(key);

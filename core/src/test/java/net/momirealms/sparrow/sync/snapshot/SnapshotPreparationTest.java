@@ -24,8 +24,10 @@ import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -42,6 +44,7 @@ import java.util.function.IntFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class SnapshotPreparationTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})

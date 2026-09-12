@@ -2,8 +2,10 @@ package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import net.momirealms.sparrow.sync.test.StubPlayerDataType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.List;
 import java.util.Set;
@@ -14,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(PluginConfigExtension.class)
 class DataRegistryTest {
     private static final DataKey A = DataKey.of("sparrow", "alpha");
     private static final DataKey B = DataKey.of("sparrow", "bravo");

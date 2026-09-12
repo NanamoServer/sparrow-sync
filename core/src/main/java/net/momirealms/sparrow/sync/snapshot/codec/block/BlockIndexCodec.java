@@ -18,28 +18,24 @@ public final class BlockIndexCodec {
     }
 
     /**
-     * 读取各类型的块位置和长度, 保持传入索引的迭代顺序.
+     * 读取各类型的块偏移, 保持传入索引的迭代顺序, 不访问块头或 payload.
      *
      * @param index 索引 compoundTag
      * @return 保持输入迭代顺序的条目表
-     * @throws IOException 当条目缺少字段, 字段类型错误或长度为负时
+     * @throws IOException 当偏移不是 IntTag 或为负数时
      */
     @NotNull
     public static LinkedHashMap<String, BlockIndex> read(@NotNull CompoundTag index) throws IOException {
         LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
-        // 逐项检查真实 NBT 类型, 缺字段不能被 getInt 的缺省零值掩盖.
+        // 每个类型名直接对应 IntTag, 旧开发格式中的 compound 条目不再接受.
         for (Map.Entry<String, Tag> tagEntry : index.entrySet()) {
             String key = tagEntry.getKey();
-            if (!(tagEntry.getValue() instanceof CompoundTag value)
-                    || !(value.get("o") instanceof IntTag)
-                    || !(value.get("l") instanceof IntTag)
-                    || !(value.get("n") instanceof IntTag))
-            {
+            if (!(tagEntry.getValue() instanceof IntTag value)) {
                 throw new FormatException(InvalidReason.CORRUPTED, "invalid index entry for " + key);
             }
-            BlockIndex entry = new BlockIndex(value.getInt("o"), value.getInt("l"), value.getInt("n"));
-            if (entry.offset() < 0 || entry.length() < 0 || entry.rawLength() < 0) {
-                throw new FormatException(InvalidReason.CORRUPTED, "negative index length or offset for " + key);
+            BlockIndex entry = new BlockIndex(value.getAsInt());
+            if (entry.offset() < 0) {
+                throw new FormatException(InvalidReason.CORRUPTED, "negative index offset for " + key);
             }
             entries.put(key, entry);
         }
@@ -56,12 +52,7 @@ public final class BlockIndexCodec {
     public static CompoundTag write(@NotNull LinkedHashMap<String, BlockIndex> entries) {
         CompoundTag index = NBT.createCompound(new LinkedHashMap<>());
         for (Map.Entry<String, BlockIndex> item : entries.entrySet()) {
-            BlockIndex entry = item.getValue();
-            CompoundTag value = NBT.createCompound();
-            value.putInt("o", entry.offset());
-            value.putInt("l", entry.length());
-            value.putInt("n", entry.rawLength());
-            index.put(item.getKey(), value);
+            index.putInt(item.getKey(), item.getValue().offset());
         }
         return index;
     }

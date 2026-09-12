@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.sync.snapshot.model;
 
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,7 +44,7 @@ public interface SnapshotData {
     Map<DataKey, Tag> all();
 
     /**
-     * 取得指定类型的数据块在原字节数组中的位置及索引信息, 供编码器直接复制.
+     * 取得指定类型的数据块在原字节数组中的区间, 供编码器读取块头后直接复制.
      * 此方法不检查块内的 CRC, 不解压或解析 NBT; 能取得原始块并不表示其中的数据可正常读取.
      *
      * @param key 要查找的数据类型标识
@@ -54,15 +56,21 @@ public interface SnapshotData {
     }
 
     /**
-     * 读取索引中记录的该类型 NBT 在压缩前的字节数, 无需读取数据块.
+     * 从块头读取该类型 NBT 在压缩前的字节数, 不解压 payload 或校验其 CRC.
      * 长度包含包裹该类型值的 CompoundTag 及类型名, 对应序列化后的 {类型名: 值}, 可用于详情页显示大小.
      *
      * @param key 要查询大小的数据类型标识
-     * @return 未压缩的 NBT 字节数; 类型不存在或没有原始块索引时返回 -1
+     * @return 未压缩的 NBT 字节数; 类型不存在或没有原始块时返回 -1
+     * @throws UncheckedIOException 当块头截断, 长度无效或块区间越界时
      */
     default int rawLength(@NotNull DataKey key) {
         RawBlock block = this.raw(key);
-        return block == null ? -1 : block.index().rawLength();
+        if (block == null) return -1;
+        try {
+            return BlockCodec.readHeader(block, key.asString()).rawLength();
+        } catch (FormatException exception) {
+            throw new UncheckedIOException(exception);
+        }
     }
 
     /**

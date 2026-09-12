@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import org.junit.jupiter.api.BeforeEach;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.Entity;
@@ -18,8 +19,9 @@ import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -33,6 +35,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(PluginConfigExtension.class)
 class RestoredHealthTest {
     private CraftPlayer player;
 

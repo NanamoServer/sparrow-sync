@@ -222,7 +222,7 @@ class DocumentSnapshotCodecTest {
         int blockBase = SnapshotFixtures.blockBase(bytes);
         // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
-            bytes[blockBase + 9] ^= 1;
+            bytes[blockBase + 13] ^= 1;
         } else {
             bytes[blockBase] = (byte) corruption;
         }

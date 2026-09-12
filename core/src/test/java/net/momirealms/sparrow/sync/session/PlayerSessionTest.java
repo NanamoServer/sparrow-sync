@@ -14,7 +14,9 @@ import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.lang.reflect.Constructor;
 import java.util.List;
@@ -31,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(PluginConfigExtension.class)
 class PlayerSessionTest {
     private final Connection connection = ConnectionFixture.create();
 

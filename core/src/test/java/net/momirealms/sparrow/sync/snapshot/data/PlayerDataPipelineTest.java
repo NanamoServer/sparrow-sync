@@ -16,9 +16,11 @@ import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
+import net.momirealms.sparrow.sync.test.PluginConfigExtension;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -42,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(PluginConfigExtension.class)
 class PlayerDataPipelineTest {
     private static final DataKey ALPHA = DataKey.of("test", "alpha");
     private static final DataKey BRAVO = DataKey.of("test", "bravo");

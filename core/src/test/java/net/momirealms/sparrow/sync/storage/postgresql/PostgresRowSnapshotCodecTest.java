@@ -197,7 +197,7 @@ class PostgresRowSnapshotCodecTest {
         int blockBase = SnapshotFixtures.blockBase(row.data());
         // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
-            row.data()[blockBase + 9] ^= 1;
+            row.data()[blockBase + 13] ^= 1;
         } else {
             row.data()[blockBase] = (byte) corruption;
         }
