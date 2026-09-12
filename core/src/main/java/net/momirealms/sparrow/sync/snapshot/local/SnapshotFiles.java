@@ -1,11 +1,14 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
+import org.bson.Document;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -29,15 +32,17 @@ public final class SnapshotFiles {
     private final Path dump; // 数据库搬迁 ZIP 目录
     private final Path pending;   // 本地待重试的快照目录
     private final Path exceptions; // 本服异常快照目录
+    private final PluginLogger logger;
     private final BinarySnapshotCodec binaryCodec; // 共享插件配置的二进制帧编解码器
 
-    public SnapshotFiles(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec binaryCodec) {
+    public SnapshotFiles(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec binaryCodec, @NotNull PluginLogger logger) {
         this.directory = dataFolder.resolve("snapshot").toAbsolutePath().normalize();
         this.output = this.directory.resolve("output");
         this.dump = this.directory.resolve("dump");
         this.pending = this.directory.resolve("pending");
         this.exceptions = this.directory.resolve("exception");
         this.binaryCodec = binaryCodec;
+        this.logger = logger;
     }
 
     /**
@@ -108,11 +113,10 @@ public final class SnapshotFiles {
         Files.createDirectories(directory);
         Path body = directory.resolve(fileName(snapshot.meta(), playerName));
         Path temporary = body.resolveSibling(body.getFileName() + ".tmp");
-        Files.write(temporary, this.binaryCodec.encode(snapshot));
-        // 先删除旧快照头文件, 再写入快照数据和新的快照头文件.
-        Files.deleteIfExists(ExceptionHeader.path(body));
+        byte[] encoded = this.binaryCodec.encode(snapshot);
+        Files.write(temporary, encoded);
         atomicMove(temporary, body);
-        new ExceptionHeader(snapshot.meta(), playerName).write(body);
+        new ExceptionHeader(snapshot.meta(), playerName, this.binaryCodec.summarize(encoded)).write(body);
         return body;
     }
 
@@ -164,8 +168,39 @@ public final class SnapshotFiles {
     @NotNull
     public DecodedSnapshot readException(@NotNull String relative) throws IOException {
         Path body = this.exceptionFile(relative);
-        return body.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")
-                ? new JsonSnapshotCodec().decode(Files.readString(body)) : this.binaryCodec.decode(Files.readAllBytes(body));
+        if (body.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) {
+            DecodedSnapshot decoded = new JsonSnapshotCodec().decode(Files.readString(body));
+            this.reconcileHeader(body, null, decoded);
+            return decoded;
+        }
+        byte[] encoded = Files.readAllBytes(body);
+        DecodedSnapshot decoded = this.binaryCodec.decode(encoded);
+        this.reconcileHeader(body, this.binaryCodec.summarize(encoded), decoded);
+        return decoded;
+    }
+
+    /**
+     * 用本次已读取的正文核对头文件摘要, 不一致时更新身份与体量并记录修复结果.
+     *
+     * @param body 已通过路径检查的正文
+     * @param summary 本次提取的体量摘要, JSON 正文或无法提取时为 null
+     * @param decoded 正文的容器解码结果, 可读时同时更新快照身份
+     */
+    private void reconcileHeader(@NotNull Path body, @Nullable Map<DataKey, Integer> summary, @NotNull DecodedSnapshot decoded) {
+        ExceptionHeader original = null;
+        try {
+            original = this.header(body);
+        } catch (IOException ignored) {
+            // 头文件缺失或损坏时, 正文仍可提供用于重建的身份和摘要.
+        }
+        SnapshotMeta meta = decoded instanceof DecodedSnapshot.Valid valid ? valid.snapshot().meta() : original == null ? null : original.meta();
+        if (original != null && Objects.equals(meta, original.meta()) && Objects.equals(summary, original.summary())) return;
+        try {
+            new ExceptionHeader(meta, original == null ? null : original.playerName(), summary).write(body);
+            this.logger.info("Rebuilt exception header from snapshot body: " + body);
+        } catch (IOException failure) {
+            this.logger.warn("Failed to rebuild exception header from snapshot body: " + body, failure);
+        }
     }
 
     /**
@@ -190,12 +225,12 @@ public final class SnapshotFiles {
             } catch (IOException ignored) {
                 // 使用快照数据中的元信息重建异常快照头文件, 原快照头文件无法读取时保留未知玩家名.
             }
-            new ExceptionHeader(meta, playerName).write(target);
+            new ExceptionHeader(meta, playerName, target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json") ? null : this.binaryCodec.summarize(Files.readAllBytes(target))).write(target);
             Files.deleteIfExists(sourceHeader);
         } else if (Files.exists(sourceHeader)) {
             Files.move(sourceHeader, ExceptionHeader.path(target), StandardCopyOption.REPLACE_EXISTING);
         } else {
-            new ExceptionHeader(null, null).write(target);
+            new ExceptionHeader(null, null, target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json") ? null : this.binaryCodec.summarize(Files.readAllBytes(target))).write(target);
         }
     }
 
@@ -338,7 +373,7 @@ public final class SnapshotFiles {
         }
         String path = this.exceptions.relativize(body).toString().replace('\\', '/');
         String category = path.contains("/") ? path.substring(0, path.indexOf('/')) : "";
-        return new ExceptionEntry(path, category, header, status, Files.isRegularFile(body, LinkOption.NOFOLLOW_LINKS));
+        return new ExceptionEntry(path, category, header, status, Files.isRegularFile(body, LinkOption.NOFOLLOW_LINKS), header == null ? null : header.summary());
     }
 
     /**
@@ -407,15 +442,29 @@ public final class SnapshotFiles {
         return target;
     }
 
-    // 归档导入失败的原始字节, 解码失败时也保留可见的异常头.
-    public void archiveImport(byte @NotNull [] data, @Nullable SnapshotMeta meta, @NotNull String category, @NotNull String reason) throws IOException {
+    /**
+     * 保存导入失败的原始正文和错误说明, 有原始异常时附上完整堆栈.
+     *
+     * @param data 导入记录的原始字节
+     * @param meta 可读的快照身份
+     * @param category 本地异常目录类别
+     * @param reason 本次归档的原因
+     * @param failure 原始异常, 仅有结构化失败原因时为 null
+     * @throws IOException 当任一归档文件无法写入时
+     */
+    public void archiveImport(byte @NotNull [] data, @Nullable SnapshotMeta meta, @NotNull String category, @NotNull String reason, @Nullable Throwable failure) throws IOException {
         Path parent = this.exceptions.resolve(category);
         Files.createDirectories(parent);
         String id = meta == null ? UUID.randomUUID().toString() : meta.id().toString();
         Path body = Files.createTempFile(parent, "import-" + id + "-", ".snapshot");
         Files.write(body, data);
-        new ExceptionHeader(meta, null).write(body);
-        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), reason);
+        new ExceptionHeader(meta, null, this.binaryCodec.summarize(data)).write(body);
+        Document summary = new Document("category", category);
+        if (meta != null) {
+            summary.append("player", meta.player().toString());
+        }
+        summary.append("reason", reason.lines().findFirst().orElse(""));
+        writeError(body, summary, failure);
     }
 
     /**
@@ -438,17 +487,28 @@ public final class SnapshotFiles {
         if (raw != null) {
             Files.write(body.resolveSibling(body.getFileName() + ".source"), raw);
         }
-        StringWriter reason = new StringWriter();
-        // 错误说明和可选附件与头文件同名, 管理员可由列表路径找到本次失败的完整上下文.
-        try (PrintWriter output = new PrintWriter(reason)) {
-            output.println("Source: " + source);
-            output.println("Player: " + meta.player());
-            output.println("Name: " + playerName);
-            output.println("Stage: " + stage);
-            output.println("Raw data: " + (raw == null ? "unavailable" : "attached .source"));
-            failure.printStackTrace(output);
+        Document summary = new Document("category", "migration").append("player", meta.player().toString());
+        if (playerName != null) {
+            summary.append("playerName", playerName);
         }
-        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), reason.toString());
+        String reason = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+        summary.append("source", source).append("stage", stage)
+                .append("rawAttached", Files.isRegularFile(body.resolveSibling(body.getFileName() + ".source")))
+                .append("reason", reason.lines().findFirst().orElse(""));
+        writeError(body, summary, failure);
+    }
+
+    // 将单行 JSON 摘要与原始堆栈写入同名错误文件, 两部分以空行分隔.
+    private static void writeError(@NotNull Path body, @NotNull Document summary, @Nullable Throwable failure) throws IOException {
+        StringWriter text = new StringWriter();
+        try (PrintWriter output = new PrintWriter(text)) {
+            output.println(summary.toJson());
+            if (failure != null) {
+                output.println();
+                failure.printStackTrace(output);
+            }
+        }
+        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), text.toString());
     }
 
     @NotNull
@@ -488,8 +548,9 @@ public final class SnapshotFiles {
      * @param header 异常快照头文件中的元信息, 文件缺失或无法读取时为 null
      * @param headStatus 异常快照头文件的读取状态
      * @param bodyPresent 异常快照数据文件是否存在
+     * @param summary 头文件中的类型体量摘要, 不可得时为 null, 空 Map 表示没有类型, 单个体量为 -1 表示未知
      */
-    public record ExceptionEntry(@NotNull String path, @NotNull String category, @Nullable ExceptionHeader header, @NotNull HeadStatus headStatus, boolean bodyPresent) {
+    public record ExceptionEntry(@NotNull String path, @NotNull String category, @Nullable ExceptionHeader header, @NotNull HeadStatus headStatus, boolean bodyPresent, @Nullable Map<DataKey, Integer> summary) {
 
         public boolean informationAvailable() {
             return this.header != null && this.header.meta() != null;

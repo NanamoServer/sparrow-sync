@@ -1,6 +1,11 @@
 package net.momirealms.sparrow.sync.gui;
 
 import net.momirealms.sparrow.sync.util.ItemUtils;
+import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.Bootstrap;
@@ -13,6 +18,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.ArrayList;
 
@@ -23,6 +29,21 @@ class SnapshotInventoryTest {
     static void bootstrap() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+    }
+
+    /** 尚未预览的容器会阻止完整领取, 两个容器都读取后才允许打包原始内容. */
+    @Test
+    void unreadArchiveContainersAreNotTreatedAsEmptyForClaims() {
+        var snapshot = SnapshotFixtures.snapshot();
+        var unloaded = new SnapshotDetailResult.Preview.Unloaded(100);
+        var inventory = new SnapshotDetailResult.Preview.Ready(new InventoryDataType.Inventory(new net.minecraft.world.item.ItemStack[0], 0, 0));
+        var ender = new SnapshotDetailResult.Preview.Ready(new ItemCodec.LoadedItems(new net.minecraft.world.item.ItemStack[0], 0));
+        var initial = new SnapshotDetailResult.Ready(snapshot, Map.of(InventoryDataType.INVENTORY, unloaded, EnderChestDataType.ENDER_CHEST, unloaded));
+        var partial = new SnapshotDetailResult.Ready(snapshot, Map.of(InventoryDataType.INVENTORY, inventory, EnderChestDataType.ENDER_CHEST, unloaded));
+        var complete = new SnapshotDetailResult.Ready(snapshot, Map.of(InventoryDataType.INVENTORY, inventory, EnderChestDataType.ENDER_CHEST, ender));
+        assertFalse(SnapshotContents.prepare(initial).complete());
+        assertFalse(SnapshotContents.prepare(partial).complete());
+        assertTrue(SnapshotContents.prepare(complete).complete());
     }
 
     @Test

@@ -15,11 +15,13 @@ import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
@@ -50,6 +52,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -83,6 +86,7 @@ public final class SnapshotDetailGui {
     private final Pane inventoryPane = Pane.empty(9, 5); // 主背包、快捷栏与装备区域
     private final Pane enderPane = Pane.empty(9, 5);     // 末影箱每页 36 格
     private int enderPage;
+    private int archivePage; // 异常类型清单的当前页, 每页显示 36 个类型
     private final Tab<Boolean> tabs = Tab.of(Map.of(false, this.inventoryPane, true, this.enderPane), false); // false 为背包, true 为末影箱
     private final Pane statusPane = Pane.empty(9, 5); // 加载与失败状态的内容区
     private final MutableSignal<Boolean> showingContents = Signal.of(false); // 是否展示已加载的容器
@@ -233,14 +237,26 @@ public final class SnapshotDetailGui {
     private Item buildInventoryTabButton() {
         return Item.builder().dependsOn(this.tabs.selected())
                 .setItemProvider(context -> this.icon(Material.CHEST, this.text("button.inventory"), !this.tabs.selected().get(), List.of()))
-                .addClickHandler(click -> this.tabs.select(false)).build();
+                .addClickHandler(click -> {
+                    if (this.archivePath == null) {
+                        this.tabs.select(false);
+                    } else {
+                        this.loadArchivePreview(InventoryDataType.INVENTORY);
+                    }
+                }).build();
     }
 
     /** 创建末影箱 Tab 按钮, 切回后仍展示本次修改的内容. */
     private Item buildEnderChestTabButton() {
         return Item.builder().dependsOn(this.tabs.selected())
                 .setItemProvider(context -> this.icon(Material.ENDER_CHEST, this.text("button.ender_chest"), this.tabs.selected().get(), List.of()))
-                .addClickHandler(click -> this.tabs.select(true)).build();
+                .addClickHandler(click -> {
+                    if (this.archivePath == null) {
+                        this.tabs.select(true);
+                    } else {
+                        this.loadArchivePreview(EnderChestDataType.ENDER_CHEST);
+                    }
+                }).build();
     }
 
     /**
@@ -427,15 +443,46 @@ public final class SnapshotDetailGui {
     }
 
     /**
-     * 异步读取选定快照或异常快照数据, 准备物品副本并核对目标玩家.
-     * 成功后首次显示背包 Tab, 失败与无效快照数据分别进入对应反馈状态.
+     * 重新加载当前详情, 数据库快照准备已适配内容, 异常记录先显示头文件概览.
+     * 本次窗口缓存随刷新清空, 后续点击类型时再读取异常正文.
      */
     private void load() {
+        this.ready = null;
+        this.load(null, false);
+    }
+
+    /**
+     * 展开异常快照中被点击的类型, 已读取的其他类型留在当前窗口中供再次查看和领取.
+     *
+     * @param key 所选类型, null 表示只读取正文索引
+     */
+    private void loadArchivePreview(@Nullable DataKey key) {
+        this.load(key, true);
+    }
+
+    /**
+     * 按来源加载数据库详情或异常记录, 异常正文只由明确的预览操作读取.
+     *
+     * @param key 本次选择的异常类型
+     * @param readBody 是否由用户要求读取异常正文
+     */
+    private void load(@Nullable DataKey key, boolean readBody) {
         this.status("loading");
         // 解码与名字解析异步完成, 容器副本可直接在完成回调中构建.
         CompletableFuture<Loaded> future;
         if (this.archivePath != null) {
-            future = this.plugin.snapshotService().details().loadException(this.archivePath)
+            var details = this.plugin.snapshotService().details();
+            CompletableFuture<SnapshotDetailResult.Archive> archive;
+            if (!readBody) {
+                archive = details.loadException(this.archivePath);
+            } else if (this.ready != null) {
+                archive = CompletableFuture.completedFuture(new SnapshotDetailResult.Archive(this.archive, this.ready));
+            } else {
+                archive = details.loadExceptionBody(this.archivePath);
+            }
+            future = archive.thenCompose(result -> key != null && result.result() instanceof SnapshotDetailResult.Ready ready
+                            ? details.preview(ready, key).thenApply(preview -> new SnapshotDetailResult.Archive(result.entry(), preview))
+                            : CompletableFuture.completedFuture(result))
                     .thenApplyAsync(result -> prepare(result.result(), result.entry()), this.plugin.scheduler().async());
         } else {
             future = this.plugin.snapshotService().details().load(this.snapshotId)
@@ -451,27 +498,110 @@ public final class SnapshotDetailGui {
                     // 异常快照数据损坏时仍保留异常快照头文件中的元信息, 用于显示错误详情和删除操作.
                     Loaded detail = resolved.detail();
                     this.archive = detail.archive();
-                    if (detail.result() instanceof SnapshotDetailResult.Ready value) {
+                    if (detail.result() instanceof SnapshotDetailResult.Overview) {
+                        this.showArchiveIndex();
+                    } else if (detail.result() instanceof SnapshotDetailResult.Ready value) {
                         if (!this.playerName.isEmpty() && (resolved.player() == null || !resolved.player().uuid().equals(value.snapshot().meta().player()))) {
                             this.status("wrong_player");
                             return;
                         }
+                        // 只在对应类型首次准备好时创建容器, 切换其他类型保留当前窗口中的物品变动.
+                        boolean inventoryChanged = this.ready == null || this.ready.previews().get(InventoryDataType.INVENTORY) != value.previews().get(InventoryDataType.INVENTORY);
+                        boolean enderChanged = this.ready == null || this.ready.previews().get(EnderChestDataType.ENDER_CHEST) != value.previews().get(EnderChestDataType.ENDER_CHEST);
                         this.ready = value;
                         this.contents = detail.contents();
                         this.meta.set(value.snapshot().meta());
                         this.player = resolved.player() == null ? new PlayerIdentity(this.meta.get().player(), this.meta.get().player().toString()) : resolved.player();
-                        this.inventory = this.createInventory(Arrays.copyOf(this.contents.inventory(), Math.min(this.contents.inventory().length, 41)));
-                        this.enderChest = this.createInventory(this.contents.enderChest().clone());
-                        this.enderPage = 0;
+                        if (inventoryChanged) {
+                            this.inventory = this.createInventory(Arrays.copyOf(this.contents.inventory(), Math.min(this.contents.inventory().length, 41)));
+                        }
+                        if (enderChanged) {
+                            this.enderChest = this.createInventory(this.contents.enderChest().clone());
+                            this.enderPage = 0;
+                        }
                         this.buildContent(this.inventory, false);
                         this.buildContent(this.enderChest, true);
                         this.tabs.select(false);
                         this.controls();
                         this.showingContents.set(true);
+                        if (this.archivePath != null) {
+                            this.pane.setItem(1, Item.builder().setItemProviderConstant(this.icon(Material.BOOK, "archive.types"))
+                                    .addClickHandler(click -> this.showArchiveIndex()).build());
+                            if (key == null) {
+                                this.showArchiveIndex();
+                            } else if (key.equals(EnderChestDataType.ENDER_CHEST)) {
+                                this.tabs.select(true);
+                            } else if (!key.equals(InventoryDataType.INVENTORY)) {
+                                this.statusPane.fill(Item.empty());
+                                this.statusPane.setItem(13, this.buildSummaryInfo());
+                                this.showingContents.set(false);
+                            }
+                        }
                     } else {
                         this.unreadable(detail.result());
                     }
                 });
+    }
+
+    /**
+     * 展示异常记录的类型名与原始字节数, 初次进入时信息全部来自头文件.
+     * 清单不可得时提供读取正文的按钮, 每个类型由自己的点击操作准备预览.
+     */
+    private void showArchiveIndex() {
+        this.showingContents.set(false);
+        this.statusPane.fill(Item.empty());
+        for (int slot = 2; slot <= 8; slot++) {
+            this.pane.setItem(slot, Item.empty());
+        }
+        for (int slot = 51; slot < 54; slot++) {
+            this.pane.setItem(slot, Item.empty());
+        }
+        this.pane.setItem(1, this.buildArchiveInfo());
+        if (this.viewer.hasPermission(EDIT)) {
+            this.pane.setItem(8, this.buildDeleteButton());
+        }
+        List<DataKey> keys = this.ready != null ? new ArrayList<>(this.ready.snapshot().keys())
+                : this.archive.summary() == null ? List.of() : new ArrayList<>(this.archive.summary().keySet());
+        if (keys.isEmpty()) {
+            String state = this.archive.summary() != null || this.ready != null ? "empty"
+                    : this.archive.bodyPresent() ? "archive.index_unavailable" : "archive.source_only";
+            this.statusPane.setItem(13, Item.simple(this.icon(Material.PAPER, state)));
+            if (this.archive.bodyPresent() && this.ready == null) {
+                this.statusPane.setItem(22, Item.builder().setItemProviderConstant(this.icon(Material.BOOK, "archive.read_index"))
+                        .addClickHandler(click -> this.loadArchivePreview(null)).build());
+            }
+            return;
+        }
+        int pages = (keys.size() + 35) / 36;
+        this.archivePage = Math.clamp(this.archivePage, 0, pages - 1);
+        for (int i = this.archivePage * 36; i < Math.min(keys.size(), (this.archivePage + 1) * 36); i++) {
+            DataKey key = keys.get(i);
+            int rawLength;
+            try {
+                rawLength = this.ready != null ? this.ready.snapshot().content().rawLength(key) : this.archive.summary().get(key);
+            } catch (UncheckedIOException failure) {
+                rawLength = -1;
+            }
+            List<Component> lore = new ArrayList<>();
+            lore.add(this.text(rawLength < 0 ? "archive.size_unknown" : "archive.type_size", rawLength));
+            if (this.plugin.dataRegistry().type(key) == null) {
+                lore.add(this.text(this.plugin.dataRegistry().shouldDropUnknown(key) ? "additional.unknown_drop" : "additional.unknown_keep", key.asString()));
+            }
+            lore.add(this.text(this.archive.bodyPresent() ? "archive.preview" : "archive.source_only"));
+            this.statusPane.setItem(i % 36, Item.builder().setItemProviderConstant(this.icon(Material.PAPER, Component.text(key.asString()), false, lore))
+                    .addClickHandler(click -> {
+                        if (this.archive.bodyPresent()) {
+                            this.loadArchivePreview(key);
+                        }
+                    }).build());
+        }
+        if (pages > 1) {
+            this.statusPane.setItem(36, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.previous"))
+                    .addClickHandler(click -> { this.archivePage--; this.showArchiveIndex(); }).build());
+            this.statusPane.setItem(37, Item.simple(this.icon(Material.PAPER, this.text("info.page", this.archivePage + 1, pages), false, List.of())));
+            this.statusPane.setItem(38, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.next"))
+                    .addClickHandler(click -> { this.archivePage++; this.showArchiveIndex(); }).build());
+        }
     }
 
     /**
@@ -539,9 +669,13 @@ public final class SnapshotDetailGui {
         if (previews.get(EmoneyDataType.EMONEY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof EmoneyDataType.Money money) {
             lines.add(this.text("additional.emoney", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
         }
-        // 大小已在准备预览时从索引中取得; 此处直接显示, 无需读取这些类型的 NBT.
+        // 预览状态中保存已读取的块头大小, 待加载类型与读取失败的类型分别展示.
         for (var entry : previews.entrySet()) {
-            if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
+            if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unloaded unloaded) {
+                lines.add(this.text(unloaded.rawLength() < 0 ? "archive.type_unloaded_unknown" : "archive.type_unloaded", entry.getKey().asString(), unloaded.rawLength()));
+            } else if (entry.getValue() instanceof SnapshotDetailResult.Preview.Failed failed) {
+                lines.add(this.text("archive.type_failed", entry.getKey().asString(), failed.detail()));
+            } else if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
                 String state = unsupported.registered()
                         ? "additional.unsupported"
                         : unsupported.discardUnknown() ? "additional.unknown_drop" : "additional.unknown_keep";

@@ -124,7 +124,15 @@ public final class SnapshotListGui {
                 lore.add(this.text("label.category", entry.category()));
                 lore.add(this.text("label.archive", entry.path()));
                 if (!entry.bodyPresent()) {
-                    lore.add(this.text("not_found"));
+                    lore.add(this.text("archive.source_only"));
+                }
+                if (entry.summary() == null) {
+                    lore.add(this.text("archive.index_unavailable"));
+                } else {
+                    lore.add(this.text("archive.type_count", entry.summary().size()));
+                    for (var type : entry.summary().entrySet()) {
+                        lore.add(this.text(type.getValue() < 0 ? "archive.type_unknown" : "archive.type", type.getKey().asString(), type.getValue()));
+                    }
                 }
                 return (Element) Element.item(Item.builder().setItemProviderConstant(this.icon(Material.BOOK,
                         this.text("snapshot_entry", this.text("unpin_mark"), time(meta.timestamp(), false), entry.category()), false, lore))

@@ -1,16 +1,22 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.zip.CRC32;
 
 /**
@@ -53,6 +59,39 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         // 数据帧直接追加到完整快照的缓冲区, 其中的原始块可从来源数组复制.
         this.dataCodec.write(snapshot.content(), output);
         return output.toByteArray();
+    }
+
+    /**
+     * 从完整快照中取得类型清单与未压缩字节数, 供本地异常头保存诊断摘要.
+     * 清单依赖数据帧索引及其 CRC; Meta 内容损坏仍可提取, payload 保持原样.
+     *
+     * @param encoded 待归档的完整快照字节, 可以包含损坏的数据
+     * @return 按块顺序排列的只读摘要; 无法读取索引时为 null, 单个块头损坏时该类型体量为 -1
+     */
+    @Nullable
+    public Map<DataKey, Integer> summarize(byte @NotNull [] encoded) {
+        if (encoded.length < HEADER_LENGTH) return null;
+        int version = encoded[0] & 0xFF;
+        if (version < MINIMUM_SUPPORTED_VERSION || version > CURRENT_VERSION) return null;
+        int metaLength = Short.toUnsignedInt(ByteBuffer.wrap(encoded).getShort(1));
+        int dataOffset = HEADER_LENGTH + metaLength;
+        if (metaLength == 0 || dataOffset > encoded.length) return null;
+        try {
+            // 区间解码复用输入数组, 并在访问各块之前校验数据帧版本和索引 CRC.
+            SnapshotData data = this.dataCodec.decode(encoded, dataOffset, encoded.length - dataOffset);
+            Map<DataKey, Integer> summary = new LinkedHashMap<>();
+            for (DataKey key : data.keys()) {
+                try {
+                    summary.put(key, data.rawLength(key));
+                } catch (UncheckedIOException failure) {
+                    // 单块头损坏仍保留类型名, 其他块的体量继续读取.
+                    summary.put(key, -1);
+                }
+            }
+            return Collections.unmodifiableMap(summary);
+        } catch (IOException | RuntimeException failure) {
+            return null;
+        }
     }
 
     /**

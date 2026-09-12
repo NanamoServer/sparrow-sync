@@ -29,7 +29,7 @@ public final class SnapshotStash {
     }
 
     public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger) {
-        this.files = new SnapshotFiles(dataFolder, codec);
+        this.files = new SnapshotFiles(dataFolder, codec, logger);
         this.logger = logger;
     }
 

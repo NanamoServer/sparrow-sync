@@ -14,6 +14,9 @@ public sealed interface SnapshotDetailResult {
     record Ready(@NotNull Snapshot snapshot, @NotNull Map<DataKey, Preview> previews) implements SnapshotDetailResult {
     }
 
+    record Overview() implements SnapshotDetailResult {
+    }
+
     NotFound NOT_FOUND = new NotFound();
 
     record NotFound() implements SnapshotDetailResult {
@@ -29,6 +32,11 @@ public sealed interface SnapshotDetailResult {
     }
 
     sealed interface Preview {
+
+        // 本服支持预览, 等用户选中该类型后才读取内容, rawLength 代表数据库中压缩前的 NBT 字节数, 数据块头损坏时或 JSON 来源时为 -1
+        record Unloaded(int rawLength) implements Preview {
+        }
+
         record Ready(@NotNull Object value) implements Preview {
         }
 

@@ -250,7 +250,7 @@ public final class SnapshotDump {
             DecodedSnapshot decoded = this.codec.decode(data);
             if (decoded instanceof DecodedSnapshot.Invalid invalid) {
                 // 解码失败时保留原始字节和原因, 归档成功后才计入跳过数量.
-                this.files.archiveImport(data, null, "corrupted", invalid.reason() + ": " + invalid.detail());
+                this.files.archiveImport(data, null, "corrupted", invalid.reason() + ": " + invalid.detail(), null);
                 progress.failed++;
                 progress.report();
                 continue;
@@ -263,7 +263,7 @@ public final class SnapshotDump {
                     snapshot.data(key);
                 }
             } catch (UncheckedIOException failure) {
-                this.files.archiveImport(data, snapshot.meta(), "malformed", failure.getCause().toString());
+                this.files.archiveImport(data, snapshot.meta(), "malformed", failure.getCause().toString(), failure.getCause());
                 progress.failed++;
                 progress.report();
                 continue;
@@ -279,7 +279,7 @@ public final class SnapshotDump {
                 // 存储拒绝的数据按原因归入异常目录, 保留快照元数据供后续查看.
                 String category = saved.result() == StorageProvider.SaveResult.REJECTED_OVERSIZED ? "oversized" : "malformed";
                 String reason = saved.failure() == null ? saved.result().name() : saved.failure().toString();
-                this.files.archiveImport(data, snapshot.meta(), category, reason);
+                this.files.archiveImport(data, snapshot.meta(), category, reason, saved.failure());
                 progress.failed++;
                 progress.report();
             }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.command.feature;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.SnapshotService;
@@ -35,7 +36,7 @@ class SnapshotFileSuggestionsTest {
     void eachCommandScansItsOwnDirectoryAndFiltersPaths(boolean exceptions) throws Exception {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         SnapshotService service = new SnapshotService(plugin);
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         NmsPlayerFixture.set(SnapshotService.class, service, "files", files);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
         Function<String, List<Suggestion>> suggest = exceptions
@@ -66,7 +67,7 @@ class SnapshotFileSuggestionsTest {
     void zipImportOnlySuggestsCompletedZipsInDumpDirectory() throws Exception {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         SnapshotService service = new SnapshotService(plugin);
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         NmsPlayerFixture.set(SnapshotService.class, service, "files", files);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
         ImportAllCommand command = new ImportAllCommand(null, plugin);

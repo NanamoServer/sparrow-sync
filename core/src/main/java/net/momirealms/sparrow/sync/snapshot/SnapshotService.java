@@ -48,7 +48,7 @@ public final class SnapshotService {
 
     public void onLoad() {
         this.storage = this.plugin.storageProvider();
-        this.files = new SnapshotFiles(this.plugin.dataFolderPath(), this.plugin.binaryCodec());
+        this.files = new SnapshotFiles(this.plugin.dataFolderPath(), this.plugin.binaryCodec(), this.plugin.logger());
         this.details = new SnapshotDetails(this.storage, this.files, this.plugin.dataRegistry(), this.plugin.scheduler().async());
         this.saver = new SnapshotSaver(this.plugin);
         this.applier = new SnapshotApplier(this.plugin);

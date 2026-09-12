@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import com.mongodb.client.MongoClients;
 import net.momirealms.sparrow.nbt.NBT;
@@ -66,7 +67,7 @@ class StorageDumpIntegrationTest {
         StorageProvider target = this.open(kind);
         Snapshot unrelated = SnapshotFixtures.snapshot();
         assertTrue(target.importSnapshot(unrelated).join().result().stored());
-        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
         SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null));
         UUID player = UUID.randomUUID();
         MigrationSource source = new MigrationSource() {
@@ -121,7 +122,7 @@ class StorageDumpIntegrationTest {
         source.maps().importMap(map).join();
         source.maps().importSequence(1500).join();
         target.maps().importMap(new MapArchiveRecord(map.identity(), 4189, 99999, mapData(1).encode())).join();
-        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
         SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null));
         SnapshotDump.Result exported = exporter.dump("transfer.zip", 110);
         assertNull(exported.failure(), () -> String.valueOf(exported.failure()));
@@ -227,7 +228,7 @@ class StorageDumpIntegrationTest {
         });
         MapSyncService sync = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, sync, "shared", shared);
-        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
         SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null));
         assertNull(exporter.dump("maps.zip", Long.MAX_VALUE).failure());
         SnapshotDump.Result result = new SnapshotDump(target, files, this.codec, sync::importedMap).importFile("maps.zip");

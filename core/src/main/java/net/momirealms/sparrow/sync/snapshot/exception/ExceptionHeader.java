@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.exception;
 
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import org.jetbrains.annotations.ApiStatus;
@@ -13,25 +14,49 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @ApiStatus.Internal
-public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String playerName) {
-    public static final String SUFFIX = ".head";
-    private static final int MAGIC = 0x53534801; // SSH, 头格式版本 1
+public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String playerName, @Nullable Map<DataKey, Integer> summary) {
+    public static final String SUFFIX = ".head"; // 追加在正文文件名之后, 正文缺失时仍可定位诊断信息
+    private static final int VERSION = 1; // 本地头文件的版本, 独立于快照格式版本
 
+    public ExceptionHeader {
+        if (summary != null) {
+            summary = Collections.unmodifiableMap(new LinkedHashMap<>(summary));
+        }
+    }
+
+    public ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String playerName) {
+        this(meta, playerName, null);
+    }
+
+    /**
+     * 定位与正文同名的头文件.
+     *
+     * @param body 正文的目标路径
+     * @return 在正文文件名后追加 .head 的路径
+     */
     @NotNull
     public static Path path(@NotNull Path body) {
         return body.resolveSibling(body.getFileName() + SUFFIX);
     }
 
-    // 快照头文件单独写入, 写入失败时已保存的快照数据仍然可用.
+    /**
+     * 先写临时头文件再替换目标, 写入失败时保留已保存的快照正文.
+     *
+     * @param body 头文件对应的正文路径
+     * @throws IOException 当头文件写入或替换失败时
+     */
     public void write(@NotNull Path body) throws IOException {
         Path target = path(body);
         Path temporary = Files.createTempFile(body.getParent(), ".header-", ".tmp");
         try {
             try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(temporary))) {
-                output.writeInt(MAGIC);
+                output.writeByte(VERSION);
                 output.writeBoolean(this.meta != null);
                 if (this.meta != null) {
                     output.writeUTF(this.meta.id().toString());
@@ -46,6 +71,14 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
                 if (this.playerName != null) {
                     output.writeUTF(this.playerName);
                 }
+                // -1 与 0 分别表示清单不可得和有效的空清单.
+                output.writeInt(this.summary == null ? -1 : this.summary.size());
+                if (this.summary != null) {
+                    for (var entry : this.summary.entrySet()) {
+                        output.writeUTF(entry.getKey().asString());
+                        output.writeInt(entry.getValue());
+                    }
+                }
             }
             try {
                 Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -57,7 +90,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
         }
     }
 
-    // 只解析定长字段和有长度上限的 UTF 字段, 不读取快照数据.
+    // 读取头文件中的身份与体量摘要, 保留摘要的三种状态和类型顺序.
     @NotNull
     public static ExceptionHeader read(@NotNull Path body) throws IOException {
         Path header = path(body);
@@ -65,8 +98,9 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
             throw new IOException("Exception header is a symbolic link");
         }
         try (DataInputStream input = new DataInputStream(Files.newInputStream(header))) {
-            if (input.readInt() != MAGIC) {
-                throw new IOException("Invalid or unsupported exception header");
+            int version = input.readUnsignedByte();
+            if (version != VERSION) {
+                throw new IOException("Unsupported exception header version: " + version);
             }
             SnapshotMeta meta = null;
             if (input.readBoolean()) {
@@ -74,12 +108,28 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
                         SaveCause.valueOf(input.readUTF()), input.readBoolean(), input.readUTF(), input.readInt());
             }
             String name = input.readBoolean() ? input.readUTF() : null;
+            int count = input.readInt();
+            if (count < -1) {
+                throw new IOException("Invalid exception summary count: " + count);
+            }
+            Map<DataKey, Integer> summary = null;
+            if (count >= 0) {
+                // 文件中的数量尚未可信, 容器随成功读取的条目增长, 截断交给流报告.
+                summary = new LinkedHashMap<>();
+                for (int i = 0; i < count; i++) {
+                    DataKey key = DataKey.parse(input.readUTF());
+                    int rawLength = input.readInt();
+                    if (rawLength < -1 || summary.putIfAbsent(key, rawLength) != null) {
+                        throw new IOException("Invalid exception summary entry: " + key.asString());
+                    }
+                }
+            }
             if (input.read() != -1) {
                 throw new IOException("Unexpected trailing exception header data");
             }
-            return new ExceptionHeader(meta, name);
+            return new ExceptionHeader(meta, name, summary);
         } catch (IllegalArgumentException failure) {
-            throw new IOException("Invalid exception header metadata", failure);
+            throw new IOException("Invalid exception header fields", failure);
         }
     }
 }

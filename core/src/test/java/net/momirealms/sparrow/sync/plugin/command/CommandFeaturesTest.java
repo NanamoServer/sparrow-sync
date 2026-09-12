@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotListCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.GuiCommand;
@@ -13,6 +14,7 @@ import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.SnapshotDetails;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.gui.page.SnapshotPage;
 import net.momirealms.sparrow.sync.util.ChatTextUtils;
@@ -583,8 +585,28 @@ class CommandFeaturesTest {
         assertTrue(this.text().contains("Page must be an integer"));
     }
 
+    /**
+     * 控制台概览只读头文件, 已删除正文的条目仍区分零字节与未知体量.
+     *
+     * @throws Exception 当测试文件写入或命令执行失败时
+     */
     @Test
-    void exceptionViewShowsCorruptionAndMissingBodyToConsole() throws Exception {
+    void exceptionViewDistinguishesUnknownSizeFromZeroBytes() throws Exception {
+        SnapshotFiles files = this.installArchiveService();
+        Path body = files.exceptions().resolve("corrupted/summary.snapshot");
+        Files.createDirectories(body.getParent());
+        new ExceptionHeader(null, null, Map.of(DataKey.of("test", "zero"), 0, DataKey.of("test", "unknown"), -1)).write(body);
+        this.manager.registerFeature(new ExceptionViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("exception_view"));
+        this.execute(sender(Set.of("sparrow_sync.command.view")), "sparrow-sync exception view corrupted/summary.snapshot");
+        assertTrue(this.text().contains("Types: 2"));
+        assertTrue(this.text().contains("test:zero · 0 bytes"));
+        assertTrue(this.text().contains("test:unknown · Size unknown"));
+        assertFalse(this.text().contains("-1 bytes"));
+        assertTrue(this.text().contains("Body missing"));
+    }
+
+    @Test
+    void exceptionViewShowsHeaderAndBodyPresenceWithoutReadingBody() throws Exception {
         SnapshotFiles files = this.installArchiveService();
         Path body = files.exceptions().resolve("corrupted/archive.snapshot");
         Files.createDirectories(body.getParent());
@@ -592,7 +614,8 @@ class CommandFeaturesTest {
         this.manager.registerFeature(new ExceptionViewCommand(this.manager, this.plugin), new CommandsConfig.ConfigDefinition().command("exception_view"));
         CommandSender viewer = sender(Set.of("sparrow_sync.command.view"));
         this.execute(viewer, "sparrow-sync exception view corrupted/archive.snapshot");
-        assertTrue(this.text().contains("Cannot decode body"));
+        assertTrue(this.text().contains("Body unchecked"));
+        assertFalse(this.text().contains("Cannot decode body"));
         assertTrue(this.text().contains("Header missing"));
         this.messages.clear();
         Files.delete(body);
@@ -677,7 +700,7 @@ class CommandFeaturesTest {
 
     private SnapshotFiles installArchiveService() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         SnapshotService service = new SnapshotService(this.plugin);
         NmsPlayerFixture.set(SnapshotService.class, service, "files", files);
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> (Executor) Runnable::run));
@@ -691,7 +714,7 @@ class CommandFeaturesTest {
         this.manager.registerFeature(new ExceptionDeleteCommand(this.manager, this.plugin),
                 new CommandConfig(true, List.of("/archive remove"), "custom.archive"));
         String path = "corrupted/archive with spaces.snapshot";
-        SnapshotFiles.ExceptionEntry entry = new SnapshotFiles.ExceptionEntry(path, "corrupted", null, SnapshotFiles.HeadStatus.UNREADABLE, false);
+        SnapshotFiles.ExceptionEntry entry = new SnapshotFiles.ExceptionEntry(path, "corrupted", null, SnapshotFiles.HeadStatus.UNREADABLE, false, null);
         this.showExceptions(player(Set.of("custom.archive")), null, new SnapshotFiles.ExceptionPage(0, 5, 1, 1, List.of(entry)));
         assertTrue(this.text().contains("Header unreadable"));
         assertTrue(this.text().contains("Body missing"));

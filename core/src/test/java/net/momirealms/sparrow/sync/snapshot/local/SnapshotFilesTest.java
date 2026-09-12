@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -39,7 +40,7 @@ public class SnapshotFilesTest {
     @ParameterizedTest
     @EnumSource(SnapshotFiles.Format.class)
     void exportsBothFormatsToSharedOutputAndOverwritesSameId(SnapshotFiles.Format format) throws Exception {
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         Snapshot original = snapshot(UUID.randomUUID());
         String output = files.export(original, format);
         assertTrue(output.startsWith("snapshot/output/" + original.meta().player() + "/" + original.meta().id() + "."));
@@ -51,7 +52,7 @@ public class SnapshotFilesTest {
 
     @Test
     void invalidPathsAndUnsupportedSuffixesAreRefused() throws Exception {
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         Path nested = this.directory.resolve("snapshot/output/nested/folder with spaces");
         Files.createDirectories(nested);
         Files.writeString(nested.resolve("one.json"), "invalid");
@@ -67,7 +68,7 @@ public class SnapshotFilesTest {
 
     @Test
     void exceptionDeletionDoesNotNeedToDecodeTheBody() throws Exception {
-        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        SnapshotFiles files = new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
         Path file = this.directory.resolve("snapshot/exception/corrupted/broken.snapshot");
         Files.createDirectories(file.getParent());
         Files.writeString(file, "broken body");

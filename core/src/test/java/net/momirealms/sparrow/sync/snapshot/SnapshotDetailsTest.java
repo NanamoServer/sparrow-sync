@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
@@ -195,8 +196,8 @@ class SnapshotDetailsTest {
             Files.write(body, this.binary.encode(snapshot));
         }
         Files.writeString(body.resolveSibling("unselected.snapshot"), "corrupt");
-        var result = this.details(Runnable::run).loadException("malformed/" + body.getFileName()).join();
-        assertEquals(SnapshotFiles.HeadStatus.MISSING, result.entry().headStatus());
+        var result = this.details(Runnable::run).loadExceptionBody("malformed/" + body.getFileName()).join();
+        assertEquals(SnapshotFiles.HeadStatus.AVAILABLE, result.entry().headStatus());
         assertEquals(snapshot, assertInstanceOf(SnapshotDetailResult.Ready.class, result.result()).snapshot());
         assertTrue(this.reads.isEmpty());
     }
@@ -210,16 +211,16 @@ class SnapshotDetailsTest {
         ExceptionHeader header = new ExceptionHeader(snapshot.meta(), "Steve");
         header.write(body);
         SnapshotDetails details = this.details(Runnable::run);
-        var broken = details.loadException("corrupted/selected.snapshot").join();
+        var broken = details.loadExceptionBody("corrupted/selected.snapshot").join();
         assertEquals(header, broken.entry().header());
         assertInstanceOf(SnapshotDetailResult.Invalid.class, broken.result());
         byte[] future = this.binary.encode(snapshot);
         future[0] = 100;
         Files.write(body, future);
-        var unsupported = details.loadException("corrupted/selected.snapshot").join();
+        var unsupported = details.loadExceptionBody("corrupted/selected.snapshot").join();
         assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(SnapshotDetailResult.Invalid.class, unsupported.result()).reason());
         Files.delete(body);
-        var missing = details.loadException("corrupted/selected.snapshot").join();
+        var missing = details.loadExceptionBody("corrupted/selected.snapshot").join();
         assertEquals(header, missing.entry().header());
         assertFalse(missing.entry().bodyPresent());
         assertSame(SnapshotDetailResult.NOT_FOUND, missing.result());
@@ -232,12 +233,13 @@ class SnapshotDetailsTest {
         DataKey unknown = DataKey.of("test", "large");
         Snapshot snapshot = this.snapshot(Map.of(unknown, NBT.createByteArray(new byte[17 * 1024 * 1024]),
                 ExperienceDataType.EXPERIENCE, new ExperienceDataType().encode(experience)));
-        SnapshotFiles files = new SnapshotFiles(this.directory, this.binary);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.binary, new SnapshotFileTestLogger());
         Path body = files.write(snapshot, "Steve", "oversized");
         assertTrue(Files.size(body) > 16 * 1024 * 1024);
-        var archive = this.details(Runnable::run).loadException("oversized/" + body.getFileName()).join();
+        var archive = this.details(Runnable::run).loadExceptionBody("oversized/" + body.getFileName()).join();
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, archive.result());
         assertEquals(snapshot, ready.snapshot());
+        ready = this.details(Runnable::run).preview(ready, ExperienceDataType.EXPERIENCE).join();
         assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
         assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown), false), ready.previews().get(unknown));
     }
@@ -316,7 +318,7 @@ class SnapshotDetailsTest {
             this.reads.add(id);
             return this.reader.apply(id);
         });
-        SnapshotFiles files = new SnapshotFiles(this.directory, this.binary);
+        SnapshotFiles files = new SnapshotFiles(this.directory, this.binary, new SnapshotFileTestLogger());
         return new SnapshotDetails(storage, files, this.registry, executor);
     }
 

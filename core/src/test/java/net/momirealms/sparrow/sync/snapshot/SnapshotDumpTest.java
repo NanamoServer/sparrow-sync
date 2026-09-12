@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
@@ -334,7 +335,7 @@ class SnapshotDumpTest {
         }
     }
     private SnapshotFiles files() {
-        return new SnapshotFiles(this.directory, this.codec);
+        return new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
     }
 
     private SnapshotDump dump(Memory memory) {

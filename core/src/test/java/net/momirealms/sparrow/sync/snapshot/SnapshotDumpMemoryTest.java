@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
@@ -64,7 +65,7 @@ class SnapshotDumpMemoryTest {
             default -> throw new AssertionError(method.getName());
         });
         BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
-        SnapshotDump dump = new SnapshotDump(storage, new SnapshotFiles(this.directory, codec), codec, map -> CompletableFuture.completedFuture(null));
+        SnapshotDump dump = new SnapshotDump(storage, new SnapshotFiles(this.directory, codec, new SnapshotFileTestLogger()), codec, map -> CompletableFuture.completedFuture(null));
         SnapshotDump.Result exported = dump.dump("large.zip", 1000);
         assertNull(exported.failure(), () -> String.valueOf(exported.failure()));
         assertEquals(total, exported.snapshots());

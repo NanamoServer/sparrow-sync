@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.MapStorage;
@@ -38,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -69,7 +71,8 @@ class SnapshotStashTest {
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot.meta(), restored.meta());
         assertEquals(snapshot.allData(), restored.allData());
-        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(files.getFirst()));
+        assertEquals(snapshot.meta(), ExceptionHeader.read(files.getFirst()).meta());
+        assertEquals("Steve", ExceptionHeader.read(files.getFirst()).playerName());
     }
 
     @Test
@@ -132,7 +135,8 @@ class SnapshotStashTest {
         assertTrue(listFiles(dataFolder.resolve("snapshot/pending")).isEmpty());
         assertEquals(1, listFiles(dataFolder.resolve("snapshot/exception").resolve("oversized")).size());
         Path body = listFiles(dataFolder.resolve("snapshot/exception").resolve("oversized")).getFirst();
-        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(body));
+        assertEquals(snapshot.meta(), ExceptionHeader.read(body).meta());
+        assertEquals("Steve", ExceptionHeader.read(body).playerName());
         try (Stream<Path> remaining = Files.list(dataFolder.resolve("snapshot/pending"))) {
             assertEquals(0, remaining.count());
         }
@@ -145,7 +149,7 @@ class SnapshotStashTest {
      */
     @Test
     void sharedFilesExposeRejectedReplayForInspectionAndDeletion() throws IOException {
-        SnapshotFiles files = new SnapshotFiles(this.dataFolder, this.codec);
+        SnapshotFiles files = new SnapshotFiles(this.dataFolder, this.codec, new SnapshotFileTestLogger());
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", new SyncLogger(new QuietLogger()));
         SnapshotStash stash = new SnapshotStash(plugin);
@@ -162,7 +166,8 @@ class SnapshotStashTest {
         SnapshotFiles.ExceptionPage page = files.listExceptions(PLAYER, "oversized", 0, 5);
         assertEquals(1, page.total());
         SnapshotFiles.ExceptionEntry entry = page.content().getFirst();
-        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), entry.header());
+        assertEquals(snapshot.meta(), entry.header().meta());
+        assertEquals("Steve", entry.header().playerName());
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, files.readException(entry.path())).snapshot());
         assertTrue(files.deleteException(entry.path()));
         assertTrue(files.listExceptions(null, null, 0, 5).content().isEmpty());
@@ -193,7 +198,9 @@ class SnapshotStashTest {
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.SAVED);
         this.stash.restorePending(storage);
         Path moved = listFiles(this.dataFolder.resolve("snapshot/exception/corrupted")).getFirst();
-        assertEquals(new ExceptionHeader(snapshot.meta(), "Steve"), ExceptionHeader.read(moved));
+        assertEquals(snapshot.meta(), ExceptionHeader.read(moved).meta());
+        assertEquals("Steve", ExceptionHeader.read(moved).playerName());
+        assertFalse(ExceptionHeader.read(moved).summary().isEmpty());
         assertTrue(storage.savedIds().isEmpty());
         try (Stream<Path> remaining = Files.list(this.dataFolder.resolve("snapshot/pending"))) {
             assertEquals(0, remaining.count());

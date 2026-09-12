@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.SnapshotDump;
@@ -12,6 +13,8 @@ import net.momirealms.sparrow.sync.storage.StoredUser;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import org.bson.Document;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
@@ -121,8 +124,8 @@ class SnapshotMigrationTest {
         assertFalse(Files.exists(body));
         assertArrayEquals(raw, Files.readAllBytes(body.resolveSibling(body.getFileName() + ".source")));
         String reason = Files.readString(body.resolveSibling(body.getFileName() + ".error.txt"));
-        assertTrue(reason.contains("Source: husksync"));
-        assertTrue(reason.contains("Stage: inventory"));
+        assertEquals("husksync", Document.parse(reason.lines().findFirst().orElseThrow()).getString("source"));
+        assertEquals("inventory", Document.parse(reason.lines().findFirst().orElseThrow()).getString("stage"));
         assertTrue(reason.contains("source item is broken"));
         assertNull(this.importer().importFile("migration.zip").failure());
         assertEquals(2, this.snapshots.size());
@@ -142,7 +145,7 @@ class SnapshotMigrationTest {
         Path body = this.files().exceptionFile(entry.path());
         assertFalse(Files.exists(body));
         assertFalse(Files.exists(body.resolveSibling(body.getFileName() + ".source")));
-        assertTrue(Files.readString(body.resolveSibling(body.getFileName() + ".error.txt")).contains("Raw data: unavailable"));
+        assertFalse(Document.parse(Files.readAllLines(body.resolveSibling(body.getFileName() + ".error.txt")).getFirst()).getBoolean("rawAttached"));
     }
 
     @Test
@@ -330,7 +333,7 @@ class SnapshotMigrationTest {
     }
 
     private SnapshotFiles files() {
-        return new SnapshotFiles(this.directory, this.codec);
+        return new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
     }
 
     private SnapshotDump importer() {

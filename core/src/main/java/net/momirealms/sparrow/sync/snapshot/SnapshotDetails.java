@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.function.Predicate;
 
 // 负责读取并整理一份快照详情用于GUI展示
 @ApiStatus.Internal
@@ -64,29 +65,63 @@ public final class SnapshotDetails {
     }
 
     /**
-     * 读取异常快照头文件和异常快照数据, 数据读取失败时仍返回头文件中的元信息.
+     * 读取异常快照的头文件概览, 类型清单和体量来自头文件摘要.
      *
      * @param path 选定异常快照的相对路径
-     * @return 包含异常快照元信息和异常快照数据读取状态的详情
+     * @return 包含身份与类型清单的概览, 正文保持未读取状态
      */
     @NotNull
     public CompletableFuture<SnapshotDetailResult.Archive> loadException(@NotNull String path) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                SnapshotFiles.ExceptionEntry entry = this.files.exceptionEntry(path);
+                return new SnapshotDetailResult.Archive(this.files.exceptionEntry(path), new SnapshotDetailResult.Overview());
+            } catch (IOException failure) {
+                throw new CompletionException(failure);
+            }
+        }, this.executor);
+    }
+
+    /**
+     * 按需读取异常正文的身份与索引.
+     *
+     * @param path 选定异常快照的相对路径
+     * @return 原始快照和尚未读取的类型预览, 或具体的正文读取失败状态
+     */
+    @NotNull
+    public CompletableFuture<SnapshotDetailResult.Archive> loadExceptionBody(@NotNull String path) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
                 SnapshotDetailResult result;
                 try {
                     result = switch (this.files.readException(path)) {
-                        case DecodedSnapshot.Valid valid -> this.prepare(valid.snapshot());
+                        case DecodedSnapshot.Valid valid -> this.prepare(valid.snapshot(), type -> false);
                         case DecodedSnapshot.Invalid invalid -> new SnapshotDetailResult.Invalid(invalid.reason(), invalid.detail());
                     };
                 } catch (IOException failure) {
                     result = this.failure(failure);
                 }
-                return new SnapshotDetailResult.Archive(entry, result);
+                return new SnapshotDetailResult.Archive(this.files.exceptionEntry(path), result);
             } catch (IOException failure) {
                 throw new CompletionException(failure);
             }
+        }, this.executor);
+    }
+
+    /**
+     * 在已读取的异常快照中展开一个类型, 保留当前窗口已经准备好的其他预览.
+     *
+     * @param loaded 当前窗口持有的快照及预览状态
+     * @param key 用户本次选择的类型
+     * @return 仅更新所选类型的预览结果, 与输入共享同一份原始快照
+     */
+    @NotNull
+    public CompletableFuture<SnapshotDetailResult.Ready> preview(@NotNull SnapshotDetailResult.Ready loaded, @NotNull DataKey key) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!(loaded.previews().get(key) instanceof Preview.Unloaded)) return loaded;
+            SnapshotDetailResult.Ready selected = this.prepare(loaded.snapshot(), type -> type.key().equals(key));
+            Map<DataKey, Preview> previews = new LinkedHashMap<>(loaded.previews());
+            previews.put(key, selected.previews().get(key));
+            return new SnapshotDetailResult.Ready(loaded.snapshot(), Collections.unmodifiableMap(previews));
         }, this.executor);
     }
 
@@ -101,7 +136,19 @@ public final class SnapshotDetails {
      */
     @NotNull
     private SnapshotDetailResult.Ready prepare(@NotNull Snapshot snapshot) {
-        DecodedSnapshotData decoded = this.decoder.decodeSelected(snapshot, SnapshotDetails::supportsPreview);
+        return this.prepare(snapshot, SnapshotDetails::supportsPreview);
+    }
+
+    /**
+     * 为选中的类型准备内容预览, 其余类型只读取块头大小.
+     *
+     * @param snapshot 正文解码得到的快照, 可包含尚未校验的原始块
+     * @param selected 本次需要读取内容的类型
+     * @return 按来源顺序排列的只读预览表, 未注册类型的处理状态来自本服名单
+     */
+    @NotNull
+    private SnapshotDetailResult.Ready prepare(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected) {
+        DecodedSnapshotData decoded = this.decoder.decodeSelected(snapshot, type -> supportsPreview(type) && selected.test(type));
         Map<DataKey, Preview> previews = new LinkedHashMap<>();
         for (DataKey key : snapshot.keys()) {
             PlayerDataType<?> type = this.registry.type(key);
@@ -112,6 +159,16 @@ public final class SnapshotDetails {
                     // 未适配类型也需要读取块头显示大小, 单块损坏只影响这一项预览.
                     previews.put(key, new Preview.Failed(String.valueOf(exception.getMessage())));
                 }
+                continue;
+            }
+            if (!selected.test(type)) {
+                int rawLength;
+                try {
+                    rawLength = snapshot.content().rawLength(key);
+                } catch (UncheckedIOException failure) {
+                    rawLength = -1;
+                }
+                previews.put(key, new Preview.Unloaded(rawLength));
                 continue;
             }
             Throwable failure = decoded.failure(key);

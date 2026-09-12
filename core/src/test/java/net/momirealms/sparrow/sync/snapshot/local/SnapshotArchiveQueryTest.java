@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -152,7 +153,7 @@ class SnapshotArchiveQueryTest {
     }
 
     private SnapshotFiles files() {
-        return new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE));
+        return new SnapshotFiles(this.directory, new BinarySnapshotCodec(CompressorRegistry.NONE), new SnapshotFileTestLogger());
     }
 
     private Path write(String path, UUID player, long timestamp) throws IOException {

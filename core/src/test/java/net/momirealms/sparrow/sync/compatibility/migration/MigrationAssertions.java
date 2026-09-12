@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
+import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
@@ -24,7 +25,7 @@ public final class MigrationAssertions {
 
     public static Snapshot assertZipRoundTrip(Path directory, MigrationSource source, Map<DataKey, Tag> expected) throws Exception {
         BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
-        SnapshotFiles files = new SnapshotFiles(directory, codec);
+        SnapshotFiles files = new SnapshotFiles(directory, codec, new SnapshotFileTestLogger());
         var imported = new ArrayList<Snapshot>();
         StorageProvider storage = (StorageProvider) Proxy.newProxyInstance(StorageProvider.class.getClassLoader(), new Class<?>[]{StorageProvider.class}, (proxy, method, args) -> switch (method.getName()) {
             case "importSnapshot" -> {
