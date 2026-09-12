@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class DataRegistry {
     private final Map<DataKey, PlayerDataType<?>> types = new ConcurrentHashMap<>();
+    private Set<DataKey> unknownDrops = ConcurrentHashMap.newKeySet();
     private DataKey[] orderedKeys = new DataKey[0];
     private PlayerDataType<?>[] orderedTypes = new PlayerDataType<?>[0];
     private NativePlayerDataType<?>[] orderedNativeTypes = new NativePlayerDataType<?>[0];
@@ -31,6 +33,12 @@ public final class DataRegistry {
     private Map<DataKey, Integer> slots = Map.of();
     private List<DataKey> applyOrder = List.of();
     private volatile boolean frozen;
+
+    public DataRegistry() {
+        for (DataKey key : PluginConfig.synchronization$discardUnknownData()) {
+            this.registerUnknownDrop(key);
+        }
+    }
 
     /**
      * 注册一类同步数据.
@@ -45,6 +53,30 @@ public final class DataRegistry {
         if (existing != null) {
             throw new IllegalStateException("data key already registered: " + type.key());
         }
+    }
+
+    /**
+     * 将类型加入本服的未知数据丢弃名单, 供配置加载与第三方插件启动时注册.
+     * 该类型在本服已注册时仍正常应用.
+     *
+     * @param key 本服未注册时需要丢弃的数据类型
+     * @throws IllegalStateException 当注册表已经冻结时
+     */
+    public void registerUnknownDrop(@NotNull DataKey key) {
+        if (this.frozen) {
+            throw new IllegalStateException("data registry is frozen, register during onLoad or onEnable");
+        }
+        this.unknownDrops.add(key);
+    }
+
+    /**
+     * 判断本服在读取到未知类型的数据时, 是否丢弃此类型数据.
+     *
+     * @param key 快照中的类型标识
+     * @return 本服未注册该类型且丢弃名单包含它时为 true
+     */
+    public boolean shouldDropUnknown(@NotNull DataKey key) {
+        return !this.registered(key) && this.unknownDrops.contains(key);
     }
 
     public void freeze() {
@@ -79,6 +111,7 @@ public final class DataRegistry {
         this.asyncCaptureSlots = Arrays.copyOf(asyncSlots, asyncCount);
         this.slots = Map.copyOf(slots);
         this.applyOrder = List.copyOf(order);
+        this.unknownDrops = Set.copyOf(this.unknownDrops);
         this.frozen = true;
     }
 

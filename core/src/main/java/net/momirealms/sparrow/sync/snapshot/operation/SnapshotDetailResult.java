@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.snapshot.operation;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
-import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -33,7 +32,7 @@ public sealed interface SnapshotDetailResult {
         record Ready(@NotNull Object value) implements Preview {
         }
 
-        record Unsupported(boolean registered, int rawLength, @NotNull BlockMeta meta) implements Preview {
+        record Unsupported(boolean registered, int rawLength, boolean discardUnknown) implements Preview {
         }
 
         record Failed(@NotNull String detail) implements Preview {

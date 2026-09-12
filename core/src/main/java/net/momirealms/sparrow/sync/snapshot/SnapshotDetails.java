@@ -104,7 +104,7 @@ public final class SnapshotDetails {
         for (DataKey key : snapshot.keys()) {
             PlayerDataType<?> type = this.registry.type(key);
             if (!supportsPreview(type)) {
-                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key), snapshot.content().meta(key)));
+                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key), this.registry.shouldDropUnknown(key)));
                 continue;
             }
             Throwable failure = decoded.failure(key);

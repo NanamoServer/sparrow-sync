@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -82,7 +83,7 @@ class BlockMetaFlowTest {
         byte[] book = bytes(original, BOOK);
         // 第二天不注册 location, 它不会进入保留集合, 也不会被解块.
         position.set(new Location(world, 200, 70, 300));
-        PlayerDataPipeline dayTwo = this.pipeline();
+        PlayerDataPipeline dayTwo = this.pipeline(Set.of(LocationDataType.LOCATION));
         SnapshotApplyContext context = ready(dayTwo, original);
         assertNull(context.takePending(LocationDataType.LOCATION));
         assertEquals(List.of(BOOK), new ArrayList<>(context.passthrough().keys()));
@@ -112,7 +113,7 @@ class BlockMetaFlowTest {
     @ValueSource(booleans = {true, false})
     void registeredTypeAppliesAndRefreshesHistoricalMeta(boolean current) throws Exception {
         TextType type = new TextType(BOOK, current);
-        PlayerDataPipeline pipeline = this.pipeline(type);
+        PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK), type);
         boolean historical = !current;
         Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(new BlockMeta(historical), NBT.createString("old"))));
         SnapshotApplyContext context = ready(pipeline, source);
@@ -135,7 +136,7 @@ class BlockMetaFlowTest {
         Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createString("broken"))));
         var raw = source.content().raw(BOOK);
         raw.bytes()[(int) raw.offset() + 9] ^= 1;
-        PlayerDataPipeline pipeline = this.pipeline();
+        PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK));
         SnapshotApplyContext context = ready(pipeline, source);
         assertSame(EagerSnapshotData.EMPTY, context.passthrough());
         assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
@@ -155,7 +156,7 @@ class BlockMetaFlowTest {
      */
     @Test
     void everyDropIsLoggedOnlyToFile(@TempDir Path directory) throws Exception {
-        PlayerDataPipeline pipeline = this.pipeline();
+        PlayerDataPipeline pipeline = this.pipeline(Set.of(BOOK, DataKey.of("external", "other")));
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         Snapshot source = this.snapshot(first, Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createInt(1))));
@@ -174,6 +175,22 @@ class BlockMetaFlowTest {
         // 测试没有装配翻译管理器, 文件中的消息正文为原始翻译键.
         assertTrue(lines.stream().allMatch(line -> line.contains(LogConstants.DATA_UNKNOWN_DROPPED)));
         assertTrue(this.consoleLogs.isEmpty(), this.consoleLogs.toString());
+    }
+
+    /**
+     * 同一份快照在不同接收服按各自名单处理, 空名单保留未注册类型.
+     *
+     * @throws Exception 当测试快照编解码失败时
+     */
+    @Test
+    void receiverRegistryDeterminesUnknownRetention() throws Exception {
+        Snapshot source = this.snapshot(UUID.randomUUID(), Map.of(BOOK, new SnapshotBlock(BlockMeta.DISCARD_UNKNOWN, NBT.createString("opaque"))));
+        SnapshotApplyContext kept = ready(this.pipeline(), source);
+        SnapshotApplyContext dropped = ready(this.pipeline(Set.of(BOOK)), source);
+        assertEquals(Set.of(BOOK), kept.passthrough().keys());
+        assertTrue(dropped.passthrough().keys().isEmpty());
+        assertEquals(0, SnapshotFixtures.decodedBlockCount(source));
+        assertArrayEquals(bytes(source, BOOK), bytes(new Snapshot(source.meta(), kept.passthrough()), BOOK));
     }
 
     /** 内置类型恰好九个声明 DROP, 七个使用接口默认 KEEP. */
@@ -200,7 +217,21 @@ class BlockMetaFlowTest {
      * @return 可以执行采集和应用的测试流水线
      */
     private PlayerDataPipeline pipeline(PlayerDataType<?>... types) {
+        return this.pipeline(Set.of(), types);
+    }
+
+    /**
+     * 按接收服的丢弃名单装配流水线, 注册完成后冻结.
+     *
+     * @param dropped 本服未注册时丢弃的类型
+     * @param types 本服已注册的类型
+     * @return 可执行正式加载的流水线
+     */
+    private PlayerDataPipeline pipeline(Set<DataKey> dropped, PlayerDataType<?>... types) {
         DataRegistry registry = new DataRegistry();
+        for (DataKey key : dropped) {
+            registry.registerUnknownDrop(key);
+        }
         for (PlayerDataType<?> type : types) registry.register(type);
         registry.freeze();
         PlayerDataPipeline pipeline = new PlayerDataPipeline(null);

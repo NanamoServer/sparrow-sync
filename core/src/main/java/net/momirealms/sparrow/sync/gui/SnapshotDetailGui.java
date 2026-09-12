@@ -544,7 +544,7 @@ public final class SnapshotDetailGui {
             if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
                 String state = unsupported.registered()
                         ? "additional.unsupported"
-                        : !unsupported.meta().keepUnknown() ? "additional.unknown_drop" : "additional.unknown_keep";
+                        : unsupported.discardUnknown() ? "additional.unknown_drop" : "additional.unknown_keep";
                 lines.add(unsupported.rawLength() < 0
                         ? this.text(state, entry.getKey().asString())
                         : this.text(state + "_size", entry.getKey().asString(), unsupported.rawLength()));

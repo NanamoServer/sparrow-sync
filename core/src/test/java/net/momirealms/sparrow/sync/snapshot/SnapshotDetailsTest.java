@@ -116,6 +116,8 @@ class SnapshotDetailsTest {
         DataKey custom = DataKey.of("test", "custom");
         this.registry.register(new UnsupportedType(custom));
         DataKey unknown = DataKey.of("unknown", "retained");
+        this.registry.registerUnknownDrop(custom);
+        this.registry.registerUnknownDrop(unknown);
         Tag raw = NBT.createString("raw");
         Snapshot snapshot = this.snapshot(Map.of(
                 HealthDataType.HEALTH, raw,
@@ -125,8 +127,8 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(snapshot.meta().id()).join());
         assertInstanceOf(Preview.Failed.class, ready.previews().get(HealthDataType.HEALTH));
         assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE));
-        assertEquals(new Preview.Unsupported(true, -1, BlockMeta.DEFAULT), ready.previews().get(custom));
-        assertEquals(new Preview.Unsupported(false, -1, BlockMeta.DEFAULT), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(true, -1, false), ready.previews().get(custom));
+        assertEquals(new Preview.Unsupported(false, -1, true), ready.previews().get(unknown));
         assertSame(raw, ready.snapshot().data(unknown));
         assertEquals(4, ready.snapshot().allData().size());
     }
@@ -225,7 +227,7 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, archive.result());
         assertEquals(snapshot, ready.snapshot());
         assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
-        assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown), BlockMeta.DEFAULT), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown), false), ready.previews().get(unknown));
     }
 
     /**

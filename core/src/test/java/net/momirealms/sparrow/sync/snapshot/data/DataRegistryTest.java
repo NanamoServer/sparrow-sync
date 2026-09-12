@@ -19,6 +19,24 @@ class DataRegistryTest {
     private static final DataKey B = DataKey.of("sparrow", "bravo");
     private static final DataKey C = DataKey.of("sparrow", "charlie");
 
+    /** 默认保留未知类型, 名单中的类型一旦注册也正常使用. */
+    @Test
+    void unknownDropsOnlyApplyToUnregisteredKeys() {
+        DataRegistry registry = new DataRegistry();
+        assertFalse(registry.shouldDropUnknown(A));
+        registry.registerUnknownDrop(A);
+        registry.registerUnknownDrop(A);
+        registry.registerUnknownDrop(B);
+        assertTrue(registry.shouldDropUnknown(A));
+        registry.register(new StubPlayerDataType(A));
+        registry.freeze();
+        assertFalse(registry.shouldDropUnknown(A));
+        assertTrue(registry.shouldDropUnknown(B));
+        assertFalse(registry.shouldDropUnknown(C));
+        assertThrows(IllegalStateException.class, () -> registry.registerUnknownDrop(B));
+        assertThrows(IllegalStateException.class, () -> registry.registerUnknownDrop(C));
+    }
+
     @Test
     void applyOrderPutsDependencyBeforeDependent() {
         // 准备: bravo 依赖 alpha, charlie 依赖 bravo

@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.sync.plugin.configuration;
 
 import net.momirealms.sparrow.sync.plugin.Plugin;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.yaml.SparrowYaml;
+import net.momirealms.sparrow.yaml.serializer.NodeSerializers;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -22,6 +24,7 @@ public class ConfigurationManager {
                 .setAllowDuplicateKeys(false)
                 .setAllowObjectKeys(false)
                 .build();
+        this.sparrowYaml.serializers().register(DataKey.class, NodeSerializers.scalar(DataKey.class, DataKey::parse, DataKey::asString));
         this.pluginConfig = new PluginConfig(plugin, this.sparrowYaml);
         this.serverConfig = new ServerConfig(plugin, this.sparrowYaml);
         this.commandsConfig = new CommandsConfig(plugin.dataFolderPath(), this.sparrowYaml);

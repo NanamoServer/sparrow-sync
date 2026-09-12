@@ -220,10 +220,10 @@ public final class PlayerDataPipeline {
             }
             this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, failure, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
         }
-        // 丢弃决策只读取元信息.
+        // 丢弃决策查询本服注册表.
         UUID player = snapshot.meta().player();
         for (DataKey key : snapshot.keys()) {
-            if (this.dataRegistry.slot(key) < 0 && !snapshot.content().meta(key).keepUnknown()) {
+            if (this.dataRegistry.shouldDropUnknown(key)) {
                 this.logger.file(LogCategory.DATA, player, null, LogConstants.DATA_UNKNOWN_DROPPED, player.toString(), key.asString());
             }
         }

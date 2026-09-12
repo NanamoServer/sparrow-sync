@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.map.handler.MapType;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.storage.StorageType;
@@ -345,6 +346,17 @@ public final class PluginConfig {
         @Comment("Player data types enabled for synchronization; changes require a server restart")
         @Comment(lang = "zh-CN", value = "启用同步的玩家数据类型, 修改后需要重启服务器才能生效")
         DataTypes dataTypes = new DataTypes();
+
+        @BlankLineBefore
+        @Comment({
+                "Discard these data types when they are not registered on this server; unknown types are kept by default",
+                "Use namespace:name, e.g. sparrow_sync:location; changes require a server restart"
+        })
+        @Comment(lang = "zh-CN", value = {
+                "这些类型在本服未注册时丢弃, 其余未知类型默认保留",
+                "使用 namespace:name, 例如 sparrow_sync:location; 修改后需要重启服务器"
+        })
+        Set<DataKey> discardUnknownData = Set.of();
 
         @BlankLineBefore
         @Comment({
@@ -1212,6 +1224,11 @@ public final class PluginConfig {
     @NotNull
     public static DataTypes synchronization$dataTypes() {
         return config.synchronization.dataTypes;
+    }
+
+    @NotNull
+    public static Set<DataKey> synchronization$discardUnknownData() {
+        return config.synchronization.discardUnknownData;
     }
 
     @NotNull
