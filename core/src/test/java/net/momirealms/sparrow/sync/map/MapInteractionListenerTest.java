@@ -52,7 +52,7 @@ class MapInteractionListenerTest {
     private Player player;
     private MapInteractionListener listener;
     private Object previousConfig;
-    private PluginConfig.MapOptions options;
+    private PluginConfig.MapPlayerOperationOptions options;
 
     @BeforeAll
     static void bootstrap() {
@@ -68,7 +68,7 @@ class MapInteractionListenerTest {
         config.setAccessible(true);
         this.previousConfig = config.get(null);
         config.set(null, new PluginConfig.ConfigDefinition());
-        this.options = PluginConfig.synchronization$map();
+        this.options = PluginConfig.synchronization$map().playerOperation();
         this.listener = new MapInteractionListener();
     }
 
@@ -113,7 +113,7 @@ class MapInteractionListenerTest {
     @ParameterizedTest
     @CsvSource({"HAND,WHITE_BANNER,false,-1", "OFF_HAND,WHITE_WALL_BANNER,false,-1", "HAND,WHITE_BANNER,false,-2147483648", "HAND,WHITE_BANNER,true,-1", "HAND,STONE,false,-1", "HAND,WHITE_BANNER,false,0"})
     void bannerRestrictionUsesTheInteractingHandWithoutCancellingTheBlock(EquipmentSlot hand, Material material, boolean allowed, int id) {
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, this.options, "allowBannerModification", allowed);
+        NmsPlayerFixture.set(PluginConfig.MapPlayerOperationOptions.class, this.options, "allowBannerModification", allowed);
         Block block = this.block(material);
         PlayerInteractEvent event = new PlayerInteractEvent(this.player, Action.RIGHT_CLICK_BLOCK, this.map(id, "COPY"), block, BlockFace.UP, hand);
         this.listener.onInteract(event);
@@ -196,7 +196,7 @@ class MapInteractionListenerTest {
             case "SCALE" -> "allowScale";
             default -> "allowCopy";
         };
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, this.options, field, allowed);
+        NmsPlayerFixture.set(PluginConfig.MapPlayerOperationOptions.class, this.options, field, allowed);
     }
 
     private ItemStack map(int id, String operation) {

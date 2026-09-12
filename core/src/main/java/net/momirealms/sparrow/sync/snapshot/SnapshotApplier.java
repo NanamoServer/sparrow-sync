@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
@@ -33,6 +34,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -205,14 +207,11 @@ final class SnapshotApplier {
     @NotNull
     private CompletableFuture<SnapshotApplyResult> applyOnlineNow(@NotNull PlayerSession session, @NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
         if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
-        PluginConfig.OnlineRestoreOptions options = PluginConfig.synchronization$onlineRestore();
+        List<DataKey> skippedData = PluginConfig.synchronization$skipOnlineRestoreData();
         PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), loaded.context().pendingValues());
         // 配置先移除默认不恢复的值. 监听器仍可按自己的规则补回这些值.
-        if (!options.syncHealth()) {
-            event.decoded().remove(HealthDataType.HEALTH);
-        }
-        if (!options.syncLocation()) {
-            event.decoded().remove(LocationDataType.LOCATION);
+        for (int i = 0; i < skippedData.size(); i++) {
+            event.decoded().remove(skippedData.get(i));
         }
         EventUtils.fireAndForget(event);
         if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);

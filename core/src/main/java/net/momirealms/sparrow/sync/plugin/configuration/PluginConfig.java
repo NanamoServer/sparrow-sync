@@ -385,8 +385,11 @@ public final class PluginConfig {
 
         @BlankLineBefore
         @Comment("When performing an online rollback snapshot, you can choose to skip certain data without affecting the login synchronization")
-        @Comment(lang = "zh-CN", value = "在线回滚时是否恢复血量和位置, 不影响玩家登录时的同步.")
-        OnlineRestoreOptions onlineRestore = new OnlineRestoreOptions();
+        @Comment(lang = "zh-CN", value = {
+                "在线恢复快照时跳过这些数据, 不影响玩家登录时的同步, 留空则全部恢复.",
+                "填写方式与 discard-unknown-data 相同, 例如 health 或 sparrow_sync:health."
+        })
+        List<DataKey> skipOnlineRestoreData = List.of(DataKey.sparrow("health"), DataKey.sparrow("location"));
 
         @BlankLineBefore
         @Comment("Map synchronization and origin settings")
@@ -459,25 +462,6 @@ public final class PluginConfig {
     }
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
-    public static class OnlineRestoreOptions {
-        @Comment("Restores health online; life transitions use the server's normal death and respawn flow")
-        @Comment(lang = "zh-CN", value = "在线回滚时恢复血量, 玩家可能因此死亡或重生.")
-        boolean syncHealth = false;
-
-        @Comment("Restores location online; teleport events and plugin restrictions still apply")
-        @Comment(lang = "zh-CN", value = "在线回滚时恢复位置, 仍受其他插件的传送限制影响.")
-        boolean syncLocation = false;
-
-        public boolean syncHealth() {
-            return this.syncHealth;
-        }
-
-        public boolean syncLocation() {
-            return this.syncLocation;
-        }
-    }
-
-    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class MapOptions {
         @Comment({
                 "Enables map item encoding and decoding; changes require a server restart. When disabled, the plugin does not process any map items or synchronize map data",
@@ -505,7 +489,7 @@ public final class PluginConfig {
                 "SYNC 同步地图内容, 让玩家跨服后仍能查看.",
         })
         @YamlProperty("synchronization_mode")
-        MapType type = MapType.SYNC;
+        MapType synchronization_mode = MapType.SYNC;
 
         @Comment({
                 "Map source ID for this server; supports ${server-id} and ${world-uuid}; changes require a server restart",
@@ -520,6 +504,44 @@ public final class PluginConfig {
         })
         String mapOwnerId = "${server-id}-${world-uuid}";
 
+        @Comment(lang = "zh-CN", value = "玩家对跨服地图可以进行哪些操作, 重载生效.")
+        MapPlayerOperationOptions playerOperation = new MapPlayerOperationOptions();
+
+        public boolean enabled() {
+            return this.enabled;
+        }
+
+        @NotNull
+        public MapType synchronization_mode() {
+            return this.synchronization_mode;
+        }
+
+        @NotNull
+        public String mapOwnerId() {
+            return this.mapOwnerId;
+        }
+
+        @NotNull
+        public MapPlayerOperationOptions playerOperation() {
+            return this.playerOperation;
+        }
+
+        @NotNull
+        public String resolveOwnerId(@NotNull String serverId, @NotNull UUID worldUuid) {
+            return this.mapOwnerId.replace("${server-id}", serverId).replace("${world-uuid}", worldUuid.toString());
+        }
+
+        private void validate() {
+            if (!this.enabled) return;
+            String literals = this.mapOwnerId.replace("${server-id}", "").replace("${world-uuid}", "");
+            if (this.mapOwnerId.isBlank() || literals.contains("${")) {
+                throw new IllegalArgumentException("map-owner-id must be non-blank and may only use ${server-id} and ${world-uuid}");
+            }
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class MapPlayerOperationOptions {
         @Comment("Allows adding or removing banner markers on negative-ID maps; reloadable")
         @Comment(lang = "zh-CN", value = "是否允许在跨服地图上添加或移除旗帜标记, 重载生效.")
         boolean allowBannerModification = false;
@@ -545,20 +567,6 @@ public final class PluginConfig {
         })
         boolean allowCopy = true;
 
-        public boolean enabled() {
-            return this.enabled;
-        }
-
-        @NotNull
-        public MapType type() {
-            return this.type;
-        }
-
-        @NotNull
-        public String mapOwnerId() {
-            return this.mapOwnerId;
-        }
-
         public boolean allowBannerModification() {
             return this.allowBannerModification;
         }
@@ -573,19 +581,6 @@ public final class PluginConfig {
 
         public boolean allowCopy() {
             return this.allowCopy;
-        }
-
-        @NotNull
-        public String resolveOwnerId(@NotNull String serverId, @NotNull UUID worldUuid) {
-            return this.mapOwnerId.replace("${server-id}", serverId).replace("${world-uuid}", worldUuid.toString());
-        }
-
-        private void validate() {
-            if (!this.enabled) return;
-            String literals = this.mapOwnerId.replace("${server-id}", "").replace("${world-uuid}", "");
-            if (this.mapOwnerId.isBlank() || literals.contains("${")) {
-                throw new IllegalArgumentException("map-owner-id must be non-blank and may only use ${server-id} and ${world-uuid}");
-            }
         }
     }
 
@@ -734,7 +729,7 @@ public final class PluginConfig {
                 "加快玩家属性的保存, 减少同步造成的卡顿.",
                 "开启后若出现属性同步异常或兼容问题, 可以尝试关闭."
         })
-        boolean injectConsumer = true;
+        boolean injectOnDirtyConsumer = true;
 
         @Comment({
                 "Attribute keys to save in snapshots during attribute synchronization; supports * wildcards",
@@ -776,8 +771,8 @@ public final class PluginConfig {
             return this.whitelist;
         }
 
-        public boolean injectConsumer() {
-            return this.injectConsumer;
+        public boolean injectOnDirtyConsumer() {
+            return this.injectOnDirtyConsumer;
         }
 
         @NotNull
@@ -1244,8 +1239,8 @@ public final class PluginConfig {
     }
 
     @NotNull
-    public static OnlineRestoreOptions synchronization$onlineRestore() {
-        return config.synchronization.onlineRestore;
+    public static List<DataKey> synchronization$skipOnlineRestoreData() {
+        return config.synchronization.skipOnlineRestoreData;
     }
 
 

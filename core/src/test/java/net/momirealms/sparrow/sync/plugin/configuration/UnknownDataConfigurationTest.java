@@ -36,6 +36,7 @@ class UnknownDataConfigurationTest {
         Object previous = current.get(null);
         try {
             config.reload();
+            assertEquals(List.of(DataKey.sparrow("health"), DataKey.sparrow("location")), PluginConfig.synchronization$skipOnlineRestoreData());
             assertEquals(List.of(
                     DataKey.sparrow("attributes"),
                     DataKey.sparrow("enchantment_seed"),
@@ -47,8 +48,29 @@ class UnknownDataConfigurationTest {
                     DataKey.sparrow("location")
             ), PluginConfig.synchronization$discardUnknownData());
             Path path = directory.resolve("config.yml");
-            Files.writeString(path, "___version___: '4'\nsynchronization:\n  discard-unknown-data: [location, 'external:book']\n");
+            Files.writeString(path, """
+                    ___version___: '4'
+                    synchronization:
+                      discard-unknown-data: [location, 'external:book']
+                      skip-online-restore-data: [health, 'external:book']
+                      map:
+                        player-operation:
+                          allow-banner-modification: true
+                          allow-lock: true
+                          allow-scale: true
+                          allow-copy: false
+                      attributes:
+                        inject-on-dirty-consumer: false
+                    """);
             config.reload();
+            List<DataKey> skippedOnline = List.of(DataKey.sparrow("health"), DataKey.of("external", "book"));
+            assertEquals(skippedOnline, PluginConfig.synchronization$skipOnlineRestoreData());
+            PluginConfig.MapPlayerOperationOptions operations = PluginConfig.synchronization$map().playerOperation();
+            assertTrue(operations.allowBannerModification());
+            assertTrue(operations.allowLock());
+            assertTrue(operations.allowScale());
+            assertFalse(operations.allowCopy());
+            assertFalse(PluginConfig.synchronization$attributes().injectOnDirtyConsumer());
             List<DataKey> configured = PluginConfig.synchronization$discardUnknownData();
             assertEquals(List.of(DataKey.sparrow("location"), DataKey.of("external", "book")), configured);
             DataRegistry registry = new DataRegistry();
@@ -65,6 +87,7 @@ class UnknownDataConfigurationTest {
             assertTrue(Files.readString(path).contains("sparrow_sync:location"));
             config.reload();
             assertEquals(configured, PluginConfig.synchronization$discardUnknownData());
+            assertEquals(skippedOnline, PluginConfig.synchronization$skipOnlineRestoreData());
 
             Files.writeString(path, "___version___: '4'\nsynchronization:\n  discard-unknown-data: ['external:new']\n");
             config.reload();

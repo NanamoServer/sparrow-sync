@@ -76,7 +76,7 @@ public final class MapSyncService {
 
     @Nullable
     public MapType mode() {
-        return this.pipeline == null ? null : PluginConfig.synchronization$map().type();
+        return this.pipeline == null ? null : PluginConfig.synchronization$map().synchronization_mode();
     }
 
     /** 从已编码物品中发现来源地图, 按需采集发布后生成传输快照. */

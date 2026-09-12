@@ -181,13 +181,13 @@ class NativeMapAdapterTest {
         registry.register(NmsPlayerFixture.allocate(InventoryDataType.class));
         MapSyncService service = this.service("A-world", registry, null);
         NmsPlayerFixture.set(MapSyncService.class, service, "pipeline", new MapPipeline(registry, List.of(new HideMapHandler()), MapFlowTestSupport.logger(new ArrayList<>())));
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.HIDE);
         CraftPlayer player = NmsPlayerFixture.create();
         NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, player.getHandle(), "inventory", new Inventory(player.getHandle(), new EntityEquipment()));
-        MapType captured = PluginConfig.synchronization$map().type();
+        MapType captured = PluginConfig.synchronization$map().synchronization_mode();
         assertEquals(MapType.HIDE, captured);
         // 保存已经开始, 配置重载只影响下一次采集.
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.SYNC);
         CompoundTag components = NBT.createCompound();
         components.putInt("minecraft:map_id", 1);
         CompoundTag item = NBT.createCompound();

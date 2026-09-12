@@ -42,7 +42,7 @@ public final class MapInteractionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.useItemInHand() == Event.Result.DENY) return;
-        if (PluginConfig.synchronization$map().allowBannerModification()) return;
+        if (PluginConfig.synchronization$map().playerOperation().allowBannerModification()) return;
         net.minecraft.world.item.ItemStack item = this.nativeMap(event.getItem());
         if (item != null) {
             MapId id = item.get(DataComponents.MAP_ID);
@@ -85,7 +85,7 @@ public final class MapInteractionListener implements Listener {
         if (item == null) return false;
         MapId id = item.get(DataComponents.MAP_ID);
         if (id == null || id.id() >= 0) return false;
-        PluginConfig.MapOptions options = PluginConfig.synchronization$map();
+        PluginConfig.MapPlayerOperationOptions options = PluginConfig.synchronization$map().playerOperation();
         MapPostProcessing processing = item.get(DataComponents.MAP_POST_PROCESSING);
         if (processing == MapPostProcessing.LOCK) return !options.allowLock();
         if (processing == MapPostProcessing.SCALE) return !options.allowScale();

@@ -356,7 +356,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "pipeline", maps);
         NmsPlayerFixture.set(MapSyncService.class, mapSync, "ownerId", "A-world");
         NmsPlayerFixture.set(PlayerDataPipeline.class, data, "mapSync", mapSync);
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.SYNC);
         if (outcome.equals("restore")) {
             PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, data.capture(this.player, CaptureMode.SYNC));
             Tag inventory = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, data.encode(captured)).data().get(InventoryDataType.INVENTORY);
@@ -578,7 +578,7 @@ class CaptureSchedulingTest {
         };
         NmsPlayerFixture.set(MapSyncService.class, maps, "pipeline", new MapPipeline(registry, List.of(handler), logger));
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "mapSync", maps);
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.SYNC);
         switch (CaptureMode.valueOf(mode)) {
             case SYNC -> this.service.captureNowAndSave(this.player, SaveCause.DEATH, EagerSnapshotData.EMPTY);
             case ASYNC -> this.service.captureLaterAndSave(this.player, SaveCause.WORLD_SAVE, EagerSnapshotData.EMPTY);
@@ -590,7 +590,7 @@ class CaptureSchedulingTest {
         } else {
             assertSame(Thread.currentThread(), capturedOn.get());
         }
-        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.HIDE);
+        NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.HIDE);
         this.releaseWorker.countDown();
         this.awaitSubmissions();
         this.finishWrites();

@@ -501,7 +501,7 @@ class SnapshotCommandFlowTest {
 
     @Test
     void respawnCompletesBeforeDataHealthAndLocationAndSaveWaitsForTeleport() throws Exception {
-        this.onlineOptions(true, true);
+        this.skipOnlineData();
         this.dead.set(true);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
         assertEquals(List.of("respawn", "data", "health:18.0", "location"), this.actions);
@@ -516,7 +516,7 @@ class SnapshotCommandFlowTest {
 
     @Test
     void nativeDeathRunsAfterDataAndSuccessfulLocation() throws Exception {
-        this.onlineOptions(true, true);
+        this.skipOnlineData();
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
         assertEquals(List.of("data", "location"), this.actions);
         assertFalse(this.dead.get());
@@ -529,7 +529,7 @@ class SnapshotCommandFlowTest {
 
     @Test
     void rejectedLocationDoesNotKillOrSaveThePlayer() throws Exception {
-        this.onlineOptions(true, true);
+        this.skipOnlineData();
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
         this.teleport.complete(false);
         assertSame(SnapshotRestoreResult.FAILED, result.get(2, TimeUnit.SECONDS));
@@ -539,7 +539,7 @@ class SnapshotCommandFlowTest {
 
     @Test
     void removingHealthFromEventKeepsDeadPlayerDead() throws Exception {
-        this.onlineOptions(true, false);
+        this.skipOnlineData(LocationDataType.LOCATION);
         this.dead.set(true);
         this.onPreApply = event -> event.decoded().remove(HealthDataType.HEALTH);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
@@ -552,7 +552,7 @@ class SnapshotCommandFlowTest {
 
     @Test
     void disconnectDuringNativeRespawnStopsApplicationAndSave() throws Exception {
-        this.onlineOptions(true, false);
+        this.skipOnlineData(LocationDataType.LOCATION);
         this.dead.set(true);
         this.onRespawn = () -> this.online.set(false);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
@@ -561,9 +561,27 @@ class SnapshotCommandFlowTest {
         assertTrue(this.writes.isEmpty());
     }
 
-    private void onlineOptions(boolean health, boolean location) {
-        NmsPlayerFixture.set(PluginConfig.OnlineRestoreOptions.class, PluginConfig.synchronization$onlineRestore(), "syncHealth", health);
-        NmsPlayerFixture.set(PluginConfig.OnlineRestoreOptions.class, PluginConfig.synchronization$onlineRestore(), "syncLocation", location);
+    @Test
+    void onlineRestoreSkipsConfiguredCustomDataAndKeepsStoredSnapshot() throws Exception {
+        this.skipOnlineData(this.key);
+        this.onPreApply = event -> assertFalse(event.decoded().containsKey(this.key));
+        Snapshot source = this.source(this.uuid);
+
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(source);
+
+        assertEquals("live", this.value.get());
+        assertTrue(this.actions.isEmpty());
+        this.nextWrite().complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+        assertSame(source, this.stored.get(source.meta().id()));
+    }
+
+    private void skipOnlineData(DataKey... keys) throws Exception {
+        Field config = PluginConfig.class.getDeclaredField("config");
+        config.setAccessible(true);
+        Field synchronization = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
+        synchronization.setAccessible(true);
+        NmsPlayerFixture.set(PluginConfig.SynchronizationOptions.class, synchronization.get(config.get(null)), "skipOnlineRestoreData", List.of(keys));
     }
 
     private Snapshot sourceWithHealth(double health) {

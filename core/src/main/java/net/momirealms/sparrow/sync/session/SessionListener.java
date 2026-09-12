@@ -53,7 +53,7 @@ public final class SessionListener implements Listener {
 
         // 属性回调在 Player apply 前安装, 单实例失败由类型保留普通采集路径.
         if (
-                PluginConfig.synchronization$attributes().injectConsumer()
+                PluginConfig.synchronization$attributes().injectOnDirtyConsumer()
                 && this.plugin.dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType attributes
         ) {
             attributes.injectTracker(player);
