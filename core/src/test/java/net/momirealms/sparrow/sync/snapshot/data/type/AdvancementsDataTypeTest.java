@@ -21,11 +21,9 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementHolderProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.AdvancementProgressProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.advancements.CriterionProgressProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
-import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
@@ -375,8 +373,8 @@ class AdvancementsDataTypeTest {
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(codec.encode(outgoing))).snapshot();
         var before = source.content().raw(external);
         var after = restored.content().raw(external);
-        assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.offset() + 9 + before.entry().length()),
-                Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.offset() + 9 + after.entry().length()));
+        assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.offset() + 9 + before.index().length()),
+                Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.offset() + 9 + after.index().length()));
         Advancements forwarded = fixture.type.decode(restored.data(AdvancementsDataType.ADVANCEMENTS), 0);
         assertEquals(2, forwarded.values().length);
         assertEquals(obtained, findValue(forwarded, unknownId).obtained()[0]);

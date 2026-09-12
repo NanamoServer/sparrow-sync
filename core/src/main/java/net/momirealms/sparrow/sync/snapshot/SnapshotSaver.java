@@ -159,7 +159,7 @@ final class SnapshotSaver {
             request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be encoded"));
             return;
         }
-        Snapshot snapshot = new Snapshot(request.meta(), request.retainedData().with(encoded.data()));
+        Snapshot snapshot = new Snapshot(request.meta(), request.retainedData().withBlocks(encoded.data()));
         request.captureNanos(captured.captureNanos());
         // 原正文在地图等待前发布, 停服线程通过 Writer 持有的同一请求取得它.
         if (!request.updateSnapshot(snapshot)) return;

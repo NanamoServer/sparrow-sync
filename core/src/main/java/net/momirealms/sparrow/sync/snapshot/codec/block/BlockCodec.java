@@ -5,8 +5,9 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.model.BlockIndex;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.ByteArrayInputStream;
@@ -74,7 +75,7 @@ public final class BlockCodec {
      * @throws FormatException 当块越界, 校验失败, 算法未知或 NBT 损坏时
      */
     @NotNull
-    public static Tag decode(byte @NotNull [] frame, int blockBase, @NotNull String key, @NotNull BlockIndex.Entry entry) throws IOException {
+    public static Tag decode(byte @NotNull [] frame, int blockBase, @NotNull String key, @NotNull BlockIndex entry) throws IOException {
         // 使用 long 计算末端, 索引中的大偏移仍按越界报告.
         long startLong = (long) blockBase + entry.offset();
         long end = startLong + BLOCK_HEADER_LENGTH + entry.length();
@@ -94,13 +95,10 @@ public final class BlockCodec {
         if ((int) crc.getValue() != checksum) {
             throw new FormatException(InvalidReason.CORRUPTED, "block checksum mismatch for " + key);
         }
-        // 索引和块头都自述算法, 未知算法归为不支持, 已知但不一致则属于损坏.
+        // 块头自述压缩算法
         Compressor compressor = CompressorRegistry.byId(compressorId);
-        if (compressor == null || CompressorRegistry.byId(entry.compressorId()) == null) {
-            throw new FormatException(InvalidReason.UNSUPPORTED_COMPRESSION, "unknown block compression id " + compressorId + "/" + entry.compressorId() + " for " + key);
-        }
-        if (compressorId != entry.compressorId()) {
-            throw new FormatException(InvalidReason.CORRUPTED, "block compression differs from index for " + key);
+        if (compressor == null) {
+            throw new FormatException(InvalidReason.UNSUPPORTED_COMPRESSION, "unknown block compression id " + compressorId + " for " + key);
         }
         // rawLength 同时约束解压分配与实际结果, CRC 校验在解压之前完成.
         try {

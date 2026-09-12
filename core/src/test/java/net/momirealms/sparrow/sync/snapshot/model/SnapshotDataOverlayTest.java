@@ -108,7 +108,7 @@ class SnapshotDataOverlayTest {
     @Test
     void eagerDataUsesTheSameImmutableOverlayContract() {
         Map<DataKey, Tag> values = Map.of(FIRST, NBT.createInt(1));
-        SnapshotData eager = new EagerSnapshotData(values);
+        SnapshotData eager = EagerSnapshotData.fromTags(values);
         SnapshotData changed = eager.with(FIRST, NBT.createInt(2)).with(ADDED, NBT.createInt(3));
         assertSame(values.get(FIRST), eager.get(FIRST));
         assertEquals(NBT.createInt(2), changed.get(FIRST));
@@ -195,6 +195,6 @@ class SnapshotDataOverlayTest {
      * @return 该块的独立字节副本, 供测试比较修改快照前后是否一致
      */
     private static byte[] blockBytes(RawBlock block) {
-        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.offset() + 9 + block.entry().length());
+        return Arrays.copyOfRange(block.bytes(), (int) block.offset(), (int) block.offset() + 9 + block.index().length());
     }
 }

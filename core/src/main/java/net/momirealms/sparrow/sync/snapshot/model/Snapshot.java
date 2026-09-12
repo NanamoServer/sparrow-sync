@@ -9,15 +9,15 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 一份玩家数据快照, 由元数据与各数据类型的 NBT 值组成.
- * 数据体包含本服未注册的类型时原样携带, 存档回写时原样带回.
+ * 一份玩家数据快照, 由快照元数据与各类型的完整数据块组成.
+ * 数据块同时携带类型数据与元信息, 未注册类型在正式加载时按元信息决定是否保留.
  */
 public final class Snapshot {
     private final SnapshotMeta meta;
     private final SnapshotData content;
 
     public Snapshot(@NotNull SnapshotMeta meta, @NotNull Map<DataKey, Tag> data) {
-        this(meta, new EagerSnapshotData(data));
+        this(meta, EagerSnapshotData.fromTags(data));
     }
 
     public Snapshot(@NotNull SnapshotMeta meta, @NotNull SnapshotData content) {
@@ -52,7 +52,7 @@ public final class Snapshot {
     }
 
     /**
-     * 全部类型的值, <strong>会还原数据体中的每一个类型</strong>, 用于确实需要完整内容的路径.
+     * 全部类型的 Tag 投影, <strong>会还原数据体中的每一个类型</strong>.
      */
     @NotNull
     public Map<DataKey, Tag> allData() {
@@ -63,16 +63,16 @@ public final class Snapshot {
     public boolean equals(@Nullable Object object) {
         if (this == object) return true;
         if (!(object instanceof Snapshot other)) return false;
-        return this.meta.equals(other.meta) && this.allData().equals(other.allData());
+        return this.meta.equals(other.meta) && this.content.blocks().equals(other.content.blocks());
     }
 
     @Override
     public int hashCode() {
-        return 31 * this.meta.hashCode() + this.allData().hashCode();
+        return 31 * this.meta.hashCode() + this.content.blocks().hashCode();
     }
 
     @Override
     public String toString() {
-        return "Snapshot[meta=" + this.meta + ", data=" + this.allData() + "]";
+        return "Snapshot[meta=" + this.meta + ", data=" + this.content.blocks() + "]";
     }
 }

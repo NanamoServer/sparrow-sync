@@ -7,11 +7,12 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -25,6 +26,12 @@ public final class PotionEffectsDataType extends CodecDataType<List<MobEffectIns
 
     public PotionEffectsDataType() {
         super(POTION_EFFECTS, MobEffectInstance.CODEC.listOf(), MinecraftRegistryOps::sparrowNbt);
+    }
+
+    @Override
+    @NotNull
+    public BlockMeta meta() {
+        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

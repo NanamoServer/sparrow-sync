@@ -1,32 +1,33 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
-import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
-import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.JsonSnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
@@ -124,8 +125,8 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, this.details(Runnable::run).load(snapshot.meta().id()).join());
         assertInstanceOf(Preview.Failed.class, ready.previews().get(HealthDataType.HEALTH));
         assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE));
-        assertEquals(new Preview.Unsupported(true, -1), ready.previews().get(custom));
-        assertEquals(new Preview.Unsupported(false, -1), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(true, -1, BlockMeta.DEFAULT), ready.previews().get(custom));
+        assertEquals(new Preview.Unsupported(false, -1, BlockMeta.DEFAULT), ready.previews().get(unknown));
         assertSame(raw, ready.snapshot().data(unknown));
         assertEquals(4, ready.snapshot().allData().size());
     }
@@ -224,7 +225,7 @@ class SnapshotDetailsTest {
         var ready = assertInstanceOf(SnapshotDetailResult.Ready.class, archive.result());
         assertEquals(snapshot, ready.snapshot());
         assertEquals(experience, assertInstanceOf(Preview.Ready.class, ready.previews().get(ExperienceDataType.EXPERIENCE)).value());
-        assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown)), ready.previews().get(unknown));
+        assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown), BlockMeta.DEFAULT), ready.previews().get(unknown));
     }
 
     /**

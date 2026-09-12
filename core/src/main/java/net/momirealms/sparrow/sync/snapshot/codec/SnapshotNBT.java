@@ -3,10 +3,13 @@ package net.momirealms.sparrow.sync.snapshot.codec;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -27,6 +30,7 @@ final class SnapshotNBT {
     static final String FIELD_SERVER = "server";   // 采集服务器标识
     static final String FIELD_MC_DATA = "mcData";  // Minecraft 数据版本, 用于内容升级
     static final String FIELD_DATA = "data";       // 完整树中的数据体, 元数据段省略此键
+    static final String FIELD_BLOCK_META = "meta"; // 类型块附加信息
 
     private SnapshotNBT() {
     }
@@ -40,9 +44,14 @@ final class SnapshotNBT {
     @NotNull
     static CompoundTag toTagTree(@NotNull Snapshot snapshot) {
         CompoundTag root = toMetaTree(snapshot.meta());
-        CompoundTag data = NBT.createCompound();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
-            data.put(entry.getKey().asString(), entry.getValue());
+        CompoundTag data = NBT.createCompound(new LinkedHashMap<>());
+        for (DataKey key : snapshot.keys()) {
+            SnapshotBlock block = snapshot.content().block(key);
+            assert block != null;
+            CompoundTag value = NBT.createCompound();
+            value.put(FIELD_BLOCK_META, BlockMetaCodec.write(block.meta()));
+            value.put(FIELD_DATA, block.data());
+            data.put(key.asString(), value);
         }
         root.put(FIELD_DATA, data);
         return root;
@@ -77,14 +86,18 @@ final class SnapshotNBT {
     @NotNull
     static Snapshot fromTagTree(@NotNull CompoundTag root) throws IOException {
         SnapshotMeta meta = fromMetaTree(root);
-        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        Map<DataKey, SnapshotBlock> data = new LinkedHashMap<>();
         CompoundTag values = root.getCompound(FIELD_DATA, null);
         if (values != null) {
             for (Map.Entry<String, Tag> entry : values.entrySet()) {
-                data.put(DataKey.parse(entry.getKey()), entry.getValue());
+                if (!(entry.getValue() instanceof CompoundTag block)
+                        || !(block.get(FIELD_BLOCK_META) instanceof CompoundTag blockMeta) || !block.containsKey(FIELD_DATA)) {
+                    throw new IOException("data block '" + entry.getKey() + "' must contain meta and data");
+                }
+                data.put(DataKey.parse(entry.getKey()), new SnapshotBlock(BlockMetaCodec.read(blockMeta), block.get(FIELD_DATA)));
             }
         }
-        return new Snapshot(meta, data);
+        return new Snapshot(meta, new EagerSnapshotData(data));
     }
 
     /**

@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.UncheckedIOException;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -13,6 +14,46 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 public interface SnapshotData {
+
+    /**
+     * 读取可跨载体传递的块元信息, <strong>不触发解块</strong>.
+     *
+     * @param key 要查询的类型
+     * @return 原块的元信息, 类型不存在时返回默认元信息
+     */
+    @NotNull
+    default BlockMeta meta(@NotNull DataKey key) {
+        RawBlock block = this.raw(key);
+        return block == null ? BlockMeta.DEFAULT : block.index().meta();
+    }
+
+    /**
+     * 读取一个完整的逻辑块, 同时携带元信息和类型数据.
+     *
+     * @param key 要读取的类型
+     * @return 完整块, 类型不存在时返回 null
+     * @throws UncheckedIOException 当原始块无法还原为 Tag 时
+     */
+    @Nullable
+    default SnapshotBlock block(@NotNull DataKey key) {
+        Tag value = this.get(key);
+        return value == null ? null : new SnapshotBlock(this.meta(key), value);
+    }
+
+    /**
+     * 展开全部逻辑块供需要完整内容的转换使用, 保留每个块的元信息.
+     *
+     * @return 按来源顺序排列的只读块集合
+     * @throws UncheckedIOException 当任一原始块无法还原为 Tag 时
+     */
+    @NotNull
+    default Map<DataKey, SnapshotBlock> blocks() {
+        Map<DataKey, SnapshotBlock> blocks = new LinkedHashMap<>();
+        for (DataKey key : this.keys()) {
+            blocks.put(key, this.block(key));
+        }
+        return Collections.unmodifiableMap(blocks);
+    }
 
     /**
      * 数据体中全部类型的标识, <strong>不触发任何解析</strong>.
@@ -62,7 +103,7 @@ public interface SnapshotData {
      */
     default int rawLength(@NotNull DataKey key) {
         RawBlock block = this.raw(key);
-        return block == null ? -1 : block.entry().rawLength();
+        return block == null ? -1 : block.index().rawLength();
     }
 
     /**
@@ -80,7 +121,7 @@ public interface SnapshotData {
     }
 
     /**
-     * 将一组新值覆盖到当前数据体上, 未覆盖的类型继续保留原始块.
+     * 将一组新值覆盖到当前数据体上, 已有类型保留原元信息, 新类型使用默认元信息.
      * 原有类型位置不变, 新增类型按传入 Map 的顺序追加; 空 Map 返回当前对象.
      *
      * @param values 要替换或追加的值, Map 会被复制, <strong>其中的 Tag 交付后不得修改</strong>
@@ -88,7 +129,24 @@ public interface SnapshotData {
      */
     @NotNull
     default SnapshotData with(@NotNull Map<DataKey, Tag> values) {
-        return values.isEmpty() ? this : new OverlaySnapshotData(this, new LinkedHashMap<>(values));
+        if (values.isEmpty()) return this;
+        Map<DataKey, SnapshotBlock> blocks = new LinkedHashMap<>();
+        for (Map.Entry<DataKey, Tag> entry : values.entrySet()) {
+            blocks.put(entry.getKey(), new SnapshotBlock(this.meta(entry.getKey()), entry.getValue()));
+        }
+        return this.withBlocks(blocks);
+    }
+
+    /**
+     * 用完整逻辑块覆盖类型数据及其元信息, 适用于本次采集和载体转换后的结果.
+     * 未覆盖类型继续提供原始块, 已有键位置不变, 新键按输入顺序追加.
+     *
+     * @param blocks 新的完整块, Map 会被复制, <strong>块内的 Tag 交付后不得修改</strong>
+     * @return 覆盖后的只读数据体, 空输入返回当前对象
+     */
+    @NotNull
+    default SnapshotData withBlocks(@NotNull Map<DataKey, SnapshotBlock> blocks) {
+        return blocks.isEmpty() ? this : new OverlaySnapshotData(this, new LinkedHashMap<>(blocks));
     }
 
     /**

@@ -8,25 +8,28 @@ import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.nbt.visitor.CompactStringTagVisitor;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.upgrade.SnapshotUpgradePipeline;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bson.Document;
 import org.bson.json.JsonWriterSettings;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * 人工可读的 JSON 形态快照编解码, 用于调试导出与手工修订, 不承担持久化.
- * 元数据为 JSON 字段, 数据体每个类型一个 SNBT 字符串, 类型后缀与数组标记保真,手改数值后可原样解码回快照.
+ * 元数据为 JSON 字段, 数据体每个类型包含 meta 对象和 data SNBT 字符串, 类型后缀与数组标记保真,手改数值后可原样解码回快照.
  * 字段名与二进制形态的树排布一致, 解码把 JSON 还原成同构的树后进入升级管线与树读取.
  */
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
@@ -49,8 +52,10 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         document.append(SnapshotNBT.FIELD_MC_DATA, meta.mcDataVersion());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         Document data = new Document();
-        for (Map.Entry<DataKey, Tag> entry : snapshot.allData().entrySet()) {
-            data.append(entry.getKey().asString(), new CompactStringTagVisitor().visit(entry.getValue()));
+        for (DataKey key : snapshot.keys()) {
+            SnapshotBlock block = snapshot.content().block(key);
+            data.append(key.asString(), new Document(SnapshotNBT.FIELD_BLOCK_META, BlockMetaCodec.toJson(block.meta()))
+                    .append(SnapshotNBT.FIELD_DATA, new CompactStringTagVisitor().visit(block.data())));
         }
         document.append(SnapshotNBT.FIELD_DATA, data);
         return document.toJson(JSON_WRITER);
@@ -89,18 +94,24 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         if (document.get(SnapshotNBT.FIELD_CAUSE) instanceof String cause) root.putString(SnapshotNBT.FIELD_CAUSE, cause);
         if (document.get(SnapshotNBT.FIELD_SERVER) instanceof String server) root.putString(SnapshotNBT.FIELD_SERVER, server);
         if (Boolean.TRUE.equals(document.getBoolean(SnapshotNBT.FIELD_PINNED))) root.putBoolean(SnapshotNBT.FIELD_PINNED, true);
-        CompoundTag data = NBT.createCompound();
+        CompoundTag data = NBT.createCompound(new LinkedHashMap<>());
         Document values = document.get(SnapshotNBT.FIELD_DATA, Document.class);
         if (values != null) {
             for (Map.Entry<String, Object> entry : values.entrySet()) {
-                if (entry.getValue() == null) continue;
-                if (!(entry.getValue() instanceof String snbt)) {
-                    throw new IOException("data field '" + entry.getKey() + "' must be an SNBT string");
+                if (!(entry.getValue() instanceof Document block)
+                        || !(block.get(SnapshotNBT.FIELD_BLOCK_META) instanceof Document blockMeta)
+                        || !(block.get(SnapshotNBT.FIELD_DATA) instanceof String snbt)) {
+                    throw new IOException("data block '" + entry.getKey() + "' must contain a meta object and a data SNBT string");
                 }
                 try {
-                    data.put(entry.getKey(), parseSnbt(snbt));
-                } catch (CommandSyntaxException exception) {
-                    throw new IOException("data field '" + entry.getKey() + "': " + exception.getMessage());
+                    CompoundTag value = NBT.createCompound();
+                    value.put(SnapshotNBT.FIELD_BLOCK_META, BlockMetaCodec.write(BlockMetaCodec.read(blockMeta)));
+                    value.put(SnapshotNBT.FIELD_DATA, parseSnbt(snbt));
+                    data.put(entry.getKey(), value);
+                } catch (FormatException exception) {
+                    throw new FormatException(exception.reason(), "data block '" + entry.getKey() + "': " + exception.getMessage());
+                } catch (CommandSyntaxException | IOException exception) {
+                    throw new IOException("data block '" + entry.getKey() + "': " + exception.getMessage());
                 }
             }
         }

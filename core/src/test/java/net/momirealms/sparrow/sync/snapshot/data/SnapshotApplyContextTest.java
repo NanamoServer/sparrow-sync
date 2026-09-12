@@ -22,7 +22,7 @@ class SnapshotApplyContextTest {
         DataRegistry registry = registry();
         Object[] values = new Object[registry.size()];
         values[registry.slot(FIRST)] = "first";
-        SnapshotApplyContext context = new SnapshotApplyContext(registry, new EagerSnapshotData(Map.of(UNKNOWN, NBT.createString("unknown"))), values);
+        SnapshotApplyContext context = new SnapshotApplyContext(registry, EagerSnapshotData.fromTags(Map.of(UNKNOWN, NBT.createString("unknown"))), values);
         context.decodeSkipped(registry.slot(SECOND), new IllegalStateException("corrupted"));
         context.appliedNative(registry.slot(FIRST), null);
         Map<DataKey, Object> eventData = new LinkedHashMap<>();

@@ -3,9 +3,10 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.entity.player.Abilities;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +18,12 @@ public final class FlightStatusDataType extends CodecDataType<FlightStatusDataTy
 
     public FlightStatusDataType() {
         super(FLIGHT_STATUS, FlightStatus.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public BlockMeta meta() {
+        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

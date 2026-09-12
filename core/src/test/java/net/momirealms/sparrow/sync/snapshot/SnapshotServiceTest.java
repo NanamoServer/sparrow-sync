@@ -3,7 +3,6 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.snapshot.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
@@ -36,7 +35,7 @@ class SnapshotServiceTest {
         passthrough.put(UNKNOWN, NBT.createString("unknown"));
         passthrough.put(FIRST, NBT.createString("old"));
 
-        SnapshotData merged = new EagerSnapshotData(passthrough).with(Map.of(FIRST, NBT.createString("new")));
+        SnapshotData merged = EagerSnapshotData.fromTags(passthrough).with(Map.of(FIRST, NBT.createString("new")));
 
         assertEquals("unknown", merged.get(UNKNOWN).getAsString());
         assertEquals("new", merged.get(FIRST).getAsString());

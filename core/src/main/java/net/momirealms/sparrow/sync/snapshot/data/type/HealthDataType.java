@@ -5,10 +5,11 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -22,6 +23,12 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
 
     public HealthDataType() {
         super(HEALTH, Health.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public BlockMeta meta() {
+        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

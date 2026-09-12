@@ -7,7 +7,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndex;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndexCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
@@ -42,7 +42,7 @@ class BlockFrameTest {
     void eachDamagedBlockIsIsolated() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
         byte[] original = this.codec.encode(source);
-        for (Map.Entry<String, BlockIndex.Entry> item : entries(original).entrySet()) {
+        for (Map.Entry<String, BlockIndex> item : entries(original).entrySet()) {
             byte[] damaged = original.clone();
             damaged[base(damaged) + item.getValue().offset() + 9] ^= 1;
             Snapshot restored = this.valid(damaged);
@@ -66,11 +66,11 @@ class BlockFrameTest {
     void truncationReportsIndividualKeys() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
         byte[] original = this.codec.encode(source);
-        LinkedHashMap<String, BlockIndex.Entry> entries = entries(original);
-        for (BlockIndex.Entry cut : entries.values()) {
+        LinkedHashMap<String, BlockIndex> entries = entries(original);
+        for (BlockIndex cut : entries.values()) {
             int length = base(original) + cut.offset() + 9 + cut.length() / 2;
             Snapshot restored = this.valid(Arrays.copyOf(original, length));
-            for (Map.Entry<String, BlockIndex.Entry> item : entries.entrySet()) {
+            for (Map.Entry<String, BlockIndex> item : entries.entrySet()) {
                 DataKey key = DataKey.parse(item.getKey());
                 if (base(original) + item.getValue().offset() + 9 + item.getValue().length() <= length) {
                     assertEquals(source.data(key), restored.data(key));
@@ -152,8 +152,8 @@ class BlockFrameTest {
         assertEquals(new ArrayList<>(source.keys()), new ArrayList<>(restored.keys()));
         assertEquals(source, restored);
         assertArrayEquals(bytes, this.codec.encode(restored));
-        for (BlockIndex.Entry entry : entries(bytes).values()) {
-            assertEquals(CompressorRegistry.NONE.id(), entry.compressorId());
+        for (BlockIndex entry : entries(bytes).values()) {
+            assertEquals(CompressorRegistry.NONE.id(), bytes[base(bytes) + entry.offset()]);
         }
     }
 
@@ -209,19 +209,6 @@ class BlockFrameTest {
     }
 
     /**
-     * 索引中的未知算法同样需要被识别, 不能仅信任块头.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
-    @Test
-    void indexCompressorMustBeSupported() throws IOException {
-        String key = "other:value";
-        byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
-        BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, ByteBuffer.wrap(block).getInt(1), (byte) 99);
-        assertEquals(InvalidReason.UNSUPPORTED_COMPRESSION, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
-    }
-
-    /**
      * 三种内置压缩器都可以还原单块, 阈值恰好相等时开始压缩.
      *
      * @throws Exception 当测试帧构造, 编解码或并发任务失败时
@@ -235,7 +222,7 @@ class BlockFrameTest {
         int rawLength = NBT.toBytes(tree, false).length;
         for (CompressorRegistry compressor : CompressorRegistry.values()) {
             byte[] block = BlockCodec.encode(key, value, compressor, rawLength);
-            BlockIndex.Entry entry = new BlockIndex.Entry(0, block.length - 9, rawLength, compressor.id());
+            BlockIndex entry = new BlockIndex(0, block.length - 9, rawLength, BlockMeta.DEFAULT);
             assertEquals(value, BlockCodec.decode(block, 0, key, entry));
             assertEquals(compressor.id(), block[0]);
             assertEquals(CompressorRegistry.NONE.id(), BlockCodec.encode(key, value, compressor, rawLength + 1)[0]);
@@ -253,9 +240,9 @@ class BlockFrameTest {
         byte[] block = BlockCodec.encode(key, NBT.createInt(3), CompressorRegistry.NONE, 256);
         int raw = ByteBuffer.wrap(block).getInt(1);
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key,
-                new BlockIndex.Entry(0, block.length - 9, raw + 1, (byte) 0))).reason());
+                new BlockIndex(0, block.length - 9, raw + 1, BlockMeta.DEFAULT))).reason());
         assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 14, key,
-                new BlockIndex.Entry(Integer.MAX_VALUE, Integer.MAX_VALUE, raw, (byte) 0))).reason());
+                new BlockIndex(Integer.MAX_VALUE, Integer.MAX_VALUE, raw, BlockMeta.DEFAULT))).reason());
     }
 
     /**
@@ -277,7 +264,7 @@ class BlockFrameTest {
             CRC32 crc = new CRC32();
             crc.update(raw);
             byte[] block = ByteBuffer.allocate(9 + raw.length).put((byte) 0).putInt(raw.length).putInt((int) crc.getValue()).put(raw).array();
-            BlockIndex.Entry entry = new BlockIndex.Entry(0, raw.length, raw.length, (byte) 0);
+            BlockIndex entry = new BlockIndex(0, raw.length, raw.length, BlockMeta.DEFAULT);
             assertEquals(InvalidReason.CORRUPTED, assertThrows(FormatException.class, () -> BlockCodec.decode(block, 0, key, entry)).reason());
         }
     }
@@ -289,21 +276,21 @@ class BlockFrameTest {
      */
     @Test
     void indexRoundTripAndValidation() throws IOException {
-        LinkedHashMap<String, BlockIndex.Entry> values = new LinkedHashMap<>();
-        values.put("other:z", new BlockIndex.Entry(0, 12, 12, (byte) 0));
-        values.put("other:a", new BlockIndex.Entry(21, 15, 30, (byte) 1));
-        assertFalse(BlockIndex.write(values).getCompound("other:z").containsKey("v"));
-        assertEquals(values, BlockIndex.read(BlockIndex.write(values)));
-        assertEquals(new ArrayList<>(values.keySet()), new ArrayList<>(BlockIndex.read(BlockIndex.write(values)).keySet()));
-        for (String field : List.of("o", "l", "n", "c")) {
-            CompoundTag index = BlockIndex.write(values);
+        LinkedHashMap<String, BlockIndex> values = new LinkedHashMap<>();
+        values.put("other:z", new BlockIndex(0, 12, 12, BlockMeta.DEFAULT));
+        values.put("other:a", new BlockIndex(21, 15, 30, BlockMeta.DEFAULT));
+        assertFalse(BlockIndexCodec.write(values).getCompound("other:z").containsKey("v"));
+        assertEquals(values, BlockIndexCodec.read(BlockIndexCodec.write(values)));
+        assertEquals(new ArrayList<>(values.keySet()), new ArrayList<>(BlockIndexCodec.read(BlockIndexCodec.write(values)).keySet()));
+        for (String field : List.of("o", "l", "n")) {
+            CompoundTag index = BlockIndexCodec.write(values);
             index.getCompound("other:z").remove(field);
-            assertThrows(FormatException.class, () -> BlockIndex.read(index));
+            assertThrows(FormatException.class, () -> BlockIndexCodec.read(index));
         }
         for (String field : List.of("o", "l", "n")) {
-            CompoundTag index = BlockIndex.write(values);
+            CompoundTag index = BlockIndexCodec.write(values);
             index.getCompound("other:z").putInt(field, -1);
-            assertThrows(FormatException.class, () -> BlockIndex.read(index));
+            assertThrows(FormatException.class, () -> BlockIndexCodec.read(index));
         }
     }
 
@@ -344,11 +331,11 @@ class BlockFrameTest {
      * @return 类型与索引条目
      * @throws IOException 当测试输入无法解析时
      */
-    private static LinkedHashMap<String, BlockIndex.Entry> entries(byte[] bytes) throws IOException {
+    private static LinkedHashMap<String, BlockIndex> entries(byte[] bytes) throws IOException {
         int metaLength = Short.toUnsignedInt(ByteBuffer.wrap(bytes).getShort(4));
         int indexLength = ByteBuffer.wrap(bytes).getInt(6);
         CompoundTag tree = (CompoundTag) NBT.readUnnamedTag(new DataInputStream(new ByteArrayInputStream(bytes, 14 + metaLength, indexLength)), false);
-        return BlockIndex.read(tree);
+        return BlockIndexCodec.read(tree);
     }
 
     /**

@@ -5,25 +5,25 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
+import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
-import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
-import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.util.ItemUtils;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
@@ -542,9 +542,12 @@ public final class SnapshotDetailGui {
         // 大小已在准备预览时从索引中取得; 此处直接显示, 无需读取这些类型的 NBT.
         for (var entry : previews.entrySet()) {
             if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
+                String state = unsupported.registered()
+                        ? "additional.unsupported"
+                        : !unsupported.meta().keepUnknown() ? "additional.unknown_drop" : "additional.unknown_keep";
                 lines.add(unsupported.rawLength() < 0
-                        ? this.text("additional.unsupported", entry.getKey().asString())
-                        : this.text("additional.unsupported_size", entry.getKey().asString(), unsupported.rawLength()));
+                        ? this.text(state, entry.getKey().asString())
+                        : this.text(state + "_size", entry.getKey().asString(), unsupported.rawLength()));
             }
         }
         return lines;

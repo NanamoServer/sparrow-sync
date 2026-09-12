@@ -16,8 +16,8 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityEquipment;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.PlayerEnderChestContainer;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.PlayerEnderChestContainer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
@@ -27,13 +27,14 @@ import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
-import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
+import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import org.bukkit.GameMode;
@@ -219,7 +220,7 @@ class NmsCaptureTest {
             Map<DataKey, Tag> encoded = worker.submit(() -> {
                 PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, pipeline.captureAsync(this.player, pending));
                 assertTrue(captured.skipped().isEmpty());
-                return assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data();
+                return new EagerSnapshotData(assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data()).all();
             }).get(2, TimeUnit.SECONDS);
 
             InventoryDataType.Inventory savedInventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(encoded.get(InventoryDataType.INVENTORY), 0);

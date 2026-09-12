@@ -6,11 +6,14 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
-import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndex;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndexCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockMetaCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
+import net.momirealms.sparrow.sync.snapshot.model.BlockIndex;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
@@ -86,7 +89,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      */
     @NotNull
     public byte[] frameData(@NotNull Map<DataKey, Tag> data) throws IOException {
-        return this.frameData(new EagerSnapshotData(data));
+        return this.frameData(EagerSnapshotData.fromTags(data));
     }
 
     /**
@@ -113,34 +116,33 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      */
     @NotNull
     private byte[] encodeFrame(byte @NotNull [] meta, @NotNull SnapshotData data) throws IOException {
-        //  LazySnapshotData 已有完整帧, 直接复制其中的索引和所有数据块;
-        if (data instanceof LazySnapshotData lazy) return copyFrame(meta, lazy.encodedFrame());
+        // 元信息仍与原索引一致时复制完整块区, 已升级的元信息通过逐块路径写入新索引.
+        if (data instanceof LazySnapshotData lazy && !lazy.upgradedMeta()) return copyFrame(meta, lazy.encodedFrame());
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
-        LinkedHashMap<String, BlockIndex.Entry> entries = new LinkedHashMap<>();
+        LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
         // 按 keys 的顺序写出数据块, 自动记录每块的位置, 长度, 压缩方式并生成新索引
         // 索引中的位置从第一个数据块起计算; 每块占用 9 字节块头加实际数据长度, 索引的 length 只记录后者
         for (DataKey key : data.keys()) {
             String name = key.asString();
             RawBlock raw = data.raw(key);
             if (raw != null) {
-                BlockIndex.Entry entry = raw.entry();
+                BlockIndex entry = raw.index();
                 long length = BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.length();
                 if (raw.offset() < 0 || raw.offset() + length > raw.bytes().length) {
                     throw new FormatException(InvalidReason.CORRUPTED, "raw block out of bounds for " + name);
                 }
                 // 前面的块修改后长度可能变化, 因此重算此块的位置; 复制的内容没变, 其余索引信息沿用原值.
-                entries.put(name, new BlockIndex.Entry(blocks.size(), entry.length(), entry.rawLength(), entry.compressorId()));
+                entries.put(name, new BlockIndex(blocks.size(), entry.length(), entry.rawLength(), entry.meta()));
                 blocks.write(raw.bytes(), (int) raw.offset(), (int) length);
                 continue;
             }
             byte[] block = BlockCodec.encode(name, data.get(key), this.compressor, this.compressThreshold);
             ByteBuffer header = ByteBuffer.wrap(block);
-            byte compressorId = header.get();
-            int rawLength = header.getInt();
-            entries.put(name, new BlockIndex.Entry(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength, compressorId));
+            int rawLength = header.getInt(1);
+            entries.put(name, new BlockIndex(blocks.size(), block.length - BlockCodec.BLOCK_HEADER_LENGTH, rawLength, data.meta(key)));
             blocks.write(block);
         }
-        byte[] index = NBT.toBytes(BlockIndex.write(entries), false);
+        byte[] index = NBT.toBytes(BlockIndexCodec.write(entries), false);
         CRC32 crc = new CRC32();
         crc.update(meta);
         crc.update(index);
@@ -188,7 +190,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
             if (frame.meta() == null) {
                 throw new FormatException(InvalidReason.CORRUPTED, "missing snapshot meta");
             }
-            return new DecodedSnapshot.Valid(new Snapshot(SnapshotNBT.fromMetaTree(frame.meta()), new LazySnapshotData(encoded, frame.blockBase(), frame.index())));
+            return new DecodedSnapshot.Valid(new Snapshot(SnapshotNBT.fromMetaTree(frame.meta()), new LazySnapshotData(encoded, frame.blockBase(), frame.index(), frame.upgradedMeta())));
         } catch (FormatException exception) {
             return new DecodedSnapshot.Invalid(exception.reason(), String.valueOf(exception.getMessage()));
         } catch (Exception exception) {
@@ -209,7 +211,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         if (frame.meta() != null) {
             throw new FormatException(InvalidReason.CORRUPTED, "expected a data-only frame");
         }
-        return new LazySnapshotData(bytes, frame.blockBase(), frame.index());
+        return new LazySnapshotData(bytes, frame.blockBase(), frame.index(), frame.upgradedMeta());
     }
 
     /**
@@ -250,21 +252,30 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         }
         CompoundTag meta = (flags & FLAG_HAS_META) == 0 ? null : readCompound(bytes, HEADER_LENGTH, metaLength, "meta");
         CompoundTag index = readCompound(bytes, HEADER_LENGTH + metaLength, (int) indexLength, "index");
-        LinkedHashMap<String, BlockIndex.Entry> entries = BlockIndex.read(index);
+        // 在升级步骤可能修改元信息树之前记录来源版本, 保存时据此决定是否重建索引.
+        boolean upgradedMeta = false;
+        for (Tag value : index.values()) {
+            if (value instanceof CompoundTag entry && entry.get("meta") instanceof CompoundTag storedMeta) {
+                upgradedMeta |= BlockMetaCodec.version(storedMeta) < BlockMeta.CURRENT_VERSION;
+            } else {
+                upgradedMeta |= 1 < BlockMeta.CURRENT_VERSION;
+            }
+        }
+        LinkedHashMap<String, BlockIndex> entries = BlockIndexCodec.read(index);
         // NBT 库读取 compound 使用 HashMap; o 保存了物理次序, 据此恢复 keys 的稳定顺序.
         var ordered = new ArrayList<>(entries.entrySet());
         ordered.sort(Comparator.comparingInt(entry -> entry.getValue().offset()));
         entries.clear();
         long nextOffset = 0;
         for (int i = 0; i < ordered.size(); i++) {
-            Map.Entry<String, BlockIndex.Entry> entry = ordered.get(i);
+            Map.Entry<String, BlockIndex> entry = ordered.get(i);
             if (entry.getValue().offset() != nextOffset) {
                 throw new FormatException(InvalidReason.CORRUPTED, "non-contiguous index offset for " + entry.getKey());
             }
             entries.put(entry.getKey(), entry.getValue());
             nextOffset += BlockCodec.BLOCK_HEADER_LENGTH + (long) entry.getValue().length();
         }
-        return new Frame(meta, entries, (int) blockBase);
+        return new Frame(meta, entries, (int) blockBase, upgradedMeta);
     }
 
     /**
@@ -299,7 +310,8 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
      * @param meta 帧内元数据, 数据帧为 null
      * @param index 各类型的块位置与编码信息
      * @param blockBase 第一块在帧中的绝对偏移
+     * @param upgradedMeta 元信息是否经过版本升级, 写回时需要重建索引
      */
-    private record Frame(@Nullable CompoundTag meta, @NotNull LinkedHashMap<String, BlockIndex.Entry> index, int blockBase) {
+    private record Frame(@Nullable CompoundTag meta, @NotNull LinkedHashMap<String, BlockIndex> index, int blockBase, boolean upgradedMeta) {
     }
 }

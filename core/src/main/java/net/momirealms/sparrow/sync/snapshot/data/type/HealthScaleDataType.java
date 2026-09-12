@@ -2,9 +2,10 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -15,6 +16,12 @@ public final class HealthScaleDataType extends CodecDataType<HealthScaleDataType
 
     public HealthScaleDataType() {
         super(HEALTH_SCALE, HealthScale.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public BlockMeta meta() {
+        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

@@ -1,12 +1,8 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
-import net.momirealms.sparrow.sync.snapshot.data.*;
-import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.data.*;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
@@ -15,7 +11,11 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
+import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult.Preview;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -104,7 +104,7 @@ public final class SnapshotDetails {
         for (DataKey key : snapshot.keys()) {
             PlayerDataType<?> type = this.registry.type(key);
             if (!supportsPreview(type)) {
-                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key)));
+                previews.put(key, new Preview.Unsupported(type != null, snapshot.content().rawLength(key), snapshot.content().meta(key)));
                 continue;
             }
             Throwable failure = decoded.failure(key);

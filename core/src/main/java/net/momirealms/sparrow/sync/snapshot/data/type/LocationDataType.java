@@ -7,10 +7,11 @@ import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
+import net.momirealms.sparrow.sync.snapshot.model.BlockMeta;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -24,6 +25,12 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
 
     public LocationDataType() {
         super(LOCATION, PlayerLocation.CODEC);
+    }
+
+    @Override
+    @NotNull
+    public BlockMeta meta() {
+        return BlockMeta.DISCARD_UNKNOWN;
     }
 
     @Override

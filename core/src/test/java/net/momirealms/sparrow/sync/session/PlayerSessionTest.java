@@ -143,7 +143,7 @@ class PlayerSessionTest {
         assertSame(LoginDataState.CLEARED, session.finishLoginData());
 
         Map<DataKey, Tag> replacement = Map.of(unknown, NBT.createString("replacement"));
-        session.retainedData(new EagerSnapshotData(replacement));
+        session.retainedData(EagerSnapshotData.fromTags(replacement));
         assertEquals(replacement, session.retainedData().all());
     }
 
@@ -228,7 +228,7 @@ class PlayerSessionTest {
         try {
             Constructor<SnapshotApplyContext> constructor = SnapshotApplyContext.class.getDeclaredConstructor(DataRegistry.class, SnapshotData.class, Object[].class);
             constructor.setAccessible(true);
-            return constructor.newInstance(registry, new EagerSnapshotData(passthrough), new Object[registry.size()]);
+            return constructor.newInstance(registry, EagerSnapshotData.fromTags(passthrough), new Object[registry.size()]);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

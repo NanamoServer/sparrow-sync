@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
@@ -219,6 +220,13 @@ public final class PlayerDataPipeline {
             }
             this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, failure, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
         }
+        // 丢弃决策只读取元信息.
+        UUID player = snapshot.meta().player();
+        for (DataKey key : snapshot.keys()) {
+            if (this.dataRegistry.slot(key) < 0 && !snapshot.content().meta(key).keepUnknown()) {
+                this.logger.file(LogCategory.DATA, player, null, LogConstants.DATA_UNKNOWN_DROPPED, player.toString(), key.asString());
+            }
+        }
         SnapshotData passthrough = decoded.passthrough();
         if (!passthrough.keys().isEmpty()) {
             // 子集的 raw 仍指向来源, 编码器逐块复制后读回, Context 只持有未知类型的小帧.
@@ -392,7 +400,7 @@ public final class PlayerDataPipeline {
 
             @NotNull
             public Map<DataKey, Object> values() {
-                // Map 只在事件和调试边界创建, 内部继续使用槽位数组
+                // 采集结果写入当前类型声明, 元信息与 Tag 一起交给快照组装
                 Map<DataKey, Object> values = new LinkedHashMap<>(this.values.length);
                 for (int i = 0; i < this.values.length; i++) {
                     Object value = this.values[i];
@@ -426,12 +434,12 @@ public final class PlayerDataPipeline {
             }
 
             @NotNull
-            public Map<DataKey, Tag> data() {
-                // Map 只在事件和调试边界创建, 内部继续使用槽位数组
-                Map<DataKey, Tag> data = new LinkedHashMap<>(this.tags.length);
+            public Map<DataKey, SnapshotBlock> data() {
+                // 采集结果写入当前类型声明, 元信息与 Tag 一起交给快照组装
+                Map<DataKey, SnapshotBlock> data = new LinkedHashMap<>(this.tags.length);
                 for (int i = 0; i < this.tags.length; i++) {
                     Tag tag = this.tags[i];
-                    if (tag != null) data.put(this.dataRegistry.keyAt(i), tag);
+                    if (tag != null) data.put(this.dataRegistry.keyAt(i), new SnapshotBlock(this.dataRegistry.typeAt(i).meta(), tag));
                 }
                 return Collections.unmodifiableMap(data);
             }

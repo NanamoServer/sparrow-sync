@@ -239,7 +239,7 @@ class CaptureSchedulingTest {
         assertEquals(List.of(first, second, this.async.key(), this.sync.key()), new ArrayList<>(restored.keys()));
         for (DataKey key : List.of(first, second)) {
             assertArrayEquals(blockBytes(source.content().raw(key)), blockBytes(restored.content().raw(key)));
-            assertEquals(CompressorRegistry.DEFLATE.id(), restored.content().raw(key).entry().compressorId());
+            assertEquals(CompressorRegistry.DEFLATE.id(), restored.content().raw(key).bytes()[(int) restored.content().raw(key).offset()]);
         }
         assertEquals(2, SnapshotFixtures.decodedBlockCount(source));
         assertEquals(0, SnapshotFixtures.decodedBlockCount(new Snapshot(source.meta(), retained)));
@@ -255,7 +255,7 @@ class CaptureSchedulingTest {
      */
     private static byte[] blockBytes(RawBlock block) {
         int start = (int) block.offset();
-        return Arrays.copyOfRange(block.bytes(), start, start + BlockCodec.BLOCK_HEADER_LENGTH + block.entry().length());
+        return Arrays.copyOfRange(block.bytes(), start, start + BlockCodec.BLOCK_HEADER_LENGTH + block.index().length());
     }
 
     @AfterEach
@@ -359,7 +359,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "type", MapType.SYNC);
         if (outcome.equals("restore")) {
             PlayerDataPipeline.CaptureResult.Ready captured = assertInstanceOf(PlayerDataPipeline.CaptureResult.Ready.class, data.capture(this.player, CaptureMode.SYNC));
-            Tag inventory = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, data.encode(captured)).data().get(InventoryDataType.INVENTORY);
+            Tag inventory = assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, data.encode(captured)).data().get(InventoryDataType.INVENTORY).data();
             Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 4440),
                     Map.of(InventoryDataType.INVENTORY, inventory, DataKey.of("external", "retained"), NBT.createString("unknown")));
             this.saver.saveRestored(source, this.player.getName());

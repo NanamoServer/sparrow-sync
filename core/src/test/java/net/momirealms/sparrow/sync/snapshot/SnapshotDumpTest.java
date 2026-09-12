@@ -1,22 +1,16 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
-import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import java.io.DataInputStream;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.zip.CRC32;
-import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.map.MapStorage;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.exception.ExceptionHeader;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
+import net.momirealms.sparrow.sync.snapshot.model.RawBlock;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -24,14 +18,19 @@ import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +41,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -300,14 +300,14 @@ class SnapshotDumpTest {
         RawBlock block = located.content().raw(located.keys().iterator().next());
         int offset = (int) block.offset();
         if (damage.equals("truncated")) {
-            broken = Arrays.copyOf(broken, offset + 9 + block.entry().length() / 2);
+            broken = Arrays.copyOf(broken, offset + 9 + block.index().length() / 2);
         } else if (damage.equals("compression")) {
             broken[offset] = 99;
         } else {
             broken[offset + 9] = damage.equals("nbt") ? (byte) 0 : (byte) (broken[offset + 9] ^ 1);
             if (!damage.equals("crc")) {
                 CRC32 crc = new CRC32();
-                crc.update(broken, offset + 9, block.entry().length());
+                crc.update(broken, offset + 9, block.index().length());
                 ByteBuffer.wrap(broken).putInt(offset + 5, (int) crc.getValue());
             }
         }

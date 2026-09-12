@@ -44,9 +44,9 @@ public final class SnapshotDecoder {
     // 按注册表确定的顺序读取选中的类型并转换为玩家数据对象; 数据块读取失败和类型转换失败都记在该类型的结果中.
     @NotNull
     private DecodedSnapshotData decode(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected, boolean applying) {
-        // 未注册类型只筛选键并保留原始块引用, 长期持有前由数据流水线复制成紧凑帧.
+        // 未注册且声明保留未知数据的类型保留原始块引用, 数据流水线随后将这些块复制为紧凑帧.
         SnapshotData passthrough = applying
-                ? snapshot.content().select(key -> this.registry.slot(key) < 0)
+                ? snapshot.content().select(key -> this.registry.slot(key) < 0 && snapshot.content().meta(key).keepUnknown())
                 : EagerSnapshotData.EMPTY;
         DecodedSnapshotData result = new DecodedSnapshotData(this.registry, passthrough);
         for (int i = 0; i < this.registry.size(); i++) {
