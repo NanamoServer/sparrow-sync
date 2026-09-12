@@ -6,6 +6,10 @@ import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFilesTest;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
@@ -21,19 +25,24 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -137,6 +146,59 @@ class SnapshotManagementTest {
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         Files.write(this.directory.resolve(output), new byte[]{1, 2, 3});
         assertSame(SnapshotImportResult.INVALID_FILE, this.service.importFile(relative).join());
+    }
+
+    /**
+     * 有效容器中的坏块必须在覆盖前被拒绝, 包括排在最后的外部类型.
+     *
+     * @param type 破坏背包块或本服未注册的外部块
+     * @param damage 校验和、NBT、压缩算法或原始长度故障
+     * @throws Exception 导出文件或测试字节无法读写时
+     */
+    @ParameterizedTest
+    @CsvSource({"inventory,crc", "external,crc", "inventory,nbt", "external,nbt", "inventory,compression", "external,compression", "inventory,length", "external,length"})
+    void damagedBlockImportKeepsExistingRecordAndCache(String type, String damage) throws Exception {
+        Snapshot original = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Tag value = original.data(DataKey.of("unknown", "payload"));
+        DataKey inventory = DataKey.sparrow("inventory");
+        DataKey external = DataKey.of("external", "payload");
+        Map<DataKey, Tag> data = new LinkedHashMap<>();
+        data.put(inventory, value);
+        data.put(external, value);
+        Snapshot snapshot = new Snapshot(original.meta(), data);
+        this.stored.put(snapshot.meta().id(), snapshot);
+        this.cache.publish(snapshot, 15).join();
+        String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
+        Path file = this.directory.resolve(output);
+        byte[] encoded = Files.readAllBytes(file);
+        BinarySnapshotCodec codec = this.plugin.binaryCodec();
+        Snapshot decoded = assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(encoded)).snapshot();
+        int block = (int) decoded.content().raw(type.equals("inventory") ? inventory : external).offset();
+        byte[] damaged = encoded.clone();
+        ByteBuffer header = ByteBuffer.wrap(damaged);
+        int payload = block + BlockCodec.BLOCK_HEADER_LENGTH;
+        int length = header.getInt(block + 1);
+        // NONE 载荷可直接破坏 NBT, 重算 CRC 后专门检验结构读取阶段.
+        assertEquals(CompressorRegistry.NONE.id(), damaged[block]);
+        switch (damage) {
+            case "crc" -> damaged[payload] ^= 1;
+            case "nbt" -> {
+                damaged[payload] = 0;
+                CRC32 crc = new CRC32();
+                crc.update(damaged, payload, length);
+                header.putInt(block + 9, (int) crc.getValue());
+            }
+            case "compression" -> damaged[block] = (byte) 127;
+            case "length" -> header.putInt(block + 5, header.getInt(block + 5) + 1);
+            default -> throw new AssertionError(damage);
+        }
+        assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(damaged));
+        Files.write(file, damaged);
+        assertSame(SnapshotImportResult.INVALID_FILE, this.service.importFile(output.substring("snapshot/output/".length())).join());
+        assertEquals(0, this.writes.get());
+        assertSame(snapshot, this.stored.get(snapshot.meta().id()));
+        assertTrue(this.cache.invalidations.isEmpty());
+        assertSame(snapshot, this.cache.consume(snapshot.meta().player()).join().orElseThrow());
     }
 
     /** 删除坏正文时仍能按元数据清缓存, 回执在删除尝试结束后完成. */
