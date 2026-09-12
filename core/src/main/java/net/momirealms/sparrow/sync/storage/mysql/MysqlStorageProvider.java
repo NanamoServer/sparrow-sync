@@ -187,6 +187,13 @@ public final class MysqlStorageProvider implements StorageProvider {
 
     @Override
     @NotNull
+    public CompletableFuture<Optional<SnapshotMeta>> snapshotMeta(@NotNull UUID snapshotId) {
+        return CompletableFuture.supplyAsync(() -> this.jdbi().withHandle(handle -> handle.createQuery("SELECT " + META_COLUMNS + " FROM `" + this.options.tablePrefix() + "snapshots` WHERE `id` = :id")
+                .bind("id", snapshotId).mapTo(SnapshotMeta.class).findOne()), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
     public CompletableFuture<List<Snapshot>> scanSnapshots(long before, @Nullable UUID after, int limit) {
         return CompletableFuture.supplyAsync(() -> {
             List<SnapshotRow> rows = this.jdbi().withHandle(handle -> {

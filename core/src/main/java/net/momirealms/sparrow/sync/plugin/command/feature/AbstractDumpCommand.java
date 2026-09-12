@@ -17,7 +17,7 @@ abstract class AbstractDumpCommand extends BukkitCommandFeature {
     }
 
     protected void run(CommandContext<?> context, Function<SnapshotDump, SnapshotDump.Result> operation) {
-        SnapshotDump dump = new SnapshotDump(this.plugin().storageProvider(), this.plugin().snapshotService().files(), this.plugin().binaryCodec(), this.plugin().mapSyncService()::importedMap);
+        SnapshotDump dump = new SnapshotDump(this.plugin().storageProvider(), this.plugin().snapshotService().files(), this.plugin().binaryCodec(), this.plugin().mapSyncService()::importedMap, this.plugin().snapshotCache());
         CompletableFuture.supplyAsync(() -> operation.apply(dump), this.plugin().scheduler().async()).whenComplete((result, failure) -> {
             if (failure != null) {
                 this.plugin().logger().warn(TranslationManager.console("log.command.snapshot_failed", this.getFeatureID()), failure);

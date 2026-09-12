@@ -53,7 +53,7 @@ public final class SnapshotService {
         this.saver = new SnapshotSaver(this.plugin);
         this.applier = new SnapshotApplier(this.plugin);
         this.restorer = new SnapshotRestorer(this.plugin, this.saver, this.applier);
-        this.transfer = new SnapshotTransfer(this.storage, this.files, this.plugin.scheduler().async());
+        this.transfer = new SnapshotTransfer(this.storage, this.files, this.plugin.scheduler().async(), this.plugin.snapshotCache());
     }
 
     public void onDelayedEnable() {
@@ -246,7 +246,13 @@ public final class SnapshotService {
      */
     @NotNull
     public CompletableFuture<SnapshotDeleteResult> delete(@NotNull UUID snapshotId) {
-        return this.storage.deleteSnapshot(snapshotId).thenApply(deleted -> deleted ? SnapshotDeleteResult.DELETED : SnapshotDeleteResult.NOT_FOUND);
+        return this.storage.snapshotMeta(snapshotId).thenCompose(found -> {
+            if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotDeleteResult.NOT_FOUND);
+            return this.storage.deleteSnapshot(snapshotId).thenCompose(deleted -> {
+                if (!deleted) return CompletableFuture.completedFuture(SnapshotDeleteResult.NOT_FOUND);
+                return this.plugin.snapshotCache().invalidate(found.get().player()).thenApply(ignored -> SnapshotDeleteResult.DELETED);
+            });
+        });
     }
 
     @NotNull

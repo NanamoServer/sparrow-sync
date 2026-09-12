@@ -15,6 +15,7 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,9 @@ class SnapshotManagementTest {
     @TempDir Path directory;
     private final Map<UUID, Snapshot> stored = new HashMap<>();
     private final AtomicInteger writes = new AtomicInteger();
+    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 保留旧正文以检查管理操作后的失效
+    private StorageProvider.SaveResult importResult = StorageProvider.SaveResult.SAVED; // 本次导入由伪存储返回的结果
+    private boolean rejectBodyReads; // 删除只需身份信息, 此开关让任何正文查询立即失败
     private SnapshotService service;
     private SparrowSync plugin;
 
@@ -52,6 +56,7 @@ class SnapshotManagementTest {
     void setup() {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         this.plugin = plugin;
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotCache", this.cache);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "dataFolderPath", this.directory);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "binaryCodec", new BinarySnapshotCodec(CompressorRegistry.NONE));
         NmsPlayerFixture.set(SparrowSync.class, plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> {
@@ -61,7 +66,11 @@ class SnapshotManagementTest {
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
             if (method.isDefault()) return InvocationHandler.invokeDefault(instance, method, args);
             return switch (method.getName()) {
-                case "snapshot" -> CompletableFuture.completedFuture(Optional.ofNullable(this.stored.get((UUID) args[0])));
+                case "snapshot" -> {
+                    assertFalse(this.rejectBodyReads, "management must not load a body to identify its player");
+                    yield CompletableFuture.completedFuture(Optional.ofNullable(this.stored.get((UUID) args[0])));
+                }
+                case "snapshotMeta" -> CompletableFuture.completedFuture(Optional.ofNullable(this.stored.get((UUID) args[0])).map(Snapshot::meta));
                 case "setPinned" -> {
                     Snapshot old = this.stored.get((UUID) args[0]);
                     boolean pinned = (boolean) args[1];
@@ -73,8 +82,10 @@ class SnapshotManagementTest {
                 case "importSnapshot" -> {
                     this.writes.incrementAndGet();
                     Snapshot snapshot = (Snapshot) args[0];
-                    this.stored.put(snapshot.meta().id(), snapshot);
-                    yield CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.SAVED, null));
+                    if (this.importResult.stored()) {
+                        this.stored.put(snapshot.meta().id(), snapshot);
+                    }
+                    yield CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(this.importResult, null));
                 }
                 default -> throw new AssertionError("Unexpected storage operation: " + method.getName());
             };
@@ -126,6 +137,72 @@ class SnapshotManagementTest {
         assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
         Files.write(this.directory.resolve(output), new byte[]{1, 2, 3});
         assertSame(SnapshotImportResult.INVALID_FILE, this.service.importFile(relative).join());
+    }
+
+    /** 删除坏正文时仍能按元数据清缓存, 回执在删除尝试结束后完成. */
+    @Test
+    void deletionInvalidatesCachedBodyBeforeReportingSuccess() {
+        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        this.stored.put(snapshot.meta().id(), snapshot);
+        this.cache.publish(snapshot, 15).join();
+        this.cache.invalidation = new CompletableFuture<>();
+        this.rejectBodyReads = true;
+        CompletableFuture<SnapshotDeleteResult> result = this.service.delete(snapshot.meta().id());
+        assertFalse(this.stored.containsKey(snapshot.meta().id()));
+        assertEquals(List.of(snapshot.meta().player()), this.cache.invalidations);
+        assertFalse(result.isDone());
+        this.cache.invalidation.complete(null);
+        assertSame(SnapshotDeleteResult.DELETED, result.join());
+        assertTrue(this.cache.consume(snapshot.meta().player()).join().isEmpty());
+    }
+
+    /** 删除不存在的快照不会删除其他玩家的缓存. */
+    @Test
+    void missingDeletionLeavesExistingCacheIntact() {
+        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        this.cache.publish(snapshot, 15).join();
+        assertSame(SnapshotDeleteResult.NOT_FOUND, this.service.delete(UUID.randomUUID()).join());
+        assertTrue(this.cache.invalidations.isEmpty());
+        assertSame(snapshot, this.cache.consume(snapshot.meta().player()).join().orElseThrow());
+    }
+
+    /**
+     * 同 ID 导入替换正文后清缓存, 成功回执等待删除完成.
+     *
+     * @throws Exception 本地导出文件无法生成时
+     */
+    @Test
+    void importInvalidatesPreviousBodyBeforeReportingSuccess() throws Exception {
+        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot old = new Snapshot(snapshot.meta(), Map.of());
+        this.stored.put(old.meta().id(), old);
+        this.cache.publish(old, 15).join();
+        this.cache.invalidation = new CompletableFuture<>();
+        String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
+        CompletableFuture<SnapshotImportResult> result = this.service.importFile(output.substring("snapshot/output/".length()));
+        assertEquals(snapshot, this.stored.get(snapshot.meta().id()));
+        assertEquals(List.of(snapshot.meta().player()), this.cache.invalidations);
+        assertFalse(result.isDone());
+        this.cache.invalidation.complete(null);
+        assertInstanceOf(SnapshotImportResult.Imported.class, result.join());
+        assertTrue(this.cache.consume(snapshot.meta().player()).join().isEmpty());
+    }
+
+    /**
+     * 导入被存储拒绝时, 原数据库正文和缓存均继续可用.
+     *
+     * @throws Exception 本地导出文件无法生成时
+     */
+    @Test
+    void rejectedImportKeepsExistingCache() throws Exception {
+        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        this.stored.put(snapshot.meta().id(), snapshot);
+        this.cache.publish(snapshot, 15).join();
+        this.importResult = StorageProvider.SaveResult.REJECTED_OVERSIZED;
+        String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
+        assertSame(SnapshotImportResult.FAILED, this.service.importFile(output.substring("snapshot/output/".length())).join());
+        assertTrue(this.cache.invalidations.isEmpty());
+        assertSame(snapshot, this.cache.consume(snapshot.meta().player()).join().orElseThrow());
     }
 
     @SuppressWarnings("unchecked")

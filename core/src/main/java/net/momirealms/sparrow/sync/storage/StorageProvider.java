@@ -39,6 +39,15 @@ public interface StorageProvider {
     CompletableFuture<Optional<Snapshot>> snapshot(@NotNull UUID snapshotId);
 
     /**
+     * 按快照 ID 查询快照元数据.
+     *
+     * @param snapshotId 选定的快照 ID
+     * @return 快照元数据, 记录不存在时为空
+     */
+    @NotNull
+    CompletableFuture<Optional<SnapshotMeta>> snapshotMeta(@NotNull UUID snapshotId);
+
+    /**
      * 按条件查询快照元数据, 按 timestamp DESC, id DESC 排序, 在数据库内跳过 offset 并限制条数.
      */
     @NotNull

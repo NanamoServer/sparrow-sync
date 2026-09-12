@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage.postgresql;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -126,6 +127,8 @@ class PostgresStorageProviderTest {
         storage.saveSnapshot(snapshot).join();
         storage.jdbi().useHandle(handle -> handle.createUpdate("UPDATE " + this.table("snapshots") + " SET format = -1, data = :data").bind("data", new byte[]{1}).execute());
         assertEquals(List.of(snapshot.meta()), storage.listSnapshots(snapshot.meta().player()).join());
+        assertEquals(snapshot.meta(), storage.snapshotMeta(snapshot.meta().id()).join().orElseThrow());
+        assertTrue(storage.snapshotMeta(UUID.randomUUID()).join().isEmpty());
         CompletionException unsupported = assertThrows(CompletionException.class, () -> storage.snapshot(snapshot.meta().id()).join());
         assertEquals(FormatException.InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(FormatException.class, unsupported.getCause()).reason());
         storage.jdbi().useHandle(handle -> handle.execute("UPDATE " + this.table("snapshots") + " SET format = 2"));
@@ -384,7 +387,7 @@ class PostgresStorageProviderTest {
     void pendingStashRestoresThroughTheExistingStorageContract() throws Exception {
         PostgresStorageProvider storage = this.open();
         Snapshot snapshot = snapshot(UUID.randomUUID(), 1, false);
-        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(this.binary), this.logger);
+        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(this.binary), this.logger, new NoopSnapshotCache());
         stash.stash(snapshot, "player", SaveResult.RETRY_LATER);
         stash.restorePending(storage);
         assertEquals(snapshot, storage.snapshot(snapshot.meta().id()).join().orElseThrow());

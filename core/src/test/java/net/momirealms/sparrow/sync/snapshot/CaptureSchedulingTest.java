@@ -178,7 +178,7 @@ class CaptureSchedulingTest {
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "playerDataPipeline", pipeline);
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "serialExecutor", this.executor);
         NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "logger", logger);
-        NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "writer", new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), logger), this.executor, new NoopSnapshotCache()));
+        NmsPlayerFixture.set(SnapshotSaver.class, this.saver, "writer", new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), logger, new NoopSnapshotCache()), this.executor, new NoopSnapshotCache()));
         this.sessions = new SessionManager(null);
         NmsPlayerFixture.set(SessionManager.class, this.sessions, "snapshotService", this.service);
         this.session = this.sessions.tryOpen(this.player.getUniqueId(), this.player.getName(), ConnectionFixture.create());
@@ -399,7 +399,7 @@ class CaptureSchedulingTest {
         }
         if (outcome.equals("stash")) {
             BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
-            SnapshotStash stash = new SnapshotStash(this.directory, codec, logger);
+            SnapshotStash stash = new SnapshotStash(this.directory, codec, logger, new NoopSnapshotCache());
             Field writerField = SnapshotSaver.class.getDeclaredField("writer");
             writerField.setAccessible(true);
             NmsPlayerFixture.set(SnapshotWriter.class, writerField.get(this.saver), "stash", stash);

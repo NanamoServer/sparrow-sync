@@ -471,6 +471,8 @@ class MongoStorageProviderTest {
             MongoCollection<Document> collection = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
             Document filter = new Document("_id", snapshot.meta().id());
             collection.updateOne(filter, new Document("$set", new Document("data", "broken")));
+            assertEquals(snapshot.meta(), this.provider.snapshotMeta(snapshot.meta().id()).join().orElseThrow());
+            assertTrue(this.provider.snapshotMeta(UUID.randomUUID()).join().isEmpty());
             CompletionException corrupted = assertThrows(CompletionException.class, () -> this.provider.snapshot(snapshot.meta().id()).join());
             assertEquals(FormatException.InvalidReason.CORRUPTED, assertInstanceOf(FormatException.class, corrupted.getCause()).reason());
             collection.updateOne(filter, new Document("$set", new Document("format", 100)));

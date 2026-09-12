@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
+import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -49,6 +50,7 @@ class SnapshotStashTest {
     private static final DataKey HEALTH = DataKey.of("sparrow", "health");
 
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 核对恢复成功与失败时的缓存状态
 
     @TempDir
     Path dataFolder;
@@ -56,7 +58,7 @@ class SnapshotStashTest {
 
     @BeforeEach
     void setUp() {
-        stash = new SnapshotStash(dataFolder, codec, new SyncLogger(new QuietLogger()));
+        stash = new SnapshotStash(dataFolder, codec, new SyncLogger(new QuietLogger()), this.cache);
     }
 
     @Test
@@ -88,12 +90,15 @@ class SnapshotStashTest {
     @Test
     void restoredSnapshotIsDeletedAfterSuccessfulSave() throws IOException {
         Snapshot snapshot = snapshotAt(1_756_300_000_000L);
+        this.cache.publish(snapshot, 15).join();
         stash.stash(snapshot, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.SAVED_OUT_OF_ORDER);
 
         stash.restorePending(storage);
 
         assertEquals(List.of(snapshot.meta().id()), storage.savedIds());
+        assertEquals(List.of(PLAYER), this.cache.invalidations);
+        assertTrue(this.cache.consume(PLAYER).join().isEmpty());
         assertTrue(listFiles(dataFolder.resolve("snapshot/pending")).isEmpty());
         try (Stream<Path> remaining = Files.list(dataFolder.resolve("snapshot/pending"))) {
             assertEquals(0, remaining.count());
@@ -113,11 +118,14 @@ class SnapshotStashTest {
 
     @Test
     void restoreStopsWhenStorageIsStillUnavailable() throws IOException {
+        this.cache.publish(snapshotAt(1_756_300_000_000L), 15).join();
         stash.stash(snapshotAt(1_756_300_000_000L), "Steve", StorageProvider.SaveResult.RETRY_LATER);
         stash.stash(snapshotAt(1_756_300_000_001L), "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.RETRY_LATER);
 
         stash.restorePending(storage);
+        assertTrue(this.cache.invalidations.isEmpty());
+        assertTrue(this.cache.consume(PLAYER).join().isPresent());
 
         // 第一份就撞上数据库不可用, 本轮收工, 两份文件原样留给下次启动
         assertEquals(1, storage.savedIds().size());
@@ -152,6 +160,7 @@ class SnapshotStashTest {
         SnapshotFiles files = new SnapshotFiles(this.dataFolder, this.codec, new SnapshotFileTestLogger());
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", new SyncLogger(new QuietLogger()));
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotCache", this.cache);
         SnapshotStash stash = new SnapshotStash(plugin);
         stash.onLoad(files);
         Snapshot snapshot = snapshotAt(1_756_300_000_000L);
@@ -332,6 +341,12 @@ class SnapshotStashTest {
 
         @Override
         public @NonNull CompletableFuture<Optional<Snapshot>> snapshot(UUID snapshotId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        @NotNull
+        public CompletableFuture<Optional<SnapshotMeta>> snapshotMeta(@NotNull UUID snapshotId) {
             throw new UnsupportedOperationException();
         }
 

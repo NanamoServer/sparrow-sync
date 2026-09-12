@@ -161,6 +161,13 @@ public final class MongoStorageProvider implements StorageProvider {
 
     @Override
     @NotNull
+    public CompletableFuture<Optional<SnapshotMeta>> snapshotMeta(@NotNull UUID snapshotId) {
+        return CompletableFuture.supplyAsync(() -> Optional.ofNullable(this.snapshotCollection().find(byId(snapshotId))
+                .projection(Projections.exclude(DocumentSnapshotCodec.FIELD_DATA)).first()).map(DocumentSnapshotCodec::decodeMeta), this.asyncExecutor);
+    }
+
+    @Override
+    @NotNull
     public CompletableFuture<List<SnapshotMeta>> listSnapshots(@NotNull SnapshotQuery query) {
         return CompletableFuture.supplyAsync(() -> {
             // 列表只读元数据, 数据体通常很大, 不从 MongoDB 拉回进程

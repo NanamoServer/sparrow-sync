@@ -30,6 +30,7 @@ import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
+import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.junit.jupiter.api.AfterEach;
@@ -82,6 +83,7 @@ class SnapshotSaveLifecycleTest {
     private PluginConfig.ConfigDefinition config; // 当前测试固定的配置
     private Object previousConfig; // 测试结束时恢复静态配置
     private SnapshotWriter writer; // 被测在途集合和写入管理器
+    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 核对保存回执前已经发出的缓存命令
     private PlayerSerialExecutor executor; // 复用真实串行队列验证提交与重试
 
     @TempDir
@@ -129,7 +131,7 @@ class SnapshotSaveLifecycleTest {
             }
             default -> throw new AssertionError(method.getName());
         });
-        this.writer = new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, this.codec, logger), this.executor, new NoopSnapshotCache());
+        this.writer = new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, this.codec, logger, new NoopSnapshotCache()), this.executor, this.cache);
     }
 
     /**
@@ -633,6 +635,56 @@ class SnapshotSaveLifecycleTest {
         this.writer.register(request);
         if (encoded) request.updateSnapshot(new Snapshot(meta, Map.of(RETAINED, NBT.createString("raw"))));
         return request;
+    }
+
+    /**
+     * 本服关闭发布时清掉上一服条目, 删除命令先于保存回执发出且不等待 Redis 响应.
+     *
+     * @param cause 退出或关服的收尾原因
+     */
+    @ParameterizedTest
+    @EnumSource(value = SaveCause.class, names = {"DISCONNECT", "SHUTDOWN"})
+    void disabledCacheInvalidatesBeforeFinalSaveCompletion(SaveCause cause) {
+        NmsPlayerFixture.set(PluginConfig.SnapshotCacheOptions.class, PluginConfig.synchronization$snapshotCache(), "enabled", false);
+        SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), PLAYER, 2, cause, false, "test", 0);
+        Snapshot snapshot = new Snapshot(meta, Map.of(RETAINED, NBT.createString("latest")));
+        Snapshot old = new Snapshot(new SnapshotMeta(UUID.randomUUID(), PLAYER, 1, cause, false, "previous", 0), Map.of());
+        this.cache.publish(old, 15).join();
+        this.cache.invalidation = new CompletableFuture<>();
+        SaveRequest request = new SaveRequest(meta, "TestPlayer", EagerSnapshotData.EMPTY, null);
+        request.updateSnapshot(snapshot);
+        this.writer.register(request);
+        this.writer.write(request);
+        CompletableFuture<Void> completed = request.completion().thenAccept(result -> assertEquals(List.of(PLAYER), this.cache.invalidations));
+        assertTrue(this.cache.invalidations.isEmpty());
+        this.nextSubmission().outcome().complete(new SaveOutcome(SaveResult.SAVED, null));
+        assertTrue(completed.isDone());
+        completed.join();
+        assertFalse(this.cache.invalidation.isDone());
+        this.cache.invalidation.complete(null);
+        Snapshot loaded = this.cache.consume(PLAYER).join().orElse(snapshot);
+        assertSame(snapshot, loaded);
+    }
+
+    /**
+     * 缓存启用时, 收尾保存发布已确认的正文, 回执完成时新条目已经可消费.
+     *
+     * @param result 新写入或幂等重放的存储结果
+     */
+    @ParameterizedTest
+    @EnumSource(value = SaveResult.class, names = {"SAVED", "DUPLICATE"})
+    void enabledCachePublishesBeforeFinalSaveCompletion(SaveResult result) {
+        SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), PLAYER, 2, SaveCause.DISCONNECT, false, "test", 0);
+        Snapshot snapshot = new Snapshot(meta, Map.of(RETAINED, NBT.createString("latest")));
+        SaveRequest request = new SaveRequest(meta, "TestPlayer", EagerSnapshotData.EMPTY, null);
+        request.updateSnapshot(snapshot);
+        this.writer.register(request);
+        this.writer.write(request);
+        CompletableFuture<Void> completed = request.completion().thenAccept(ignored -> assertSame(snapshot, this.cache.consume(PLAYER).join().orElseThrow()));
+        this.nextSubmission().outcome().complete(new SaveOutcome(result, null));
+        assertTrue(completed.isDone());
+        completed.join();
+        assertTrue(this.cache.invalidations.isEmpty());
     }
 
     /**

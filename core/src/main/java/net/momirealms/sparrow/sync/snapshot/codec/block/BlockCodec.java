@@ -16,13 +16,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 
-/**
- * 一个数据类型的二进制编码, 每块都能独立校验和解压.
- * 块头依次保存 1 字节算法, 4 字节 payload 长度, 4 字节原始长度和 4 字节 payload CRC32, 后接单键 compound 的载荷.
- * 多字节整数使用大端字节序, CRC32 覆盖压缩后的字节.
- */
 public final class BlockCodec {
-    public static final int BLOCK_HEADER_LENGTH = 13; // 算法 1 字节, 两个长度和载荷 CRC 各 4 字节
+    public static final int BLOCK_HEADER_LENGTH = 13; // 压缩算法1B + 两个长度和载荷 CRC 各 4B
 
     private BlockCodec() {
     }

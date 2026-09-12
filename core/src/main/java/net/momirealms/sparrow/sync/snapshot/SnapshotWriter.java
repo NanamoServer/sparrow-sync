@@ -201,12 +201,12 @@ final class SnapshotWriter {
 
     // 会话收尾保存的落库结果投递到跨服快路径, 其余落库结果只清掉可能残留的旧条目.
     private void publishCache(@NotNull WriteAttempt attempt, @NotNull SaveResult result) {
-        if (!shouldPublish(result, attempt.request().meta().cause())) {
+        PluginConfig.SnapshotCacheOptions options = PluginConfig.synchronization$snapshotCache();
+        // 缓存开关只控制发布, 本服完成保存后仍要清掉其他服务器留下的旧条目.
+        if (!options.enabled() || !shouldPublish(result, attempt.request().meta().cause())) {
             this.cache.invalidate(attempt.player());
             return;
         }
-        PluginConfig.SnapshotCacheOptions options = PluginConfig.synchronization$snapshotCache();
-        if (!options.enabled()) return;
         Snapshot snapshot = attempt.request().snapshot();
         if (snapshot == null) return;
         int ttlSeconds = options.ttlSeconds();

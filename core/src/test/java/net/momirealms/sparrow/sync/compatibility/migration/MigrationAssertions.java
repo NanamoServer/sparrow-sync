@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
@@ -35,7 +36,7 @@ public final class MigrationAssertions {
             case "importUser" -> CompletableFuture.completedFuture(null);
             default -> throw new AssertionError(method);
         });
-        SnapshotDump dump = new SnapshotDump(storage, files, codec, map -> { throw new AssertionError("unexpected map"); });
+        SnapshotDump dump = new SnapshotDump(storage, files, codec, map -> { throw new AssertionError("unexpected map"); }, new NoopSnapshotCache());
         var result = new SnapshotMigration(files, codec, dump, "migration-server").migrate("migration.zip", source, 12345);
         assertNull(result.failure());
         assertEquals(1, result.converted());

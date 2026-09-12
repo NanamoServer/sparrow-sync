@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.local;
 
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
@@ -23,19 +24,22 @@ public final class SnapshotStash {
     private SparrowSync plugin;
     private SnapshotFiles files; // 与管理查询共用的快照文件操作
     private SyncLogger logger;
+    private SnapshotCache cache;
 
     public SnapshotStash(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
     }
 
-    public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger) {
+    public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger, @NotNull SnapshotCache cache) {
         this.files = new SnapshotFiles(dataFolder, codec, logger);
         this.logger = logger;
+        this.cache = cache;
     }
 
     public void onLoad(@NotNull SnapshotFiles files) {
         this.files = files;
         this.logger = this.plugin.logger();
+        this.cache = this.plugin.snapshotCache();
     }
 
     /**
@@ -111,6 +115,7 @@ public final class SnapshotStash {
         SaveResult result = saved.result();
         // 落库结果三分: 已在库中的删掉文件, 数据库不可用的整轮收工, 被拒的移去给管理员
         if (result.stored()) {
+            this.cache.invalidate(snapshot.meta().player()).join();
             this.delete(file);
             return RestoreOutcome.RESTORED;
         }

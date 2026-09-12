@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage.mysql;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
@@ -196,6 +197,8 @@ class MysqlStorageProviderTest {
         SnapshotMeta found = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT id, player, ts, cause, pinned, server, mc_data FROM `" + this.prefix + "snapshots`")
                 .mapTo(SnapshotMeta.class).one());
         assertEquals(meta, found);
+        assertEquals(Optional.of(meta), provider.snapshotMeta(meta.id()).join());
+        assertTrue(provider.snapshotMeta(UUID.randomUUID()).join().isEmpty());
         assertEquals("FEDCBA98765432100123456789ABCDEF", provider.jdbi().withHandle(handle -> handle.createQuery("SELECT HEX(id) FROM `" + this.prefix + "snapshots`").mapTo(String.class).one()));
         assertEquals(List.of(meta), provider.listSnapshots(SnapshotQuery.of(meta.player())).join());
     }
@@ -755,7 +758,7 @@ class MysqlStorageProviderTest {
     void pendingSnapshotsRestoreThroughTheMysqlStorageInterface() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         provider.initialize();
-        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), this.logger);
+        SnapshotStash stash = new SnapshotStash(this.stashDirectory, new BinarySnapshotCodec(CompressorRegistry.DEFLATE), this.logger, new NoopSnapshotCache());
         UUID player = UUID.randomUUID();
         Snapshot old = this.snapshot(player, 10, false);
         Snapshot latest = this.snapshot(player, 20, false);

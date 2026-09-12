@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.storage;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import com.mongodb.client.MongoClients;
@@ -68,7 +69,7 @@ class StorageDumpIntegrationTest {
         Snapshot unrelated = SnapshotFixtures.snapshot();
         assertTrue(target.importSnapshot(unrelated).join().result().stored());
         SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
-        SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null), new NoopSnapshotCache());
         UUID player = UUID.randomUUID();
         MigrationSource source = new MigrationSource() {
             @Override
@@ -123,11 +124,11 @@ class StorageDumpIntegrationTest {
         source.maps().importSequence(1500).join();
         target.maps().importMap(new MapArchiveRecord(map.identity(), 4189, 99999, mapData(1).encode())).join();
         SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
-        SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null), new NoopSnapshotCache());
         SnapshotDump.Result exported = exporter.dump("transfer.zip", 110);
         assertNull(exported.failure(), () -> String.valueOf(exported.failure()));
         assertEquals(10, exported.snapshots());
-        SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        SnapshotDump importer = new SnapshotDump(target, files, this.codec, record -> CompletableFuture.completedFuture(null), new NoopSnapshotCache());
         SnapshotDump.Result imported = importer.importFile("transfer.zip");
         assertNull(imported.failure(), () -> String.valueOf(imported.failure()));
         assertEquals(10, imported.snapshots());
@@ -229,9 +230,9 @@ class StorageDumpIntegrationTest {
         MapSyncService sync = NmsPlayerFixture.allocate(MapSyncService.class);
         NmsPlayerFixture.set(MapSyncService.class, sync, "shared", shared);
         SnapshotFiles files = new SnapshotFiles(this.directory, this.codec, new SnapshotFileTestLogger());
-        SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null));
+        SnapshotDump exporter = new SnapshotDump(source, files, this.codec, record -> CompletableFuture.completedFuture(null), new NoopSnapshotCache());
         assertNull(exporter.dump("maps.zip", Long.MAX_VALUE).failure());
-        SnapshotDump.Result result = new SnapshotDump(target, files, this.codec, sync::importedMap).importFile("maps.zip");
+        SnapshotDump.Result result = new SnapshotDump(target, files, this.codec, sync::importedMap, new NoopSnapshotCache()).importFile("maps.zip");
         assertNotNull(result.failure());
         assertEquals("map -3", result.current());
         assertEquals(1, result.maps());

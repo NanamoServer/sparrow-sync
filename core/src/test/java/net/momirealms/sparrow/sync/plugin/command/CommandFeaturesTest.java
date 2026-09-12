@@ -66,6 +66,7 @@ import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
+import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import net.momirealms.sparrow.yaml.SparrowYaml;
 import net.momirealms.sparrow.yaml.YamlDocument;
@@ -237,7 +238,13 @@ class CommandFeaturesTest {
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "playerDirectory", null);
         AtomicInteger changes = new AtomicInteger();
         Snapshot snapshot = new Snapshot(new SnapshotMeta(id, player, 1, SaveCause.COMMAND, false, "origin", 0), Map.of());
+        MemorySnapshotCache cache = new MemorySnapshotCache();
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotCache", cache);
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> switch (method.getName()) {
+            case "snapshotMeta" -> {
+                assertEquals(id, args[0]);
+                yield CompletableFuture.completedFuture(Optional.of(snapshot.meta()));
+            }
             case "snapshot" -> {
                 assertEquals(id, args[0]);
                 changes.incrementAndGet();
@@ -279,6 +286,7 @@ class CommandFeaturesTest {
         assertEquals(0, changes.get());
         this.execute(sender(Set.of("sparrow_sync.command." + action)), command);
         assertEquals(1, changes.get());
+        assertEquals(action.equals("delete") ? List.of(player) : List.of(), cache.invalidations);
         assertFalse(this.text().isBlank());
         assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, id.toString())));
         assertFalse(this.text().contains("command.snapshot"));

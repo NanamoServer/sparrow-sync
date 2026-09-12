@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
+import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.map.MapStorage;
@@ -55,6 +57,40 @@ class SnapshotDumpTest {
     private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE); // 读写独立数据帧
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
 
+    /**
+     * ZIP 中每条快照分别处理缓存, 成功记录清理旧条目, 被拒记录保留原条目.
+     *
+     * @throws Exception 归档生成或读取失败时
+     */
+    @Test
+    void importedRecordsInvalidateOnlyAfterSuccessfulWrites() throws Exception {
+        Memory source = new Memory();
+        Snapshot first = snapshot(1);
+        Snapshot second = snapshot(2);
+        source.snapshots.put(first.meta().id(), first);
+        source.snapshots.put(second.meta().id(), second);
+        assertNull(this.dump(source).dump("cache.zip", Long.MAX_VALUE).failure());
+        Memory target = new Memory();
+        MemorySnapshotCache cache = new MemorySnapshotCache();
+        cache.publish(first, 15).join();
+        target.policy = value -> {
+            if (value.meta().id().equals(first.meta().id())) {
+                assertTrue(cache.invalidations.isEmpty());
+                return target.save(value);
+            }
+            assertEquals(List.of(first.meta().player()), cache.invalidations);
+            cache.publish(second, 15).join();
+            return CompletableFuture.completedFuture(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.REJECTED_OVERSIZED, null));
+        };
+        SnapshotDump importer = new SnapshotDump(target.storage(), this.files(), this.codec, map -> CompletableFuture.completedFuture(null), cache);
+        SnapshotDump.Result result = importer.importFile("cache.zip");
+        assertNull(result.failure());
+        assertEquals(1, result.snapshots());
+        assertEquals(1, result.failed());
+        assertEquals(List.of(first.meta().player()), cache.invalidations);
+        assertSame(second, cache.consume(second.meta().player()).join().orElseThrow());
+    }
+
     @Test
     void roundTripRetainsHistoryCutoffUsersMapsAndSilentlyOverwrites() throws Exception {
         Memory source = new Memory();
@@ -80,7 +116,7 @@ class SnapshotDumpTest {
             assertSame(record, target.maps.get(record.identity().globalId()));
             refreshed.add(record);
             return CompletableFuture.completedFuture(null);
-        });
+        }, new NoopSnapshotCache());
         SnapshotDump.Result imported = importer.importFile("all.zip");
         assertNull(imported.failure());
         assertEquals(100, imported.snapshots());
@@ -339,7 +375,7 @@ class SnapshotDumpTest {
     }
 
     private SnapshotDump dump(Memory memory) {
-        return new SnapshotDump(memory.storage(), this.files(), this.codec, map -> CompletableFuture.completedFuture(null));
+        return new SnapshotDump(memory.storage(), this.files(), this.codec, map -> CompletableFuture.completedFuture(null), new NoopSnapshotCache());
     }
 
     private void writeSnapshotZip(String name, byte[]... records) throws IOException {

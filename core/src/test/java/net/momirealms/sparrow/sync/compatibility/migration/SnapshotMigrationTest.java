@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.compatibility.migration;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
@@ -349,7 +350,7 @@ class SnapshotMigrationTest {
                 default -> throw new AssertionError(method.getName());
             };
         });
-        return new SnapshotDump(storage, this.files(), this.codec, map -> { throw new AssertionError("migration has no map records"); });
+        return new SnapshotDump(storage, this.files(), this.codec, map -> { throw new AssertionError("migration has no map records"); }, new NoopSnapshotCache());
     }
 
     private CompletableFuture<StorageProvider.SaveOutcome> store(Snapshot snapshot) {

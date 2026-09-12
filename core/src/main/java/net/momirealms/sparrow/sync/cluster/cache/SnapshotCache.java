@@ -17,7 +17,7 @@ public interface SnapshotCache {
     @NotNull
     CompletableFuture<Optional<Snapshot>> consume(@NotNull UUID player);
 
-    // 删除该玩家的缓存条目, 供绕开保存流程的写库路径在落库后清理.
+    // 删除玩家缓存, 供保存、导入和删除快照成功后清理旧正文.
     @NotNull
     CompletableFuture<Void> invalidate(@NotNull UUID player);
 }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
+import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
@@ -79,7 +80,7 @@ class SnapshotSizeTest {
         BinarySnapshotCodec codec = new BinarySnapshotCodec(compressor);
         RecordingLogger logger = new RecordingLogger();
         Snapshot snapshot = oversized();
-        SnapshotStash stash = new SnapshotStash(this.directory, codec, new SyncLogger(logger));
+        SnapshotStash stash = new SnapshotStash(this.directory, codec, new SyncLogger(logger), new NoopSnapshotCache());
         stash.stash(snapshot, "Steve", SaveResult.REJECTED_OVERSIZED);
         SnapshotFiles files = new SnapshotFiles(this.directory, codec, new SnapshotFileTestLogger());
         List<SnapshotFiles.ExceptionEntry> entries = files.listExceptions(snapshot.meta().player(), "oversized", 0, 10).content();

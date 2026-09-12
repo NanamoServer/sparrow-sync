@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotImportResult;
@@ -20,11 +21,13 @@ public final class SnapshotTransfer {
     private final StorageProvider storage; // 导入的直接存储与导出的正文来源
     private final SnapshotFiles files; // 普通快照文件及路径规则
     private final Executor executor; // 文件 I/O 执行器
+    private final SnapshotCache cache;
 
-    public SnapshotTransfer(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull Executor executor) {
+    public SnapshotTransfer(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull Executor executor, @NotNull SnapshotCache cache) {
         this.storage = storage;
         this.files = files;
         this.executor = executor;
+        this.cache = cache;
     }
 
     /**
@@ -49,6 +52,7 @@ public final class SnapshotTransfer {
 
     /**
      * 导入保留原身份与时间的完整快照, 覆盖相同 ID 的记录.
+     * 保存成功后清除所属玩家的缓存, 删除尝试结束后再返回导入结果.
      *
      * @param relative 选定文件在本服目录内的相对路径
      * @return 导入、无效文件或保存失败结果
@@ -64,11 +68,10 @@ public final class SnapshotTransfer {
         }, this.executor).thenCompose(decoded -> {
             if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(SnapshotImportResult.INVALID_FILE);
             Snapshot snapshot = valid.snapshot();
-            return this.storage.importSnapshot(snapshot).thenApply(saved ->
-                    saved.result().stored()
-                            ? new SnapshotImportResult.Imported(snapshot.meta().id())
-                            : SnapshotImportResult.FAILED
-            );
+            return this.storage.importSnapshot(snapshot).thenCompose(saved -> {
+                if (!saved.result().stored()) return CompletableFuture.completedFuture(SnapshotImportResult.FAILED);
+                return this.cache.invalidate(snapshot.meta().player()).thenApply(ignored -> new SnapshotImportResult.Imported(snapshot.meta().id()));
+            });
         });
     }
 }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
 import net.momirealms.sparrow.sync.map.data.MapIdentity;
 import net.momirealms.sparrow.sync.map.data.MapSource;
@@ -40,13 +41,15 @@ public final class SnapshotDump {
     private final StorageProvider storage;
     private final SnapshotFiles files;
     private final BinarySnapshotCodec codec;
+    private final SnapshotCache cache;
     private final Function<MapArchiveRecord, CompletableFuture<Void>> mapImported; // 地图落库后的缓存发布回调, 完成后再导入下一条
 
-    public SnapshotDump(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull BinarySnapshotCodec codec, @NotNull Function<MapArchiveRecord, CompletableFuture<Void>> mapImported) {
+    public SnapshotDump(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull BinarySnapshotCodec codec, @NotNull Function<MapArchiveRecord, CompletableFuture<Void>> mapImported, @NotNull SnapshotCache cache) {
         this.storage = storage;
         this.files = files;
         this.codec = codec;
         this.mapImported = mapImported;
+        this.cache = cache;
     }
 
     /**
@@ -270,6 +273,8 @@ public final class SnapshotDump {
             }
             StorageProvider.SaveOutcome saved = this.storage.importSnapshot(snapshot).join();
             if (saved.result().stored()) {
+                // 每条记录落库后结束缓存删除尝试, 再计入本次导入的成功数量.
+                this.cache.invalidate(snapshot.meta().player()).join();
                 progress.snapshots++;
                 progress.report();
             } else if (saved.result().retriable()) {

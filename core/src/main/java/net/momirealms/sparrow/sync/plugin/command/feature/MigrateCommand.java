@@ -56,7 +56,7 @@ public final class MigrateCommand extends BukkitCommandFeature {
         long started = System.currentTimeMillis();
         String file = "sparrow-sync-migrate-" + name + "-" + FILE_TIME.format(Instant.ofEpochMilli(started)) + ".zip";
         var files = this.plugin().snapshotService().files();
-        SnapshotDump importer = new SnapshotDump(this.plugin().storageProvider(), files, this.plugin().binaryCodec(), this.plugin().mapSyncService()::importedMap);
+        SnapshotDump importer = new SnapshotDump(this.plugin().storageProvider(), files, this.plugin().binaryCodec(), this.plugin().mapSyncService()::importedMap, this.plugin().snapshotCache());
         SnapshotMigration migration = new SnapshotMigration(files, this.plugin().binaryCodec(), importer, ServerConfig.serverId());
         CompletableFuture.supplyAsync(() -> migration.migrate(file, source, started, progress -> this.progress(context, name, progress)), this.plugin().scheduler().async())
                 .whenComplete((result, failure) -> {
