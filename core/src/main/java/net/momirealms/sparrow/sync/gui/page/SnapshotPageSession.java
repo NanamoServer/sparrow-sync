@@ -21,7 +21,6 @@ public final class SnapshotPageSession implements AutoCloseable {
     private int requestedIndex;
     private boolean closed;
 
-    // 一个菜单持有一个会话, 开启时读取首页, 关闭时释放已访问页.
     SnapshotPageSession(SnapshotPagination pagination, SnapshotQuery query) {
         this.pagination = pagination;
         this.query = query;
@@ -65,7 +64,6 @@ public final class SnapshotPageSession implements AutoCloseable {
         return this.load((int) Math.clamp((long) this.requestedIndex + step, 0, Integer.MAX_VALUE));
     }
 
-    // 刷新让全部旧页失效, 此刻只重读当前页, 其他页在再次访问时读取.
     @NotNull
     public synchronized CompletableFuture<SnapshotPage> refresh() {
         this.pages.clear();

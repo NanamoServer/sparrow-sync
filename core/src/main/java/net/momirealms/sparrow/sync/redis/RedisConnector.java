@@ -19,7 +19,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.TimeUnit;
 
 public final class RedisConnector {
-    private static final RedisServerVersion MINIMUM_SERVER_VERSION = new RedisServerVersion(8, 0, 0);
+    private static final RedisServerVersion MINIMUM_SERVER_VERSION = new RedisServerVersion(7, 2, 4);
     private static final String SERVER_INFO_SECTION = "server";
 
     private SparrowSync plugin;
@@ -40,7 +40,6 @@ public final class RedisConnector {
         this.logger = logger;
     }
 
-    /** 读取启动配置并建立 Redis 连接. */
     public void onLoad() {
         this.options = PluginConfig.redis();
         this.logger = this.plugin.logger();

@@ -39,7 +39,6 @@ public final class MessageBrokerManager {
         this.logger = logger;
     }
 
-    /** 绑定 Redis 连接并订阅集群消息频道. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.serverId = ServerConfig.serverId();
@@ -55,7 +54,6 @@ public final class MessageBrokerManager {
                 .logger(new BrokerLogger(this.logger))
                 .connection(this.connector.brokerConnection())
                 .build();
-        // 所有服务器的注册顺序必须一致, 新消息只能在末尾追加
         broker.registry().register(HandoffRequestMessage.ID, HandoffRequestMessage.CODEC);
         broker.registry().register(HandoffResponseMessage.ID, HandoffResponseMessage.CODEC);
         broker.registry().register(ServerProbeMessage.ID, ServerProbeMessage.CODEC);
@@ -81,7 +79,6 @@ public final class MessageBrokerManager {
         if (broker != null) broker.unsubscribe();
     }
 
-    // 消息 broker 的日志出口接到插件日志上, debug 噪音直接丢弃
     private record BrokerLogger(SyncLogger logger) implements Logger {
 
         @Override

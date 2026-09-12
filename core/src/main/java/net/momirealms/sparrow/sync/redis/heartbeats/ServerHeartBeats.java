@@ -22,11 +22,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 本服在同步集群中的身份注册表.
- * 心跳键 {@code sparrow-sync:server:{serverId}} 的值为本次启动的 token, 周期续期, 停跳的服务器随 TTL 自动消失.
- * 启动注册时发现同 id 的键已存在则发起 redis 消息探查所以还存活, 若存活则属配置冲突, 关闭服务器.
- */
 public final class ServerHeartBeats {
     private static final long HEARTBEAT_INTERVAL_MILLIS = 3000;                      // 心跳续期周期
     private static final long HEARTBEAT_TTL_MILLIS = HEARTBEAT_INTERVAL_MILLIS * 3;  // 心跳键存活期, 停跳超过它身份即消失
@@ -92,7 +87,6 @@ public final class ServerHeartBeats {
         ServerProbeMessage.registry(this);
     }
 
-    /** 绑定集群依赖并注册本服心跳身份. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.broker = this.plugin.messageBrokerManager().broker();
@@ -116,11 +110,6 @@ public final class ServerHeartBeats {
         }
     }
 
-    /**
-     * 注册本服身份并启动心跳.
-     *
-     * @return 注册成功为 true, 若出现同 id 的服务器仍在线为 false.
-     */
     public boolean initialize() {
         RedisCommands<byte[], byte[]> commands = this.connector.connection().sync();
         byte[] existing = commands.setGet(this.key, this.token.getBytes(StandardCharsets.UTF_8), SetArgs.Builder.nx().px(this.heartbeatTtlMillis));
@@ -148,7 +137,7 @@ public final class ServerHeartBeats {
         return true;
     }
 
-    // 定向探测持有同 id 的服务器, 等出应答即在线. 自己发出的探测不会被自己应答.
+    // 定向探测持有同 id 的服务器, 等出应答即在线.
     private boolean probeHolder() {
         try {
             this.broker.publishTwoWay(new ServerProbeMessage(this.token), this.serverId)
@@ -160,25 +149,24 @@ public final class ServerHeartBeats {
         }
     }
 
-    // 回答一次身份探测. 探测来自另一台同 id 的服务器时应答自己的 token; 若来自发自收时不应答.
+    // 回答一次身份探测.
     @Nullable
     ServerProbeResponseMessage answerProbe(@NotNull String requesterToken) {
         return this.token.equals(requesterToken) ? null : new ServerProbeResponseMessage(this.token);
     }
 
-    // 心跳续期, 断连期间命令压在 Lettuce 队列里重连补发, 停跳超过 TTL 后键过期、身份消失
+    // 心跳续期
     private void heartbeat() {
         this.connector.connection().async().set(this.key, this.token.getBytes(StandardCharsets.UTF_8), SetArgs.Builder.px(this.heartbeatTtlMillis));
     }
 
-    // 停跳并注销身份, 值仍是自己的才删; 删除不等待结果, 命令丢失由 TTL 兜底清掉.
     public void shutdown() {
         if (this.connector == null) return;
         SchedulerTask task = this.heartbeatTask;
         if (task != null) task.cancel();
         this.connector.connection().async().eval(DELETE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.token.getBytes(StandardCharsets.UTF_8));
     }
-    /** 心跳调度的最小依赖面, 装配侧接插件调度器, 测试侧接任意定时器. */
+
     public interface HeartbeatScheduler {
         @NotNull
         SchedulerTask repeating(@NotNull Runnable task, long intervalMillis);

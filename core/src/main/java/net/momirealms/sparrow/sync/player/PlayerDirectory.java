@@ -14,6 +14,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.incendo.cloud.suggestion.Suggestion;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,6 +35,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+@ApiStatus.Internal
 public final class PlayerDirectory {
     private static final String ROSTER_PREFIX = "sparrow-sync:online-players:";
     private static final long REFRESH_MILLIS = 30000;
@@ -42,11 +44,11 @@ public final class PlayerDirectory {
     private final SparrowSync plugin;
     private final Map<String, Map<String, PlayerIdentity>> servers = new HashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Optional<PlayerIdentity>>> loadingNames = new ConcurrentHashMap<>();
-    private @Nullable Set<String> refreshChanges; // 与 servers 共用监视器, 非 null 表示刷新在途
+    private @Nullable Set<String> refreshChanges; // 与 servers 共用锁, 非 null 表示刷新在途
     private CompletableFuture<Void> rosterWrites = CompletableFuture.completedFuture(null); // 本服名单写入的队尾
     private String serverId;
     private byte[] rosterKey;
-    private volatile OnlineView online = OnlineView.EMPTY; // 更新后发布完整视图, 补全线程直接读取
+    private volatile OnlineView online = OnlineView.EMPTY;
     private volatile boolean closed;
     private SchedulerTask task;
 
@@ -54,7 +56,6 @@ public final class PlayerDirectory {
         this.plugin = plugin;
     }
 
-    /** 绑定本服身份和消息入口, 启动全服名单校准. */
     public void onDelayedEnable() {
         this.serverId = ServerConfig.serverId();
         this.rosterKey = (ROSTER_PREFIX + this.serverId).getBytes(StandardCharsets.UTF_8);
@@ -63,7 +64,6 @@ public final class PlayerDirectory {
         this.task = this.plugin.scheduler().asyncRepeating(this::refresh, 0, REFRESH_MILLIS, TimeUnit.MILLISECONDS);
     }
 
-    // 每轮只有一个刷新在途, Redis 断线时不会不断堆积整服名单请求.
     void refresh() {
         synchronized (this) {
             if (this.closed || this.refreshChanges != null) return;
@@ -345,9 +345,7 @@ public final class PlayerDirectory {
                 }
 
             }
-            // 构建完成后冻结各个列表, 读取线程可直接复用视图中的集合和候选对象.
-            prefixes.replaceAll((key, list) -> List.copyOf(list));
-            return new OnlineView(Map.copyOf(values), players, List.copyOf(suggestions), Map.copyOf(prefixes));
+            return new OnlineView(values, players, suggestions, prefixes);
         }
     }
 }

@@ -60,11 +60,6 @@ public final class PlayerSerialExecutor {
         return task -> this.submit(player, task);
     }
 
-    /**
-     * 关停执行器, 立即拒绝新任务, 在限时内等待各队列排空, 超时后中断串行线程.
-     *
-     * @return 未能执行完的剩余任务数
-     */
     public int shutdown(long timeout, @NotNull TimeUnit unit) {
         this.shutdown = true;
         for (int i = 0; i < this.workers.length; i++) {

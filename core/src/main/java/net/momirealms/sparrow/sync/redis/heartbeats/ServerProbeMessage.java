@@ -10,10 +10,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.CompletableFuture;
 
-/**
- * 服务器身份探测: 启动时发现同 server-id 的心跳键已存在, 定向问一句"你还活着吗".
- * 消息携带发起方的启动 token, 应答方以它区分"另一台同 id 的服务器"与"自己发出的探测"(pub/sub 自发自收), 后者不应答.
- */
 public final class ServerProbeMessage extends TwoWayRequestMessage<ByteBuf, ServerProbeResponseMessage> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "server_probe");
     public static final MessageCodec<ByteBuf, ServerProbeMessage> CODEC = RedisMessage.codec(ServerProbeMessage::write, ServerProbeMessage::new);

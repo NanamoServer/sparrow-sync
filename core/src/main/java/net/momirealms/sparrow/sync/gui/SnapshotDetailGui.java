@@ -83,8 +83,8 @@ public final class SnapshotDetailGui {
     private final @Nullable UUID snapshotId;
     private final @Nullable String archivePath;   // 本服异常快照相对路径, 数据库来源为 null
     private final @Nullable Runnable refreshParent; // 管理完成后的上级刷新动作, 根窗口为 null
-    private final Pane inventoryPane = Pane.empty(9, 5); // 主背包、快捷栏与装备区域
-    private final Pane enderPane = Pane.empty(9, 5);     // 末影箱每页 36 格
+    private final Pane inventoryPane = Pane.empty(9, 5);
+    private final Pane enderPane = Pane.empty(9, 5);
     private int enderPage;
     private int archivePage; // 异常类型清单的当前页, 每页显示 36 个类型
     private final Tab<Boolean> tabs = Tab.of(Map.of(false, this.inventoryPane, true, this.enderPane), false); // false 为背包, true 为末影箱
@@ -93,10 +93,10 @@ public final class SnapshotDetailGui {
     private SnapshotDetailResult.Ready ready;     // 完成解码的原快照与各类预览状态
     private SnapshotContents contents;            // 本次读取的原始物品, 用于容器初始化和完整打包
     private final MutableSignal<SnapshotMeta> meta = Signal.of(null); // 固定按钮与元信息依赖此状态
-    private PlayerIdentity player;                // 快照所属玩家, 恢复操作的实际目标
+    private PlayerIdentity player;
     private SnapshotFiles.ExceptionEntry archive;      // 异常快照头文件信息及路径, 异常快照数据损坏时仍可展示
-    private VirtualInventory inventory;           // 本次打开的背包内容, 切换 Tab 时保留修改
-    private VirtualInventory enderChest;          // 本次打开的末影箱内容, 切换 Tab 时保留修改
+    private VirtualInventory inventory;
+    private VirtualInventory enderChest;
 
     public SnapshotDetailGui(SparrowSync plugin, Player viewer, String playerName, @Nullable UUID snapshotId, @Nullable String archivePath, @Nullable Runnable refreshParent) {
         this.plugin = plugin;
@@ -107,12 +107,6 @@ public final class SnapshotDetailGui {
         this.refreshParent = refreshParent;
     }
 
-    /**
-     * 构建六行菜单并在打开时加载详情.
-     * 由命令在异步阶段调用, 返回后继续执行 Window.open().
-     *
-     * @return 尚未打开的窗口, 由 SparrowUI 管理 Session 导航
-     */
     public Window build() {
         this.pane.fill(Item.simple(this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank")));
         // 内容区绑定所选 Pane, Tab 切换由投影更新显示路径, 两个容器保持原有实例.
@@ -132,10 +126,6 @@ public final class SnapshotDetailGui {
         return this.window;
     }
 
-    /**
-     * 按固定槽位装配详情控制栏.
-     * 管理按钮受 ui.edit 控制, 异常来源提供删除与领取.
-     */
     private void controls() {
         this.pane.setItem(1, this.buildPlayerInfo());
         this.pane.setItem(2, this.buildInventoryTabButton());
@@ -157,13 +147,6 @@ public final class SnapshotDetailGui {
         }
     }
 
-    /**
-     * 在快照加载后建立容器的固定槽位映射, 后续 Tab 切换复用此 Pane.
-     * 背包使用 27 格主背包、9 格快捷栏和底行装备副手; 末影箱每页显示 36 格, 翻页复用完整容器.
-     *
-     * @param inventory 本次打开的容器副本
-     * @param ender 是否建立末影箱布局
-     */
     private void buildContent(VirtualInventory inventory, boolean ender) {
         Pane body = ender ? this.enderPane : this.inventoryPane;
         body.fill(Item.empty());
@@ -202,22 +185,11 @@ public final class SnapshotDetailGui {
         }
     }
 
-    /**
-     * 创建返回或关闭按钮.
-     * 窗口打开后 Session 已建立, hasBack 决定箭矢或橡木门外观.
-     *
-     * @return 按当前 Session 层级执行导航的按钮
-     */
     private Item buildNavigationButton() {
         boolean back = this.window.session().hasBack();
         return Item.builder().setItemProviderConstant(this.icon(back ? Material.ARROW : Material.OAK_DOOR, back ? "button.back" : "button.close")).addClickHandler(click -> this.window.backOrClose()).build();
     }
 
-    /**
-     * 将玩家身份与完整快照信息合并到头像, 固定状态变化时自动更新 Lore.
-     *
-     * @return 订阅元信息状态的玩家头像
-     */
     private Item buildPlayerInfo() {
         return Item.builder().dependsOn(this.meta).setItemProvider(context -> {
             SnapshotMeta meta = this.meta.get();
@@ -233,7 +205,6 @@ public final class SnapshotDetailGui {
         }).build();
     }
 
-    /** 创建背包 Tab 按钮, 光效随当前选项变化. */
     private Item buildInventoryTabButton() {
         return Item.builder().dependsOn(this.tabs.selected())
                 .setItemProvider(context -> this.icon(Material.CHEST, this.text("button.inventory"), !this.tabs.selected().get(), List.of()))
@@ -246,7 +217,6 @@ public final class SnapshotDetailGui {
                 }).build();
     }
 
-    /** 创建末影箱 Tab 按钮, 切回后仍展示本次修改的内容. */
     private Item buildEnderChestTabButton() {
         return Item.builder().dependsOn(this.tabs.selected())
                 .setItemProvider(context -> this.icon(Material.ENDER_CHEST, this.text("button.ender_chest"), this.tabs.selected().get(), List.of()))
@@ -259,16 +229,10 @@ public final class SnapshotDetailGui {
                 }).build();
     }
 
-    /**
-     * 创建附加数据状态图标, 展示快照中可读取的玩家数值.
-     *
-     * @return 顶部摘要说明 Item
-     */
     private Item buildSummaryInfo() {
         return Item.simple(this.icon(Material.EXPERIENCE_BOTTLE, this.text("additional.title"), false, this.summary()));
     }
 
-    /** 创建随固定状态更新的管理按钮, 点击时使用当前元数据. */
     private Item buildPinButton() {
         return Item.builder().dependsOn(this.meta).setItemProvider(context -> {
             boolean pinned = this.meta.get().pinned();
@@ -276,34 +240,18 @@ public final class SnapshotDetailGui {
         }).addClickHandler(click -> this.pin()).build();
     }
 
-    /**
-     * 创建导出原快照 JSON 的按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
     private Item buildJsonExportButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.PAPER, "button.export_json")).addClickHandler(click -> this.export(SnapshotFiles.Format.JSON)).build();
     }
 
-    /**
-     * 创建导出原快照二进制文件的按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
     private Item buildBinaryExportButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.WRITABLE_BOOK, "button.export_binary")).addClickHandler(click -> this.export(SnapshotFiles.Format.BINARY)).build();
     }
 
-    /**
-     * 创建删除当前数据库快照或本服异常快照的按钮.
-     *
-     * @return 放入对应布局槽位的 Item
-     */
     private Item buildDeleteButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.BARRIER, "button.delete")).addClickHandler(click -> this.delete()).build();
     }
 
-    /** 展示快照保存的世界与坐标, 点击可将查看者传送到本服对应世界. */
     private Item buildLocationButton() {
         if (!(this.ready.previews().get(LocationDataType.LOCATION) instanceof SnapshotDetailResult.Preview.Ready(var value)
                 && value instanceof LocationDataType.PlayerLocation location)) {
@@ -322,7 +270,6 @@ public final class SnapshotDetailGui {
         }).build();
     }
 
-    // 创建快照恢复按钮, 左键恢复到快照所属玩家.
     private Item buildRestoreButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.restore", this.text("restore_target", this.player.name()))).addClickHandler(click -> {
             if (click.clickType() == ClickType.LEFT) {
@@ -331,7 +278,6 @@ public final class SnapshotDetailGui {
         }).build();
     }
 
-    // 创建物品领取按钮, 左键打包给点击玩家.
     private Item buildClaimButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.SHULKER_BOX, "claim")).addClickHandler(click -> {
             if (click.clickType() == ClickType.LEFT) {
@@ -340,27 +286,18 @@ public final class SnapshotDetailGui {
         }).build();
     }
 
-    // 创建详情读取失败后重新加载的按钮.
     private Item buildRetryButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.BARRIER, "retry")).addClickHandler(click -> this.load()).build();
     }
 
-    // 创建当前内容类型缺失或解码失败的说明.
     private Item buildContentUnavailableInfo() {
         return Item.simple(this.icon(Material.BARRIER, "container_unavailable"));
     }
 
-    // 创建末影箱 Tab 的展示容量说明, 最多显示 27 格.
     private Item buildCapacityInfo() {
         return Item.simple(this.icon(Material.ENDER_CHEST, "info.capacity", this.text("slots", this.enderChest.size())));
     }
 
-    /**
-     * 为损坏或无法读取的异常快照生成说明.
-     * 异常快照数据不可用时仍展示路径、类别和异常快照头文件中的元信息.
-     *
-     * @return 可供管理员定位异常快照的元信息 Item
-     */
     private Item buildArchiveInfo() {
         List<Component> lore = new ArrayList<>();
         lore.add(this.text("label.archive", this.archive.path()));
@@ -376,37 +313,18 @@ public final class SnapshotDetailGui {
         return Item.simple(this.icon(Material.PLAYER_HEAD, name, false, lore));
     }
 
-    /**
-     * 把明确的快照数据无效原因放入状态说明的 Lore.
-     *
-     * @param invalid 详情加载器报告的快照数据无效结果
-     * @return 展示失败原因与细节的状态 Item
-     */
     private Item buildInvalidInfo(SnapshotDetailResult.Invalid invalid) {
         return Item.simple(this.icon(Material.BARRIER, "invalid", this.text("value", invalid.reason()), this.text("value", invalid.detail())));
     }
 
-    /**
-     * 渲染当前查看者语言中的 gui 消息, 并关闭物品文本的默认斜体.
-     *
-     * @param key gui 命名空间内的消息键
-     * @param values 组件参数原样插入, 其他参数转换为文本
-     * @return 可用于标题、物品名称、Lore 或反馈的组件
-     */
+    // 渲染当前查看者语言中的 gui 消息
     Component text(String key, Object... values) {
         List<Component> arguments = Arrays.stream(values).map(value -> value instanceof Component component ? component : Component.text(String.valueOf(value))).toList();
         return TranslationManager.instance().render(Component.translatable("gui." + key).arguments(arguments), this.viewer.locale())
                 .decoration(TextDecoration.ITALIC, false);
     }
 
-    /**
-     * 使用消息键创建无附魔光效的菜单图标.
-     *
-     * @param material 图标材质
-     * @param key 物品名称使用的 gui 消息键
-     * @param lore 已经渲染好的说明行
-     * @return 写入名称与 Lore 的 Bukkit 物品镜像
-     */
+    // 使用消息键创建无附魔光效的菜单图标.
     ItemStack icon(Material material, String key, Component... lore) {
         return this.icon(material, this.text(key), false, Arrays.asList(lore));
     }
@@ -430,12 +348,7 @@ public final class SnapshotDetailGui {
         return CraftItemStack.asCraftMirror(item);
     }
 
-    /**
-     * 将快照元信息格式化为 ID、完整时间、原因、来源服和固定状态.
-     *
-     * @param meta 原快照的元信息
-     * @return 采用项目语义配色的元信息说明行
-     */
+    // 将快照元信息格式化为 ID、完整时间、原因、来源服和固定状态.
     private List<Component> metadata(SnapshotMeta meta) {
         return List.of(this.text("label.snapshot_id", meta.id()), this.text("label.time", FULL_TIME.format(Instant.ofEpochMilli(meta.timestamp()).atZone(ZoneId.systemDefault()))),
                 this.text("label.cause", this.text("cause." + meta.cause().name().toLowerCase(Locale.ROOT))),

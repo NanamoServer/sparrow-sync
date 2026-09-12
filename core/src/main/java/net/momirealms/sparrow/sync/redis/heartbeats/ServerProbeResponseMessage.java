@@ -8,10 +8,6 @@ import net.momirealms.sparrow.redis.messagebroker.message.TwoWayResponseMessage;
 import net.momirealms.sparrow.redis.messagebroker.util.ByteBufHelper;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 对 {@link ServerProbeMessage} 的存活应答, 携带应答方本次启动的身份 token.
- * 发起方收到它即确认同 id 的服务器仍在线.
- */
 public final class ServerProbeResponseMessage extends TwoWayResponseMessage<ByteBuf> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "server_probe_response");
     public static final MessageCodec<ByteBuf, ServerProbeResponseMessage> CODEC = RedisMessage.codec(ServerProbeResponseMessage::write, ServerProbeResponseMessage::new);

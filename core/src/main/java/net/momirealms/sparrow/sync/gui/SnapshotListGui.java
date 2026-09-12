@@ -102,12 +102,7 @@ public final class SnapshotListGui {
         return this.window;
     }
 
-    /**
-     * 把一页查询结果转换为记录区元素, 加载和错误提示占据内容区中央.
-     *
-     * @param page 当前来源的分页查询结果
-     * @return 按记录区槽位顺序排列的元素
-     */
+    // 把一页查询结果转换为记录区元素, 加载和错误提示占据内容区中央.
     private List<Element> pageElements(LoadedPage page) {
         if (page.status() != null || (page.entries().isEmpty() && page.archives().isEmpty())) {
             List<Element> elements = new ArrayList<>();
@@ -146,18 +141,11 @@ public final class SnapshotListGui {
         return page.entries().stream().map(entry -> (Element) Element.item(this.buildSnapshotButton(entry))).toList();
     }
 
-    /**
-     * 创建返回或关闭按钮.
-     * 窗口打开后 Session 已建立, hasBack 决定箭矢或橡木门外观.
-     *
-     * @return 按当前 Session 层级执行导航的按钮
-     */
     private Item buildNavigationButton() {
         boolean back = this.window.session().hasBack();
         return Item.builder().setItemProviderConstant(this.icon(back ? Material.ARROW : Material.OAK_DOOR, back ? "button.back" : "button.close")).addClickHandler(click -> this.window.backOrClose()).build();
     }
 
-    /** 返回随查询结果更新的玩家身份图标. */
     private Item buildPlayerInfo() {
         return Item.builder().dependsOn(this.current).setItemProvider(context -> {
             PlayerIdentity player = this.current.get().player();
@@ -166,11 +154,6 @@ public final class SnapshotListGui {
         }).build();
     }
 
-    /**
-     * 把内部从零开始的页码转换成玩家看到的页数.
-     *
-     * @return 显示当前页与总页数的说明 Item
-     */
     private Item buildPageInfo() {
         return Item.builder().dependsOn(this.current).setItemProvider(context -> {
             LoadedPage page = this.current.get();
@@ -178,13 +161,6 @@ public final class SnapshotListGui {
         }).build();
     }
 
-    /**
-     * 使用书本展示快照记录, 固定状态以星标与附魔光效表示.
-     * 按钮持有完整记录身份, 左键进入详情.
-     *
-     * @param meta 数据库快照头
-     * @return 展示元信息并可进入详情的书本按钮
-     */
     private Item buildSnapshotButton(SnapshotMeta meta) {
         Component name = this.text("snapshot_entry", this.text(meta.pinned() ? "pin_mark" : "unpin_mark"), time(meta.timestamp(), false),
                 this.text("cause." + meta.cause().name().toLowerCase(Locale.ROOT)));
@@ -233,12 +209,7 @@ public final class SnapshotListGui {
         this.request.set(new PageRequest(this.request.get().exceptions(), Math.clamp(page.index() + step, 0, page.count() - 1)));
     }
 
-    /**
-     * 在异步 Signal 的装载线程读取玩家身份和一页记录, 返回完整结果供绑定消费.
-     *
-     * @param request 查询来源与从零开始的页码
-     * @return 包含实际页码、玩家身份或错误状态的结果
-     */
+    // 在异步 Signal 的装载线程读取玩家身份和一页记录, 返回完整结果供绑定消费.
     private LoadedPage loadPage(PageRequest request) {
         try {
             var found = this.plugin.playerDirectory().resolve(this.playerName).join();
