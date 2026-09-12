@@ -15,7 +15,7 @@ gui.additional.game_mode: '<color:#C8E4E9>· 游戏模式 <color:#FFE08A><arg:0>
 gui.additional.experience: '<color:#C8E4E9>· 等级 <color:#FFE08A><arg:0></color>，总经验 <color:#FFE08A><arg:1></color>，进度 <color:#FFE08A><arg:2></color></color>'
 gui.additional.health: '<color:#C8E4E9>· 生命值 <color:#FFE08A><arg:0></color></color>'
 gui.additional.enchantment_seed: '<color:#C8E4E9>· 附魔种子 <color:#FFE08A><arg:0></color></color>'
-gui.additional.emoney: '<color:#C8E4E9>· 货币余额 <color:#FFE08A><arg:0></color></color>'
+gui.additional.vault: '<color:#C8E4E9>· 货币余额 <color:#FFE08A><arg:0></color></color>'
 gui.additional.unknown_keep: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (本服未注册, 保留)</color>'
 gui.additional.unknown_keep_size: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (<arg:1> B, 本服未注册, 保留)</color>'
 gui.additional.unknown_drop: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (本服未注册, 下次保存时丢弃)</color>'

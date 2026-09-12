@@ -31,7 +31,7 @@ public final class VaultEconomyService {
         }
         this.economy = provider;
         this.plugin.logger().info(TranslationManager.console(LogConstants.PLUGIN_ECONOMY_READY, provider.getName()));
-        this.dataRegistry.register(new EmoneyDataType(this));
+        this.dataRegistry.register(new VaultDataType(this));
     }
 
     @NotNull

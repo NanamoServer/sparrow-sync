@@ -1,6 +1,6 @@
 [versions]
-project-version = "26.9-bata.2"
-config-version = "4"
+project-version = "26.9-beta.2"
+config-version = "5"
 commands-config-version = "2"
 server-config-version = "1"
 lang-version = "50"

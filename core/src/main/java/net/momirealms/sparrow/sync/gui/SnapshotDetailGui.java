@@ -5,7 +5,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
-import net.momirealms.sparrow.sync.compatibility.economy.EmoneyDataType;
+import net.momirealms.sparrow.sync.compatibility.economy.VaultDataType;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -579,8 +579,8 @@ public final class SnapshotDetailGui {
         if (previews.get(EnchantmentSeedDataType.ENCHANTMENT_SEED) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof Integer seed) {
             lines.add(this.text("additional.enchantment_seed", seed));
         }
-        if (previews.get(EmoneyDataType.EMONEY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof EmoneyDataType.Money money) {
-            lines.add(this.text("additional.emoney", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
+        if (previews.get(VaultDataType.VAULT) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof VaultDataType.Money money) {
+            lines.add(this.text("additional.vault", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
         }
         // 预览状态中保存已读取的块头大小, 待加载类型与读取失败的类型分别展示.
         for (var entry : previews.entrySet()) {

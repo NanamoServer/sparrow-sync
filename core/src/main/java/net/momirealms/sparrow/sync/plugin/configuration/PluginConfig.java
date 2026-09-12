@@ -602,7 +602,7 @@ public final class PluginConfig {
         boolean statistics = true;
         @Comment("Synchronizes the player's Vault currency balance; requires the Vault plugin and an economy plugin")
         @Comment(lang = "zh-CN", value = "是否同步玩家余额, 需要安装 Vault 和经济插件.")
-        boolean vaultEmoney = false;
+        boolean vault = false;
 
         public boolean advancements() {
             return this.advancements;
@@ -620,8 +620,8 @@ public final class PluginConfig {
             return this.enderChest;
         }
 
-        public boolean vaultEmoney() {
-            return this.vaultEmoney;
+        public boolean vault() {
+            return this.vault;
         }
 
         public boolean experience() {

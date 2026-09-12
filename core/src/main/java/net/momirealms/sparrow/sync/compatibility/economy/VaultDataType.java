@@ -10,14 +10,14 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-public final class EmoneyDataType extends CodecDataType<EmoneyDataType.Money> {
-    public static final DataKey EMONEY = DataKey.sparrow("emoney");
+public final class VaultDataType extends CodecDataType<VaultDataType.Money> {
+    public static final DataKey VAULT = DataKey.sparrow("vault");
     private static final double EQUAL_EPSILON = 1e-9; // 余额已一致的判定阈值, 余额一致时不产生交易
 
     private final VaultEconomyService economy;
 
-    public EmoneyDataType(@NotNull VaultEconomyService economy) {
-        super(EMONEY, Money.CODEC);
+    public VaultDataType(@NotNull VaultEconomyService economy) {
+        super(VAULT, Money.CODEC);
         this.economy = economy;
     }
 

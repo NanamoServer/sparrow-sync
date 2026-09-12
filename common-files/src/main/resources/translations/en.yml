@@ -15,7 +15,7 @@ gui.additional.game_mode: '<color:#C8E4E9>· Game mode <color:#FFE08A><arg:0></c
 gui.additional.experience: '<color:#C8E4E9>· Level <color:#FFE08A><arg:0></color>, total XP <color:#FFE08A><arg:1></color>, progress <color:#FFE08A><arg:2></color></color>'
 gui.additional.health: '<color:#C8E4E9>· Health <color:#FFE08A><arg:0></color></color>'
 gui.additional.enchantment_seed: '<color:#C8E4E9>· Enchantment seed <color:#FFE08A><arg:0></color></color>'
-gui.additional.emoney: '<color:#C8E4E9>· Currency balance <color:#FFE08A><arg:0></color></color>'
+gui.additional.vault: '<color:#C8E4E9>· Currency balance <color:#FFE08A><arg:0></color></color>'
 gui.additional.unknown_keep: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (Not registered here, retained)</color>'
 gui.additional.unknown_keep_size: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (<arg:1> B, Not registered here, retained)</color>'
 gui.additional.unknown_drop: '<color:#C8E4E9>· <color:#FFE08A><arg:0></color> (Not registered here, discarded on next save)</color>'
