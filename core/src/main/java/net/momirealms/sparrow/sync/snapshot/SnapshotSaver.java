@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
+import net.momirealms.sparrow.sync.api.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;

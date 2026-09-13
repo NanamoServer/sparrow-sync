@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.event;
+package net.momirealms.sparrow.sync.api.event;
 
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;

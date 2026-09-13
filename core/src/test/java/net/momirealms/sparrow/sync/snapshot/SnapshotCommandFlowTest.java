@@ -42,7 +42,7 @@ import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
-import net.momirealms.sparrow.sync.event.PreApplyEvent;
+import net.momirealms.sparrow.sync.api.event.PreApplyEvent;
 import org.bukkit.World;
 import java.util.ArrayList;
 import java.util.function.Consumer;

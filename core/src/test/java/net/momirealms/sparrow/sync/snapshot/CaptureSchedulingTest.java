@@ -6,7 +6,7 @@ import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
-import net.momirealms.sparrow.sync.event.SnapshotSaveEvent;
+import net.momirealms.sparrow.sync.api.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.map.MapPipeline;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.map.data.MapOrigin;

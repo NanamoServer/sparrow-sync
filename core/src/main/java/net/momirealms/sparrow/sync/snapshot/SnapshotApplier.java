@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.minecraft.nbt.CompoundTag;
-import net.momirealms.sparrow.sync.event.PreApplyEvent;
-import net.momirealms.sparrow.sync.event.SyncCompleteEvent;
+import net.momirealms.sparrow.sync.api.event.PreApplyEvent;
+import net.momirealms.sparrow.sync.api.event.SyncCompleteEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
