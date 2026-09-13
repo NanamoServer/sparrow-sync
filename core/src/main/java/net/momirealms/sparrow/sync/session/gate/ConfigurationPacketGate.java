@@ -56,18 +56,17 @@ public final class ConfigurationPacketGate implements LoginGate {
         }, ClientboundFinishConfigurationPacket.class, PacketFlow.CLIENTBOUND);
     }
 
-    // 运行在连接的 eventLoop 上, 不得阻塞
+    // 运行在连接的 eventLoop 上, 不能阻塞等待
     private void onFinishConfiguration(NetworkUser user, NMSPacketEvent event) {
         Channel channel = user.channel();
         if (!(channel.pipeline().get("packet_handler") instanceof Connection connection)) return;
         if (!(connection.getPacketListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
-        // 获取基本信息
         PlayerProfile profile = listener.paperConnection.getProfile();
         UUID uuid = profile.getId();
         String name = profile.getName();
         assert uuid != null;
         assert name != null;
-        // channel 属性区分同一物理连接的 reconfiguration 与新连接快速重入
+        // passed 记录本连接是否已放行过配置结束包, 用于识别再次进入配置阶段
         boolean passed = Boolean.TRUE.equals(channel.attr(GATE_PASSED).get());
         PlayerSession existing = this.sessionManager.find(uuid);
         if (existing != null) {
@@ -87,13 +86,13 @@ public final class ConfigurationPacketGate implements LoginGate {
             this.rejectTooFast(listener, uuid, name, "previous session is still " + state);
             return;
         }
-        // 扣住终结包, 加载期间暂停 vanilla 的 15 秒 finish 应答计时
+        // 暂缓发送配置结束包, 数据准备期间暂停原版的应答超时计时
         event.cancelled(true);
         ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
         this.beginLogin(user, listener, uuid, name);
     }
 
-    // 原子注册会话并启动配置阶段的数据准备
+    // 注册会话, 取得锁后准备登录数据
     private void beginLogin(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
         PlayerSession session = this.sessionManager.tryOpen(uuid, name, listener.connection);
         if (session == null) {
@@ -107,7 +106,7 @@ public final class ConfigurationPacketGate implements LoginGate {
                 this.sessionManager.abort(session);
             }
         });
-        // 写用户名映射与读快照作为一组完成才放人, 名字映射失败不阻断进服, 只发日志警告.
+        // 登录前等待用户名记录更新完成, 更新失败时记日志并继续登录
         CompletableFuture<Void> userReady = this.plugin.storageProvider().ensureUser(uuid, name).handle((ignored, throwable) -> {
             if (throwable != null) {
                 this.plugin.logger().file(LogCategory.STORAGE, uuid, name, throwable, LogConstants.SYNC_USER_FAILED, name);
@@ -119,7 +118,7 @@ public final class ConfigurationPacketGate implements LoginGate {
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());
         long lockStart = System.nanoTime();
         this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
-                // 锁释放晚于落库, 拿到锁后读库必为最新
+                // 取得会话锁后再读取快照, 正常交接时旧会话已完成保存
                 .thenCompose(ignored -> this.sessionManager.prepare(session))
                 .thenCombine(userReady, (outcome, ignored) -> outcome)
                 .orTimeout(budget, TimeUnit.SECONDS)
@@ -137,7 +136,7 @@ public final class ConfigurationPacketGate implements LoginGate {
                 });
     }
 
-    // 抢会话锁, 直取或等持有服交接, 完成时锁值已交给会话
+    // 获取会话锁, 已被占用时等待交接, 成功后将锁值交给会话
     private CompletableFuture<Void> acquireLock(PlayerSession session, UUID uuid, String name, long deadlineNanos, long lockStart) {
         return this.plugin.sessionLock().tryAcquire(uuid).thenCompose(outcome -> switch (outcome) {
             // 一次抢到, 无人持有
@@ -148,10 +147,10 @@ public final class ConfigurationPacketGate implements LoginGate {
             }
             // 被别的服持有, 走交接探测
             case SessionLock.AcquireOutcome.Held(String value) -> {
-                // 同服锁可能由离线恢复持有, 其余同 id 持锁情况按集群身份冲突处理
+                // 本服离线恢复也会持锁, 其余同 server-id 的锁按身份冲突处理
                 LockValue holder = LockValue.parse(value);
                 if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
-                    // 本服离线恢复期间拒绝本次登录, 拒绝日志记录保存中的原因, 玩家可在恢复结束后重连.
+                    // 离线恢复尚未完成, 玩家需稍后重新连接
                     if (this.plugin.snapshotService().restoringOffline(uuid)) {
                         yield CompletableFuture.failedFuture(new IllegalStateException("offline snapshot restore is still saving"));
                     }
@@ -178,7 +177,7 @@ public final class ConfigurationPacketGate implements LoginGate {
         });
     }
 
-    // 恢复 vanilla finish 应答计时并补发终结包
+    // 补发配置结束包, 并重新开始原版应答计时
     private void release(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
         Channel channel = user.channel();
         channel.eventLoop().execute(() -> {
@@ -190,13 +189,13 @@ public final class ConfigurationPacketGate implements LoginGate {
         });
     }
 
-    // 拒绝无法取得会话占位的连接
+    // 已有会话尚未结束时拒绝重复登录
     private void rejectTooFast(ServerConfigurationPacketListenerImpl listener, UUID uuid, String name, String reason) {
         this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, reason);
         listener.paperConnection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
     }
 
-    // 加载失败, 拒绝进服.
+    // 数据准备失败时作废会话并断开连接
     private void refuse(ServerConfigurationPacketListenerImpl listener, PlayerSession session, String name, String reason) {
         this.sessionManager.abort(session);
         this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);

@@ -20,12 +20,12 @@ public final class PlayerSession implements PlayerDataEntry {
 
     private final UUID uuid;
     private final String playerName;
-    private final Connection connection; // 随会话保留到最终保存和解锁结束
+    private final Connection connection; // 保留连接引用, 直到保存和解锁结束
     private final CompletableFuture<Void> released = new CompletableFuture<>(); // 会话从注册表移除后完成
     private SessionState state = SessionState.PREPARING;
     private LoginDataState loginDataState = LoginDataState.PRELOADING;
-    private SnapshotData retainedData = EagerSnapshotData.EMPTY; // 本服未注册类型的紧凑数据体, 保存时原样写回快照
-    private String lockToken; // 分布式锁的持有值, 释放时原样传回
+    private SnapshotData retainedData = EagerSnapshotData.EMPTY; // 本服未注册的数据, 保存时原样写回
+    private String lockToken; // 获取锁时的完整锁值, 释放时原样传回
 
     PlayerSession(@NotNull UUID uuid, @NotNull String playerName, @NotNull Connection connection) {
         this.uuid = uuid;

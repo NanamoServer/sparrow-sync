@@ -25,7 +25,7 @@ public final class SessionListener implements Listener {
         this.sessions = sessions;
     }
 
-    // 应用配置阶段加载完成的数据.
+    // 在 Join 事件的 LOWEST 优先级应用数据
     @EventHandler(priority = EventPriority.LOWEST)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
@@ -36,7 +36,7 @@ public final class SessionListener implements Listener {
             return;
         }
 
-        // 注入玩家的 PlayerAdvancements#progressChanged, 注入失败时拒绝进入.
+        // 安装成就进度跟踪器, 失败时终止登录
         if (
                 PluginConfig.synchronization$advancements().injectProgressChanged()
                 && this.plugin.dataRegistry().type(AdvancementsDataType.ADVANCEMENTS) instanceof AdvancementsDataType advancements
@@ -51,7 +51,7 @@ public final class SessionListener implements Listener {
             }
         }
 
-        // 属性回调在 Player apply 前安装, 单实例失败由类型保留普通采集路径.
+        // 应用数据前安装属性跟踪器, 安装失败的属性仍按常规方式采集
         if (
                 PluginConfig.synchronization$attributes().injectOnDirtyConsumer()
                 && this.plugin.dataRegistry().type(AttributesDataType.ATTRIBUTES) instanceof AttributesDataType attributes
@@ -87,10 +87,10 @@ public final class SessionListener implements Listener {
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session != null) {
             this.plugin.logger().file(LogCategory.QUIT, player.getUniqueId(), player.getName(), LogConstants.SESSION_QUIT);
-            // 原版会在 PlayerQuitEvent 返回后立刻保存玩家文件, 玩家所在 Region 的下一 tick 再采集时本地数据已经就绪.
+            // 原版在退出事件返回后保存玩家文件, 最终采集安排在所在区域的下一 tick
             this.sessions.disconnect(session, player);
         }
-        // ACTIVE 状态已结束, 校准在线名单.
+        // 将玩家从在线名单中移除
         this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), false);
     }
 

@@ -71,20 +71,20 @@ public final class SessionManager {
         return this.sessions.putIfAbsent(player, session) == null ? session : null;
     }
 
-    /** 并行读取原版玩家数据和远端快照, 远端成功且本地已得到结果后放行 Gate. */
+    /** 并行准备本地数据和远端快照, 准备完成后允许继续登录. */
     @NotNull
     public CompletableFuture<SessionPrepareResult> prepare(@NotNull PlayerSession session) {
-        // 迟到的锁结果不再为已经关闭的会话启动读取
+        // 等锁期间会话可能已经关闭
         if (session.state() != SessionState.PREPARING) {
             return CompletableFuture.completedFuture(SessionPrepareResult.REJECTED);
         }
         long loadStart = System.nanoTime();
-        // 原版 .dat 与远端快照在同一 Session 准备窗口内并行读取
+        // 本地 .dat 和远端快照并行读取
         CompletableFuture<PlayerDataPreload> playerData = CompletableFuture
                 .supplyAsync(() -> this.playerDataStorage.loadOriginal(session.uuid(), session.playerName()), this.plugin.scheduler().async())
                 .handle((loaded, throwable) -> {
                     String loadMillis = millis(loadStart, System.nanoTime());
-                    // 读取本地数据失败
+                    // 本地读取失败时按空数据继续准备
                     if (throwable != null) {
                         String detail = String.valueOf(throwable);
                         this.logger.warnWithFileCause(LogCategory.APPLY, session.uuid(), session.playerName(), throwable, LogConstants.SYNC_LOCAL_DATA_FALLBACK, session.playerName(), loadMillis, detail);
@@ -98,17 +98,16 @@ public final class SessionManager {
                 .loadLatest(session.uuid(), session.playerName())
                 .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
 
-        // 两份结果齐全后在异步线程生成最终登录 NBT, 再检查 Session 状态并设置会话加载结果
+        // 两份读取结果齐全后, 在异步线程准备登录数据
         return playerData.thenCombineAsync(snapshot, (local, remote) -> {
             long asyncReadNanos = System.nanoTime() - loadStart;
-            // 已结束的登录不再执行登录数据转换
             if (session.state() != SessionState.PREPARING) {
                 return SessionPrepareResult.REJECTED;
             }
             SnapshotLoadResult.Ready loadedSnapshot = remote instanceof SnapshotLoadResult.Ready ready ? ready : null;
             PlayerDataPreload preparedLocal = local;
             long nativeApplyNanos = 0L;
-            // 如果开启了 nativeApply, 则进行修改
+            // 按配置提前应用快照数据, 供原版登录流程加载
             boolean nativeApply = PluginConfig.synchronization$nativeAsyncApply().playerData() || PluginConfig.synchronization$nativeAsyncApply().advancements() || PluginConfig.synchronization$nativeAsyncApply().statistics();
             if (nativeApply && loadedSnapshot != null) {
                 Optional<CompoundTag> localData = local instanceof PlayerDataPreload.Ready(Optional<CompoundTag> data) ? data : Optional.empty();
@@ -116,17 +115,16 @@ public final class SessionManager {
                 preparedLocal = new PlayerDataPreload.Ready(this.snapshotService.applyNative(session, localData, loadedSnapshot));
                 nativeApplyNanos = System.nanoTime() - nativeApplyStart;
             }
-            // 设置会话加载结果与 abort 共用 Session 监视器, 本服登录数据和快照一起提交
+            // 与 abort 使用同一把会话锁, 一次写入本地数据和快照的准备结果
             synchronized (session) {
                 if (session.state() != SessionState.PREPARING) {
                     return SessionPrepareResult.REJECTED;
                 }
-                // 检查快照和本地数据读取是否成功
+                // 远端快照读取失败时终止登录
                 if (remote instanceof SnapshotLoadResult.Failed(String detail)) {
                     LoginDataState failed = session.failLoginData(detail);
                     return new SessionPrepareResult.Failed(failed instanceof LoginDataState.Failed(String failure) ? failure : detail);
                 }
-                // 设置会话加载结果并检查结果状态
                 LoginDataState published = session.publishLoginData(preparedLocal, loadedSnapshot, asyncReadNanos, nativeApplyNanos);
                 if (published instanceof LoginDataState.Failed(String detail)) {
                     return new SessionPrepareResult.Failed(detail);
@@ -139,10 +137,7 @@ public final class SessionManager {
         }, this.plugin.scheduler().async());
     }
 
-    /**
-     * 把登录阶段取得的分布式锁交给会话.
-     * 会话已经结束时立即归还这把迟到的锁.
-     */
+    /** 将取得的锁交给会话, 会话已失效或关闭时立即释放. */
     public void lockAcquired(@NotNull PlayerSession session, @NotNull String lockToken) {
         this.handoffs.clearSettled(session.uuid());
         boolean release;
@@ -153,7 +148,7 @@ public final class SessionManager {
         if (release) this.sessionLock.release(session.uuid(), lockToken);
     }
 
-    /** 在玩家线程消费登录阶段的数据并激活会话. */
+    /** 在玩家线程检查预加载结果, 应用剩余数据并激活会话. */
     @NotNull
     SnapshotApplyResult activate(@NotNull PlayerSession session, @NotNull Player player) {
         SnapshotLoadResult.Ready loaded;
@@ -163,7 +158,7 @@ public final class SessionManager {
             if (!this.owns(session) || !session.tryTransition(SessionState.PREPARING, SessionState.APPLYING)) {
                 return SnapshotApplyResult.REJECTED;
             }
-            // Join 验收后 Session 解除对原版数据的引用.
+            // 取出预加载结果, 并清除会话中的引用
             LoginDataState loginDataState = session.finishLoginData();
             switch (loginDataState) {
                 case LoginDataState.Ready ready -> {
@@ -177,7 +172,7 @@ public final class SessionManager {
                 case LoginDataState.Cleared ignored -> {return new SnapshotApplyResult.Failed("player data cache was cleared before PlayerJoinEvent");}
             }
         }
-        // 应用数据
+        // 原版已加载预处理数据, 此处应用剩余部分
         SnapshotApplyResult result;
         long syncApplyNanos = 0L;
         if (loaded == null) {
@@ -201,10 +196,7 @@ public final class SessionManager {
         return result;
     }
 
-    /**
-     * 立即采集 ACTIVE 会话的当前状态, 后续阶段进入玩家串行线程.
-     * 会话已停止接受新保存请求或已失效时返回 null.
-     */
+    /** 立即采集数据并排队保存, 会话已失效、非 ACTIVE 或已停止接受请求时返回 null. */
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
@@ -213,10 +205,7 @@ public final class SessionManager {
         }
     }
 
-    /**
-     * 在玩家线程接受分阶段采集保存请求, 玩家线程采集组采完后提交串行任务.
-     * 会话已停止接受新保存请求或已失效时返回 null.
-     */
+    /** 在玩家线程安排分阶段采集并保存, 会话已失效、非 ACTIVE 或已停止接受请求时返回 null. */
     @Nullable
     public CompletableFuture<SnapshotSaveResult> captureLaterAndSave(@NotNull PlayerSession session, @NotNull Player player, @NotNull SaveCause cause) {
         synchronized (session) {
@@ -225,7 +214,7 @@ public final class SessionManager {
         }
     }
 
-    /** 作废尚未激活的会话, 不保存半加载数据. */
+    /** 作废尚未激活的会话并释放锁, 不保存未完成同步的数据. */
     public boolean abort(@NotNull PlayerSession session) {
         synchronized (session) {
             if (!this.owns(session)) return false;
@@ -238,11 +227,11 @@ public final class SessionManager {
         }
     }
 
-    /** 停止接受该玩家的新保存请求, 并在退出所在 Region 的下一 tick 提交最终快照. */
+    /** 停止接受新保存请求, 在玩家退出时所在区域的下一 tick 采集并保存最终快照. */
     public void disconnect(@NotNull PlayerSession session, @NotNull Player player) {
         CloseAction action = this.beginClose(session);
         if (action == CloseAction.IGNORED) return;
-        // Region 定位取自 Quit 事件线程, 下一 tick 严格排在原版退出调用栈之后.
+        // 在退出事件中记录所在区域, 下一 tick 等原版退出流程结束后再采集
         Location location = player.getLocation();
         this.plugin.scheduler().sync().runLater(() -> {
             if (action == CloseAction.SAVE_ACCEPTED) {
@@ -256,7 +245,7 @@ public final class SessionManager {
         }
     }
 
-    // 关服路径没有可等待的下一 Region tick, 立即启动最终保存.
+    // 关服时无法等待下一个区域 tick, 立即开始最终保存
     CloseAction closeWithFinalSave(PlayerSession session, Supplier<CompletableFuture<SnapshotSaveResult>> finalSave) {
         CloseAction action = this.beginClose(session);
         if (action == CloseAction.SAVE_ACCEPTED) {
@@ -267,7 +256,7 @@ public final class SessionManager {
         return action;
     }
 
-    // 停止接受新保存请求与任务启动分开执行, Quit 事件返回前就停止接受该玩家的新保存.
+    // 退出事件返回前停止接受新保存请求, 最终保存可稍后执行
     private CloseAction beginClose(PlayerSession session) {
         synchronized (session) {
             if (!this.owns(session)) return CloseAction.IGNORED;
@@ -283,7 +272,7 @@ public final class SessionManager {
         }
     }
 
-    // 最终保存完成后记录成功写入的 handoff, 再结束 Session 并进入锁释放流程.
+    // 最终保存结束后关闭会话并解锁, 成功写入数据库时先记录交接标记
     private void closeAfterSave(PlayerSession session, CompletableFuture<SnapshotSaveResult> finalSave) {
         finalSave.whenComplete((result, throwable) -> {
             if (result instanceof SnapshotSaveResult.Settled settled && settled.result().stored()) {
@@ -296,7 +285,7 @@ public final class SessionManager {
         });
     }
 
-    // Redis 释放尝试完成后再摘注册表, released 对等待方代表旧锁已经处理完毕.
+    // 等待 Redis 解锁尝试结束, 再移除会话并通知等待方
     private void releaseSession(PlayerSession session) {
         String lockToken = session.lockToken();
         if (lockToken != null) {
@@ -304,13 +293,13 @@ public final class SessionManager {
                     .release(session.uuid(), lockToken)
                     .whenComplete((deleted, throwable) -> {
                         this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted));
-                        // released 在注册表摘除后完成, 等待方此时才可创建下一代 Session.
+                        // 先移除旧会话, 再允许等待方创建新会话
                         this.sessions.remove(session.uuid(), session);
                         session.released().complete(null);
                     });
             return;
         }
-        // released 在注册表摘除后完成, 等待方此时才可创建下一代 Session.
+        // 先移除旧会话, 再允许等待方创建新会话
         this.sessions.remove(session.uuid(), session);
         session.released().complete(null);
     }
@@ -335,9 +324,9 @@ public final class SessionManager {
         return players;
     }
 
-    /** 关服时为 ACTIVE 会话立即采集最终状态, 其余半加载会话直接作废. */
+    /** 关服时保存 ACTIVE 会话, 作废尚未激活的会话. */
     public void shutdown() {
-        // tryOpen 与这里共享 manager 监视器, 先停止接受新请求再遍历已有会话
+        // 与 tryOpen 使用同一把锁, 先停止接受请求, 再处理已有会话
         synchronized (this) {
             this.accepting = false;
         }
@@ -364,7 +353,7 @@ public final class SessionManager {
         return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
-    // beginClose 时对会话状态的裁定, 调用方据此选择保存、延迟释放或结束处理.
+    // 关闭会话的处理方式, 由调用方安排保存和解锁
     enum CloseAction {
         SAVE_ACCEPTED,
         ABORTED,

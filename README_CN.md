@@ -6,6 +6,7 @@
 ![bStats Servers](https://img.shields.io/bstats/servers/33952)
 ![bStats Players](https://img.shields.io/bstats/players/33952)
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+[![用户手册](https://img.shields.io/badge/📙-用户手册-D2691E)](https://nanamoserver.github.io/sparrow-sync-wiki/zh-Hans/)
 
 ## 📌 项目简介
 

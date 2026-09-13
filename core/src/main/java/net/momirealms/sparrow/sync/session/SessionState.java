@@ -2,20 +2,14 @@ package net.momirealms.sparrow.sync.session;
 
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 会话生命周期状态.
- * 玩家的每次进服对应一个会话, 从数据准备开始, 到最终保存落库 settle 结束.
- */
+/** 每次登录对应一个会话, 依次完成数据准备、应用和退出保存. */
 public enum SessionState {
-    PREPARING,  // 读库与预解码进行中, 这通常发生在配置阶段.
-    APPLYING,   // 预解码产物正在应用到玩家实体, 这通常发生在 onJoin 阻塞执行.
-    ACTIVE,     // 数据已就位, 玩家正常游玩. 唯一允许退出保存的状态.
-    SAVING,     // 会话已停止接受新保存请求, 最终保存请求已被接受或正在执行. 此时仍持有锁.
-    CLOSED;     // 结束保存, 释放锁.
+    PREPARING,  // 读取并准备登录数据
+    APPLYING,   // 在 Join 阶段应用剩余数据
+    ACTIVE,     // 数据已就绪, 可以接受保存请求
+    SAVING,     // 停止接受新保存请求, 等待最终保存, 仍持有锁
+    CLOSED;     // 会话已结束, 解锁可能尚未完成
 
-    /**
-     * 本状态能否转移到 next.
-     */
     public boolean canTransitionTo(@NotNull SessionState next) {
         return switch (this) {
             case PREPARING ->   next == /*正常应用数据*/ APPLYING || next == /*第一次进服无数据*/   ACTIVE || next == /*中途退出或发生异常*/ CLOSED;

@@ -70,7 +70,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         }
     }
 
-    // Paper 在所有监听器返回后继续配置任务, 此处等待异步准备链完成
+    // Paper 等监听器返回后才继续配置流程, 此处等待数据准备完成
     private void beginLogin(PlayerConfigurationConnection connection, Connection handle, UUID uuid, String name) {
         Channel channel = handle.channel;
         PlayerSession session = this.sessionManager.tryOpen(uuid, name, handle);
@@ -79,13 +79,13 @@ public final class PaperEventGate implements LoginGate, Listener {
             return;
         }
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD, name);
-        // 配置阶段断线没有 PlayerQuitEvent, 直接作废半加载会话
+        // 配置阶段断线不会触发 PlayerQuitEvent, 在此作废会话
         channel.closeFuture().addListener(future -> {
             if (session.state() == SessionState.PREPARING) {
                 this.sessionManager.abort(session);
             }
         });
-        // 写用户名映射与读快照作为一组完成才放人, 名字映射失败不阻断进服, 只发日志警告.
+        // 登录前等待用户名记录更新完成, 更新失败时记日志并继续登录
         CompletableFuture<Void> userReady = this.plugin.storageProvider().ensureUser(uuid, name).handle((ignored, throwable) -> {
             if (throwable != null) {
                 this.plugin.logger().file(LogCategory.STORAGE, uuid, name, throwable, LogConstants.SYNC_USER_FAILED, name);
@@ -97,7 +97,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());
         long lockStart = System.nanoTime();
         SessionPrepareResult outcome = this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
-                // 锁释放晚于落库, 拿到锁后读库必为最新
+                // 取得会话锁后再读取快照, 正常交接时旧会话已完成保存
                 .thenCompose(ignored -> this.sessionManager.prepare(session))
                 .thenCombine(userReady, (prepared, ignored) -> prepared)
                 .orTimeout(budget, TimeUnit.SECONDS)
@@ -115,7 +115,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         }
     }
 
-    // 抢会话锁, 直取或等持有服交接, 完成时锁值已交给会话
+    // 获取会话锁, 已被占用时等待交接, 成功后将锁值交给会话
     private CompletableFuture<Void> acquireLock(PlayerSession session, UUID uuid, String name, long deadlineNanos, long lockStart) {
         return this.plugin.sessionLock().tryAcquire(uuid).thenCompose(outcome -> switch (outcome) {
             // 一次抢到, 无人持有
@@ -126,10 +126,10 @@ public final class PaperEventGate implements LoginGate, Listener {
             }
             // 被别的服持有, 走交接探测
             case SessionLock.AcquireOutcome.Held(String value) -> {
-                // 同服锁可能由离线恢复持有, 其余同 id 持锁情况按集群身份冲突处理
+                // 本服离线恢复也会持锁, 其余同 server-id 的锁按身份冲突处理
                 LockValue holder = LockValue.parse(value);
                 if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
-                    // 本服离线恢复期间拒绝本次登录, 拒绝日志记录保存中的原因, 玩家可在恢复结束后重连.
+                    // 离线恢复尚未完成, 玩家需稍后重新连接
                     if (this.plugin.snapshotService().restoringOffline(uuid)) {
                         yield CompletableFuture.failedFuture(new IllegalStateException("offline snapshot restore is still saving"));
                     }
@@ -156,7 +156,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         });
     }
 
-    // 事件监听器返回后由 Paper 继续配置任务
+    // 记录准备完成, 监听器返回后由 Paper 继续配置流程
     private void release(UUID uuid, String name) {
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
     }
