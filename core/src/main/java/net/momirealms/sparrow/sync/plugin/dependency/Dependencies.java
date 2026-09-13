@@ -278,6 +278,13 @@ public final class Dependencies {
             .addRelocation("mysql", "com{}mysql")
             .build();
 
+    public static final Dependency MARIADB_DRIVER = Dependency.builder()
+            .groupId("org{}mariadb{}jdbc")
+            .artifactId("mariadb-java-client")
+            .version(DependencyVersions.MARIADB_DRIVER)
+            .addRelocation("mariadb", "org{}mariadb{}jdbc")
+            .build();
+
     /**
      * PostgreSQL
      */

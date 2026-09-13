@@ -66,6 +66,7 @@ public final class StatusCommand extends BukkitCommandFeature {
                 Component.text(switch (this.storageType) {
                     case MONGODB -> "MongoDB";
                     case MYSQL -> "MySQL";
+                    case MARIADB -> "MariaDB";
                     case POSTGRESQL -> "PostgreSQL";
                 }),
                 this.plugin().redisConnector().available() ? MessageConstants.COMMAND_CONNECTED.asComponent() : MessageConstants.COMMAND_DISCONNECTED.asComponent(),

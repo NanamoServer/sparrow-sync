@@ -48,6 +48,7 @@ import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.data.type.*;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.storage.mariadb.MariaDbStorageProvider;
 import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.MysqlStorageProvider;
 import net.momirealms.sparrow.sync.storage.postgresql.PostgresStorageProvider;
@@ -60,6 +61,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.mariadb.jdbc.Configuration;
 import org.postgresql.ds.PGSimpleDataSource;
 
 import java.io.*;
@@ -155,6 +157,7 @@ public class SparrowSync implements Plugin {
         this.storageProvider = switch (PluginConfig.database$type()) {
             case MONGODB -> new MongoStorageProvider(PluginConfig.database$mongodb(), this.documentCodec, this.playerExecutor, this.scheduler.async(), this.logger);
             case MYSQL -> new MysqlStorageProvider(PluginConfig.database$mysql(), this.dataCodec, this.playerExecutor, this.scheduler.async(), this.logger);
+            case MARIADB -> new MariaDbStorageProvider(PluginConfig.database$mariadb(), this.dataCodec, this.playerExecutor, this.scheduler.async(), this.logger);
             case POSTGRESQL -> new PostgresStorageProvider(PluginConfig.database$postgresql(), this.dataCodec, this.playerExecutor, this.scheduler.async(), this.logger);
         };
         this.snapshotStash = new SnapshotStash(this);
@@ -232,6 +235,7 @@ public class SparrowSync implements Plugin {
         try {
             database = switch (PluginConfig.database$type()) {
                 case MYSQL -> ConnectionUrl.getConnectionUrlInstance(PluginConfig.database$mysql().url(), null).getDatabase();
+                case MARIADB -> Configuration.parse(PluginConfig.database$mariadb().url()).database();
                 case POSTGRESQL -> {
                     PGSimpleDataSource source = new PGSimpleDataSource();
                     source.setUrl(PluginConfig.database$postgresql().url());
@@ -512,6 +516,9 @@ public class SparrowSync implements Plugin {
             ));
             case MYSQL -> dependencies.addAll(List.of(
                     Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MYSQL_DRIVER
+            ));
+            case MARIADB -> dependencies.addAll(List.of(
+                    Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.MARIADB_DRIVER
             ));
             case POSTGRESQL -> dependencies.addAll(List.of(
                     Dependencies.JDBI_CORE, Dependencies.HIKARI_CP, Dependencies.POSTGRESQL_DRIVER, Dependencies.CHECKER_QUAL

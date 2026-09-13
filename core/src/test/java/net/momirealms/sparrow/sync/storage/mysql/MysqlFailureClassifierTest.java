@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.storage.mysql;
 import com.mysql.cj.jdbc.exceptions.PacketTooBigException;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.junit.jupiter.api.Test;
+import org.mariadb.jdbc.export.MaxAllowedPacketException;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -44,6 +45,8 @@ class MysqlFailureClassifierTest {
     void packetLimitsTakePriorityOverConnectionState() {
         assertEquals(SaveResult.REJECTED_OVERSIZED, MysqlFailureClassifier.classify(new SQLException("packet too large", "08S01", 1153)));
         assertEquals(SaveResult.REJECTED_OVERSIZED, MysqlFailureClassifier.classify(new PacketTooBigException(100, 50)));
+        assertEquals(SaveResult.REJECTED_OVERSIZED, MysqlFailureClassifier.classify(new SQLException("packet too large", "08000", new MaxAllowedPacketException("oversized", true))));
+        assertEquals(SaveResult.REJECTED_OVERSIZED, MysqlFailureClassifier.classify(new SQLException("packet too large", "HY000", new MaxAllowedPacketException("oversized", false))));
     }
 
     @Test

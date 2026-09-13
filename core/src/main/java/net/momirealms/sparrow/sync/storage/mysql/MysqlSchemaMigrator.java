@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -15,7 +16,8 @@ import java.util.function.BiConsumer;
 
 // 初始化当前 MySQL 表结构或逐级升级旧库, 并协调多个服务器同时启动时的迁移顺序.
 // meta 中的 schema 表示完成的版本, schema_pending 表示已经开始但尚未公布完成的版本.
-final class MysqlSchemaMigrator {
+@ApiStatus.Internal
+public final class MysqlSchemaMigrator {
     private static final int LOCK_WAIT_SECONDS = 300;
     private static final int NETWORK_TIMEOUT_MILLIS = 30 * 60 * 1000;
 
@@ -32,7 +34,7 @@ final class MysqlSchemaMigrator {
      * @param initializer 创建当前结构的动作, 同一目标版本中断后可重入
      * @param migrations 按目标版本升序排列的迁移
      */
-    MysqlSchemaMigrator(@NotNull SyncLogger logger, int currentVersion, @NotNull BiConsumer<Handle, String> initializer, @NotNull List<MysqlSchemaMigration> migrations) {
+    public MysqlSchemaMigrator(@NotNull SyncLogger logger, int currentVersion, @NotNull BiConsumer<Handle, String> initializer, @NotNull List<MysqlSchemaMigration> migrations) {
         this.logger = logger;
         this.currentVersion = currentVersion;
         this.initializer = initializer;
@@ -48,7 +50,7 @@ final class MysqlSchemaMigrator {
     }
 
     // 将指定表前缀下的数据升级到当前代码支持的最新版本.
-    void migrate(@NotNull Jdbi jdbi, @NotNull String prefix) {
+    public void migrate(@NotNull Jdbi jdbi, @NotNull String prefix) {
         // 命名锁归属于数据库连接, 获取、迁移和释放必须使用同一个 Handle.
         try {
             jdbi.useHandle(handle -> {

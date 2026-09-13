@@ -4,7 +4,6 @@ import net.momirealms.sparrow.sync.storage.SnapshotRow;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import org.jetbrains.annotations.Nullable;
 import net.momirealms.sparrow.sync.storage.SnapshotRowMapper;
-import com.mysql.cj.jdbc.MysqlDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.locale.LogConstants;
@@ -42,21 +41,21 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
 @ApiStatus.Internal
-public final class MysqlStorageProvider implements StorageProvider {
+public class MysqlStorageProvider implements StorageProvider {
     private static final int MAX_PAYLOAD_BYTES = 15 * 1024 * 1024; // 编码后的完整 data 帧上限, 等于上限允许写入
     private static final MysqlServerVersion MINIMUM_SERVER_VERSION = new MysqlServerVersion(8, 4, 0); // Connector/J 26.7 只支持 MySQL Server 8.4 及以上
-    private static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
+    protected static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
     private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
     private static final String NEWEST_FIRST = " ORDER BY `ts` DESC, `id` DESC";
 
-    private final PluginConfig.MysqlOptions options;
+    protected final PluginConfig.MysqlOptions options;
     private final RowSnapshotCodec codec;
     private final PlayerSerialExecutor serialExecutor;
-    private final Executor asyncExecutor; // JDBC 读取与连接归还后的解码在同一 worker 任务内完成
-    private final SyncLogger logger;
-    private HikariDataSource dataSource;
-    private Jdbi jdbi;
-    private MysqlMapStorage maps;
+    protected final Executor asyncExecutor; // JDBC 读取与连接归还后的解码在同一 worker 任务内完成
+    protected final SyncLogger logger;
+    protected HikariDataSource dataSource;
+    protected Jdbi jdbi;
+    protected MysqlMapStorage maps;
 
     public MysqlStorageProvider(@NotNull PluginConfig.MysqlOptions options,
                                 @NotNull SnapshotDataCodec codec,
@@ -78,37 +77,19 @@ public final class MysqlStorageProvider implements StorageProvider {
         if (!this.options.tablePrefix().matches("[a-z0-9_]{0,52}")) {
             throw new IllegalArgumentException("MySQL table prefix must contain at most 52 lowercase ASCII letters, digits or underscores");
         }
-        if (!this.options.url().startsWith("jdbc:mysql://")) {
-            throw new IllegalArgumentException("MySQL storage requires a jdbc:mysql:// URL");
-        }
         HikariDataSource pool = new HikariDataSource();
         boolean ready = false;
         try {
-            // MysqlDataSource 使用 NonRegisteringDriver, 连接生命周期不占用全局驱动注册表.
-            MysqlDataSource mysql = new MysqlDataSource() {
-                private int loginTimeout; // Hikari 设置的建连等待秒数, 关闭时用于等待建连线程退出
-
-                // Hikari 按此值等待建连线程退出; Connector/J 的原始实现始终返回 0.
-                @Override
-                public void setLoginTimeout(int seconds) {
-                    this.loginTimeout = seconds;
-                }
-
-                @Override
-                public int getLoginTimeout() {
-                    return this.loginTimeout;
-                }
-            };
-            mysql.setUrl(this.options.url());
-            mysql.setUser(this.options.username());
-            mysql.setPassword(this.options.password());
-            // 驱动默认值提供有限的网络等待时间, URL 中的同名参数仍可覆盖这些值.
-            mysql.setConnectTimeout(5000);
-            mysql.setSocketTimeout(10000);
-            mysql.setCharacterEncoding("UTF-8");
-            mysql.setAutoReconnect(false);
+            // Hikari 在 MySQL 初始化时按类名创建数据源, MariaDB 加载父类时只依赖 JDBC 和连接池.
+            pool.setDataSourceClassName("com.mysql.cj.jdbc.MysqlDataSource");
+            pool.addDataSourceProperty("url", this.options.url());
+            pool.addDataSourceProperty("user", this.options.username());
+            pool.addDataSourceProperty("password", this.options.password());
+            pool.addDataSourceProperty("connectTimeout", 5000);
+            pool.addDataSourceProperty("socketTimeout", 10000);
+            pool.addDataSourceProperty("characterEncoding", "UTF-8");
+            pool.addDataSourceProperty("autoReconnect", false);
             // 连接池采用内部资源策略, 每条连接使用读已提交隔离级别和严格写入模式.
-            pool.setDataSource(mysql);
             pool.setPoolName("sparrow-sync-mysql");
             pool.setMaximumPoolSize(10);
             pool.setConnectionTimeout(10000);
@@ -139,8 +120,6 @@ public final class MysqlStorageProvider implements StorageProvider {
             this.jdbi = connected;
             this.maps = mapStorage;
             ready = true;
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed to initialize MySQL storage", exception);
         } finally {
             if (!ready) pool.close();
         }

@@ -97,6 +97,7 @@ subprojects {
             relocate("org.jdbi", "$libs.jdbi")
             relocate("com.zaxxer.hikari", "$libs.hikari")
             relocate("com.mysql", "$libs.mysql")
+            relocate("org.mariadb.jdbc", "$libs.mariadb")
             relocate("org.postgresql", "$libs.postgresql")
             relocate("ca.spottedleaf.concurrentutil", "$libs.concurrentutil")
             relocate("io.netty.handler.codec.http", "$libs.netty.handler.codec.http")

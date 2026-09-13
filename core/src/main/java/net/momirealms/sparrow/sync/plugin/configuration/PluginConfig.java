@@ -158,13 +158,17 @@ public final class PluginConfig {
     // 命名风格按类型解析而不从外层继承, 这里的注解决定本段的键名形式
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DatabaseOptions {
-        @Comment("Database used to store player snapshots. Choose MONGODB, MYSQL or POSTGRESQL.")
-        @Comment(lang = "zh-CN", value = "保存玩家数据快照的数据库, 可选 MONGODB、MYSQL、POSTGRESQL.")
-        StorageType type = StorageType.MONGODB;
+        @Comment("Database used to store player snapshots. Choose MONGODB, MYSQL, MARIADB or POSTGRESQL.")
+        @Comment(lang = "zh-CN", value = "保存玩家数据快照的数据库, 可选 MONGODB、MYSQL、MARIADB、POSTGRESQL.")
+        StorageType type = StorageType.MYSQL;
 
         @Comment("MySQL database settings")
         @Comment(lang = "zh-CN", value = "MYSQL 数据库设置")
         MysqlOptions mysql = new MysqlOptions();
+
+        @Comment("MariaDB database settings")
+        @Comment(lang = "zh-CN", value = "MARIADB 数据库设置")
+        MariaDbOptions mariadb = new MariaDbOptions();
 
         @Comment("PostgreSQL database settings")
         @Comment(lang = "zh-CN", value = "POSTGRESQL 数据库设置")
@@ -231,6 +235,13 @@ public final class PluginConfig {
         String password = "";
         String tablePrefix = "sparrow_sync_";
 
+        public MysqlOptions() {
+        }
+
+        public MysqlOptions(@NotNull String url) {
+            this.url = url;
+        }
+
         public String url() {
             return this.url;
         }
@@ -245,6 +256,13 @@ public final class PluginConfig {
 
         public String tablePrefix() {
             return this.tablePrefix;
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class MariaDbOptions extends MysqlOptions {
+        public MariaDbOptions() {
+            super("jdbc:mariadb://localhost:3306/minecraft?connectTimeout=5000&socketTimeout=10000&characterEncoding=UTF-8");
         }
     }
 
@@ -1251,6 +1269,11 @@ public final class PluginConfig {
     @NotNull
     public static MysqlOptions database$mysql() {
         return config.database.mysql;
+    }
+
+    @NotNull
+    public static MariaDbOptions database$mariadb() {
+        return config.database.mariadb;
     }
 
     @NotNull

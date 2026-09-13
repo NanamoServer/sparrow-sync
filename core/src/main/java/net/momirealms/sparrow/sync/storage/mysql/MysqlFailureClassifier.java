@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.storage.mysql;
 
-import com.mysql.cj.jdbc.exceptions.PacketTooBigException;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -27,8 +26,15 @@ final class MysqlFailureClassifier {
         int code = failure.getErrorCode();
         String state = failure.getSQLState();
         // 服务端的包超限可能同时带连接中断状态, 优先保留大小判定.
-        if (failure instanceof PacketTooBigException || code == 1153) {
+        if (code == 1153) {
             return SaveResult.REJECTED_OVERSIZED;
+        }
+        // MariaDB 将本地包超限放在 cause 中, 类名匹配允许两种驱动独立加载.
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            String name = cause.getClass().getName();
+            if (name.equals("com.mysql.cj.jdbc.exceptions.PacketTooBigException") || name.equals("org.mariadb.jdbc.export.MaxAllowedPacketException")) {
+                return SaveResult.REJECTED_OVERSIZED;
+            }
         }
         if (code == 1366 || code == 3819 || state != null && (state.startsWith("22") || state.startsWith("23"))) {
             return SaveResult.REJECTED_MALFORMED;

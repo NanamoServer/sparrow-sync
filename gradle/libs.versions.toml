@@ -1,6 +1,6 @@
 [versions]
 project-version = "26.9-beta.2"
-config-version = "5"
+config-version = "6"
 commands-config-version = "2"
 server-config-version = "1"
 lang-version = "50"
@@ -21,6 +21,7 @@ geantyref = "2.0.1"
 jdbi = "3.54.0"
 hikari-cp = "7.1.0"
 mysql-driver = "26.7.0"
+mariadb-driver = "3.5.10"
 postgresql-driver = "42.7.13"
 checker-qual = "3.55.1"
 cloud-core = "2.0.0"
@@ -63,6 +64,7 @@ mongodb-driver-sync = { module = "org.mongodb:mongodb-driver-sync", version.ref 
 jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
 hikari-cp = { module = "com.zaxxer:HikariCP", version.ref = "hikari-cp" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-driver" }
+mariadb-driver = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mariadb-driver" }
 postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postgresql-driver" }
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }

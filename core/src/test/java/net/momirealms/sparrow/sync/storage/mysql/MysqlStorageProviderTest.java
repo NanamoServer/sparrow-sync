@@ -1105,7 +1105,7 @@ class MysqlStorageProviderTest {
     }
 
     /**
-     * 验证不满足标识符或传输要求的连接配置在业务表创建前失败.
+     * 验证含非法字符或超过长度限制的表前缀在建表前失败.
      *
      * @throws Exception 当测试配置注入失败时
      */
@@ -1113,7 +1113,6 @@ class MysqlStorageProviderTest {
     void rejectsInvalidOptionsBeforeCreatingTables() throws Exception {
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "bad-prefix")::initialize);
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "a".repeat(53))::initialize);
-        assertThrows(IllegalArgumentException.class, this.provider("jdbc:postgresql://localhost/test", this.prefix)::initialize);
     }
 
     /**

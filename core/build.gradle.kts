@@ -34,6 +34,7 @@ dependencies {
         exclude(group = "com.google.protobuf", module = "protobuf-java")
     }
     compileOnly(libs.postgresql.driver)
+    compileOnly(libs.mariadb.driver)
     compileOnly(libs.zstd.jni)
     compileOnly(libs.husksync)
     compileOnly(libs.vaultapi)
@@ -47,6 +48,7 @@ dependencies {
         exclude(group = "com.google.protobuf", module = "protobuf-java")
     }
     testImplementation(libs.postgresql.driver)
+    testImplementation(libs.mariadb.driver)
     testImplementation(libs.lettuce.core)
     testImplementation(libs.caffeine)
     testImplementation(libs.husksync)
@@ -89,6 +91,7 @@ buildConfig {
     buildConfigField("JDBI", libs.versions.jdbi.get())
     buildConfigField("HIKARI_CP", libs.versions.hikari.cp.get())
     buildConfigField("MYSQL_DRIVER", libs.versions.mysql.driver.get())
+    buildConfigField("MARIADB_DRIVER", libs.versions.mariadb.driver.get())
     // POSTGRESQL
     buildConfigField("POSTGRESQL_DRIVER", libs.versions.postgresql.driver.get())
     buildConfigField("CHECKER_QUAL", libs.versions.checker.qual.get())
