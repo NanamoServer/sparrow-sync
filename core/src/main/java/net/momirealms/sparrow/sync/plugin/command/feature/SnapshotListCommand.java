@@ -74,8 +74,9 @@ public final class SnapshotListCommand extends AbstractSnapshotCommand {
             if (sender instanceof Player) {
                 actions = this.action(sender, "view", "snapshot_view", player.name() + " " + id, false, true);
             }
-            actions = actions.append(Component.space()).append(this.action(sender, "delete", "snapshot_delete", id, true, true))
-                    .append(Component.space()).append(this.action(sender, "json", "snapshot_export", "json " + id, false, true));
+            Component separator = sender instanceof Player ? Component.empty() : Component.space();
+            actions = actions.append(separator).append(this.action(sender, "delete", "snapshot_delete", id, true, true))
+                    .append(separator).append(this.action(sender, "json", "snapshot_export", "json " + id, false, true));
             String pinAction = meta.pinned() ? "unpin" : "pin";
             Component source = Component.text(meta.server());
             Component snapshotId = Component.text(id);

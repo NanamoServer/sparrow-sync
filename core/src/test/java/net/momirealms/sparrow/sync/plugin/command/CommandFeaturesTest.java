@@ -82,6 +82,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
@@ -471,7 +472,7 @@ class CommandFeaturesTest {
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom erase " + id)));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export binary " + id)));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export json " + id)));
-        assertTrue(this.text().contains(language.equals("zh_cn") ? "★ [查] [删] [导]" : "★ [V] [D] [J]"));
+        assertTrue(this.text().contains(language.equals("zh_cn") ? "★ [查][删][导]" : "★ [V][D][J]"));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 2")));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 0")));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 1")));
@@ -802,16 +803,20 @@ class CommandFeaturesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"en", "zh_cn"})
-    void screenshotRowsFitDefaultChatWidthWithAlignedButtons(String language) {
+    @CsvSource({"en, false", "zh_cn, false", "en, true", "zh_cn, true"})
+    void screenshotRowsFitDefaultChatWidthWithAlignedButtons(String language, boolean recentScreenshot) {
         this.manager.locale = language.equals("zh_cn") ? Locale.SIMPLIFIED_CHINESE : Locale.ENGLISH;
         this.registerPanelCommands();
         UUID playerId = UUID.randomUUID();
-        String[] ids = {"55be881a", "d582f7cc", "b44cdafb", "a9285aab", "60f0ad54"};
+        String[] ids = recentScreenshot
+                ? new String[]{"01a097a7", "01a097a6", "01a09794", "01a09792", "01a0978f"}
+                : new String[]{"55be881a", "d582f7cc", "b44cdafb", "a9285aab", "60f0ad54"};
+        SaveCause[] causes = {SaveCause.SHUTDOWN, SaveCause.SHUTDOWN, SaveCause.DISCONNECT, SaveCause.WORLD_SAVE, SaveCause.DISCONNECT};
         List<SnapshotMeta> records = new ArrayList<>();
         for (int i = 0; i < ids.length; i++) {
             records.add(new SnapshotMeta(UUID.fromString(ids[i] + "-0000-0000-0000-000000000000"), playerId, 1,
-                    i == 1 || i == 4 ? SaveCause.WORLD_SAVE : SaveCause.SHUTDOWN, i == 2, "Paper_26.2", 0));
+                    recentScreenshot ? causes[i] : i == 1 || i == 4 ? SaveCause.WORLD_SAVE : SaveCause.SHUTDOWN,
+                    i == 2, recentScreenshot && i == 1 ? "Folia_26.2" : "Paper_26.2", 0));
         }
         this.showSnapshots(player(Set.of("sparrow_sync.command.view")),
                 new PlayerIdentity(playerId, "Catnies"), new SnapshotPage(0, 5, 34, records));
