@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -27,7 +28,7 @@ public final class SnapshotCaptureCommand extends AbstractSnapshotCommand {
                     Player local = Bukkit.getPlayerExact(name);
                     CompletableFuture<SnapshotCaptureResult> capture;
                     if (local != null) {
-                        capture = this.plugin().snapshotService().capture(local);
+                        capture = this.plugin().snapshotService().capture(local, SaveCause.COMMAND);
                     } else {
                         // 实时采集从全服在线名单取得玩家 UUID 和目标服.
                         Optional<PlayerIdentity> player = this.plugin().playerDirectory().cached(name);

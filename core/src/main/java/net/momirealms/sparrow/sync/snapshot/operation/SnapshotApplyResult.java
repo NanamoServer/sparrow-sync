@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -18,8 +19,11 @@ public sealed interface SnapshotApplyResult {
     /** 会话在应用前已经失效. */
     Rejected REJECTED = new Rejected();
 
-    /** 关键数据应用失败, 玩家不能进入 ACTIVE. */
-    record Failed(@NotNull String detail) implements SnapshotApplyResult {
+    /** 关键数据失败, 在线恢复同时记录是否已进入玩家应用阶段. */
+    record Failed(@NotNull String detail, boolean applicationStarted, @Nullable Throwable cause, @NotNull List<DataKey> skipped) implements SnapshotApplyResult {
+        public Failed(@NotNull String detail) {
+            this(detail, true, null, List.of());
+        }
     }
 
     record Rejected() implements SnapshotApplyResult {

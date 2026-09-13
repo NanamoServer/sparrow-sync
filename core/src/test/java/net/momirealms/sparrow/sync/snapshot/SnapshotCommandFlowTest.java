@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.api.event.SnapshotSaveEvent;
+import net.momirealms.sparrow.sync.snapshot.local.SnapshotStash;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -107,6 +109,11 @@ class SnapshotCommandFlowTest {
     private final List<String> actions = new ArrayList<>();
     private final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
     private Consumer<PreApplyEvent> onPreApply = event -> {};
+    private Consumer<SnapshotSaveEvent> onSave = event -> {};
+    private CompletableFuture<Optional<Snapshot>> snapshotRead;
+    private boolean critical = true;
+    private RuntimeException decodeFailure;
+    private RuntimeException applyFailure;
     private Runnable onRespawn = () -> {};
     private final AtomicInteger respawns = new AtomicInteger();
     private final AtomicBoolean locked = new AtomicBoolean();
@@ -171,6 +178,7 @@ class SnapshotCommandFlowTest {
         PluginManager events = proxy(PluginManager.class, (instance, method, args) -> {
             assertEquals("callEvent", method.getName());
             if (args[0] instanceof PreApplyEvent event) this.onPreApply.accept(event);
+            if (args[0] instanceof SnapshotSaveEvent event) this.onSave.accept(event);
             return null;
         });
         this.oldBukkit = replace(Bukkit.class, "server", proxy(Server.class, (instance, method, args) -> switch (method.getName()) {
@@ -212,7 +220,7 @@ class SnapshotCommandFlowTest {
         StorageProvider storage = proxy(StorageProvider.class, (instance, method, args) -> {
             if (method.isDefault()) return InvocationHandler.invokeDefault(instance, method, args);
             return switch (method.getName()) {
-                case "snapshot" -> CompletableFuture.completedFuture(Optional.ofNullable(this.stored.get((UUID) args[0])));
+                case "snapshot" -> this.snapshotRead != null ? this.snapshotRead : CompletableFuture.completedFuture(Optional.ofNullable(this.stored.get((UUID) args[0])));
                 case "saveSnapshotOutcome" -> {
                     CompletableFuture<StorageProvider.SaveOutcome> result = new CompletableFuture<>();
                     this.writes.add(new Write((Snapshot) args[0], result));
@@ -233,6 +241,7 @@ class SnapshotCommandFlowTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "dataCodec", dataCodec);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "binaryCodec", new BinarySnapshotCodec(dataCodec));
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotCache", new NoopSnapshotCache());
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotStash", new SnapshotStash(this.directory, plugin.binaryCodec(), logger, new NoopSnapshotCache()));
         SnapshotService service = new SnapshotService(plugin);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "snapshotService", service);
         service.onLoad();
@@ -280,13 +289,155 @@ class SnapshotCommandFlowTest {
 
     @Test
     void captureUsesSyncModeAndAcknowledgesOnlyAfterStorageCompletes() throws Exception {
-        CompletableFuture<SnapshotCaptureResult> completion = this.service.capture(this.player);
+        CompletableFuture<SnapshotCaptureResult> completion = this.service.capture(this.player, SaveCause.COMMAND);
         Write write = this.nextWrite();
         assertFalse(completion.isDone());
         assertEquals("live", write.snapshot.data(this.key).getAsString());
         assertEquals(SaveCause.COMMAND, write.snapshot.meta().cause());
         write.complete();
         assertEquals(new SnapshotCaptureResult.Captured(write.snapshot.meta().id()), completion.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void captureDispatchesAsyncCallerAndCancellationKeepsAcceptedWrite() throws Exception {
+        CompletableFuture<SnapshotCaptureResult> result = this.preparation.submit(() -> this.service.capture(this.player, SaveCause.COMMAND)).get(2, TimeUnit.SECONDS);
+        assertTrue(this.writes.isEmpty());
+        Runnable task = this.entityTasks.poll(2, TimeUnit.SECONDS);
+        assertNotNull(task);
+        result.cancel(false);
+        task.run();
+        Write write = this.nextWrite();
+        assertEquals(SaveCause.COMMAND, write.snapshot.meta().cause());
+        write.complete();
+    }
+
+    @Test
+    void captureRejectsReplacedSessionBeforeCapture() throws Exception {
+        CompletableFuture<SnapshotCaptureResult> result = this.preparation.submit(() -> this.service.capture(this.player, SaveCause.COMMAND)).get(2, TimeUnit.SECONDS);
+        this.replaceActiveSession();
+        Runnable task = this.entityTasks.poll(2, TimeUnit.SECONDS);
+        assertNotNull(task);
+        task.run();
+        assertSame(SnapshotCaptureResult.OFFLINE, result.get(2, TimeUnit.SECONDS));
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void captureReportsEventCancellationAndLocalStashAsUnstored() throws Exception {
+        this.onSave = event -> event.setCancelled(true);
+        assertSame(SnapshotCaptureResult.CANCELLED, this.service.capture(this.player, SaveCause.COMMAND).get(2, TimeUnit.SECONDS));
+        assertTrue(this.writes.isEmpty());
+        this.onSave = event -> {};
+        CompletableFuture<SnapshotCaptureResult> result = this.service.capture(this.player, SaveCause.COMMAND);
+        Write write = this.nextWrite();
+        write.result.complete(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.REJECTED_MALFORMED, new IllegalArgumentException("rejected")));
+        assertSame(SnapshotCaptureResult.FAILED, result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void operationsRejectInactiveSessionAndUnknownOrForeignSnapshots() throws Exception {
+        assertSame(SnapshotRestoreResult.NOT_FOUND, this.service.restore(this.player, UUID.randomUUID()).get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.WRONG_PLAYER, this.service.restore(this.player, this.source(UUID.randomUUID()).meta().id()).get(2, TimeUnit.SECONDS));
+        this.plugin.sessionManager().find(this.uuid).transition(SessionState.SAVING);
+        assertSame(SnapshotCaptureResult.OFFLINE, this.service.capture(this.player, SaveCause.COMMAND).get(2, TimeUnit.SECONDS));
+        assertSame(SnapshotRestoreResult.OFFLINE, this.service.restore(this.player, UUID.randomUUID()).get(2, TimeUnit.SECONDS));
+        assertTrue(this.entityTasks.isEmpty());
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void restoreBindsSessionBeforeDatabaseRead() throws Exception {
+        Snapshot source = this.source(this.uuid);
+        this.snapshotRead = new CompletableFuture<>();
+        CompletableFuture<SnapshotRestoreResult> result = this.service.restore(this.player, source.meta().id());
+        this.replaceActiveSession();
+        this.snapshotRead.complete(Optional.of(source));
+        assertSame(SnapshotRestoreResult.OFFLINE, result.get(2, TimeUnit.SECONDS));
+        assertTrue(this.entityTasks.isEmpty());
+        assertTrue(this.writes.isEmpty());
+        assertEquals("live", this.value.get());
+    }
+
+    @Test
+    void restoreReportsSkippedTypesAndWaitsForNewRecord() throws Exception {
+        this.skipOnlineData(this.key);
+        Snapshot source = this.source(this.uuid);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(source);
+        assertEquals("live", this.value.get());
+        Write write = this.nextWrite();
+        assertFalse(result.isDone());
+        assertNotEquals(source.meta().id(), write.snapshot.meta().id());
+        write.complete();
+        SnapshotRestoreResult.Restored restored = assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+        assertEquals(write.snapshot.meta().id(), restored.snapshotId());
+        assertTrue(restored.skipped().contains(this.key));
+        assertThrows(UnsupportedOperationException.class, restored.skipped()::clear);
+    }
+
+    @Test
+    void restoreReportsSaveCancellationAfterPlayerWasChanged() throws Exception {
+        this.onSave = event -> event.setCancelled(true);
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.source(this.uuid));
+        SnapshotRestoreResult.Cancelled cancelled = assertInstanceOf(SnapshotRestoreResult.Cancelled.class, result.get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.SAVE, cancelled.stage());
+        assertEquals("history", this.value.get());
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void restoreReportsUnstoredResultAfterPlayerWasChanged() throws Exception {
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.source(this.uuid));
+        Write write = this.nextWrite();
+        write.result.complete(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.REJECTED_MALFORMED, null));
+        SnapshotRestoreResult.Failed failed = assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.SAVE, failed.stage());
+        assertEquals("history", this.value.get());
+    }
+
+    @Test
+    void restorePreservesExceptionAfterPlayerWasChanged() throws Exception {
+        RuntimeException failure = new IllegalStateException("save event failed");
+        this.onSave = event -> { throw failure; };
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.source(this.uuid));
+        SnapshotRestoreResult.Failed failed = assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.SAVE, failed.stage());
+        assertSame(failure, failed.cause());
+        assertEquals("history", this.value.get());
+    }
+
+    @Test
+    void restoreDistinguishesPreparationAndApplicationFailure() throws Exception {
+        this.decodeFailure = new IllegalArgumentException("invalid type data");
+        Snapshot source = this.source(this.uuid);
+        SnapshotRestoreResult.Failed preparation = assertInstanceOf(SnapshotRestoreResult.Failed.class, this.service.restore(this.player, source.meta().id()).get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.PREPARE, preparation.stage());
+        assertEquals("live", this.value.get());
+        assertTrue(this.entityTasks.isEmpty());
+        this.decodeFailure = null;
+        this.applyFailure = new IllegalArgumentException("apply failed");
+        SnapshotRestoreResult.Failed applied = assertInstanceOf(SnapshotRestoreResult.Failed.class, this.restoreAndRun(source).get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.APPLY, applied.stage());
+        assertEquals("history", this.value.get());
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void restoreReportsNonCriticalFailureAsSkipped() throws Exception {
+        this.critical = false;
+        this.applyFailure = new IllegalArgumentException("optional type failed");
+        CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.source(this.uuid));
+        this.nextWrite().complete();
+        SnapshotRestoreResult.Restored restored = assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
+        assertTrue(restored.skipped().contains(this.key));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void replaceActiveSession() throws Exception {
+        SessionManager sessions = this.plugin.sessionManager();
+        var field = SessionManager.class.getDeclaredField("sessions");
+        field.setAccessible(true);
+        ((Map<?, ?>) field.get(sessions)).clear();
+        sessions.tryOpen(this.uuid, "Steve", ConnectionFixture.create()).transition(SessionState.ACTIVE);
     }
 
     @Test
@@ -532,7 +683,7 @@ class SnapshotCommandFlowTest {
         this.skipOnlineData();
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(0));
         this.teleport.complete(false);
-        assertSame(SnapshotRestoreResult.FAILED, result.get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.APPLY, assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS)).stage());
         assertFalse(this.dead.get());
         assertTrue(this.writes.isEmpty());
     }
@@ -556,7 +707,7 @@ class SnapshotCommandFlowTest {
         this.dead.set(true);
         this.onRespawn = () -> this.online.set(false);
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(this.sourceWithHealth(18));
-        assertSame(SnapshotRestoreResult.OFFLINE, result.get(2, TimeUnit.SECONDS));
+        assertEquals(SnapshotRestoreResult.Stage.APPLY, assertInstanceOf(SnapshotRestoreResult.Failed.class, result.get(2, TimeUnit.SECONDS)).stage());
         assertEquals(List.of("respawn"), this.actions);
         assertTrue(this.writes.isEmpty());
     }
@@ -608,7 +759,7 @@ class SnapshotCommandFlowTest {
         }
         @Override
         public boolean critical() {
-            return true;
+            return SnapshotCommandFlowTest.this.critical;
         }
         @Override
         public boolean supportsAsyncCapture() {
@@ -630,6 +781,7 @@ class SnapshotCommandFlowTest {
         @NotNull
         public String decode(@NotNull Tag data, int version) {
             assertNotSame(SnapshotCommandFlowTest.this.entityThread, Thread.currentThread());
+            if (SnapshotCommandFlowTest.this.decodeFailure != null) throw SnapshotCommandFlowTest.this.decodeFailure;
             return data.getAsString();
         }
         @Override
@@ -637,6 +789,7 @@ class SnapshotCommandFlowTest {
             assertSame(SnapshotCommandFlowTest.this.entityThread, Thread.currentThread());
             SnapshotCommandFlowTest.this.actions.add("data");
             SnapshotCommandFlowTest.this.value.set(value);
+            if (SnapshotCommandFlowTest.this.applyFailure != null) throw SnapshotCommandFlowTest.this.applyFailure;
         }
     }
 

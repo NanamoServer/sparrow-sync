@@ -47,24 +47,20 @@ final class SnapshotSaver {
         this.writer = new SnapshotWriter(this.logger, plugin.storageProvider(), plugin.snapshotStash(), this.serialExecutor, plugin.snapshotCache());
     }
 
-    /**
-     * 在玩家线程采集 ACTIVE 玩家的当前状态.
-     *
-     * @param player 当前操作绑定的玩家对象
-     * @return 采集成功的快照 ID, 或取消、离线、保存失败结果
-     */
+    // 在玩家线程采集请求绑定的 ACTIVE 会话, 等待指定原因的保存结果.
     @NotNull
-    public CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player) {
+    CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player, @NotNull SaveCause cause) {
         if (this.operationsClosed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
+        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
+        if (session == null || session.state() != SessionState.ACTIVE) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
         CompletableFuture<SnapshotCaptureResult> result = new CompletableFuture<>();
         Runnable capture = () -> {
             try {
-                PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
-                if (!player.isOnline() || session == null || session.state() != SessionState.ACTIVE) {
+                if (this.operationsClosed || !player.isOnline() || this.plugin.sessionManager().find(session.uuid()) != session || session.state() != SessionState.ACTIVE) {
                     result.complete(SnapshotCaptureResult.OFFLINE);
                     return;
                 }
-                CompletableFuture<SnapshotSaveResult> saved = this.plugin.sessionManager().captureNowAndSave(session, player, SaveCause.COMMAND);
+                CompletableFuture<SnapshotSaveResult> saved = this.plugin.sessionManager().captureNowAndSave(session, player, cause);
                 if (saved == null) {
                     result.complete(SnapshotCaptureResult.OFFLINE);
                     return;

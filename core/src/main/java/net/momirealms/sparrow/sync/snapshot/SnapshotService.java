@@ -107,8 +107,9 @@ public final class SnapshotService {
      * @return 采集成功的快照 ID, 或取消、离线、保存失败结果
      */
     @NotNull
-    public CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player) {
-        return this.saver.capture(player);
+    @ApiStatus.Internal
+    public CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player, @NotNull SaveCause cause) {
+        return this.saver.capture(player, cause);
     }
 
     /**

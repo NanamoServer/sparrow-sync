@@ -69,8 +69,8 @@ public final class SessionListener implements Listener {
             this.kick(player);
             return;
         }
-        if (result instanceof SnapshotApplyResult.Failed(String detail)) {
-            this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), detail);
+        if (result instanceof SnapshotApplyResult.Failed failed) {
+            this.plugin.logger().file(LogCategory.KICK, player.getUniqueId(), player.getName(), LogConstants.GATE_KICKED, player.getName(), failed.detail());
             this.kick(player);
         } else if (result instanceof SnapshotApplyResult.Applied) {
             this.plugin.playerDirectory().presence(player.getUniqueId(), player.getName(), true);

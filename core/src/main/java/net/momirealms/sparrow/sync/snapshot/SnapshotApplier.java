@@ -151,33 +151,35 @@ final class SnapshotApplier {
      * 将选中的历史快照应用到在线玩家.
      * 结果会等到玩家线程、必要的重生和传送全部完成.
      *
+     * @param session 请求读取快照前绑定的玩家会话
      * @param player 当前操作绑定的玩家对象
      * @param snapshot 当前选定的完整快照
      * @return 应用、拒绝或失败结果
      */
     @NotNull
-    CompletableFuture<SnapshotApplyResult> applyOnline(@NotNull Player player, @NotNull Snapshot snapshot) {
-        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
-        if (this.operationsClosed || session == null || session.state() != SessionState.ACTIVE) {
+    CompletableFuture<SnapshotApplyResult> applyOnline(@NotNull PlayerSession session, @NotNull Player player, @NotNull Snapshot snapshot) {
+        if (this.operationsClosed || this.plugin.sessionManager().find(session.uuid()) != session || session.state() != SessionState.ACTIVE) {
             return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
         }
         return this.prepareSnapshot(snapshot, session.playerName()).thenCompose(loaded -> {
             if (!(loaded instanceof SnapshotLoadResult.Ready ready)) {
-                return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed("snapshot preparation failed"));
+                String detail = loaded instanceof SnapshotLoadResult.Failed failed ? failed.detail() : "snapshot preparation failed";
+                return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed(detail, false, null, List.of()));
             }
             CompletableFuture<SnapshotApplyResult> completion = new CompletableFuture<>();
             Runnable apply = () -> {
                 try {
                     this.applyOnlineNow(session, player, ready).whenComplete((result, failure) -> {
                         if (failure != null) {
-                            completion.completeExceptionally(failure);
+                            completion.complete(new SnapshotApplyResult.Failed(failure.toString(), true, failure, ready.context().skipped()));
                         }
                         else {
-                            completion.complete(result);
+                            completion.complete(result instanceof SnapshotApplyResult.Failed failed
+                                    ? new SnapshotApplyResult.Failed(failed.detail(), true, failed.cause(), ready.context().skipped()) : result);
                         }
                     });
                 } catch (Throwable failure) {
-                    completion.completeExceptionally(failure);
+                    completion.complete(new SnapshotApplyResult.Failed(failure.toString(), true, failure, ready.context().skipped()));
                 }
             };
             // 死亡玩家暂时没有可调度的实体. 平台在实体退役后通过 retired 回调交付这项任务.
@@ -193,7 +195,7 @@ final class SnapshotApplier {
                 completion.complete(SnapshotApplyResult.REJECTED);
             }
             return completion;
-        });
+        }).exceptionally(failure -> new SnapshotApplyResult.Failed(failure.toString(), false, failure, List.of()));
     }
 
     /**
@@ -257,7 +259,7 @@ final class SnapshotApplier {
     @SuppressWarnings("unchecked")
     @NotNull
     private CompletableFuture<SnapshotApplyResult> applyOnlineData(@NotNull PlayerSession session, @NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded, @Nullable HealthDataType.Health health, @Nullable LocationDataType.PlayerLocation location) {
-        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
+        if (!this.canApplyOnline(session, player)) return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed("player session ended during restore"));
         if (health != null && health.health() > 0 && player.isDead()) {
             return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed("player did not respawn"));
         }
@@ -278,7 +280,7 @@ final class SnapshotApplier {
             teleport = player.teleportAsync(new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch()));
         }
         return teleport.thenApply(moved -> {
-            if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
+            if (!this.canApplyOnline(session, player)) return new SnapshotApplyResult.Failed("player session ended during restore");
             if (!moved) return new SnapshotApplyResult.Failed("location teleport was rejected: " + location.world());
             if (location != null) {
                 context.appliedPlayer(LocationDataType.LOCATION);
@@ -290,7 +292,7 @@ final class SnapshotApplier {
                 }
                 context.appliedPlayer(HealthDataType.HEALTH);
             }
-            if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
+            if (!this.canApplyOnline(session, player)) return new SnapshotApplyResult.Failed("player session ended during restore");
             session.retainedData(context.passthrough());
             SnapshotApplyResult.Applied result = new SnapshotApplyResult.Applied(context.applied(), context.skipped(), context.failures());
             EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), result.applied(), result.skipped()));

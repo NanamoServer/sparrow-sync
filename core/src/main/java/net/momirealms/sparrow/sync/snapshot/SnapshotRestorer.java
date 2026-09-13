@@ -3,6 +3,8 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
@@ -42,32 +44,39 @@ final class SnapshotRestorer {
      */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull UUID snapshotId) {
-        if (this.operationsClosed) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
-        return this.storage.snapshot(snapshotId).thenCompose(found -> {
-            if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotRestoreResult.NOT_FOUND);
-            if (!found.get().meta().player().equals(player.getUniqueId())) return CompletableFuture.completedFuture(SnapshotRestoreResult.WRONG_PLAYER);
-            return this.restore(player, found.get());
-        });
+        // 在读库前绑定会话, 在线恢复的所有后续阶段都使用这次身份.
+        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
+        if (this.operationsClosed || session == null || session.state() != SessionState.ACTIVE) {
+            return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
+        }
+        return this.storage.snapshot(snapshotId)
+                .thenCompose(found -> {
+                    if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotRestoreResult.NOT_FOUND);
+                    if (!found.get().meta().player().equals(session.uuid())) return CompletableFuture.completedFuture(SnapshotRestoreResult.WRONG_PLAYER);
+                    return this.restore(session, player, found.get());
+                });
     }
 
-    /**
-     * 恢复选定历史内容, 在线应用完成后等待新的 RESTORE 记录保存.
-     *
-     * @param player 当前操作绑定的玩家对象
-     * @param snapshot 当前选定的完整快照
-     * @return 恢复、离线、归属错误、取消或失败结果
-     */
+    // 保留应用和保存的阶段结果, 保存失败时玩家已经被修改.
     @NotNull
-    private CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull Snapshot snapshot) {
-        return this.applier.applyOnline(player, snapshot).thenCompose(applied -> switch (applied) {
-            case SnapshotApplyResult.Rejected ignored -> CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
-            case SnapshotApplyResult.Failed ignored -> CompletableFuture.completedFuture(SnapshotRestoreResult.FAILED);
-            case SnapshotApplyResult.Applied ignored -> this.saver.saveRestored(snapshot, player.getName()).thenApply(saved -> switch (saved) {
-                case SnapshotSaveResult.Cancelled cancelled -> SnapshotRestoreResult.CANCELLED;
-                case SnapshotSaveResult.Settled settled -> settled.result().stored()
-                        ? new SnapshotRestoreResult.Restored(settled.id()) : SnapshotRestoreResult.FAILED;
-            });
-        });
+    private CompletableFuture<SnapshotRestoreResult> restore(@NotNull PlayerSession session, @NotNull Player player, @NotNull Snapshot snapshot) {
+        return this.applier.applyOnline(session, player, snapshot).thenCompose(applied ->
+                switch (applied) {
+                    case SnapshotApplyResult.Rejected ignored -> CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
+                    case SnapshotApplyResult.Failed failed -> CompletableFuture.completedFuture(new SnapshotRestoreResult.Failed(
+                            failed.applicationStarted() ? SnapshotRestoreResult.Stage.APPLY : SnapshotRestoreResult.Stage.PREPARE, failed.detail(), failed.cause(), failed.skipped()));
+                    case SnapshotApplyResult.Applied success -> CompletableFuture.completedFuture(null)
+                            .thenCompose(ignored -> this.saver.saveRestored(snapshot, session.playerName()))
+                            .handle((saved, failure) -> {
+                                if (failure != null) return new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.SAVE, failure.toString(), failure, success.skipped());
+                                return switch (saved) {
+                                    case SnapshotSaveResult.Cancelled ignored -> new SnapshotRestoreResult.Cancelled(SnapshotRestoreResult.Stage.SAVE, success.skipped());
+                                    case SnapshotSaveResult.Settled settled -> settled.result().stored()
+                                            ? new SnapshotRestoreResult.Restored(settled.id(), success.skipped())
+                                            : new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.SAVE, "RESTORE snapshot was not stored", null, success.skipped());
+                                };
+                            });
+                });
     }
 
     /**

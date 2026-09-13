@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreRequestMessage
 import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreResponseMessage;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import org.bukkit.Bukkit;
@@ -49,7 +50,7 @@ public final class RemoteSnapshotManager {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
         Player player = Bukkit.getPlayer(playerId);
         if (player == null) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
-        return this.plugin.snapshotService().capture(player).exceptionally(failure -> {
+        return this.plugin.snapshotService().capture(player, SaveCause.COMMAND).exceptionally(failure -> {
             this.plugin.logger().warn(TranslationManager.console("log.command.snapshot_failed", "capture"), failure);
             return SnapshotCaptureResult.FAILED;
         });
