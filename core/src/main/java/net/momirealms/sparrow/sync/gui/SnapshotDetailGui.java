@@ -54,6 +54,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -580,7 +581,7 @@ public final class SnapshotDetailGui {
             lines.add(this.text("additional.enchantment_seed", seed));
         }
         if (previews.get(VaultDataType.VAULT) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof VaultDataType.Money money) {
-            lines.add(this.text("additional.vault", BigDecimal.valueOf(money.amount()).stripTrailingZeros().toPlainString()));
+            lines.add(this.text("additional.vault", BigDecimal.valueOf(money.amount()).setScale(4, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()));
         }
         // 预览状态中保存已读取的块头大小, 待加载类型与读取失败的类型分别展示.
         for (var entry : previews.entrySet()) {
