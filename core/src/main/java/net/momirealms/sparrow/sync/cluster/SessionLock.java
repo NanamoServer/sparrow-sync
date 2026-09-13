@@ -19,7 +19,6 @@ import java.util.concurrent.TimeUnit;
 
 public final class SessionLock {
     private static final String KEY_PREFIX = "sparrow-sync:lock:";
-    // TTL 仅回收崩溃后再无人登录的残留键
     private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);
     private static final String RELEASE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
     private static final String SEIZE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
@@ -37,18 +36,15 @@ public final class SessionLock {
         this.serverId = serverId;
     }
 
-    /** 绑定 Redis 连接与本服锁命名空间. */
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.serverId = ServerConfig.serverId();
     }
 
     /**
-     * 为玩家取锁, 一条 SET NX PX GET 原子完成查与抢.
+     * 尝试获取玩家的会话锁, 同时返回本次写入或已有的锁值.
      *
-     * @param player 玩家 uuid
-     * @return 抢到为 {@link AcquireOutcome.Acquired} 并携带写入的锁值, 被占为 {@link AcquireOutcome.Held} 并携带持有者的锁值;
-     *         Redis 不可用时异常完成
+     * @return 成功时返回 {@link AcquireOutcome.Acquired}, 已被占用时返回 {@link AcquireOutcome.Held}; Redis 操作失败时异常完成
      */
     @NotNull
     public CompletableFuture<AcquireOutcome> tryAcquire(@NotNull UUID player) {
@@ -59,7 +55,7 @@ public final class SessionLock {
                 .toCompletableFuture();
     }
 
-    /** 读取锁持有信息, 缺失时返回 empty, Redis 查询失败时异常完成. */
+    /** 读取锁持有者, 无锁时返回空, 查询失败或锁值格式错误时异常完成. */
     @NotNull
     public CompletableFuture<Optional<LockValue>> holder(@NotNull UUID player) {
         return this.connector.connection().async().get(this.key(player)).thenApply(raw -> {
@@ -71,11 +67,10 @@ public final class SessionLock {
     }
 
     /**
-     * 释放自己持有的锁, 值完全一致才删.
+     * 释放锁, 仅在当前锁值与传入值完全一致时删除.
      *
-     * @param player 玩家 uuid
-     * @param value 取锁或夺锁时拿到的完整锁值
-     * @return 删掉为 true, 值不匹配(锁已被夺走或早已释放)为 false
+     * @param value 获取或接管锁时返回的完整锁值
+     * @return 删除成功为 true, 锁不存在或已变更为 false
      */
     @NotNull
     public CompletableFuture<Boolean> release(@NotNull UUID player, @NotNull String value) {
@@ -85,11 +80,10 @@ public final class SessionLock {
     }
 
     /**
-     * 从判死的持有者手里夺锁, 锁值仍等于探测期间观察到的值才换成本服的新值.
+     * 接管锁, 仅在锁值仍与探测时一致时写入本服的新锁值.
      *
-     * @param player 玩家 uuid
-     * @param observedValue 探测期间观察到的持有者锁值
-     * @return 夺到为携带新锁值的 Optional, 值已变化(对方仍活着或已被别人夺走)为 empty
+     * @param observedValue 探测时读到的完整锁值
+     * @return 成功时返回新锁值, 锁不存在或已变更时返回空
      */
     @NotNull
     public CompletableFuture<Optional<String>> seize(@NotNull UUID player, @NotNull String observedValue) {
@@ -100,9 +94,9 @@ public final class SessionLock {
     }
 
     /**
-     * 服务器崩溃时, 所有在线玩家的会话锁都未释放, 以 [服务器ID]:token 的形式留在 Redis 里.
-     * 为了避免未释放锁的玩家在连接时把残留锁视为 "同serverId的服务器在持有锁" 的情况, 就需要在服务器启动&身份注册成功后进行必要的清理. e
-     * @return 清除的数量
+     * 清理本服上次运行留下的锁, <strong>须在启动时成功注册服务器身份后调用</strong>.
+     *
+     * @return 清除的锁数
      */
     public int sweepStaleLocks() {
         RedisCommands<byte[], byte[]> commands = this.connector.connection().sync();
@@ -115,7 +109,7 @@ public final class SessionLock {
                 if (observed == null) continue;
                 LockValue holder = LockValue.parse(text(observed));
                 if (holder == null || !holder.serverId().equals(this.serverId)) continue;
-                // 值仍是观察值才删, 扫描期间被别的服夺走的锁不误删
+                // 只删除锁值未变的条目, 保留扫描期间已被接管的锁
                 Long deleted = commands.eval(RELEASE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{key}, observed);
                 if (deleted != 0L) swept++;
             }
@@ -125,10 +119,6 @@ public final class SessionLock {
         return swept;
     }
 
-    /**
-     * 锁服务当前是否连通.
-     * 断连重连期间为 false, 此时提交的锁操作压在队列里等重连按序补发, 压住最多 60s.
-     */
     public boolean available() {
         return this.connector.available();
     }
@@ -149,14 +139,11 @@ public final class SessionLock {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    /** 一次取锁的结果. */
     public sealed interface AcquireOutcome {
 
-        /** 抢到了, value 是写进 Redis 的完整锁值, 释放时原样传回. */
         record Acquired(@NotNull String value) implements AcquireOutcome {
         }
 
-        /** 被别的会话占着, value 是持有者的完整锁值, 供探测与夺锁使用. */
         record Held(@NotNull String value) implements AcquireOutcome {
         }
     }

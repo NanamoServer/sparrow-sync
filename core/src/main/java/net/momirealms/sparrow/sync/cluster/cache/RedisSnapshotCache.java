@@ -20,7 +20,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-// 在现有 Redis 连接上保存一份短 TTL 的最新快照, 供接手服登录时直接取用.
 public final class RedisSnapshotCache implements SnapshotCache {
     private static final String KEY_PREFIX = "sparrow-sync:latest-snapshot:";
 
@@ -43,7 +42,7 @@ public final class RedisSnapshotCache implements SnapshotCache {
         RedisAsyncCommands<byte[], byte[]> commands = this.commands();
         if (commands == null) return CompletableFuture.completedFuture(null);
         byte[] payload;
-        // 编码在调用线程同步完成, SET 才能与随后放锁的 EVAL 在同一连接上按序入队
+        // 在当前线程完成编码, 让缓存写入命令先于释放锁的命令入队
         try {
             payload = this.codec.encode(snapshot);
         } catch (IOException exception) {
@@ -57,7 +56,7 @@ public final class RedisSnapshotCache implements SnapshotCache {
     public CompletableFuture<Optional<Snapshot>> consume(@NotNull UUID player) {
         RedisAsyncCommands<byte[], byte[]> commands = this.commands();
         if (commands == null) return CompletableFuture.completedFuture(Optional.empty());
-        // GETDEL 原子取回并删除, 同一份条目不会被第二个会话读到
+        // 读取和删除一次完成, 每份缓存只供一个会话使用
         return commands.getdel(key(player)).toCompletableFuture()
                 .thenApplyAsync(bytes -> this.decode(player, bytes), this.executor)
                 .exceptionally(failure -> {
@@ -79,14 +78,14 @@ public final class RedisSnapshotCache implements SnapshotCache {
         });
     }
 
-    // 连接未就绪或已断开时返回空, 调用方按未命中处理.
+    // Redis 不可用时跳过缓存操作
     @Nullable
     private RedisAsyncCommands<byte[], byte[]> commands() {
         if (!this.connector.available()) return null;
         return this.connector.connection().async();
     }
 
-    // 帧被消费掉但读不出内容时记日志, 调用方回退数据库.
+    // 缓存损坏时记录原因并返回空, 交给调用方查询数据库
     @NotNull
     private Optional<Snapshot> decode(@NotNull UUID player, byte @Nullable [] bytes) {
         if (bytes == null) return Optional.empty();

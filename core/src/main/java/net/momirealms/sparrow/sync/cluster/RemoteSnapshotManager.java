@@ -30,7 +30,7 @@ public final class RemoteSnapshotManager {
         SnapshotRestoreRequestMessage.receiver(this);
     }
 
-    /** 请求目标服采集玩家快照, Future 等待保存后的回执. */
+    /** 请求目标服采集并保存快照, 等待操作结果, 通信失败或超时返回 UNAVAILABLE. */
     @NotNull
     public CompletableFuture<SnapshotCaptureResult> capture(@NotNull String serverId, @NotNull UUID playerId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
@@ -43,7 +43,7 @@ public final class RemoteSnapshotManager {
         }).orTimeout(30, TimeUnit.SECONDS).exceptionally(failure -> SnapshotCaptureResult.UNAVAILABLE);
     }
 
-    /** 将远程采集请求交给本服快照服务, 玩家离线时返回失败. */
+    /** 在本服处理采集请求, 玩家离线时返回 OFFLINE. */
     @NotNull
     public CompletableFuture<SnapshotCaptureResult> receiveCapture(@NotNull UUID playerId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
@@ -55,7 +55,7 @@ public final class RemoteSnapshotManager {
         });
     }
 
-    /** 请求目标服恢复玩家快照, Future 等待保存后的回执. */
+    /** 请求目标服恢复快照, 等待操作结果, 通信失败或超时返回 UNAVAILABLE. */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull String serverId, @NotNull UUID playerId, @NotNull UUID snapshotId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
@@ -68,7 +68,7 @@ public final class RemoteSnapshotManager {
         }).orTimeout(30, TimeUnit.SECONDS).exceptionally(failure -> SnapshotRestoreResult.UNAVAILABLE);
     }
 
-    /** 将远程恢复请求交给本服快照服务, 玩家离线时返回失败. */
+    /** 在本服处理恢复请求, 玩家离线时返回 OFFLINE. */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> receiveRestore(@NotNull UUID playerId, @NotNull UUID snapshotId) {
         if (this.closed) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);

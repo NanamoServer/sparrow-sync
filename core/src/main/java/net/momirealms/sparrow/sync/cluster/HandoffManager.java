@@ -16,9 +16,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
 public final class HandoffManager {
-    private static final long PROBE_INTERVAL_MILLIS = 500;   // 探测周期, 兼作存活采样率
-    private static final long PROBE_TIMEOUT_MILLIS = 500;    // 单次探测的应答等待
-    private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续静默判死阈值
+    private static final long PROBE_INTERVAL_MILLIS = 500;   // 两次探测的间隔
+    private static final long PROBE_TIMEOUT_MILLIS = 500;    // 单次探测的最长等待时间
+    private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续探测失败多久后尝试接管锁
 
     private SparrowSync plugin;
     private MessageBroker<ByteBuf> broker;
@@ -65,7 +65,6 @@ public final class HandoffManager {
         HandoffRequestMessage.service(this);
     }
 
-    /** 绑定集群依赖并安装交接消息处理器. */
     public void onLoad() {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();
@@ -74,39 +73,33 @@ public final class HandoffManager {
         HandoffRequestMessage.service(this);
     }
 
-    // ===== 持有服的应答与记录 =====
-
     /**
-     * 在消息回调中回答一次交接探测.
-     * 只读内存状态, <strong>不得阻塞在保存或任何 IO 上</strong>.
+     * 根据本服内存中的会话和保存记录回答探测, <strong>不得等待保存或执行阻塞 I/O</strong>.
      */
     @NotNull
     public HandoffResponseMessage answer(@NotNull UUID player) {
-        // 会话还在注册表里就是没走完, 含 CLOSED 后 remove 前的微窗口, 让对方下一轮再问.
+        // 已关闭但尚未移除的会话, 以及离线恢复任务, 都需要继续等待
         if (this.hasSession.test(player)) return HandoffResponseMessage.saving();
         if (this.settled.getIfPresent(player) != null) return HandoffResponseMessage.done();
         return HandoffResponseMessage.unknown();
     }
 
-    /** 登记已成功落库的退出保存, <strong>必须先于释放会话锁调用</strong>. */
+    /** 记录退出快照已存入数据库, <strong>必须在释放会话锁前调用</strong>. */
     public void recordSettled(@NotNull UUID player) {
         this.settled.put(player, Boolean.TRUE);
     }
 
-    /** 清除该玩家上一次退出保存留下的诊断标记. */
+    /** 清除玩家上次退出时的保存完成标记. */
     public void clearSettled(@NotNull UUID player) {
         this.settled.invalidate(player);
     }
 
-    // ===== 等锁方的探测循环 =====
-
     /**
-     * 等待持有服交出会话锁.
-     * 周期探测持有服, 按应答推进, 持续静默按判死夺锁.
+     * 等待会话锁交接, 持有者持续无响应时尝试接管.
      *
-     * @param observedValue 抢锁时观察到的持有者锁值
-     * @param deadlineNanos 放弃时刻(System.nanoTime 基准), 通常为登录预算的截止点
-     * @return 拿到锁后携带新锁值; 截止前没拿到则以 {@link TimeoutException} 异常完成
+     * @param observedValue 获取锁时返回的持有者锁值
+     * @param deadlineNanos 等待截止时间, 以 {@link System#nanoTime()} 为基准
+     * @return 成功时返回本服的新锁值和获取方式, 超时则以 {@link TimeoutException} 异常完成
      */
     @NotNull
     public CompletableFuture<HandoffOutcome> awaitHandoff(@NotNull UUID player, @NotNull String observedValue, long deadlineNanos) {
@@ -120,16 +113,15 @@ public final class HandoffManager {
             probe.future.completeExceptionally(new TimeoutException("session lock handoff not settled within the login budget"));
             return;
         }
-        // 锁值不是本插件的格式, 问不出持有者, 按无主残锁直接夺
+        // 锁值无法解析时无法联系持有者, 直接尝试接管
         if (probe.holder == null) {
             this.seize(probe);
             return;
         }
-        // 发布消息催促
         this.broker.publishTwoWay(new HandoffRequestMessage(probe.player), probe.holder.serverId())
                 .orTimeout(this.probeTimeoutMillis, TimeUnit.MILLISECONDS)
                 .whenComplete((response, throwable) -> {
-                    // 无应答, 静默持续超过判死阈值即认定持有者已死
+                    // 连续探测失败达到阈值后尝试接管锁
                     if (throwable != null) {
                         long now = System.nanoTime();
                         if (probe.silentSince == 0) probe.silentSince = now;
@@ -140,7 +132,7 @@ public final class HandoffManager {
                         this.scheduleProbe(probe);
                         return;
                     }
-                    // 有应答, 继续推进
+                    // 收到应答后清零, 下次失败再开始计时
                     probe.silentSince = 0;
                     switch (response.status()) {
                         case SAVING -> this.scheduleProbe(probe);
@@ -150,18 +142,17 @@ public final class HandoffManager {
                 });
     }
 
-    // 持有服已保存释放, 重试抢锁.
+    // 持有服已完成保存, 重新尝试获取锁
     private void reacquire(Probe probe) {
         this.lock.tryAcquire(probe.player)
                 .whenComplete((outcome, throwable) -> {
-                    // 还是没抢到, 下一轮重来
                     if (throwable != null) {
                         this.scheduleProbe(probe);
                         return;
                     }
                     switch (outcome) {
                         case SessionLock.AcquireOutcome.Acquired(String value) -> probe.future.complete(new HandoffOutcome(value, "done"));
-                        // 别人抢先或旧锁还没删净, 带着最新持有锁的服务器ID继续探测
+                        // 锁仍被占用, 改为探测当前持有者
                         case SessionLock.AcquireOutcome.Held(String value) -> {
                             probe.setObserved(value);
                             this.scheduleProbe(probe);
@@ -170,7 +161,7 @@ public final class HandoffManager {
                 });
     }
 
-    // 持有者已死或不认账, 锁值仍是观察值才换成自己的.
+    // 仅在锁值未变时接管, 锁值变化后重新确认持有者
     private void seize(Probe probe) {
         this.lock.seize(probe.player, probe.observed)
                 .whenComplete((taken, throwable) -> {
@@ -182,7 +173,7 @@ public final class HandoffManager {
                         probe.future.complete(new HandoffOutcome(taken.get(), "seized"));
                         return;
                     }
-                    // 观察值已失效, 锁被释放或已换主, 重抢一次拿最新事实
+                    // 锁已释放或换了持有者, 再次获取锁并读取当前锁值
                     this.lock.tryAcquire(probe.player).whenComplete((outcome, error) -> {
                         if (error != null) {
                             this.scheduleProbe(probe);
@@ -200,19 +191,18 @@ public final class HandoffManager {
                 });
     }
 
-    // 重新调度探测
     private void scheduleProbe(Probe probe) {
         this.scheduler.later(() -> this.probe(probe), this.probeIntervalMillis);
     }
 
-    // 一次等锁的推进状态, 只在探测回调链上串行访问
+    // 单次交接的状态, 由探测回调串行更新
     private static final class Probe {
         final UUID player;
         final long deadline;
         final CompletableFuture<HandoffOutcome> future = new CompletableFuture<>();
-        String observed;    // 当前观察到的锁值原文, seize 时用于比较
-        LockValue holder;   // observed 的解析结果, 不是本插件格式时为 null
-        long silentSince;  // 0 表示上一轮有应答
+        String observed;    // 探测时的完整锁值, 接管时用于比较
+        LockValue holder;   // 解析出的持有者, 格式错误时为 null
+        long silentSince;  // 连续探测失败的起点, 0 表示尚未计时
 
         Probe(UUID player, String observed, long deadline) {
             this.player = player;
@@ -220,24 +210,16 @@ public final class HandoffManager {
             this.setObserved(observed);
         }
 
-        // 原文与解析结果同步更新
         void setObserved(String observed) {
             this.observed = observed;
             this.holder = LockValue.parse(observed);
         }
     }
 
-    /**
-     * 一次交接的结果.
-     * 数据一律在拿到锁后读数据库, 锁释放晚于落库, 读到的必为最新.
-     *
-     * @param lockValue 本服写入的新锁值, 交给会话保管供退出释放
-     * @param method 拿到锁的方式, done 为正常交接, seized 为判死夺锁, 供日志检索
-     */
     public record HandoffOutcome(@NotNull String lockValue, @NotNull String method) {
     }
 
-    /** 探测调度的接插件调度器. */
+    /** 按毫秒延迟执行下一次探测. */
     public interface ProbeScheduler {
         void later(@NotNull Runnable task, long delayMillis);
     }

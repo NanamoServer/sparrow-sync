@@ -9,15 +9,15 @@ import java.util.concurrent.CompletableFuture;
 
 public interface SnapshotCache {
 
-    // 投递一份已确认落库的快照.
+    /** 缓存已写入数据库的快照, 供下一次跨服登录读取. */
     @NotNull
     CompletableFuture<Void> publish(@NotNull Snapshot snapshot, int ttlSeconds);
 
-    // 取走并删除该玩家的缓存条目.
+    /** 读取并删除玩家缓存, 每份缓存只能读取一次. */
     @NotNull
     CompletableFuture<Optional<Snapshot>> consume(@NotNull UUID player);
 
-    // 删除玩家缓存, 供保存、导入和删除快照成功后清理旧正文.
+    /** 清除玩家的旧缓存. */
     @NotNull
     CompletableFuture<Void> invalidate(@NotNull UUID player);
 }

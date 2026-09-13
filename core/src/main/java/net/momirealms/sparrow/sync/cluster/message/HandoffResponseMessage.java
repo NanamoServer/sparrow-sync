@@ -54,14 +54,11 @@ public final class HandoffResponseMessage extends TwoWayResponseMessage<ByteBuf>
         return ID;
     }
 
-    /** 持有服对玩家会话进展的回答. */
+    /** 持有服返回的会话状态, 供等待方决定继续探测还是获取锁. */
     public enum Status {
-        /** 会话仍在本服手里, 退出保存还没走完, 继续等. */
-        SAVING,
-        /** 退出保存已落库, 锁已在释放, 可以重试抢锁. */
-        DONE,
-        /** 本服不认识这个玩家, 锁是上一条命的残留, 直接夺走. */
-        UNKNOWN;
+        SAVING,  // 本服仍有会话或离线恢复任务, 继续等待.
+        DONE,    // 退出快照已存入数据库, 可以重试获取锁.
+        UNKNOWN; // 本服没有会话或近期保存记录, 可以尝试接管锁.
 
         static final Status[] VALUES = values();
     }
