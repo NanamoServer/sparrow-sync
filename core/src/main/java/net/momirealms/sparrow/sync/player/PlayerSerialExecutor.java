@@ -168,7 +168,7 @@ public final class PlayerSerialExecutor {
          * 其他玩家的任务照常被取走; 全都没到点就等到最早的那个, 期间新任务会提前唤醒.
          */
         private QueuedTask takeReady() throws InterruptedException {
-            this.lock.lock();
+            this.lock.lockInterruptibly();
             try {
                 while (true) {
                     long waitNanos = Long.MAX_VALUE;

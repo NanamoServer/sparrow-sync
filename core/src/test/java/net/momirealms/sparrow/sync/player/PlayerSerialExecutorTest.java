@@ -12,14 +12,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -176,24 +179,36 @@ class PlayerSerialExecutorTest {
         executor = new PlayerSerialExecutor(logger, 1);
         CountDownLatch blockerStarted = new CountDownLatch(1);
         CountDownLatch never = new CountDownLatch(1);
+        CompletableFuture<Void> finishCurrentTask = new CompletableFuture<>();
+        AtomicReference<Thread> workerThread = new AtomicReference<>();
+        AtomicInteger executed = new AtomicInteger();
 
         // 永久阻塞任务卡住 worker, 身后积压 10 个任务
         executor.submit(ALICE, () -> {
+            workerThread.set(Thread.currentThread());
             blockerStarted.countDown();
             try {
                 never.await();
             } catch (InterruptedException exception) {
+                finishCurrentTask.join();
                 Thread.currentThread().interrupt();
             }
         });
         assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
         for (int i = 0; i < 10; i++) {
-            executor.submit(ALICE, () -> {
-            });
+            executor.submit(ALICE, executed::incrementAndGet);
         }
-        int remaining = executor.shutdown(300, TimeUnit.MILLISECONDS);
-
-        assertEquals(10, remaining);
+        try {
+            int remaining = executor.shutdown(300, TimeUnit.MILLISECONDS);
+            assertEquals(10, remaining);
+            assertTrue(workerThread.get().isAlive());
+        } finally {
+            finishCurrentTask.complete(null);
+        }
+        workerThread.get().join(5000);
+        assertFalse(workerThread.get().isAlive());
+        assertEquals(0, executed.get());
+        assertEquals(10, this.executor.pendingTasks());
     }
 
     @Test
