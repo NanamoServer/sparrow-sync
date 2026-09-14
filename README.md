@@ -58,35 +58,6 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 2. Configure the Java 21 toolchain and execute the **Gradle build** action.
 3. Locate the plugin JAR in the **`/target`** folder.
 
-## 🚀 Getting Started
-
-Install the plugin on each participating **Paper or Folia** server and configure a shared **Redis** service and **database** for the servers that should synchronize player data.
-
-The plugin generates its configuration files in `plugins/SparrowSync/`:
-
-| File | Purpose |
-| --- | --- |
-| `config.yml` | Redis, database, synchronization, and snapshot settings |
-| `server.yml` | The unique identity of this server within the synchronization cluster |
-| `commands.yml` | Command permissions, usages, and enabled states |
-
-Set a **different, non-empty `server-id`** in `server.yml` for every participating server. The plugin shuts down the server when this value is empty, including on an unconfigured first startup. Configure the generated files before restarting.
-
-Each configuration file maintains its own version. Changes to `commands.yml` require a restart to apply.
-
-### 🎮 Common Commands
-
-| Command | Purpose |
-| --- | --- |
-| `/sparrow-sync status` | View synchronization system status |
-| `/sparrow-sync gui <player>` | Open a player's snapshot management menu |
-| `/sparrow-sync data migrate <source>` | Migrate data from a supported source plugin (`husksync` or `invsync`) |
-| `/sparrow-sync snapshot list <player>` | List a player's saved snapshots |
-| `/sparrow-sync snapshot view <player> <id>` | View the contents of a saved snapshot |
-| `/sparrow-sync reload` | Reload configuration and translations |
-
-Command permissions and usages can be customized in **`commands.yml`**.
-
 ## 🤝 Contributing
 
 ### 🌍 Translations

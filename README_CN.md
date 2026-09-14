@@ -58,35 +58,6 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 2. 配置 Java 21 工具链，执行 **Gradle build** 任务。
 3. 在 **`/target`** 目录中找到插件 JAR。
 
-## 🚀 开始使用
-
-在每台参与同步的 **Paper 或 Folia** 服务器上安装插件，并为需要同步玩家数据的服务器配置共用的 **Redis** 服务和**数据库**。
-
-插件会在 `plugins/SparrowSync/` 中生成以下配置文件：
-
-| 文件 | 用途 |
-| --- | --- |
-| `config.yml` | Redis、数据库、数据同步和快照设置 |
-| `server.yml` | 当前服务器在同步集群中的唯一标识 |
-| `commands.yml` | 命令权限、用法和启用状态 |
-
-请在每台服务器的 `server.yml` 中设置**各不相同且非空的 `server-id`**。该值为空时，插件会关闭服务器，首次启动且尚未配置时也会如此。请完成生成文件中的配置后再重新启动。
-
-每份配置文件独立维护自己的版本号。修改 `commands.yml` 后需要重启服务器才能生效。
-
-### 🎮 常用命令
-
-| 命令 | 用途 |
-| --- | --- |
-| `/sparrow-sync status` | 查看同步系统状态 |
-| `/sparrow-sync gui <player>` | 打开指定玩家的快照管理菜单 |
-| `/sparrow-sync data migrate <source>` | 从支持的来源插件迁移数据（`husksync` 或 `invsync`） |
-| `/sparrow-sync snapshot list <player>` | 列出指定玩家的已保存快照 |
-| `/sparrow-sync snapshot view <player> <id>` | 查看已保存快照的内容 |
-| `/sparrow-sync reload` | 重新加载配置和翻译 |
-
-命令权限和用法可以在 **`commands.yml`** 中自定义。
-
 ## 🤝 参与贡献
 
 ### 🌍 翻译
