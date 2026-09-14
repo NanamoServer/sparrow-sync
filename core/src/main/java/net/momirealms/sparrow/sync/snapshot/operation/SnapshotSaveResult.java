@@ -5,7 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 
-/** 一次快照保存请求的最终结果. */
 public sealed interface SnapshotSaveResult {
 
     /** 保存链已经收敛, 携带存储或本地留存结果. */
@@ -14,7 +13,6 @@ public sealed interface SnapshotSaveResult {
 
     /** 快照保存被事件监听器取消. */
     Cancelled CANCELLED = new Cancelled();
-
     record Cancelled() implements SnapshotSaveResult {
     }
 }

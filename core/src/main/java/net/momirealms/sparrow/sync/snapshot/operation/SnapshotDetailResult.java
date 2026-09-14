@@ -18,7 +18,6 @@ public sealed interface SnapshotDetailResult {
     }
 
     NotFound NOT_FOUND = new NotFound();
-
     record NotFound() implements SnapshotDetailResult {
     }
 

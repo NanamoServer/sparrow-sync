@@ -57,39 +57,5 @@ public final class ExceptionCollector<T extends Throwable> {
             throw this.result;
         }
     }
-
-    /**
-     * 先收集指定异常, 再立即根据当前状态决定是否抛出.
-     * 该方法等价于顺序执行 `add(throwable)` 与 `throwIfPresent()`.
-     *
-     * @param throwable 需要追加并检查抛出的异常对象
-     * @throws NullPointerException 当 `throwable` 为 `null` 且已有主异常时, `addSuppressed(null)` 会抛出该异常
-     * @throws T 在追加后收集器存在主异常时抛出该异常
-     */
-    public void addAndThrow(T throwable) throws T {
-        this.add(throwable);
-        this.throwIfPresent();
-    }
-
-    /**
-     * 执行给定任务并捕获异常.
-     * 如果任务抛出的异常属于当前收集器声明的异常类型, 则会被收集.
-     * 如果抛出的是其他类型异常, 则通过 `ThrowableUtils.sneakyThrow(Throwable)` 原样重新抛出, 不会被吞掉.
-     *
-     * @param runnable 需要执行的任务
-     * @throws NullPointerException 当 `runnable` 为 `null` 时, 调用 `run()` 会抛出该异常
-     * @apiNote 该方法不会自动抛出已收集异常, 调用方需要在合适时机显式调用 `throwIfPresent()`
-     */
-    public void runCatching(Runnable runnable) {
-        try {
-            runnable.run();
-        } catch (Throwable t) {
-            if (this.exceptionClass.isInstance(t)) {
-                this.add(this.exceptionClass.cast(t));
-            } else {
-                ThrowableUtils.sneakyThrow(t);
-            }
-        }
-    }
 }
 

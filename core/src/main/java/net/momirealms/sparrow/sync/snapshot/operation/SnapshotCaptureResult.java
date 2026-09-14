@@ -6,31 +6,27 @@ import java.util.UUID;
 
 /** 主动采集并保存快照的结果, 支持本服调用和远程回执. */
 public sealed interface SnapshotCaptureResult {
-    /** 玩家离线、会话不可操作或服务已停止接收请求, 本次未执行. */
-    Offline OFFLINE = new Offline();
-
-    /** 保存被事件监听器取消. */
-    Cancelled CANCELLED = new Cancelled();
-
-    /** 保存未成功, 或远程执行发生异常. */
-    Failed FAILED = new Failed();
-
-    /** 远程请求失联或超时, 无法确认执行结果. */
-    Unavailable UNAVAILABLE = new Unavailable();
-
     /** 已保存采集内容, 携带实际生成的快照 ID. */
     record Captured(@NotNull UUID snapshotId) implements SnapshotCaptureResult {
     }
 
+    /** 玩家离线、会话不可操作或服务已停止接收请求, 本次未执行. */
+    Offline OFFLINE = new Offline();
     record Offline() implements SnapshotCaptureResult {
     }
 
+    /** 保存被事件监听器取消. */
+    Cancelled CANCELLED = new Cancelled();
     record Cancelled() implements SnapshotCaptureResult {
     }
 
+    /** 保存未成功, 或远程执行发生异常. */
+    Failed FAILED = new Failed();
     record Failed() implements SnapshotCaptureResult {
     }
 
+    /** 远程请求失联或超时, 无法确认执行结果. */
+    Unavailable UNAVAILABLE = new Unavailable();
     record Unavailable() implements SnapshotCaptureResult {
     }
 }

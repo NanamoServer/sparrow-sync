@@ -5,7 +5,6 @@ import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-/** 最新快照的读取与预解码结果. */
 @ApiStatus.Internal
 public sealed interface SnapshotLoadResult {
 
@@ -15,7 +14,6 @@ public sealed interface SnapshotLoadResult {
 
     /** 玩家没有历史快照, 本服状态即权威. */
     Empty EMPTY = new Empty();
-
     record Empty() implements SnapshotLoadResult {
     }
 
