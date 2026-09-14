@@ -1,9 +1,14 @@
 package net.momirealms.sparrow.sync.gui;
 
+import net.kyori.adventure.text.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
+import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
 import net.momirealms.sparrow.ui.window.Window;
-import org.bukkit.entity.Player;
+import org.bukkit.craftbukkit.entity.CraftEntity;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -22,32 +27,40 @@ import static org.junit.jupiter.api.Assertions.*;
 class SnapshotGuiPermissionTest {
     @Test
     void editingRequiresOnlyCurrentUiEditPermission() throws Exception {
+        BukkitProxy.init("1.21.8", List.of("paper"));
         Field translation = TranslationManagerImpl.class.getDeclaredField("instance");
         translation.setAccessible(true);
         Object previous = translation.get(null);
-        translation.set(null, Proxy.newProxyInstance(TranslationManager.class.getClassLoader(), new Class[]{TranslationManager.class}, (instance, method, args) -> args[0]));
+        List<Locale> locales = new ArrayList<>();
+        translation.set(null, Proxy.newProxyInstance(TranslationManager.class.getClassLoader(), new Class[]{TranslationManager.class}, (instance, method, args) -> {
+            locales.add((Locale) args[1]);
+            return args[0];
+        }));
         try {
             List<String> checked = new ArrayList<>();
             AtomicBoolean edit = new AtomicBoolean(true);
-            var menu = new SnapshotDetailGui(null, viewer(edit, checked), "Target", null, null, null);
+            TestViewer viewer = viewer(edit, checked);
+            var menu = new SnapshotDetailGui(null, viewer, "Target", null, null, null);
             assertTrue(invoke(menu, "editable"));
+            assertNull(viewer.feedback);
             edit.set(false);
             assertFalse(invoke(menu, "editable"));
             assertEquals(List.of("sparrow_sync.ui.edit", "sparrow_sync.ui.edit"), checked);
+            assertEquals(List.of(Locale.SIMPLIFIED_CHINESE, Locale.SIMPLIFIED_CHINESE), locales);
+            assertNotNull(viewer.feedback);
         } finally {
             translation.set(null, previous);
         }
     }
 
-    private static Player viewer(AtomicBoolean edit, List<String> checked) {
-        return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class[]{Player.class}, (instance, method, args) -> {
-            if (method.getName().equals("hasPermission")) {
-                String permission = (String) args[0];
-                checked.add(permission);
-                return permission.equals("sparrow_sync.ui.edit") && edit.get();
-            }
-            return method.getName().equals("locale") ? Locale.ENGLISH : null;
-        });
+    private static TestViewer viewer(AtomicBoolean edit, List<String> checked) {
+        ServerPlayer handle = NmsPlayerFixture.create().getHandle();
+        handle.language = "zh_cn";
+        TestViewer viewer = NmsPlayerFixture.allocate(TestViewer.class);
+        NmsPlayerFixture.set(CraftEntity.class, viewer, "entity", handle);
+        viewer.edit = edit;
+        viewer.checked = checked;
+        return viewer;
     }
 
     @ParameterizedTest
@@ -76,5 +89,26 @@ class SnapshotGuiPermissionTest {
         Method method = menu.getClass().getDeclaredMethod(name);
         method.setAccessible(true);
         return (boolean) method.invoke(menu);
+    }
+
+    private static final class TestViewer extends CraftPlayer {
+        private AtomicBoolean edit;
+        private List<String> checked;
+        private Component feedback;
+
+        private TestViewer() {
+            super(null, null);
+        }
+
+        @Override
+        public boolean hasPermission(String permission) {
+            this.checked.add(permission);
+            return permission.equals("sparrow_sync.ui.edit") && this.edit.get();
+        }
+
+        @Override
+        public void sendMessage(Component message) {
+            this.feedback = message;
+        }
     }
 }
