@@ -5,7 +5,8 @@ import java.util.Date
 
 // Plugin
 plugins {
-    alias(libs.plugins.plugin.yml)
+    alias(libs.plugins.paper.plugin.yml)
+    alias(libs.plugins.bukkit.plugin.yml)
     alias(libs.plugins.buildconfig)
     id("sparrow-sync.run-servers")
 }
@@ -133,6 +134,14 @@ tasks {
         maxHeapSize = "2g"
         providers.gradleProperty("sparrow.test.redis").orNull?.let { systemProperty("sparrow.test.redis", it) }
     }
+}
+
+// plugin.yml
+bukkit {
+    name = "SparrowSync"
+    main = "net.momirealms.sparrow.sync.plugin.SpigotJavaPlugin"
+    apiVersion = "1.21.8"
+    softDepend = listOf("InvSync", "HuskSync", "Vault")
 }
 
 // paper-plugin.yml

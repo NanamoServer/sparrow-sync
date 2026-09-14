@@ -50,7 +50,8 @@ vaultapi = "1.7.1"
 [plugins]
 shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
 paper-weight = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight" }
-plugin-yml = { id = "de.eldoria.plugin-yml.paper", version = "0.9.0" }
+paper-plugin-yml = { id = "de.eldoria.plugin-yml.paper", version = "0.9.0" }
+bukkit-plugin-yml = { id = "de.eldoria.plugin-yml.bukkit", version = "0.9.0" }
 run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "run-task" }
 buildconfig = { id = "com.github.gmazzo.buildconfig", version = "6.0.9" }
 

@@ -48,6 +48,9 @@ tasks.register<RunVelocity>("runProxyVelocity") {
 
     velocityVersion("4.1.1")
     runDirectory.set(velocityDirectory)
+    pluginJars.from(rootProject.fileTree("buildSrc/velocity-plugin") {
+        include("*.jar")
+    })
     javaLauncher.set(java25)
     minHeapSize = "512M"
     maxHeapSize = "512M"
@@ -77,6 +80,9 @@ val projectJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
 val extraPluginJars = rootProject.fileTree("buildSrc/plugin") {
     include("*.jar")
 }
+val bukkitPluginJars = rootProject.fileTree("buildSrc/bukkit-plugin") {
+    include("*.jar")
+}
 // 启动前复制到各自的运行目录, 避免服务端直接持有共享的 shadowJar.
 tasks.withType<RunServer>().configureEach {
     legacyPluginLoading()
@@ -91,7 +97,7 @@ fun RunServer.configureServer(
     displayName.set(display)
     minecraftVersion(minecraftVersion)
     runDirectory.set(rootProject.layout.projectDirectory.dir(directory))
-    pluginJars.from(projectJar, extraPluginJars)
+    pluginJars.from(projectJar)
     javaLauncher.set(java25)
 
     if (maximumHeap != null) {
@@ -149,6 +155,7 @@ for (minecraftVersion in minecraftVersions) {
             "1536M"
         )
         description = "Run the Paper $minecraftVersion proxy backend on port 25566."
+        pluginJars.from(extraPluginJars)
         dependsOn(prepareProxyPaper)
     }
 
@@ -160,6 +167,7 @@ for (minecraftVersion in minecraftVersions) {
             "1536M"
         )
         description = "Run the Folia $minecraftVersion proxy backend on port 25567."
+        pluginJars.from(extraPluginJars)
         downloadsApiService.set(DownloadsAPIService.folia(project))
         dependsOn(prepareProxyFolia)
     }
@@ -168,15 +176,16 @@ for (minecraftVersion in minecraftVersions) {
 // Spigot
 val spigotJar = rootProject.layout.projectDirectory.file("buildSrc/server-jars/spigot-26.2.jar")
 if (spigotJar.asFile.isFile) {
-    val spigotDirectory = rootProject.layout.projectDirectory.dir("run/proxy/spigot/26.2")
-    val prepareProxySpigot = tasks.register<InitializeRunDirectory>("prepareProxySpigot_26.2") {
+    val spigotDirectory = rootProject.layout.projectDirectory.dir("run/spigot/26.2")
+    val prepareSpigot = tasks.register<InitializeRunDirectory>("prepareSpigot_26.2") {
         templateDirectories.from(runTemplatesDirectory.dir("backend/spigot"))
         targetDirectory.set(spigotDirectory)
     }
-    tasks.register<RunServer>("runProxySpigot_26.2") {
-        configureServer("Proxy Spigot 26.2", "26.2", "run/proxy/spigot/26.2", "1536M")
-        description = "Run the Spigot 26.2 proxy backend on port 25568."
+    tasks.register<RunServer>("runSpigot_26.2") {
+        configureServer("Spigot 26.2", "26.2", "run/spigot/26.2", "1536M")
+        description = "Run the standalone Spigot 26.2 server on port 25568."
+        pluginJars.from(bukkitPluginJars)
         serverJar(spigotJar.asFile)
-        dependsOn(prepareProxySpigot)
+        dependsOn(prepareSpigot)
     }
 }

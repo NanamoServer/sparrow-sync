@@ -1081,7 +1081,7 @@ public final class PluginConfig {
 
         @Comment("How many days to keep local logs. Expired .log and .log.gz files are deleted at startup. Values <= 0 keep all logs.")
         @Comment(lang = "zh-CN", value = "本地日志保留天数, 服务器在启动时会删除过期的 .log 和 .log.gz 文件, <= 0 表示不清理.")
-        int retentionDays = 0;
+        int retentionDays = 14;
 
         @Comment("Time format in log entries. HH:mm:ss shows hours, minutes and seconds; HH:mm:ss.SSS also includes milliseconds.")
         @Comment(lang = "zh-CN", value = "日志中的时间格式, 例如 HH:mm:ss 显示时分秒, HH:mm:ss.SSS 再加上毫秒.")

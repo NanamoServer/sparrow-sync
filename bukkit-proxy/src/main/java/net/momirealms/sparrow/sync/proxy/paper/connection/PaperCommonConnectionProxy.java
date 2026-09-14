@@ -4,7 +4,7 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "io.papermc.paper.connection.PaperCommonConnection", activeIf = "min_version=1.21.7")
+@ReflectionProxy(name = "io.papermc.paper.connection.PaperCommonConnection", activeIf = "min_version=1.21.7 && has_patch=paper")
 public interface PaperCommonConnectionProxy {
     PaperCommonConnectionProxy INSTANCE = ASMProxyFactory.create(PaperCommonConnectionProxy.class);
 
