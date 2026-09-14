@@ -34,7 +34,7 @@ public final class SnapshotCaptureCommand extends AbstractSnapshotCommand {
                         Optional<PlayerIdentity> player = this.plugin().playerDirectory().cached(name);
                         Optional<String> server = this.plugin().playerDirectory().server(name);
                         capture = player.isPresent() && server.isPresent()
-                                ? this.plugin().remoteSnapshotManager().capture(server.get(), player.get().uuid())
+                                ? this.plugin().remoteSnapshotManager().capture(server.get(), player.get().uuid(), SaveCause.COMMAND)
                                 : CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
                     }
                     this.finish(context, capture, result -> {

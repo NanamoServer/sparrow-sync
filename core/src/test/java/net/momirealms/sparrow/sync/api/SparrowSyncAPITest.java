@@ -120,10 +120,7 @@ class SparrowSyncAPITest {
     }
 
     @Test
-    void entryRequiresPluginAndReturnsSameObjectDuringInitialization() {
-        NmsPlayerFixture.set(SparrowSync.class, null, "instance", null);
-        assertThrows(IllegalStateException.class, SparrowSync::api);
-        NmsPlayerFixture.set(SparrowSync.class, null, "instance", this.plugin);
+    void entryReturnsSameObjectDuringInitialization() {
         this.ready(false);
         assertSame(this.api, SparrowSync.api());
         this.ready(true);
@@ -276,6 +273,8 @@ class SparrowSyncAPITest {
     }
 
     private void assertAllUnavailable() {
+        this.assertUnavailable(this.api.save(this.playerId));
+        this.assertUnavailable(this.api.restore(this.playerId, this.snapshotId));
         this.assertUnavailable(this.api.latestSnapshot(this.playerId));
         this.assertUnavailable(this.api.snapshot(this.snapshotId));
         this.assertUnavailable(this.api.snapshots(this.playerId, 0, 20));

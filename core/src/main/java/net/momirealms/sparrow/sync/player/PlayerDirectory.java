@@ -222,6 +222,17 @@ public final class PlayerDirectory {
         return Optional.empty();
     }
 
+    // 按 UUID 定位在线玩家所在服, 接收方仍会核对实际会话.
+    @NotNull
+    public synchronized Optional<String> server(@NotNull UUID playerId) {
+        for (Map.Entry<String, Map<String, PlayerIdentity>> entry : this.servers.entrySet()) {
+            for (PlayerIdentity player : entry.getValue().values()) {
+                if (player.uuid().equals(playerId)) return Optional.of(entry.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
     // 按前缀返回已缓存的补全项, 空前缀提供全部在线名字.
     @NotNull
     public List<Suggestion> suggestions(@NotNull String prefix) {

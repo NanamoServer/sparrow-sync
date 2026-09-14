@@ -82,6 +82,10 @@ class PlayerDirectoryTest {
         assertTrue(first.directory.cached(steve.toString()).isEmpty());
         assertEquals(commands, redis.calls);
         assertEquals(2, first.directory.onlinePlayers().size());
+        assertEquals(first.directory.server("Steve"), first.directory.server(steve));
+        assertEquals(first.directory.server("Alex"), first.directory.server(alex));
+        assertTrue(first.directory.server(UUID.randomUUID()).isEmpty());
+        assertEquals(commands, redis.calls);
     }
 
     @Test
@@ -101,6 +105,7 @@ class PlayerDirectoryTest {
         assertTrue(server.directory.suggestions("Steve").isEmpty());
         server.directory.presence(uuid, "Alex", false);
         assertTrue(server.directory.suggestions("").isEmpty());
+        assertTrue(server.directory.server(uuid).isEmpty());
         assertTrue(server.directory.suggestions(uuid.toString()).isEmpty());
     }
 

@@ -90,6 +90,20 @@ class SnapshotEventTest {
         assertSame(SyncCompleteEvent.getHandlerList(), event.getHandlers());
     }
 
+    @Test
+    void playerDataReadyEventKeepsItsOwnSkippedListAndIsSynchronous() {
+        List<DataKey> skipped = new ArrayList<>(List.of(HEALTH));
+        PlayerDataReadyEvent event = new PlayerDataReadyEvent(this.player, this.snapshot, skipped);
+        skipped.clear();
+        assertSame(this.player, event.getPlayer());
+        assertSame(this.snapshot, event.snapshot());
+        assertEquals(List.of(HEALTH), event.skipped());
+        assertThrows(UnsupportedOperationException.class, event.skipped()::clear);
+        assertFalse(event.isAsynchronous());
+        assertFalse(Cancellable.class.isAssignableFrom(PlayerDataReadyEvent.class));
+        assertSame(PlayerDataReadyEvent.getHandlerList(), event.getHandlers());
+    }
+
     private static Player player() {
         return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, args) -> switch (method.getName()) {
             case "getUniqueId" -> PLAYER_ID;

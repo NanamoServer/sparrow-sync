@@ -1,12 +1,20 @@
 package net.momirealms.sparrow.sync.api;
 
+import net.momirealms.sparrow.sync.cluster.LockValue;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.player.PlayerIdentity;
+import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.storage.SnapshotQuery;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,6 +29,54 @@ public final class SparrowSyncAPI {
     @ApiStatus.Internal
     public SparrowSyncAPI(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
+    }
+
+    /**
+     * 定位在线玩家并采集当前同步数据, 以 API 原因保存到数据库.
+     *
+     * @param playerId 玩家 UUID
+     * @return Captured 表示已入库; OFFLINE 表示玩家离线或当前不可操作,
+     *         UNAVAILABLE 表示远程结果未知, 取消或保存失败保留对应结果
+     */
+    @NotNull
+    public CompletableFuture<SnapshotCaptureResult> save(@NotNull UUID playerId) {
+        if (!this.plugin.apiReady()) return CompletableFuture.failedFuture(new IllegalStateException("SparrowSync API is not ready"));
+        Player player = Bukkit.getPlayer(playerId);
+        if (player != null) return this.plugin.snapshotService().capture(player, SaveCause.API);
+        if (this.plugin.sessionManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
+            return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
+        }
+        return this.server(playerId).thenCompose(server -> {
+            if (server.isEmpty()) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
+            if (server.get().equals(ServerConfig.serverId())) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
+            return this.plugin.remoteSnapshotManager().capture(server.get(), playerId, SaveCause.API);
+        });
+    }
+
+    /**
+     * 将该玩家的历史快照恢复到其所在服务器, 全网离线时保存新的 RESTORE 记录供下次登录读取.
+     * 恢复保留原历史, 应用失败时玩家可能已被部分修改; 远程超时返回结果未知.
+     *
+     * @param playerId 目标玩家 UUID
+     * @param snapshotId 属于该玩家的快照 ID
+     * @return Restored 表示在线应用和新记录保存完成, RestoredOffline 表示离线记录已保存并归还锁;
+     *         OFFLINE 表示当前不可操作, 其余结果区分记录缺失、归属错误、取消、失败和远程结果未知
+     */
+    @NotNull
+    public CompletableFuture<SnapshotRestoreResult> restore(@NotNull UUID playerId, @NotNull UUID snapshotId) {
+        if (!this.plugin.apiReady()) return CompletableFuture.failedFuture(new IllegalStateException("SparrowSync API is not ready"));
+        Player player = Bukkit.getPlayer(playerId);
+        if (player != null) return this.plugin.snapshotService().restore(player, snapshotId);
+        if (this.plugin.sessionManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
+            return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
+        }
+        return this.server(playerId).thenCompose(server -> {
+            if (server.isEmpty()) {
+                return this.plugin.snapshotService().restoreOffline(new PlayerIdentity(playerId, playerId.toString()), snapshotId);
+            }
+            if (server.get().equals(ServerConfig.serverId())) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
+            return this.plugin.remoteSnapshotManager().restore(server.get(), playerId, snapshotId);
+        });
     }
 
     /**
@@ -101,5 +157,12 @@ public final class SparrowSyncAPI {
     public CompletableFuture<SnapshotDeleteResult> delete(@NotNull UUID snapshotId) {
         if (!this.plugin.apiReady()) return CompletableFuture.failedFuture(new IllegalStateException("SparrowSync API is not ready"));
         return this.plugin.snapshotService().delete(snapshotId);
+    }
+
+    // 在线名单未命中时读取锁持有服, 接收方和离线写入仍核对实际会话或锁.
+    private CompletableFuture<Optional<String>> server(UUID playerId) {
+        Optional<String> server = this.plugin.playerDirectory().server(playerId);
+        if (server.isPresent()) return CompletableFuture.completedFuture(server);
+        return this.plugin.sessionLock().holder(playerId).thenApply(holder -> holder.map(LockValue::serverId));
     }
 }

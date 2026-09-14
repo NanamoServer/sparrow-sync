@@ -36,6 +36,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -95,7 +97,7 @@ class RemoteSnapshotManagerTest {
         });
         serverField.set(null, server);
         try {
-            CompletableFuture<SnapshotCaptureResult> capture = this.remote.capture("remote", player);
+            CompletableFuture<SnapshotCaptureResult> capture = this.remote.capture("remote", player, SaveCause.COMMAND);
             assertFalse(capture.isDone());
             UUID saved = UUID.randomUUID();
             response.get().complete(new SnapshotCaptureResponseMessage(new SnapshotCaptureResult.Captured(saved)));
@@ -106,13 +108,12 @@ class RemoteSnapshotManagerTest {
             restored.complete(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
             assertInstanceOf(SnapshotRestoreResult.Offline.class, restore.join());
             response.set(new CompletableFuture<>());
-            CompletableFuture<SnapshotCaptureResult> lost = this.remote.capture("remote", player);
+            CompletableFuture<SnapshotCaptureResult> lost = this.remote.capture("remote", player, SaveCause.COMMAND);
             response.get().completeExceptionally(new IllegalStateException("connection lost"));
             assertInstanceOf(SnapshotCaptureResult.Unavailable.class, lost.join());
             alive.set(false);
-            assertInstanceOf(SnapshotCaptureResult.Offline.class, this.remote.capture("remote", player).join());
+            assertInstanceOf(SnapshotCaptureResult.Offline.class, this.remote.capture("remote", player, SaveCause.COMMAND).join());
             assertEquals(3, sent.get());
-            assertInstanceOf(SnapshotCaptureResult.Offline.class, this.remote.receiveCapture(player).join());
         } finally {
             serverField.set(null, previous);
         }
@@ -170,27 +171,33 @@ class RemoteSnapshotManagerTest {
                 new SnapshotRestoreResult.NotFound(),
                 new SnapshotRestoreResult.WrongPlayer(),
                 new SnapshotRestoreResult.Offline(),
+                new SnapshotRestoreResult.Restored(UUID.randomUUID(), List.of(DataKey.sparrow("inventory"))),
+                new SnapshotRestoreResult.Cancelled(SnapshotRestoreResult.Stage.SAVE, List.of(DataKey.sparrow("health"))),
+                new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.PREPARE, "读取失败", null, List.of()),
+                new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.APPLY, "apply failed", null, List.of(DataKey.sparrow("health"))),
+                new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.SAVE, "save failed", null, List.of(DataKey.sparrow("health"))),
                 new SnapshotRestoreResult.Cancelled(),
                 new SnapshotRestoreResult.Failed(),
                 new SnapshotRestoreResult.Unavailable());
     }
 
     @Test
-    void requestPayloadsAreDistinctAndMissingReceiverAnswersOffline() throws Exception {
+    void requestPayloadsPreserveCauseAndMissingReceiverAnswersOffline() throws Exception {
         UUID playerId = UUID.randomUUID();
         UUID snapshotId = UUID.randomUUID();
         ByteBuf captureBuffer = Unpooled.buffer();
         ByteBuf restoreBuffer = Unpooled.buffer();
         try {
-            SnapshotCaptureRequestMessage capture = new SnapshotCaptureRequestMessage(playerId);
+            SnapshotCaptureRequestMessage capture = new SnapshotCaptureRequestMessage(playerId, SaveCause.API);
             capture.setMessageId(78);
             capture.setSourceServer("a");
             capture.setTargetServer("b");
             SnapshotCaptureRequestMessage.CODEC.encode(captureBuffer, capture);
-            int captureLength = captureBuffer.readableBytes();
             SnapshotCaptureRequestMessage decodedCapture = SnapshotCaptureRequestMessage.CODEC.decode(captureBuffer);
             SnapshotCaptureRequestMessage.receiver(null);
             assertEquals(playerId, field(decodedCapture, "playerId"));
+            assertEquals(SaveCause.API, field(decodedCapture, "cause"));
+            assertFalse(captureBuffer.isReadable());
             assertEquals("b", decodedCapture.targetServer());
             assertInstanceOf(SnapshotCaptureResult.Offline.class, decodedCapture.handleRequest().join().result());
             SnapshotRestoreRequestMessage restore = new SnapshotRestoreRequestMessage(playerId, snapshotId);
@@ -198,16 +205,38 @@ class RemoteSnapshotManagerTest {
             restore.setSourceServer("a");
             restore.setTargetServer("b");
             SnapshotRestoreRequestMessage.CODEC.encode(restoreBuffer, restore);
-            assertEquals(captureLength + 16, restoreBuffer.readableBytes());
             SnapshotRestoreRequestMessage decodedRestore = SnapshotRestoreRequestMessage.CODEC.decode(restoreBuffer);
             SnapshotRestoreRequestMessage.receiver(null);
             assertEquals(playerId, field(decodedRestore, "playerId"));
             assertEquals(snapshotId, field(decodedRestore, "snapshotId"));
+            assertFalse(restoreBuffer.isReadable());
             assertInstanceOf(SnapshotRestoreResult.Offline.class, decodedRestore.handleRequest().join().result());
             assertNotEquals(capture.identifier(), restore.identifier());
         } finally {
             captureBuffer.release();
             restoreBuffer.release();
+        }
+    }
+
+    @Test
+    void restoreResponsePreservesFailureContextAndOmitsLocalThrowable() {
+        SnapshotRestoreResult.Failed failure = new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.SAVE,
+                "database unavailable", new IllegalStateException("database unavailable"), List.of(DataKey.sparrow("health")));
+        SnapshotRestoreResponseMessage response = new SnapshotRestoreResponseMessage(failure);
+        response.setMessageId(79);
+        response.setSourceServer("remote");
+        response.setTargetServer("origin");
+        ByteBuf buffer = Unpooled.buffer();
+        try {
+            SnapshotRestoreResponseMessage.CODEC.encode(buffer, response);
+            SnapshotRestoreResult.Failed decoded = assertInstanceOf(SnapshotRestoreResult.Failed.class, SnapshotRestoreResponseMessage.CODEC.decode(buffer).result());
+            assertEquals(failure.stage(), decoded.stage());
+            assertEquals(failure.detail(), decoded.detail());
+            assertEquals(failure.skipped(), decoded.skipped());
+            assertNull(decoded.cause());
+            assertFalse(buffer.isReadable());
+        } finally {
+            buffer.release();
         }
     }
 

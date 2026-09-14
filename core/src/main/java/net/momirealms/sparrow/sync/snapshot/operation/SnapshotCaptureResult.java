@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /** 主动采集并保存快照的结果, 支持本服调用和远程回执. */
 public sealed interface SnapshotCaptureResult {
-    /** 玩家离线、会话未激活或服务已停止接收请求. */
+    /** 玩家离线、会话不可操作或服务已停止接收请求, 本次未执行. */
     Offline OFFLINE = new Offline();
 
     /** 保存被事件监听器取消. */

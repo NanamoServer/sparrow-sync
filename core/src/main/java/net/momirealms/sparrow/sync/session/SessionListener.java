@@ -60,7 +60,6 @@ public final class SessionListener implements Listener {
         }
 
         this.plugin.logger().file(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SESSION_JOIN);
-        // todo 设计插件 API 时重新确定登录时的数据同步事件.
         SnapshotApplyResult result;
         try {
             result = this.sessions.activate(session, player);

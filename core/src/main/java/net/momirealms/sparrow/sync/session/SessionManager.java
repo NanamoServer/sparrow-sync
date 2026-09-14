@@ -5,6 +5,7 @@ import net.minecraft.network.Connection;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.api.event.SyncCompleteEvent;
+import net.momirealms.sparrow.sync.api.event.PlayerDataReadyEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -190,6 +191,7 @@ public final class SessionManager {
                 if (loaded != null) session.retainedData(loaded.context().passthrough());
                 session.transition(SessionState.ACTIVE);
             }
+            EventUtils.fireAndForget(new PlayerDataReadyEvent(player, loaded == null ? null : loaded.snapshot(), applied.skipped()));
             if (loaded != null) EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
             this.logger.info(LogCategory.JOIN, player.getUniqueId(), player.getName(), LogConstants.SYNC_LOGIN_COMPLETE, player.getName(), millis(0, asyncReadNanos), millis(0, nativeApplyNanos), millis(0, syncApplyNanos));
         }

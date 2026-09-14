@@ -45,6 +45,27 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.api.event.PreApplyEvent;
+import net.momirealms.sparrow.sync.api.SparrowSyncAPI;
+import net.momirealms.sparrow.sync.api.event.PlayerDataReadyEvent;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureResponseMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreRequestMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreResponseMessage;
+import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.session.SessionListener;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotApplyContext;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
+import org.bukkit.event.player.PlayerJoinEvent;
+import net.kyori.adventure.text.Component;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeoutException;
 import org.bukkit.World;
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -110,6 +131,13 @@ class SnapshotCommandFlowTest {
     private final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
     private Consumer<PreApplyEvent> onPreApply = event -> {};
     private Consumer<SnapshotSaveEvent> onSave = event -> {};
+    private Consumer<PlayerDataReadyEvent> onReady = event -> {};
+    private SparrowSyncAPI api;
+    private int readyEvents;
+    private int kicks;
+    private String lockOwner;
+    private RuntimeException lookupFailure;
+    private int lockAttempts;
     private CompletableFuture<Optional<Snapshot>> snapshotRead;
     private boolean critical = true;
     private RuntimeException decodeFailure;
@@ -143,11 +171,17 @@ class SnapshotCommandFlowTest {
         this.entityThread = Thread.currentThread();
         this.preparation = Executors.newSingleThreadExecutor();
         this.oldConfig = replace(PluginConfig.class, "config", new PluginConfig.ConfigDefinition());
-        this.oldServerConfig = replace(ServerConfig.class, "config", new ServerConfig.ConfigDefinition());
+        ServerConfig.ConfigDefinition serverConfig = new ServerConfig.ConfigDefinition();
+        NmsPlayerFixture.set(ServerConfig.ConfigDefinition.class, serverConfig, "serverId", "local");
+        this.oldServerConfig = replace(ServerConfig.class, "config", serverConfig);
         Player player = proxy(Player.class, (instance, method, args) -> switch (method.getName()) {
             case "getUniqueId" -> this.uuid;
             case "getName" -> "Steve";
             case "isOnline" -> this.online.get();
+            case "kick" -> {
+                this.kicks++;
+                yield null;
+            }
             case "isDead" -> this.dead.get();
             case "getHealth" -> this.dead.get() ? 0.0 : this.health.get();
             case "setHealth" -> {
@@ -179,6 +213,12 @@ class SnapshotCommandFlowTest {
             assertEquals("callEvent", method.getName());
             if (args[0] instanceof PreApplyEvent event) this.onPreApply.accept(event);
             if (args[0] instanceof SnapshotSaveEvent event) this.onSave.accept(event);
+            if (args[0] instanceof PlayerDataReadyEvent event) {
+                this.readyEvents++;
+                assertFalse(event.isAsynchronous());
+                assertSame(this.entityThread, Thread.currentThread());
+                this.onReady.accept(event);
+            }
             return null;
         });
         this.oldBukkit = replace(Bukkit.class, "server", proxy(Server.class, (instance, method, args) -> switch (method.getName()) {
@@ -247,6 +287,7 @@ class SnapshotCommandFlowTest {
         service.onLoad();
         SessionManager sessions = new SessionManager(plugin);
         NmsPlayerFixture.set(SessionManager.class, sessions, "snapshotService", service);
+        NmsPlayerFixture.set(SessionManager.class, sessions, "logger", logger);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "sessionManager", sessions);
         sessions.tryOpen(this.uuid, "Steve", ConnectionFixture.create()).transition(SessionState.ACTIVE);
         PlayerDirectory players = new PlayerDirectory(plugin);
@@ -257,8 +298,17 @@ class SnapshotCommandFlowTest {
         RedisAsyncCommands<byte[], byte[]> commands = proxy(RedisAsyncCommands.class, (instance, method, args) -> {
             AsyncCommand<byte[], byte[], Object> result = new AsyncCommand<>(new Command<>(CommandType.GET, null));
             if (method.getName().equals("setGet")) {
-                assertFalse(this.locked.getAndSet(true));
-                result.complete(null);
+                this.lockAttempts++;
+                boolean held = this.locked.getAndSet(true);
+                result.complete(held ? ("remote:" + this.uuid).getBytes(StandardCharsets.UTF_8) : null);
+            } else if (method.getName().equals("get")) {
+                if (this.lookupFailure != null) {
+                    result.completeExceptionally(this.lookupFailure);
+                } else {
+                    String key = new String((byte[]) args[0], StandardCharsets.UTF_8);
+                    result.complete(key.startsWith("sparrow-sync:server:") ? new byte[]{1}
+                            : this.lockOwner == null ? null : this.lockOwner.getBytes(StandardCharsets.UTF_8));
+                }
             } else if (method.getName().equals("eval")) {
                 assertTrue(this.locked.getAndSet(false));
                 result.complete(1L);
@@ -269,6 +319,7 @@ class SnapshotCommandFlowTest {
         });
         RedisConnector redis = NmsPlayerFixture.allocate(RedisConnector.class);
         NmsPlayerFixture.set(RedisConnector.class, redis, "connection", proxy(StatefulRedisConnection.class, (instance, method, args) -> commands));
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "redisConnector", redis);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "sessionLock", new SessionLock(redis, "local"));
         NmsPlayerFixture.set(SparrowSync.class, plugin, "messageBrokerManager", NmsPlayerFixture.allocate(MessageBrokerManager.class));
         this.service = service;
@@ -276,10 +327,13 @@ class SnapshotCommandFlowTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "remoteSnapshotManager", this.remote);
         this.handoff = new HandoffManager(plugin);
         this.handoff.onLoad();
+        this.api = new SparrowSyncAPI(plugin);
+        NmsPlayerFixture.set(SparrowSync.class, plugin, "apiReady", true);
     }
 
     @AfterEach
     void cleanup() throws Exception {
+        this.remote.shutdown();
         if (this.serial != null) this.serial.shutdown(2, TimeUnit.SECONDS);
         if (this.preparation != null) this.preparation.shutdownNow();
         replace(Bukkit.class, "server", this.oldBukkit);
@@ -469,7 +523,7 @@ class SnapshotCommandFlowTest {
     @Test
     void remoteCaptureDispatchesToPlayerThreadAndWaitsForStorage() throws Exception {
         CompletableFuture<SnapshotCaptureResult> completion = CompletableFuture.supplyAsync(
-                () -> this.remote.receiveCapture(this.uuid), this.preparation).thenCompose(result -> result);
+                () -> this.remote.receiveCapture(this.uuid, SaveCause.COMMAND), this.preparation).thenCompose(result -> result);
         Runnable task = this.entityTasks.poll(2, TimeUnit.SECONDS);
         assertNotNull(task);
         assertTrue(this.writes.isEmpty());
@@ -609,6 +663,297 @@ class SnapshotCommandFlowTest {
         Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 1, SaveCause.COMMAND, true, "history", 0), Map.of(this.key, NBT.createString("history")));
         this.stored.put(snapshot.meta().id(), snapshot);
         return snapshot;
+    }
+
+    @Test
+    void apiSavesLocallyWithApiCauseAndRestoresAfterStorageAcknowledgement() throws Exception {
+        CompletableFuture<SnapshotCaptureResult> saved = this.api.save(this.uuid);
+        Write savedWrite = this.nextWrite();
+        assertEquals(SaveCause.API, savedWrite.snapshot.meta().cause());
+        assertFalse(saved.isDone());
+        savedWrite.complete();
+        assertInstanceOf(SnapshotCaptureResult.Captured.class, saved.get(2, TimeUnit.SECONDS));
+        Snapshot source = this.source(this.uuid);
+        CompletableFuture<SnapshotRestoreResult> restored = this.api.restore(this.uuid, source.meta().id());
+        Runnable apply = this.entityTasks.poll(2, TimeUnit.SECONDS);
+        assertNotNull(apply);
+        apply.run();
+        Write restoredWrite = this.nextWrite();
+        assertEquals("history", this.value.get());
+        assertEquals(SaveCause.RESTORE, restoredWrite.snapshot.meta().cause());
+        assertNotEquals(source.meta().id(), restoredWrite.snapshot.meta().id());
+        assertFalse(restored.isDone());
+        restoredWrite.complete();
+        assertInstanceOf(SnapshotRestoreResult.Restored.class, restored.get(2, TimeUnit.SECONDS));
+        assertEquals(0, this.readyEvents);
+    }
+
+    @Test
+    void apiOfflineRestoreWritesNewHistoryAndReleasesLockBeforeCompletion() throws Exception {
+        this.offlineApiTarget();
+        Snapshot source = this.source(this.uuid);
+        assertSame(SnapshotCaptureResult.OFFLINE, this.api.save(this.uuid).join());
+        CompletableFuture<SnapshotRestoreResult> restored = this.api.restore(this.uuid, source.meta().id());
+        Write write = this.nextWrite();
+        assertTrue(this.locked.get());
+        assertFalse(restored.isDone());
+        assertEquals(SaveCause.RESTORE, write.snapshot.meta().cause());
+        assertNotEquals(source.meta().id(), write.snapshot.meta().id());
+        assertSame(source.content(), write.snapshot.content());
+        write.complete();
+        assertInstanceOf(SnapshotRestoreResult.RestoredOffline.class, restored.get(2, TimeUnit.SECONDS));
+        assertFalse(this.locked.get());
+        assertFalse(this.service.restoringOffline(this.uuid));
+        assertEquals("live", this.value.get());
+    }
+
+    @Test
+    void apiRejectsInactiveLocalSessionBeforeRouting() {
+        this.online.set(false);
+        this.plugin.sessionManager().find(this.uuid).transition(SessionState.SAVING);
+        assertSame(SnapshotCaptureResult.OFFLINE, this.api.save(this.uuid).join());
+        assertSame(SnapshotRestoreResult.OFFLINE, this.api.restore(this.uuid, UUID.randomUUID()).join());
+        assertEquals(0, this.lockAttempts);
+    }
+
+    @Test
+    void apiOfflineRestoreRechecksLockAfterRouting() {
+        this.offlineApiTarget();
+        this.locked.set(true);
+        Snapshot source = this.source(this.uuid);
+        assertSame(SnapshotRestoreResult.OFFLINE, this.api.restore(this.uuid, source.meta().id()).join());
+        assertEquals(1, this.lockAttempts);
+        assertTrue(this.writes.isEmpty());
+        assertFalse(this.service.restoringOffline(this.uuid));
+    }
+
+    @Test
+    void apiUsesUuidRosterAndDoesNotFallBackAfterRemoteTimeout() throws Exception {
+        this.offlineApiTarget();
+        this.remotePresence();
+        Snapshot source = this.source(this.uuid);
+        List<Object> sent = new ArrayList<>();
+        CompletableFuture<SnapshotRestoreResponseMessage> response = new CompletableFuture<>();
+        this.remoteResponses(response, sent);
+        CompletableFuture<SnapshotRestoreResult> restored = this.api.restore(this.uuid, source.meta().id());
+        assertEquals(1, sent.size());
+        assertInstanceOf(SnapshotRestoreRequestMessage.class, sent.getFirst());
+        assertFalse(restored.isDone());
+        response.completeExceptionally(new TimeoutException("response lost"));
+        assertSame(SnapshotRestoreResult.UNAVAILABLE, restored.join());
+        assertEquals(1, sent.size());
+        assertEquals(0, this.lockAttempts);
+        assertTrue(this.writes.isEmpty());
+    }
+
+    @Test
+    void apiFallsBackToLockHolderForRemoteSaveAndPreservesCause() throws Exception {
+        this.offlineApiTarget();
+        this.lockOwner = "remote:" + UUID.randomUUID();
+        List<Object> sent = new ArrayList<>();
+        CompletableFuture<SnapshotCaptureResponseMessage> response = new CompletableFuture<>();
+        this.remoteResponses(response, sent);
+        CompletableFuture<SnapshotCaptureResult> saved = this.api.save(this.uuid);
+        assertEquals(1, sent.size());
+        SnapshotCaptureRequestMessage request = assertInstanceOf(SnapshotCaptureRequestMessage.class, sent.getFirst());
+        Field cause = SnapshotCaptureRequestMessage.class.getDeclaredField("cause");
+        cause.setAccessible(true);
+        assertSame(SaveCause.API, cause.get(request));
+        UUID savedId = UUID.randomUUID();
+        response.complete(new SnapshotCaptureResponseMessage(new SnapshotCaptureResult.Captured(savedId)));
+        assertEquals(new SnapshotCaptureResult.Captured(savedId), saved.join());
+        assertEquals(0, this.lockAttempts);
+    }
+
+    @Test
+    void apiLockHolderRestorePreservesAcknowledgedResult() {
+        this.offlineApiTarget();
+        this.lockOwner = "remote:" + UUID.randomUUID();
+        List<Object> sent = new ArrayList<>();
+        CompletableFuture<SnapshotRestoreResponseMessage> response = new CompletableFuture<>();
+        this.remoteResponses(response, sent);
+        CompletableFuture<SnapshotRestoreResult> restored = this.api.restore(this.uuid, UUID.randomUUID());
+        SnapshotRestoreResult result = new SnapshotRestoreResult.Cancelled(SnapshotRestoreResult.Stage.SAVE, List.of(this.key));
+        response.complete(new SnapshotRestoreResponseMessage(result));
+        assertEquals(result, restored.join());
+        assertEquals(1, sent.size());
+        assertEquals(0, this.lockAttempts);
+    }
+
+    @Test
+    void apiLocalLockAndLookupFailureDoNotBecomeOfflineOperations() {
+        this.offlineApiTarget();
+        this.lockOwner = "local:" + UUID.randomUUID();
+        assertSame(SnapshotCaptureResult.OFFLINE, this.api.save(this.uuid).join());
+        assertSame(SnapshotRestoreResult.OFFLINE, this.api.restore(this.uuid, UUID.randomUUID()).join());
+        this.lookupFailure = new IllegalStateException("redis unavailable");
+        assertSame(this.lookupFailure, assertThrows(CompletionException.class, () -> this.api.save(this.uuid).join()).getCause());
+        assertSame(this.lookupFailure, assertThrows(CompletionException.class, () -> this.api.restore(this.uuid, UUID.randomUUID()).join()).getCause());
+        assertEquals(0, this.lockAttempts);
+    }
+
+    @Test
+    void remoteReceiverReportsOfflineWhenSessionHasGone() {
+        this.offlineApiTarget();
+        assertSame(SnapshotCaptureResult.OFFLINE, this.remote.receiveCapture(this.uuid, SaveCause.API).join());
+        assertSame(SnapshotRestoreResult.OFFLINE, this.remote.receiveRestore(this.uuid, UUID.randomUUID()).join());
+        assertEquals(0, this.lockAttempts);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SaveCause.class, names = {"API", "COMMAND"})
+    void decodedRemoteCaptureRequestSavesItsOriginalCause(SaveCause cause) throws Exception {
+        SnapshotCaptureRequestMessage request = new SnapshotCaptureRequestMessage(this.uuid, cause);
+        request.setMessageId(12);
+        request.setSourceServer("remote");
+        request.setTargetServer("local");
+        SnapshotCaptureRequestMessage.receiver(this.remote);
+        ByteBuf buffer = Unpooled.buffer();
+        try {
+            SnapshotCaptureRequestMessage.CODEC.encode(buffer, request);
+            CompletableFuture<SnapshotCaptureResponseMessage> response = SnapshotCaptureRequestMessage.CODEC.decode(buffer).handleRequest();
+            Write write = this.nextWrite();
+            assertEquals(cause, write.snapshot.meta().cause());
+            assertFalse(response.isDone());
+            write.complete();
+            assertInstanceOf(SnapshotCaptureResult.Captured.class, response.get(2, TimeUnit.SECONDS).result());
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    void readyEventRunsInsideJoinAfterApplyAndCanSaveImmediately() throws Exception {
+        Snapshot source = this.source(this.uuid);
+        this.prepareJoin(source, false);
+        AtomicBoolean joining = new AtomicBoolean(true);
+        AtomicReference<CompletableFuture<SnapshotCaptureResult>> saved = new AtomicReference<>();
+        this.onReady = event -> {
+            assertTrue(joining.get());
+            assertEquals("history", this.value.get());
+            assertEquals(SessionState.ACTIVE, this.plugin.sessionManager().find(this.uuid).state());
+            assertSame(source, event.snapshot());
+            saved.set(this.api.save(this.uuid));
+        };
+        this.join();
+        joining.set(false);
+        assertEquals(1, this.readyEvents);
+        Write write = this.nextWrite();
+        assertEquals(SaveCause.API, write.snapshot.meta().cause());
+        write.complete();
+        assertInstanceOf(SnapshotCaptureResult.Captured.class, saved.get().get(2, TimeUnit.SECONDS));
+        this.join();
+        assertEquals(1, this.readyEvents);
+    }
+
+    @Test
+    void readyEventIncludesNewPlayersWithoutHistory() throws Exception {
+        this.prepareJoin(null, false);
+        this.onReady = event -> {
+            assertNull(event.snapshot());
+            assertTrue(event.skipped().isEmpty());
+        };
+        this.join();
+        assertEquals(1, this.readyEvents);
+        assertEquals(0, this.kicks);
+    }
+
+    @Test
+    void readyEventWaitsForNativeJoinHandoff() throws Exception {
+        this.prepareJoin(this.source(this.uuid), true);
+        this.onReady = event -> assertEquals("native handoff", this.value.get());
+        this.join();
+        assertEquals(1, this.readyEvents);
+    }
+
+    @Test
+    void readyEventReportsNonCriticalSkippedTypes() throws Exception {
+        this.critical = false;
+        this.prepareJoin(this.source(this.uuid), false);
+        this.applyFailure = new IllegalStateException("optional apply failed");
+        this.onReady = event -> {
+            assertEquals(List.of(this.key), event.skipped());
+            assertThrows(UnsupportedOperationException.class, event.skipped()::clear);
+        };
+        this.join();
+        assertEquals(1, this.readyEvents);
+        assertEquals(0, this.kicks);
+    }
+
+    @Test
+    void failedApplicationDoesNotPublishReadyEvent() throws Exception {
+        this.prepareJoin(this.source(this.uuid), false);
+        this.applyFailure = new IllegalStateException("critical apply failed");
+        assertInstanceOf(SnapshotApplyResult.Failed.class, this.activate(this.plugin.sessionManager().find(this.uuid)));
+        assertEquals(0, this.readyEvents);
+    }
+
+    @Test
+    void abortedSessionDoesNotPublishReadyEvent() throws Exception {
+        this.prepareJoin(null, false);
+        PlayerSession session = this.plugin.sessionManager().find(this.uuid);
+        this.plugin.sessionManager().abort(session);
+        assertSame(SnapshotApplyResult.REJECTED, this.activate(session));
+        assertEquals(0, this.readyEvents);
+    }
+
+    private void offlineApiTarget() {
+        this.online.set(false);
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "sessionManager", new SessionManager(this.plugin));
+        NmsPlayerFixture.set(SparrowSync.class, this.plugin, "playerDirectory", new PlayerDirectory(this.plugin));
+    }
+
+    private void remotePresence() throws Exception {
+        Method presence = PlayerDirectory.class.getDeclaredMethod("acceptPresence", PlayerPresenceMessage.class);
+        presence.setAccessible(true);
+        presence.invoke(this.plugin.playerDirectory(), new PlayerPresenceMessage("remote", this.uuid, "Steve", true));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void remoteResponses(CompletableFuture<?> response, List<Object> sent) {
+        MessageBroker<ByteBuf> broker = proxy(MessageBroker.class, (instance, method, args) -> {
+            assertEquals("publishTwoWay", method.getName());
+            assertEquals("remote", args[1]);
+            sent.add(args[0]);
+            return response;
+        });
+        NmsPlayerFixture.set(MessageBrokerManager.class, this.plugin.messageBrokerManager(), "broker", broker);
+    }
+
+    // 复用实际解码与 Join 应用, 通过测试反射准备 Gate 已发布的数据和 Native 回调.
+    private void prepareJoin(Snapshot snapshot, boolean nativeApplied) throws Exception {
+        SessionManager sessions = this.plugin.sessionManager();
+        NmsPlayerFixture.set(SessionManager.class, sessions, "sessions", new ConcurrentHashMap<>());
+        PlayerSession session = sessions.tryOpen(this.uuid, "Steve", ConnectionFixture.create());
+        SnapshotLoadResult.Ready loaded = null;
+        if (snapshot != null) {
+            PlayerDataPipeline.DecodeResult decoded = this.preparation.submit(() -> this.plugin.playerDataPipeline().decode(snapshot)).get(2, TimeUnit.SECONDS);
+            SnapshotApplyContext context = assertInstanceOf(PlayerDataPipeline.DecodeResult.Ready.class, decoded).context();
+            if (nativeApplied) {
+                Method applied = SnapshotApplyContext.class.getDeclaredMethod("appliedNative", int.class, Consumer.class);
+                applied.setAccessible(true);
+                applied.invoke(context, this.plugin.dataRegistry().slot(this.key), (Consumer<Player>) player -> this.value.set("native handoff"));
+            }
+            loaded = new SnapshotLoadResult.Ready(snapshot, context, 0);
+        }
+        Class<?> preloadType = Class.forName("net.momirealms.sparrow.sync.session.PlayerDataPreload");
+        var readyConstructor = Class.forName(preloadType.getName() + "$Ready").getDeclaredConstructor(Optional.class);
+        readyConstructor.setAccessible(true);
+        Method publish = PlayerSession.class.getDeclaredMethod("publishLoginData", preloadType, SnapshotLoadResult.Ready.class, long.class, long.class);
+        publish.setAccessible(true);
+        publish.invoke(session, readyConstructor.newInstance(Optional.empty()), loaded, 0L, 0L);
+        session.loadPlayerData(() -> { throw new AssertionError("preloaded data expected"); });
+        NmsPlayerFixture.set(PlayerDirectory.class, this.plugin.playerDirectory(), "closed", true);
+    }
+
+    private void join() {
+        new SessionListener(this.plugin, this.plugin.sessionManager()).onJoin(new PlayerJoinEvent(this.player, Component.empty()));
+    }
+
+    private SnapshotApplyResult activate(PlayerSession session) throws Exception {
+        Method activate = SessionManager.class.getDeclaredMethod("activate", PlayerSession.class, Player.class);
+        activate.setAccessible(true);
+        return (SnapshotApplyResult) activate.invoke(this.plugin.sessionManager(), session, this.player);
     }
 
     private Write nextWrite() throws Exception {

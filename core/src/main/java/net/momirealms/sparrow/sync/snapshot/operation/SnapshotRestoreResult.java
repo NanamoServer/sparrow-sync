@@ -9,8 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletionException;
 
 /**
- * 恢复指定历史快照的结果, 本服在线结果保留失败阶段和跳过类型.
- * 远程回执只传输状态和快照 ID, 阶段为 UNKNOWN, 跳过列表为空.
+ * 恢复指定历史快照的结果, 保留失败阶段、说明和跳过类型; 远程回执中的 cause 为空.
  */
 public sealed interface SnapshotRestoreResult {
     /** 在线玩家已应用历史内容, 新的 RESTORE 记录已保存. */
@@ -34,7 +33,7 @@ public sealed interface SnapshotRestoreResult {
     /** 指定快照不属于目标玩家. */
     WrongPlayer WRONG_PLAYER = new WrongPlayer();
 
-    /** 玩家或会话失效, 或离线恢复无法取得会话锁. */
+    /** 玩家离线、会话不可操作、离线恢复未取得锁或服务已停止接收请求, 本次未执行. */
     Offline OFFLINE = new Offline();
 
     /** RESTORE 记录的保存被事件监听器取消. */
@@ -86,9 +85,9 @@ public sealed interface SnapshotRestoreResult {
         PREPARE,
         /** 应用失败, 可能已修改部分玩家数据. */
         APPLY,
-        /** 本服在线应用已完成, 新的 RESTORE 记录未确认入库. */
+        /** 在线应用已完成, 新的 RESTORE 记录未确认入库. */
         SAVE,
-        /** 离线操作或远程回执未携带在线应用阶段. */
+        /** 结果未携带在线应用阶段. */
         UNKNOWN
     }
 }
