@@ -28,11 +28,11 @@ import java.util.Map;
 import java.util.zip.CRC32;
 
 public final class SnapshotDataCodec {
-    public static final int DEFAULT_COMPRESS_THRESHOLD = 256; // 单块原始 NBT 低于此字节数时明文保存
+    public static final int DEFAULT_COMPRESS_THRESHOLD = 256; // 小于此字节数的数据块不压缩
     private static final int HEADER_LENGTH = 9; // u8 版本, u32 索引长度, u32 索引 CRC
 
     private CompressorRegistry compressor;
-    private final int compressThreshold;   // 每块选择明文保存的字节阈值
+    private final int compressThreshold;   // 数据块的压缩阈值, 单位字节
 
     public SnapshotDataCodec() {
         this.compressThreshold = DEFAULT_COMPRESS_THRESHOLD;
@@ -55,12 +55,9 @@ public final class SnapshotDataCodec {
     }
 
     /**
-     * 写出包含索引和全部类型块的数据帧, 用于数据库保存.
-     * 已有原始块逐字节保留, 新增或替换的内容按当前压缩配置编码.
-     *
-     * @param data 本次要保存的完整类型数据, 可同时包含原始块和新增 Tag
-     * @return 依次包含 9 字节数据帧头, 索引和数据块的新数组
-     * @throws IOException 当 NBT 编码失败, 或逐块复制时发现块头损坏, 长度与区间不一致或越界时
+     * 编码数据库使用的数据帧, 依次写入 9 字节帧头、索引和数据块.
+     * 已有原始块直接复制, 新增或替换的 Tag 按当前配置编码.
+     * @throws IOException NBT 编码失败或原始块头、区间无效时
      */
     @NotNull
     public byte[] encode(@NotNull SnapshotData data) throws IOException {
@@ -70,27 +67,24 @@ public final class SnapshotDataCodec {
     }
 
     /**
-     * 向目标缓冲区追加一个完整数据帧, 完整快照把它写在 Meta 段之后.
-     *
-     * @param data 本次要保存的类型数据
-     * @param output 接收数据帧的缓冲区, 已有内容保留
-     * @throws IOException 当块编码失败, 或逐块复制时发现块头损坏, 长度与区间不一致或越界时
+     * 向缓冲区追加完整数据帧, 保留已有内容.
+     * @throws IOException 数据块编码失败或原始块头、区间无效时
      */
     void write(@NotNull SnapshotData data, @NotNull ByteArrayOutputStream output) throws IOException {
-        // 从 Lazy 数据的来源数组复制整个数据帧, 起点和长度由读取时保存的区间给出.
+        // 直接复制 Lazy 数据记录的完整帧区间
         if (data instanceof LazySnapshotData lazy) {
             output.write(lazy.frameBytes(), lazy.frameOffset(), lazy.frameLength());
             return;
         }
         ByteArrayOutputStream blocks = new ByteArrayOutputStream();
         LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
-        // 按 keys 顺序写块, 索引只记录块头相对块区起点的偏移.
+        // 按 keys 顺序写入各块, 索引记录块头相对块区起点的偏移
         for (DataKey key : data.keys()) {
             String name = key.asString();
             RawBlock raw = data.raw(key);
             if (raw != null) {
                 int length = BlockCodec.BLOCK_HEADER_LENGTH + BlockCodec.readHeader(raw, name).payloadLength();
-                // 只按块头的结构长度复制, 原压缩算法和 CRC 随字节保留, 此处不验证 payload.
+                // 按块头长度复制原始字节, 保留压缩算法和 CRC, 此处不校验内容
                 entries.put(name, new BlockIndex(blocks.size()));
                 blocks.write(raw.bytes(), (int) raw.offset(), length);
                 continue;
@@ -102,7 +96,7 @@ public final class SnapshotDataCodec {
         byte[] index = NBT.toBytes(BlockIndexCodec.write(entries), false);
         CRC32 crc = new CRC32();
         crc.update(index);
-        // 数据帧的 CRC 覆盖索引; 各块的 CRC 随块头一起保存, 在读取该类型时检查.
+        // 帧头 CRC 只覆盖索引, 各块 CRC 在读取对应类型时检查
         byte[] header = ByteBuffer.allocate(HEADER_LENGTH)
                 .put((byte) SnapshotCodec.CURRENT_VERSION)
                 .putInt(index.length).putInt((int) crc.getValue()).array();
@@ -112,11 +106,9 @@ public final class SnapshotDataCodec {
     }
 
     /**
-     * 读取独立数据帧的头部和索引, 各类型保留原始字节供首次取值时读取.
-     *
-     * @param bytes 数据帧, <strong>成功返回后调用方不得修改数组内容</strong>
-     * @return 引用输入数组的惰性类型数据
-     * @throws IOException 当数据帧版本, 索引长度或索引内容无效时
+     * 校验帧头和索引, 各类型首次读取时再解码.
+     * @param bytes <strong>返回后不得修改来源数组</strong>
+     * @throws IOException 帧头或索引无效时
      */
     @NotNull
     public SnapshotData decode(byte @NotNull [] bytes) throws IOException {
@@ -124,13 +116,11 @@ public final class SnapshotDataCodec {
     }
 
     /**
-     * 从完整快照的指定区间读取数据帧, 保留原数组供后续取块和复制.
-     *
-     * @param bytes 来源数组, <strong>成功返回后调用方不得修改数组内容</strong>
-     * @param offset 数据帧的起点, <strong>须位于来源数组内或末尾</strong>
-     * @param length 数据帧占用的字节数, <strong>须处于来源数组范围内</strong>
-     * @return 引用指定区间的惰性类型数据
-     * @throws IOException 当数据帧头或索引无效时
+     * 读取指定区间的数据帧, 后续解码和复制继续引用原数组.
+     * @param bytes <strong>返回后不得修改来源数组</strong>
+     * @param offset 区间起点, 可等于数组末尾
+     * @param length 区间长度, 不得超出数组范围
+     * @throws IOException 帧头或索引无效时
      */
     @NotNull
     SnapshotData decode(byte @NotNull [] bytes, int offset, int length) throws IOException {
@@ -149,7 +139,7 @@ public final class SnapshotDataCodec {
         }
         int indexOffset = offset + HEADER_LENGTH;
         int blockBase = indexOffset + (int) indexLength;
-        // 索引先通过 CRC 校验, 才能用其中的偏移定位各类型的数据块.
+        // 先校验索引 CRC, 再用索引定位数据块
         CRC32 crc = new CRC32();
         crc.update(bytes, indexOffset, (int) indexLength);
         if ((int) crc.getValue() != header.getInt(offset + 5)) {
@@ -157,7 +147,7 @@ public final class SnapshotDataCodec {
         }
         CompoundTag index = readIndex(bytes, indexOffset, (int) indexLength);
         LinkedHashMap<String, BlockIndex> entries = BlockIndexCodec.read(index);
-        // NBT 库读取 compound 使用 HashMap, 按偏移排序恢复物理次序, 不提前访问块头.
+        // NBT 读取使用 HashMap, 按偏移排序恢复原有块顺序
         var ordered = new ArrayList<>(entries.entrySet());
         ordered.sort(Comparator.comparingInt(entry -> entry.getValue().offset()));
         entries.clear();
@@ -177,7 +167,7 @@ public final class SnapshotDataCodec {
         return new LazySnapshotData(bytes, offset, length, blockBase, entries);
     }
 
-    // 在指定段的边界内读取一个 compound.
+    // 在指定区间内读取一个 CompoundTag
     @NotNull
     private static CompoundTag readIndex(byte @NotNull [] bytes, int offset, int length) throws IOException {
         try {

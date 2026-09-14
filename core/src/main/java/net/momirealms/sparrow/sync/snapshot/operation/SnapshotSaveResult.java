@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public sealed interface SnapshotSaveResult {
 
-    /** 保存链已经收敛, 携带存储或本地留存结果. */
+    /** 保存处理已结束, 包含数据库写入或本地暂存结果. */
     record Settled(@NotNull SaveResult result, @NotNull UUID id) implements SnapshotSaveResult {
     }
 

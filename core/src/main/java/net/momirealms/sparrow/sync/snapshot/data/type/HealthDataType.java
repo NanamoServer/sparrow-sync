@@ -44,7 +44,7 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     @Override
     protected void applyValue(@NotNull Player player, @NotNull Health value) {
         CraftPlayer craft = (CraftPlayer) player;
-        // 零血量作为快照状态写入, 登录应用只写入状态.
+        // 登录时直接写入零血量状态
         if (value.health() <= 0.0) {
             craft.setRealHealth(0.0);
             craft.updateScaledHealth(true);
@@ -53,14 +53,14 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
         AttributeInstance maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
         double max = maxHealth == null ? 20.0 : maxHealth.getValue();
         double target = Math.min(value.health(), max);
-        // 活快照清除登录数据中的死亡计时.
+        // 恢复存活快照时清除死亡计时
         if (player.getHealth() <= 0.0) {
             craft.setRealHealth(target);
             craft.updateScaledHealth(true);
             craft.getHandle().deathTime = 0;
             return;
         }
-        // 正血量沿用 Bukkit 的范围检查.
+        // 正血量使用 Bukkit 的范围检查
         player.setHealth(target);
     }
 
@@ -74,7 +74,7 @@ public final class HealthDataType extends CodecDataType<HealthDataType.Health> i
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Health value) {
         if (Double.isNaN(value.health())) return NativeApplyResult.NOT_APPLIED;
         playerData.putFloat("Health", (float) value.health());
-        // 本地死亡残留不能跟着活快照进入新 Player, 否则实体会带正血量继续死亡计时.
+        // 恢复正血量时清除本地死亡状态, 防止新玩家实体继续死亡计时
         if (value.health() > 0.0) playerData.putShort("DeathTime", (short) 0);
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }

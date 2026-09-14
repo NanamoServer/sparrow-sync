@@ -31,11 +31,11 @@ final class SnapshotWriter {
 
     private final SyncLogger logger;
     private final StorageProvider storage;
-    private final SnapshotStash stash; // 完整正文的 pending 或异常档案写入入口
+    private final SnapshotStash stash;
     private final PlayerSerialExecutor serialExecutor;
-    private final SnapshotCache cache; // 跨服快路径 Redis 缓存
-    private final Set<SaveRequest> pending = new HashSet<>(); // 已接收但尚未完成的保存请求, 用 pending 自身当锁协调并发访问
-    private boolean sealed; // 在集合监视器内读写, 为 true 时拒绝新请求而继续已有保存
+    private final SnapshotCache cache;
+    private final Set<SaveRequest> pending = new HashSet<>(); // 尚未完成的保存请求, 并发访问时锁住此集合
+    private boolean sealed; // 在 pending 锁内访问, 为 true 时只继续处理已有请求
 
     SnapshotWriter(@NotNull SyncLogger logger, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PlayerSerialExecutor serialExecutor, @NotNull SnapshotCache cache) {
         this.logger = logger;
@@ -45,7 +45,7 @@ final class SnapshotWriter {
         this.cache = cache;
     }
 
-    // 在采集或投递任务前登记请求, 使停服等待包含尚未生成正文的保存.
+    // 采集前登记请求, 关服时也要等待尚未编码的请求
     void register(@NotNull SaveRequest request) {
         synchronized (this.pending) {
             if (this.sealed) throw new RejectedExecutionException("snapshot writer is sealed");
@@ -59,10 +59,8 @@ final class SnapshotWriter {
     }
 
     /**
-     * 接收已通过保存事件检查的完整快照, 并启动第一次存储写入.
-     * <p>request 必须持有已完成地图处理、可直接写入存储的 Snapshot. 此方法只发起写入，不等待最终保存结果。</p>
-     *
-     * @param request 已完成准备的在途保存请求
+     * 开始保存已通过事件检查的快照, 最终结果由 request.completion() 返回.
+     * <strong>请求中的快照须已完成地图处理</strong>.
      */
     void write(@NotNull SaveRequest request) {
         if (request.finishing()) return;
@@ -70,7 +68,7 @@ final class SnapshotWriter {
         this.write(WriteAttempt.first(request, PluginConfig.synchronization$maxSaveRetries()));
     }
 
-    // 执行一次写入, 根据存储结果继续重试或取得最终收尾权.
+    // 尝试写入数据库, 按结果重试或结束请求
     private void write(WriteAttempt attempt) {
         SaveRequest request = attempt.request();
         if (request.finishing()) return;
@@ -82,7 +80,7 @@ final class SnapshotWriter {
             this.stashFailed(attempt, SaveResult.RETRY_LATER, null);
             return;
         } catch (RuntimeException | Error failure) {
-            // 重试任务也可能在提交阶段失败, 请求回执在此结束, 原异常继续交给执行器报告.
+            // 任务提交失败时结束请求, 原异常交给执行器记录
             request.fail(failure);
             throw failure;
         }
@@ -100,7 +98,7 @@ final class SnapshotWriter {
                 if (!request.beginFinish()) return;
                 this.logSaved(attempt, result, System.nanoTime() - submittedAt);
                 this.rotateHistory(attempt.player(), request.playerName());
-                // request.completion() 完成时会释放锁, 缓存更新投递必须排在之前
+                // 完成请求会触发解锁, 必须先提交缓存更新
                 this.publishCache(attempt, result);
                 request.completion().complete(new SnapshotSaveResult.Settled(result, request.meta().id()));
                 return;
@@ -116,7 +114,7 @@ final class SnapshotWriter {
         });
     }
 
-    // 按保存原因和日志配置报告已经确认的存储结果.
+    // 按保存原因和配置输出保存结果
     private void logSaved(WriteAttempt attempt, SaveResult result, long storeNanos) {
         SaveCause cause = attempt.request().meta().cause();
         String captureMillis = millis(0, attempt.request().captureNanos());
@@ -148,7 +146,7 @@ final class SnapshotWriter {
         }
     }
 
-    // 在首次失败及指定重试次数报告进度, 首次失败保留完整原因.
+    // 首次失败记录完整原因, 后续按重试次数定期报告
     static void logRetry(@NotNull SyncLogger logger, @NotNull WriteAttempt attempt, @Nullable Throwable failure) {
         if (!attempt.canRetry() || !attempt.shouldLog()) return;
         if (attempt.number() == 1 && failure != null) {
@@ -158,7 +156,7 @@ final class SnapshotWriter {
         logger.warn(LogCategory.RETRY, attempt.player(), attempt.playerName(), LogConstants.SYNC_SAVE_PENDING_RETRY, attempt.playerName(), String.valueOf(attempt.number()));
     }
 
-    // 报告重试耗尽或永久拒绝的分类, 随后由持有收尾权的调用方暂存正文.
+    // 记录重试耗尽或不可重试错误, 随后尝试本地暂存
     static void logFinalFailure(@NotNull SyncLogger logger, @NotNull WriteAttempt attempt, @NotNull SaveResult result, @Nullable Throwable failure) {
         String key = result.retriable() ? LogConstants.SYNC_SAVE_RETRIES_EXHAUSTED : LogConstants.SYNC_SAVE_NEEDS_ATTENTION;
         if (failure != null) {
@@ -168,7 +166,7 @@ final class SnapshotWriter {
         logger.error(LogCategory.RETRY, attempt.player(), attempt.playerName(), key, attempt.playerName(), attempt.cause(), String.valueOf(attempt.number()));
     }
 
-    // 按原退避规则把下一次尝试排入玩家队列, 冷却期间释放 worker.
+    // 延迟后重新加入玩家队列, 等待期间不占用线程
     private void retryLater(WriteAttempt attempt) {
         if (attempt.request().finishing()) return;
         try {
@@ -178,7 +176,7 @@ final class SnapshotWriter {
         }
     }
 
-    // 按存储分类尝试本地留存, 文件写入尝试结束后完成最终回执.
+    // 尝试本地暂存, 文件写入结束后完成请求
     private void stashFailed(WriteAttempt attempt, SaveResult result, @Nullable Throwable failure) {
         SaveRequest request = attempt.request();
         if (!request.beginFinish()) return;
@@ -187,7 +185,7 @@ final class SnapshotWriter {
         request.completion().complete(new SnapshotSaveResult.Settled(result, request.meta().id()));
     }
 
-    // 成功写入后发起历史轮转, 保存回执不等待轮转完成.
+    // 保存成功后清理旧快照, 保存结果不等待清理完成
     private void rotateHistory(UUID player, String playerName) {
         try {
             this.storage.rotate(player, PluginConfig.synchronization$maxSnapshots()).whenComplete((deleted, throwable) -> {
@@ -199,10 +197,10 @@ final class SnapshotWriter {
         }
     }
 
-    // 会话收尾保存的落库结果投递到跨服快路径, 其余落库结果只清掉可能残留的旧条目.
+    // 退出和关服保存可更新跨服缓存, 其他保存清除旧缓存
     private void publishCache(@NotNull WriteAttempt attempt, @NotNull SaveResult result) {
         PluginConfig.SnapshotCacheOptions options = PluginConfig.synchronization$snapshotCache();
-        // 缓存开关只控制发布, 本服完成保存后仍要清掉其他服务器留下的旧条目.
+        // 关闭缓存发布后仍需清除其他服务器留下的旧缓存
         if (!options.enabled() || !shouldPublish(result, attempt.request().meta().cause())) {
             this.cache.invalidate(attempt.player());
             return;
@@ -219,18 +217,17 @@ final class SnapshotWriter {
         });
     }
 
-    // 只有会话收尾保存里确认落在库内最新的结果才投递, SAVED_OUT_OF_ORDER 明确位于历史中段.
+    // 仅缓存退出或关服保存中确认最新的快照, 乱序保存结果不发布
     static boolean shouldPublish(@NotNull SaveResult result, @NotNull SaveCause cause) {
         if (!result.stored() || result == SaveResult.SAVED_OUT_OF_ORDER) return false;
         return cause == SaveCause.DISCONNECT || cause == SaveCause.SHUTDOWN;
     }
 
     /**
-     * 封闭接收入口并等待当前请求的最终结果, 连续无进展达到期限时结束等待.
-     *
+     * 停止接收新请求并等待已有请求结束, 连续无进展超时后停止等待.
      * @param timeout 连续无进展的最长等待时间, 非正数表示不等待
-     * @param unit 等待时间的单位
-     * @return 是否等到了整批请求结束, 单份请求异常结束也计为结束
+     * @param unit 时间单位
+     * @return 所有请求均已结束时为 true, 异常完成也算结束
      */
     boolean sealAndAwaitSaves(long timeout, @NotNull TimeUnit unit) {
         CompletableFuture<?>[] completions;
@@ -276,7 +273,7 @@ final class SnapshotWriter {
                     this.logger.warn(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_TIMEOUT, String.valueOf(completed), String.valueOf(completions.length));
                     return false;
                 }
-                // 整批完成可立即唤醒; 单份异常完成仍需等其他请求, 超时醒来重新观察进度.
+                // 整批结束时立即唤醒; 单个请求失败后继续等待其余请求
                 try {
                     finished.get(Math.min(remaining, Math.max(0, nextReport - System.nanoTime())), TimeUnit.NANOSECONDS);
                 } catch (ExecutionException | TimeoutException ignored) {
@@ -291,7 +288,7 @@ final class SnapshotWriter {
         }
     }
 
-    // 汇总最终回执, 未落库的结果和异常都归入失败, 本地留存另由 Stash 报告.
+    // 统计数据库保存结果, 本地暂存结果由 SnapshotStash 另行记录
     private void logShutdownSummary(CompletableFuture<?>[] completions) {
         int stored = 0;
         int cancelled = 0;
@@ -317,8 +314,8 @@ final class SnapshotWriter {
     }
 
     /**
-     * 执行器结束后暂存仍未结束的完整正文, 尚未生成正文的请求以超时失败结束.
-     * <p>正在进行最终文件写入的请求由原收尾方继续完成, 重复清理不会再次取得处理权.
+     * 执行器结束后暂存剩余的完整快照, 尚未编码的请求按超时结束.
+     * 已有线程正在写入本地文件时, 由该线程继续完成.
      */
     void stashUnsettled() {
         SaveRequest[] requests;
@@ -345,11 +342,9 @@ final class SnapshotWriter {
     }
 
     /**
-     * 一次写入的重试进度, 正文和最终结果始终由同一份请求持有.
-     *
-     * @param request 本次尝试所属的保存请求
-     * @param number 从一开始的尝试次数
-     * @param maxRetries 首次实际写入时固定的最大重试次数, 负数表示不限次数
+     * 一次写入尝试, 与同一请求的其他尝试共享快照和最终结果.
+     * @param number 从 1 开始的尝试次数
+     * @param maxRetries 首次写入时确定的重试上限, 负数表示不限
      */
     record WriteAttempt(@NotNull SaveRequest request, int number, int maxRetries) {
         private static final int FREE_ATTEMPTS = 5; // 前五次尝试立即执行
@@ -357,13 +352,6 @@ final class SnapshotWriter {
         private static final long MAX_RETRY_DELAY_MILLIS = 1000; // 单次重试等待上限, 单位为毫秒
         private static final int LOG_INTERVAL = 10; // 首次之外每十次尝试记录一次进度
 
-        /**
-         * 固定一份已准备请求的重试策略并创建首次尝试.
-         *
-         * @param request 正文已准备的保存请求
-         * @param maxRetries 首次写入时的重试配置
-         * @return 从第一次开始的写入尝试
-         */
         @NotNull
         static WriteAttempt first(@NotNull SaveRequest request, int maxRetries) {
             return new WriteAttempt(request, 1, maxRetries);

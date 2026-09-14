@@ -8,11 +8,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public enum CompressorRegistry implements Compressor {
-    NONE((byte) 0, new NoneCompressor()),        // 明文存储. 快照越大数据库传输越慢.
-    DEFLATE((byte) 1, new DeflateCompressor()),  // 内置 Deflate, 不依赖 native 库, 性能和速度都不好.
-    ZSTD((byte) 2, new ZstdCompressor(ZstdCompressor.DEFAULT_LEVEL));   // 压缩比 DEFLATE 快约 7 倍, 解压快 3 倍以上.
+    NONE((byte) 0, new NoneCompressor()),        // 不压缩
+    DEFLATE((byte) 1, new DeflateCompressor()),  // JDK 内置 Deflate
+    ZSTD((byte) 2, new ZstdCompressor(ZstdCompressor.DEFAULT_LEVEL));   // Zstandard 压缩
 
-    private static final Map<Byte, Compressor> BY_ID = new ConcurrentHashMap<>(); // 帧头 id -> 解码器
+    private static final Map<Byte, Compressor> BY_ID = new ConcurrentHashMap<>(); // 块头算法 ID 对应的解码器
 
     static {
         CompressorRegistry[] values = values();
@@ -30,9 +30,8 @@ public enum CompressorRegistry implements Compressor {
     }
 
     /**
-     * 登记内置之外的压缩算法, 使本服能读到用它写出的帧. 写出用哪个由配置在本枚举里选, 因此登记只服务解码侧.
-     *
-     * @throws IllegalStateException 当该 id 已被登记时
+     * 注册额外的解压算法, 写入时使用的算法仍由配置选择.
+     * @throws IllegalStateException 算法 ID 已注册时
      */
     public static void register(byte id, @NotNull Compressor compressor) {
         Compressor existing = BY_ID.putIfAbsent(id, compressor);
@@ -41,9 +40,7 @@ public enum CompressorRegistry implements Compressor {
         }
     }
 
-    /**
-     * 按字节头中的算法标识查找压缩器, 未登记的标识返回 null.
-     */
+    /** 按算法 ID 查找压缩器, 未注册时返回 null. */
     @Nullable
     public static Compressor byId(byte id) {
         return BY_ID.get(id);

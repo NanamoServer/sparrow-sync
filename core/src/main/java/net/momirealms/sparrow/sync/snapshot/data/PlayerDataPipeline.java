@@ -42,7 +42,7 @@ public final class PlayerDataPipeline {
     private DataRegistry dataRegistry;
     private MapSyncService mapSync;
     private SnapshotDecoder decoder;
-    private SnapshotDataCodec dataCodec; // 将未注册类型复制成独立小帧, 会话只保留这些块
+    private SnapshotDataCodec dataCodec; // 复制未注册类型的块, 会话不再引用完整来源
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -77,21 +77,17 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 开始一次采集, 创建本次请求独占的槽位缓冲.
-     * SYNC 在玩家线程读取全部类型;
-     * ASYNC 表示分阶段采集保存的第一阶段, 本方法仍在玩家线程执行, 只读取不支持在线异步的类型.
-     * OFFLINE 在 Quit 后下一 Region tick 发起的串行任务中读取全部类型.
-     *
-     * @param player 本次保存绑定的玩家对象, 第二阶段继续使用同一个对象
-     * @param mode 保存场景; ASYNC 不代表本方法已经处于异步线程
-     * @return Ready 可直接编码; Pending 必须先交给串行线程调用 {@link #captureAsync}; Failed 中止整次采集
+     * 开始采集, 为本次请求分配独立的值数组.
+     * SYNC 在玩家线程读取全部类型; ASYNC 先在玩家线程读取同步类型, 其余交给 captureAsync.
+     * OFFLINE 在退出后下一区域 tick 提交的串行任务中读取全部类型.
+     * @return Ready 可编码, Pending 须继续 captureAsync, Failed 表示采集失败
      */
     @NotNull
     public CaptureResult capture(@NotNull Player player, @NotNull CaptureMode mode) {
         CaptureBuffer buffer = new CaptureBuffer(player, this.dataRegistry.size());
-        // null 槽位表代表全类型. 分阶段采集保存先读取注册表冻结时确定的玩家线程采集组, 不在热路径重新筛选类型.
+        // null 槽位表表示全部类型, 分阶段采集使用注册表预先分好的槽位
         int[] slots = mode == CaptureMode.ASYNC ? this.dataRegistry.syncCaptureSlots() : null;
-        // 玩家线程采集组实际运行在玩家线程, 类型收到 SYNC 后必须复制出可跨线程持有的值.
+        // 此组始终在玩家线程采集, 返回值须可跨线程使用
         CaptureResult.Failed failure = this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
         if (failure != null) return failure;
         if (mode == CaptureMode.ASYNC) return new CaptureResult.Pending(buffer);
@@ -99,28 +95,22 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 在玩家串行线程执行采集, 调用方须等第一阶段返回后再投递此方法.
-     * 两个阶段顺序写同一数组, 不需要逐类型 Future、缓冲锁或合并另一份采集结果.
-     *
-     * @param player 第一阶段使用的玩家对象
-     * @param pending 第一阶段转交的未完成采集, 只消费一次
-     * @return 补齐后的 Ready, 或关键类型采集失败时的 Failed
+     * 在玩家串行线程补齐异步类型, <strong>须在第一阶段返回后调用, pending 只能使用一次</strong>.
+     * 两阶段按序写入同一个数组.
      */
     @NotNull
     public CaptureResult captureAsync(@NotNull Player player, @NotNull CaptureResult.Pending pending) {
         CaptureBuffer buffer = pending.buffer;
-        // 这些槽位和玩家线程采集组互斥. 即使期间发生新的同步保存, 它使用的也是另一份 CaptureBuffer.
+        // 两组写入不同槽位, 其他保存请求使用独立数组
         CaptureResult.Failed failure = this.captureSlots(player, CaptureMode.ASYNC, this.dataRegistry.asyncCaptureSlots(), buffer);
         if (failure != null) return failure;
         return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
     }
 
     /**
-     * 按指定槽位读取玩家状态, 把结果写到注册表对应的原始下标.
-     * 非关键类型失败时该槽位留空并记录 skipped, 其余类型继续; 关键类型失败则立即停止本次采集.
-     *
-     * @param slots 固定的玩家线程采集组或串行线程采集组, null 表示读取全部槽位
-     * @return 关键类型的失败信息, 没有关键失败时返回 null
+     * 按槽位采集数据, 非关键失败留空并继续, 关键失败立即停止.
+     * @param slots 要采集的槽位, null 表示全部
+     * @return 关键失败信息, 无关键失败时返回 null
      */
     @Nullable
     private CaptureResult.Failed captureSlots(Player player, CaptureMode mode, @Nullable int[] slots, CaptureBuffer buffer) {
@@ -129,7 +119,7 @@ public final class PlayerDataPipeline {
             int size = slots == null ? this.dataRegistry.size() : slots.length;
             for (int i = 0; i < size; i++) {
                 int slot = slots == null ? i : slots[i];
-                // 始终使用注册表槽位, 不能把组内下标 i 当成最终下标.
+                // 结果写入注册表槽位, 不使用组内下标
                 DataKey key = this.dataRegistry.keyAt(slot);
                 PlayerDataType<?> type = this.dataRegistry.typeAt(slot);
                 try {
@@ -145,7 +135,7 @@ public final class PlayerDataPipeline {
             }
             return null;
         } finally {
-            // 只累加实际执行采集的两个时间段. Pending 在队列里等待多久、后续 encode 多久都不计入.
+            // 只计算实际采集耗时, 排队和编码不计入
             buffer.captureNanos += System.nanoTime() - started;
         }
     }
@@ -153,7 +143,7 @@ public final class PlayerDataPipeline {
     /** 把一次采集的全部值编码为快照 NBT. */
     @NotNull
     public EncodeResult encode(@NotNull CaptureResult.Ready captured) {
-        // 输入值与输出 tag 保持槽位对齐
+        // 输入值与输出 Tag 使用相同槽位
         int size = this.dataRegistry.size();
         Tag[] tags = new Tag[size];
         List<DataKey> skipped = new ArrayList<>(captured.skipped());
@@ -165,12 +155,12 @@ public final class PlayerDataPipeline {
             try {
                 tags[i] = encodeValue(type, value);
             } catch (Throwable throwable) {
-                // 关键类型无法编码时整份快照都不能进入存储
+                // 关键类型编码失败时终止整份快照
                 if (type.critical()) {
                     this.logger.error(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_FAILED, key.asString(), captured.playerName());
                     return new EncodeResult.Failed(key, String.valueOf(throwable.getMessage()));
                 }
-                // 非关键类型从本次快照中缺席, skipped 继续传给保存结果
+                // 非关键失败不写入快照, 并记录到 skipped
                 skipped.add(key);
                 this.logger.warn(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_SKIPPED, key.asString(), captured.playerName());
             }
@@ -179,37 +169,29 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 在普通编码完成后处理地图物品, <strong>必须由玩家串行线程发起</strong>.
-     * <p>保存请求先持有未处理地图物品的快照, 如果必须停服时则会暂存到本地, 当前 worker 可中断地等待地图结果后继续提交.
-     *
-     * @param snapshot 已完成类型编码的完整正文
-     * @param mode 请求接受时固定的地图模式
-     * @param playerName 请求接受时的玩家名
-     * @return 整批地图发布和物品改写的结果, 逐项失败及关闭回退由地图管线处理
+     * 处理已编码快照中的地图物品, <strong>由玩家串行线程发起</strong>.
+     * 等待期间请求保留原快照, 停服时可暂存; 单张地图失败由地图处理流程处理.
      */
     @NotNull
     public CompletableFuture<Snapshot> prepareForStorage(@NotNull Snapshot snapshot, @NotNull MapType mode, @NotNull String playerName) {
         return this.mapSync.compileAsync(snapshot, mode, playerName);
     }
 
-    /** 先准备本服地图物品, 再在异步执行器解码所有已装配类型. */
+    /** 先处理本服地图物品, 再异步解码已注册类型. */
     @NotNull
     public CompletableFuture<DecodeResult> decodeAsync(@NotNull Snapshot snapshot) {
         return this.mapSync.decodeAsync(snapshot).thenApplyAsync(this::decode, this.plugin.scheduler().async());
     }
 
     /**
-     * 解码正式加载的类型数据, 将成功值交给玩家应用状态.
-     *
-     * @param snapshot 已完成地图准备的快照
-     * @return 待应用 Context, 或首个关键类型的失败
-     * @throws UncheckedIOException 当未知类型的数据块越界或纯 Tag 编码失败时
+     * 将解码值交给应用流程, 遇到首个关键失败时返回失败结果.
+     * @throws UncheckedIOException 未知类型块越界或 Tag 编码失败时
      */
     @NotNull
     public DecodeResult decode(@NotNull Snapshot snapshot) {
         DecodedSnapshotData decoded = this.decoder.decodeForApply(snapshot);
         DataKey critical = decoded.criticalFailure();
-        // 注册表顺序也决定非关键失败日志的顺序, 关键失败后的类型尚未执行.
+        // 按注册顺序记录非关键失败, 关键失败后的类型尚未解码
         for (int i = 0; i < this.dataRegistry.size(); i++) {
             DataKey key = this.dataRegistry.keyAt(i);
             Throwable failure = decoded.failure(key);
@@ -219,7 +201,7 @@ public final class PlayerDataPipeline {
             }
             this.logger.warn(LogCategory.DATA, snapshot.meta().player(), null, failure, LogConstants.DATA_DECODE_SKIPPED, key.asString(), snapshot.meta().id().toString());
         }
-        // 丢弃决策查询本服注册表.
+
         UUID player = snapshot.meta().player();
         for (DataKey key : snapshot.keys()) {
             if (this.dataRegistry.shouldDropUnknown(key)) {
@@ -228,7 +210,7 @@ public final class PlayerDataPipeline {
         }
         SnapshotData passthrough = decoded.passthrough();
         if (!passthrough.keys().isEmpty()) {
-            // 子集的 raw 仍指向来源, 编码器逐块复制后读回, Context 只持有未知类型的小帧.
+            // 复制未知类型的块后重新读取, Context 只保留这部分数据
             try {
                 passthrough = this.dataCodec.decode(this.dataCodec.encode(passthrough));
             } catch (IOException exception) {
@@ -239,16 +221,12 @@ public final class PlayerDataPipeline {
     }
 
     /**
-     * 在登录 Gate 阶段把支持写入登录数据源的待应用数据写入对应数据源.
-     *
-     * @param session 玩家会话
-     * @param playerData 玩家数据, 若本地不存在则为空
-     * @param context 应用数据上下文
-     * @return 最终交给 NMS 加载的数据
+     * 在登录拦截阶段将快照写入原版要加载的数据源.
+     * @return 最终交给 NMS 加载的玩家数据, 本地不存在时可以为空
      */
     @NotNull
     public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> playerData, @NotNull SnapshotApplyContext context) {
-        // 各类型共用 SparrowNBT 工作副本, 整份 .dat 只在流水线入口与出口转换.
+        // 各类型共用一个 SparrowNBT 副本, 只在入口和出口转换原版 NBT
         net.momirealms.sparrow.nbt.CompoundTag working = playerData
                 .map(tag -> (net.momirealms.sparrow.nbt.CompoundTag) NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, tag))
                 .orElseGet(NBT::createCompound);
@@ -261,7 +239,7 @@ public final class PlayerDataPipeline {
         }
         boolean playerDataApplied = false;
         int size = context.size();
-        // 数据类型槽位已经按依赖排序, join-only 与非 pending 类型自然跳过
+        // 按依赖顺序应用, 跳过仅支持 Join 或无需处理的类型
         for (int i = 0; i < size; i++) {
             if (context.stateAt(i) != SnapshotApplyContext.ApplyState.PENDING) continue;
             NativePlayerDataType<?> nativeType = this.dataRegistry.nativeTypeAt(i);
@@ -273,20 +251,20 @@ public final class PlayerDataPipeline {
                 context.appliedNative(i, result.joinHandoff());
                 if (result.target() == NativePlayerDataType.NativeApplyResult.Target.APPLIED) playerDataApplied = true;
             } catch (Throwable throwable) {
-                // 异常槽位保持 PENDING, Join 可以回退应用并且后续 Native 类型继续执行
+                // 失败项保留 PENDING, 留到 Join 重试, 其他类型继续处理
                 context.nativeFailed(i, throwable);
                 this.logger.warn(LogCategory.DATA, session.uuid(), session.playerName(), throwable, LogConstants.DATA_NATIVE_APPLY_FALLBACK, this.dataRegistry.keyAt(i).asString(), session.playerName());
             }
         }
-        // 没有 .dat 字段成功写入时保留原输入, 本地文件缺失仍按新玩家处理.
+        // 没有成功修改 .dat 时返回原输入, 本地数据缺失仍按新玩家处理
         if (!playerDataApplied) return playerData;
         return Optional.of((CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, working));
     }
 
-    /** 在玩家线程按拓扑序应用 pending 数据或消费 Native 交接回调. */
+    /** 在玩家线程按依赖顺序应用剩余数据并执行登录交接回调. */
     @NotNull
     public ApplyResult apply(@NotNull Player player, @NotNull SnapshotApplyContext context) {
-        // Join 回调与 PENDING 数据共用依赖顺序和失败处理
+        // Join 回调与待应用数据使用相同的依赖顺序和失败处理
         int size = context.size();
         for (int i = 0; i < size; i++) {
             Consumer<Player> handoff = context.nativeHandoffAt(i);
@@ -302,34 +280,34 @@ public final class PlayerDataPipeline {
                     context.appliedNative(i, null);
                 }
             } catch (Throwable throwable) {
-                // 关键失败会留下 FAILED 状态, 调用方据此拒绝会话进入 ACTIVE
+                // 关键失败保留 FAILED 状态, 会话不能进入 ACTIVE
                 if (type.critical()) {
                     context.playerFailed(i, throwable);
                     this.logger.error(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_APPLY_FAILED, key.asString(), player.getName());
                     return new ApplyResult.Failure(key, String.valueOf(throwable.getMessage()), context.applied(), context.failures());
                 }
-                // 非关键失败释放槽位值并计入最终 skipped
+                // 非关键失败释放对应值并计入 skipped
                 context.playerSkipped(i, throwable);
                 this.logger.warn(LogCategory.DATA, player.getUniqueId(), player.getName(), throwable, LogConstants.DATA_APPLY_SKIPPED, key.asString(), player.getName());
             }
         }
-        // 最终列表由 Context 按数据类型槽位顺序生成
+        // 最终结果按注册表槽位顺序排列
         return new ApplyResult.Success(context.applied(), context.skipped(), context.failures());
     }
 
-    // type 与 value 在采集时写入同一槽位, 泛型转换集中在这个边界
+    // type 和 value 来自同一槽位, 此处恢复对应泛型
     @SuppressWarnings("unchecked")
     private static <T> Tag encodeValue(PlayerDataType<T> type, Object value) {
         return type.encode((T) value);
     }
 
-    // Context 延续相同的槽位关系, 这里恢复 Player apply 所需的 T
+    // 按共享槽位确定 apply 所需的值类型
     @SuppressWarnings("unchecked")
     private static <T> void applyValue(PlayerDataType<T> type, Player player, Object value) {
         type.apply(player, (T) value);
     }
 
-    // 登录数据源写入实现数组与 Context 共用数据类型槽位, 这里恢复 applyNative 所需的 T
+    // 按共享槽位确定 applyNative 所需的值类型
     @SuppressWarnings("unchecked")
     private static <T> NativePlayerDataType.NativeApplyResult applyNativeValue(NativePlayerDataType<T> type, PlayerSession session, net.momirealms.sparrow.nbt.CompoundTag playerData, Object value) throws IOException {
         return type.applyNative(session, playerData, (T) value);
@@ -340,7 +318,7 @@ public final class PlayerDataPipeline {
         private final String playerName;
         private final Object[] values;
         private final List<DataKey> skipped = new ArrayList<>();
-        private long captureNanos; // 两段采集执行时间之和, 不含线程间排队
+        private long captureNanos; // 两阶段实际采集耗时, 不含排队
 
         private CaptureBuffer(Player player, int size) {
             this.player = player.getUniqueId();
@@ -349,7 +327,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** Pending 尚待串行线程采集组采集, Ready 才可交给编码器. */
+    /** Pending 还需异步采集, Ready 可交给编码器. */
     public sealed interface CaptureResult {
 
         final class Pending implements CaptureResult {
@@ -399,7 +377,7 @@ public final class PlayerDataPipeline {
 
             @NotNull
             public Map<DataKey, Object> values() {
-                // 按注册表顺序返回已采集的值, 此处尚未编码为 Tag.
+                // 按注册顺序返回采集值, 尚未编码为 Tag
                 Map<DataKey, Object> values = new LinkedHashMap<>(this.values.length);
                 for (int i = 0; i < this.values.length; i++) {
                     Object value = this.values[i];
@@ -418,7 +396,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** 编码结果, Failed 表示关键类型无法编码, 这次不应产出快照. */
+    /** 关键类型编码失败时返回 Failed, 本次不生成快照. */
     public sealed interface EncodeResult {
 
         final class Ready implements EncodeResult {
@@ -434,7 +412,7 @@ public final class PlayerDataPipeline {
 
             @NotNull
             public Map<DataKey, Tag> data() {
-                // 按注册表顺序收集成功编码的 Tag, 供保存时覆盖同名保留数据
+                // 按注册顺序收集已编码的 Tag, 保存时覆盖同名旧数据
                 Map<DataKey, Tag> data = new LinkedHashMap<>(this.tags.length);
                 for (int i = 0; i < this.tags.length; i++) {
                     Tag tag = this.tags[i];
@@ -453,7 +431,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** 预解码结果, Failed 表示关键类型解码失败, 整份快照不应被应用. */
+    /** 关键类型解码失败时返回 Failed, 不应用该快照. */
     public sealed interface DecodeResult {
 
         record Ready(@NotNull SnapshotApplyContext context) implements DecodeResult {
@@ -463,7 +441,7 @@ public final class PlayerDataPipeline {
         }
     }
 
-    /** 应用结果, Failure 携带关键失败前已经完成的数据类型. */
+    /** Failure 保留关键失败前已应用的类型. */
     public sealed interface ApplyResult {
 
         record Success(@NotNull List<DataKey> applied, @NotNull List<DataKey> skipped, @NotNull List<SnapshotApplyContext.Failure> failures) implements ApplyResult {

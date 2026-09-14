@@ -34,7 +34,7 @@ public sealed interface SnapshotRestoreResult {
     record WrongPlayer() implements SnapshotRestoreResult {
     }
 
-    /** 玩家离线、会话不可操作、离线恢复未取得锁或服务已停止接收请求, 本次未执行. */
+    /** 玩家或会话不可用、未取得离线恢复锁, 或服务已关闭, 本次未执行. */
     Offline OFFLINE = new Offline();
     record Offline() implements SnapshotRestoreResult {
     }
@@ -51,7 +51,7 @@ public sealed interface SnapshotRestoreResult {
         }
     }
 
-    /** 解码、应用或保存未成功, 或远程执行发生异常. */
+    /** 解码、应用或保存失败, 或远程执行异常. */
     Failed FAILED = new Failed();
     record Failed(@NotNull Stage stage, @NotNull String detail, @Nullable Throwable cause, @NotNull List<DataKey> skipped) implements SnapshotRestoreResult {
         public Failed {
@@ -76,7 +76,7 @@ public sealed interface SnapshotRestoreResult {
         PREPARE,
         /** 应用失败, 可能已修改部分玩家数据. */
         APPLY,
-        /** 在线应用已完成, 新的 RESTORE 记录未确认入库. */
+        /** 在线数据已应用, 但新的 RESTORE 快照尚未确认写入数据库. */
         SAVE,
         /** 结果未携带在线应用阶段. */
         UNKNOWN

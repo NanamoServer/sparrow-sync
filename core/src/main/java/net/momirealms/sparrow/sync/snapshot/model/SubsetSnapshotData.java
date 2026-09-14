@@ -10,13 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 只暴露来源中的部分数据类型, 取值和原始块读取继续由来源负责.
- * 视图保留来源引用, 适合临时筛选和编码; 长期保留前应将选中的块复制到独立帧.
- */
 final class SubsetSnapshotData implements SnapshotData {
-    private final SnapshotData source; // 提供选中类型的 Tag 缓存和原始块
-    private final Set<DataKey> keys; // 按来源顺序收集的类型, 构造后只读
+    private final SnapshotData source; // 选中类型的值和原始块均从来源读取
+    private final Set<DataKey> keys; // 选中类型按来源顺序排列, 构造后只读
 
     SubsetSnapshotData(@NotNull SnapshotData source, @NotNull Set<DataKey> keys) {
         this.source = source;

@@ -60,7 +60,7 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
     @Override
     @NotNull
     public List<MobEffectInstance> decode(@NotNull Tag data) throws IOException {
-        // 旧快照的裸列表没有版本信息, 按当前效果格式读取.
+        // 旧快照列表没有版本信息, 按当前效果格式读取
         Tag effects = data;
         if (data instanceof CompoundTag root) {
             int dataVersion = root.getInt("DataVersion");
@@ -69,7 +69,7 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
                 throw new IOException("potion effects data version " + dataVersion + " is newer than this server (" + current + ")");
             }
             if (dataVersion > 0 && dataVersion < current) {
-                // 原版把效果列表的升级规则注册在 PLAYER 上, 包括字段改名与隐藏效果链.
+                // 效果的版本升级规则属于 PLAYER, 包含字段改名和隐藏效果链
                 root = (CompoundTag) DataFixers.getDataFixer().update(References.PLAYER, new Dynamic<>(NBTOps.INSTANCE, root), dataVersion, current).getValue();
             }
             effects = root.get(EFFECTS_KEY);
@@ -84,7 +84,7 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
     @Override
     public void apply(@NotNull Player player, @NotNull List<MobEffectInstance> value) {
         ServerPlayer handle = handle(player);
-        // 清空后放入的效果不与既有效果合并, 隐藏效果链随实例原样进入玩家.
+        // 先清空旧效果再写入, 保留隐藏效果链
         handle.removeAllEffects();
         int size = value.size();
         for (int i = 0; i < size; i++) {
@@ -111,7 +111,7 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
         return ((CraftPlayer) player).getHandle();
     }
 
-    // 递归复制隐藏效果链, capture 返回后玩家身上的剩余时长仍会继续变化
+    // 递归复制隐藏效果, 玩家身上的剩余时长会在采集后继续变化
     private static MobEffectInstance copyOf(MobEffectInstance instance) {
         MobEffectInstance hidden = instance.hiddenEffect;
         return new MobEffectInstance(

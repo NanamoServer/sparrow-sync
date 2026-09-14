@@ -32,7 +32,7 @@ public sealed interface SnapshotDetailResult {
 
     sealed interface Preview {
 
-        // 本服支持预览, 等用户选中该类型后才读取内容, rawLength 代表数据库中压缩前的 NBT 字节数, 数据块头损坏时或 JSON 来源时为 -1
+        // 支持预览但尚未读取; rawLength 为压缩前的 NBT 字节数, 无法确定时为 -1
         record Unloaded(int rawLength) implements Preview {
         }
 

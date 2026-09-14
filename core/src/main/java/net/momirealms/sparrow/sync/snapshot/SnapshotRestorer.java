@@ -23,10 +23,10 @@ import java.util.concurrent.ConcurrentHashMap;
 final class SnapshotRestorer {
     private final SparrowSync plugin;
     private final StorageProvider storage;
-    private final SnapshotSaver saver; // 生成新的 RESTORE 记录
-    private final SnapshotApplier applier; // 在线玩家的数据准备与应用
-    private volatile boolean operationsClosed; // 停服后拒绝新的恢复请求
-    private final Set<UUID> offlineRestores = ConcurrentHashMap.newKeySet(); // 离线恢复持锁期间供登录和交接查询
+    private final SnapshotSaver saver;
+    private final SnapshotApplier applier;
+    private volatile boolean operationsClosed; // 停服后拒绝新恢复请求
+    private final Set<UUID> offlineRestores = ConcurrentHashMap.newKeySet(); // 供登录和交接流程查询正在进行的离线恢复
 
     SnapshotRestorer(@NotNull SparrowSync plugin, @NotNull SnapshotSaver saver, @NotNull SnapshotApplier applier) {
         this.plugin = plugin;
@@ -35,16 +35,10 @@ final class SnapshotRestorer {
         this.applier = applier;
     }
 
-    /**
-     * 恢复选定历史内容, 在线应用完成后等待新的 RESTORE 记录保存.
-     *
-     * @param player 当前操作绑定的玩家对象
-     * @param snapshotId 明确选定的快照 ID
-     * @return 恢复、离线、归属错误、取消或失败结果
-     */
+    /** 应用历史快照后保存新的 RESTORE 快照, 等待保存结果后返回. */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull UUID snapshotId) {
-        // 在读库前绑定会话, 在线恢复的所有后续阶段都使用这次身份.
+        // 读取前记录会话, 后续只操作这次登录的玩家
         PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
         if (this.operationsClosed || session == null || session.state() != SessionState.ACTIVE) {
             return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
@@ -57,7 +51,7 @@ final class SnapshotRestorer {
                 });
     }
 
-    // 保留应用和保存的阶段结果, 保存失败时玩家已经被修改.
+    // 保存失败前可能已修改玩家, 结果需保留应用和保存两个阶段的状态
     @NotNull
     private CompletableFuture<SnapshotRestoreResult> restore(@NotNull PlayerSession session, @NotNull Player player, @NotNull Snapshot snapshot) {
         return this.applier.applyOnline(session, player, snapshot).thenCompose(applied ->
@@ -79,20 +73,14 @@ final class SnapshotRestorer {
                 });
     }
 
-    /**
-     * 取得玩家会话锁后写入新的 RESTORE 记录, 留待下次登录加载.
-     *
-     * @param player 目标玩家的名字与 UUID
-     * @param snapshotId 明确选定的快照 ID
-     * @return 离线恢复结果, 写入结束并归还锁后完成
-     */
+    /** 取得会话锁后保存新的 RESTORE 快照, 下次登录生效, 解锁尝试结束后返回. */
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restoreOffline(@NotNull PlayerIdentity player, @NotNull UUID snapshotId) {
         return this.storage.snapshot(snapshotId).thenCompose(found -> {
             if (found.isEmpty()) return CompletableFuture.completedFuture(SnapshotRestoreResult.NOT_FOUND);
             if (!found.get().meta().player().equals(player.uuid())) return CompletableFuture.completedFuture(SnapshotRestoreResult.WRONG_PLAYER);
             if (this.operationsClosed || !this.offlineRestores.add(player.uuid())) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
-            // 先登记在途写入, 持锁期间交接探测持续回答 SAVING.
+            // 先登记离线恢复, 持锁期间交接探测返回 SAVING
             return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.plugin.sessionLock().tryAcquire(player.uuid())).thenCompose(acquired -> {
                 if (!(acquired instanceof SessionLock.AcquireOutcome.Acquired lock)) return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
                 return CompletableFuture.completedFuture(null).thenCompose(ignored -> this.saver.saveRestored(found.get(), player.name()))
@@ -111,29 +99,17 @@ final class SnapshotRestorer {
         });
     }
 
-    /**
-     * 查询本服是否持有该玩家的在途离线恢复任务.
-     *
-     * @param player 目标玩家 UUID
-     * @return 是否应在登录或交接时视为仍在保存
-     */
+    /** 本服是否正在恢复该玩家的离线快照. */
     public boolean restoringOffline(@NotNull UUID player) {
         return this.offlineRestores.contains(player);
     }
 
-    /**
-     * 停止新的历史恢复请求, 已取得锁的恢复继续保存并归还锁.
-     */
+    /** 停止新恢复请求, 已持锁的请求继续保存并解锁. */
     public void stopOperations() {
         this.operationsClosed = true;
     }
 
-    /**
-     * 暂存写入结果或失败, 会话锁归还后再完成管理请求.
-     *
-     * @param saved 已完成的保存结果, 异常完成时为 null
-     * @param failure 保存异常, 正常完成时为 null
-     */
+    /** 保存结果和异常暂存在此处, 解锁尝试结束后再返回给调用方. */
     private record OfflineSave(@Nullable SnapshotSaveResult saved, @Nullable Throwable failure) {
     }
 }

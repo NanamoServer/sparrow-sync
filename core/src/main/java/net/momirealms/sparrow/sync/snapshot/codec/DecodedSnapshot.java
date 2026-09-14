@@ -4,10 +4,6 @@ import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 快照解码结果.
- * 损坏或不受支持的数据则为 {@link Invalid} 并携带原因.
- */
 public sealed interface DecodedSnapshot {
 
     record Valid(@NotNull Snapshot snapshot) implements DecodedSnapshot {

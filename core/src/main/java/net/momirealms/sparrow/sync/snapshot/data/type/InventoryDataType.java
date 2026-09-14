@@ -29,8 +29,8 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 
 /**
- * 背包同步: 全部槽位 (含盔甲、副手及 1.21.5 起的 body/saddle) 与手持槽位.
- * 槽位数随版本变化, 快照记录写入时的容器大小, 应用时适配到本服大小并重排放不下的物品.
+ * 同步背包全部槽位和选中的快捷栏位置, 包括盔甲、副手及 body/saddle.
+ * 快照记录实际容量, 应用时按本服容量重新安置物品.
  */
 public final class InventoryDataType implements NativePlayerDataType<InventoryDataType.Inventory> {
     public static final DataKey INVENTORY = DataKey.sparrow("inventory");
@@ -97,14 +97,14 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
         ItemCodec.LoadedItems fitted = ItemCodec.fit(value.contents(), inventory.getContainerSize());
         ItemStack[] items = fitted.items();
         for (int slot = 0; slot < items.length; slot++) {
-            // 玩家持有独立物品, 后续游玩不能修改本次解码值. 空槽也必须写入, 清掉本服旧物品.
+            // 写入物品副本, 空槽也要写入以清除本服旧物品
             ItemStack item = items[slot] == null ? ItemStack.EMPTY : items[slot].copy();
             inventory.setItem(slot, item);
             if (slot > 40) {
-                // body/saddle 不属于 inventoryMenu, 沿用 Craft 的玩家背包包.
+                // body/saddle 不在 inventoryMenu 中, 使用 Craft 的玩家背包更新包
                 handle.connection.send(new ClientboundSetPlayerInventoryPacket(slot, item.copy()));
             } else {
-                // 容器槽位与背包槽位不同: 热键栏 0..8 -> 36..44, 盔甲倒序, 副手 -> 45.
+                // 槽位映射为快捷栏 0..8 -> 36..44, 盔甲倒序, 副手 -> 45
                 int menuSlot = slot;
                 if (slot < 9) {
                     menuSlot += 36;
@@ -140,7 +140,7 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
         for (int i = 0; i < STORAGE_SIZE; i++) {
             addNativeItem(inventory, value.contents()[i], i);
         }
-        // 1.21.5 把盔甲、副手、body 和 saddle 从 Inventory 的 100/150 槽迁到了 equipment map.
+        // 1.21.5 起盔甲、副手、body 和 saddle 改存于 equipment map
         if (equipmentFormat) {
             Tag current = playerData.get("equipment");
             CompoundTag equipment = current instanceof CompoundTag compound
@@ -171,10 +171,9 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     }
 
     /**
-     * 解码后的背包.
-     *
-     * @param heldSlot 手持槽位, 越界时静默归零
-     * @param dropped 解码时放不下而被丢弃的物品数
+     * 解码后的背包数据.
+     * @param heldSlot 选中的快捷栏槽位, 越界时设为 0
+     * @param dropped 容量不足而丢弃的物品数
      */
     public record Inventory(@Nullable ItemStack @NotNull [] contents, int heldSlot, int dropped) {
         public Inventory {

@@ -19,8 +19,8 @@ import java.util.concurrent.Executor;
 
 @ApiStatus.Internal
 public final class SnapshotTransfer {
-    private final StorageProvider storage; // 导入的直接存储与导出的正文来源
-    private final SnapshotFiles files; // 普通快照文件及路径规则
+    private final StorageProvider storage; // 导入写入的数据库, 也是导出的数据来源
+    private final SnapshotFiles files; // 本地快照文件
     private final Executor executor; // 文件 I/O 执行器
     private final SnapshotCache cache;
 
@@ -31,13 +31,7 @@ public final class SnapshotTransfer {
         this.cache = cache;
     }
 
-    /**
-     * 将指定数据库快照导出到 output 目录.
-     *
-     * @param snapshotId 明确选定的快照 ID
-     * @param format 导出文件格式
-     * @return 导出的快照 ID 与路径, 或不存在结果
-     */
+    /** 将数据库中的快照导出到 output 目录, 返回快照 ID 和文件路径. */
     @NotNull
     public CompletableFuture<SnapshotExportResult> export(@NotNull UUID snapshotId, @NotNull SnapshotFiles.Format format) {
         return this.storage.snapshot(snapshotId).thenApplyAsync(found -> {
@@ -52,12 +46,9 @@ public final class SnapshotTransfer {
     }
 
     /**
-     * 导入保留原身份与时间的完整快照, 覆盖相同 ID 的记录.
-     * 写库前读取全部类型, 校验块头、CRC、解压长度与 NBT 结构, 任一块无效时保留原记录.
-     * 保存成功后清除所属玩家的缓存, 删除尝试结束后再返回导入结果.
-     *
-     * @param relative 选定文件在本服目录内的相对路径
-     * @return 导入、无效文件或保存失败结果
+     * 校验全部数据后导入快照, 保留原 ID 和时间, 覆盖同 ID 记录.
+     * 任一数据块无效时不写入; 保存成功后等缓存清理尝试结束再返回.
+     * @param relative 本服快照目录内的相对路径
      */
     @NotNull
     public CompletableFuture<SnapshotImportResult> importFile(@NotNull String relative) {
@@ -70,7 +61,7 @@ public final class SnapshotTransfer {
         }, this.executor).thenComposeAsync(decoded -> {
             if (!(decoded instanceof DecodedSnapshot.Valid valid)) return CompletableFuture.completedFuture(SnapshotImportResult.INVALID_FILE);
             Snapshot snapshot = valid.snapshot();
-            // 容器解码只读出元数据和索引, 这里逐块读取, 本服未注册的类型起码得能解码出来.
+            // 逐块校验全部类型, 包括本服未注册的类型
             try {
                 for (var key : snapshot.keys()) {
                     snapshot.data(key);

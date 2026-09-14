@@ -19,32 +19,24 @@ public final class SnapshotDecoder {
     }
 
     /**
-     * 解码所有已注册类型, 关键类型失败时停止读取后续槽位.
-     *
-     * @param snapshot 已完成本服地图准备的快照
-     * @return 运行时值、未知类型原数据及失败信息
+     * 按注册顺序解码类型, 关键类型失败时停止后续解码.
+     * @param snapshot 已完成本服地图处理的快照
      */
     @NotNull
     public DecodedSnapshotData decodeForApply(@NotNull Snapshot snapshot) {
         return this.decode(snapshot, type -> true, true);
     }
 
-    /**
-     * 解码展示需要的类型, 单类内容异常记录后继续读取其余选择项.
-     *
-     * @param snapshot 保留原始内容的快照
-     * @param selected 预览支持的类型, 未选择类型不会调用 decode
-     * @return 当前请求独占的预览值及失败信息
-     */
+    /** 解码所选预览类型, 单个类型失败不影响其余类型. */
     @NotNull
     public DecodedSnapshotData decodeSelected(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected) {
         return this.decode(snapshot, selected, false);
     }
 
-    // 按注册表确定的顺序读取选中的类型并转换为玩家数据对象; 数据块读取失败和类型转换失败都记在该类型的结果中.
+    // 按注册顺序解码所选类型, 读取或转换失败都记入对应结果
     @NotNull
     private DecodedSnapshotData decode(@NotNull Snapshot snapshot, @NotNull Predicate<PlayerDataType<?>> selected, boolean applying) {
-        // 未注册且未列入本服丢弃名单的类型保留原始块引用, 数据流水线随后将这些块复制为紧凑帧.
+        // 保留未注册且不在丢弃名单中的类型, 后续复制为独立数据帧
         SnapshotData passthrough = applying
                 ? snapshot.content().select(key -> this.registry.slot(key) < 0 && !this.registry.shouldDropUnknown(key))
                 : EagerSnapshotData.EMPTY;
@@ -63,7 +55,7 @@ public final class SnapshotDecoder {
                 if (tag == null) continue;
                 result.values[i] = type.decode(tag);
             } catch (Throwable failure) {
-                // 预览只把 IOException 和 RuntimeException 记为该类型的读取失败, Error 继续向外抛出.
+                // 预览记录 IOException 和 RuntimeException, Error 继续抛出
                 if (!applying && !(failure instanceof IOException || failure instanceof RuntimeException)) {
                     throw (Error) failure;
                 }

@@ -8,11 +8,11 @@ import org.jetbrains.annotations.NotNull;
 @ApiStatus.Internal
 public sealed interface SnapshotLoadResult {
 
-    /** 快照已经读取并预解码, 可以在玩家线程应用. */
+    /** 快照已读取并解码, 可在玩家线程应用. */
     record Ready(@NotNull Snapshot snapshot, @NotNull SnapshotApplyContext context, long loadNanos) implements SnapshotLoadResult {
     }
 
-    /** 玩家没有历史快照, 本服状态即权威. */
+    /** 没有历史快照, 使用本服数据登录. */
     Empty EMPTY = new Empty();
     record Empty() implements SnapshotLoadResult {
     }

@@ -23,18 +23,13 @@ public final class BlockCodec {
     }
 
     /**
-     * 将一个类型编码为带块头的独立 NBT 文档, 小于阈值时明文存储.
-     *
-     * @param key 完整 DataKey 文本, 同时写入块内 compound
-     * @param value 该类型的原始 Tag
-     * @param compressor 达到阈值时使用的压缩算法
-     * @param threshold 原始单键 compound 的压缩阈值, 单位为字节
-     * @return 13 字节块头与 payload 连续组成的字节数组
-     * @throws IOException 当序列化失败或压缩器及 DEFLATE 回退均失败时
+     * 编码一个类型, 返回 13 字节块头和 NBT 数据, 低于阈值时不压缩.
+     * @param threshold 包含类型名的 NBT 字节数阈值
+     * @throws IOException NBT 编码失败或压缩器及 DEFLATE 回退均失败时
      */
     @NotNull
     public static byte[] encode(@NotNull String key, @NotNull Tag value, @NotNull CompressorRegistry compressor, int threshold) throws IOException {
-        // 块中保留完整类型名, 单独提取出来的载荷仍是可识别的 NBT 文档.
+        // 块内保存完整类型名, 单独取出也可作为 NBT 文档读取
         CompoundTag compound = NBT.createCompound();
         compound.put(key, value);
         byte[] raw = NBT.toBytes(compound, false);
@@ -43,12 +38,12 @@ public final class BlockCodec {
         try {
             payload = used.compress(raw);
         } catch (IOException exception) {
-            // 配置的压缩器失败时使用 JVM 内置的 DEFLATE.
+            // 配置的压缩器失败时尝试 DEFLATE
             if (used == CompressorRegistry.DEFLATE) throw exception;
             used = CompressorRegistry.DEFLATE;
             payload = used.compress(raw);
         }
-        // 校验压缩后的载荷, 读方可以在调用解压器之前发现存储损坏.
+        // 对存储字节计算 CRC, 读取时先校验再解压
         CRC32 crc = new CRC32();
         crc.update(payload);
         return ByteBuffer.allocate(BLOCK_HEADER_LENGTH + payload.length)
@@ -61,17 +56,12 @@ public final class BlockCodec {
     }
 
     /**
-     * 读取指定块的编码字段, 检查块头和 payload 声明的长度是否恰好占满索引确定的区间.
-     * 此处不检查压缩算法是否受支持, 不计算 payload CRC, 也不解压或解析 NBT.
-     *
-     * @param block 来源数组和该块所在区间, 尚未校验其内容
-     * @param key 完整类型名, 用于在错误中指出损坏的类型
-     * @return 长度已通过结构校验的块头
-     * @throws FormatException 当区间越界, 块头截断, 长度为负或 payload 与区间边界不一致时
+     * 读取块头并检查声明长度是否恰好占满索引区间, 不检查算法和块内容.
+     * @throws FormatException 区间越界、块头截断或长度不符时
      */
     @NotNull
     public static BlockHeader readHeader(@NotNull RawBlock block, @NotNull String key) throws FormatException {
-        // 区间保留 long 偏移, 通过来源数组边界检查后才转为下标, 避免大偏移溢出后指向其他位置.
+        // 先检查 long 偏移是否在数组内, 再转换为 int 下标
         if (block.offset() < 0 || block.end() < block.offset() || block.end() > block.bytes().length) {
             throw new FormatException(InvalidReason.CORRUPTED, "block out of bounds for " + key);
         }
@@ -93,12 +83,10 @@ public final class BlockCodec {
     }
 
     /**
-     * 校验并还原指定类型, 任何损坏都在异常中携带类型名.
-     *
-     * @param block 来源数组和该块所在区间, <strong>读取期间调用方不得修改字节</strong>
-     * @param key 索引条目的完整类型名, 块内必须恰好含有此键
-     * @return 块中该类型的 Tag, 引用缓存由调用方负责
-     * @throws FormatException 当块越界, 校验失败, 算法未知或 NBT 损坏时
+     * 校验、解压并解析指定数据块, 错误中包含类型名.
+     * @param block <strong>读取期间不得修改来源字节</strong>
+     * @param key 块内必须恰好包含此类型名
+     * @throws FormatException 区间越界、校验失败、算法未知或 NBT 损坏时
      */
     @NotNull
     public static Tag decode(@NotNull RawBlock block, @NotNull String key) throws IOException {
@@ -114,7 +102,7 @@ public final class BlockCodec {
         if (compressor == null) {
             throw new FormatException(InvalidReason.UNSUPPORTED_COMPRESSION, "unknown block compression id " + header.compressorId() + " for " + key);
         }
-        // rawLength 同时约束解压分配与实际结果, CRC 校验在解压之前完成.
+        // 先校验 CRC 再解压, 分配容量和实际结果都受 rawLength 限制
         try {
             byte[] raw = compressor.decompress(block.bytes(), payloadOffset, header.payloadLength(), header.rawLength());
             if (raw.length != header.rawLength()) {

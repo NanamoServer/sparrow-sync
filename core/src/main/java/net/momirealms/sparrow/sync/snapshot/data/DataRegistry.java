@@ -18,10 +18,6 @@ import java.util.StringJoiner;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 同步数据类型的注册表, 插件 onLoad 与 onEnable 期开放注册.
- * ServerLoadEvent 时冻结, 之后只读, 应用顺序由依赖关系的拓扑排序给出.
- */
 public final class DataRegistry {
     private final Map<DataKey, PlayerDataType<?>> types = new ConcurrentHashMap<>();
     private Set<DataKey> unknownDrops = ConcurrentHashMap.newKeySet();
@@ -56,11 +52,8 @@ public final class DataRegistry {
     }
 
     /**
-     * 将类型加入本服的未知数据丢弃名单, 供配置加载与第三方插件启动时注册.
-     * 该类型在本服已注册时仍正常应用.
-     *
-     * @param key 本服未注册时需要丢弃的数据类型
-     * @throws IllegalStateException 当注册表已经冻结时
+     * 登记未知数据丢弃名单, 本服已注册的类型仍正常应用.
+     * @throws IllegalStateException 注册表已冻结时
      */
     public void registerUnknownDrop(@NotNull DataKey key) {
         if (this.frozen) {
@@ -69,12 +62,7 @@ public final class DataRegistry {
         this.unknownDrops.add(key);
     }
 
-    /**
-     * 判断本服在读取到未知类型的数据时, 是否丢弃此类型数据.
-     *
-     * @param key 快照中的类型标识
-     * @return 本服未注册该类型且丢弃名单包含它时为 true
-     */
+    /** 类型未注册且在丢弃名单中时返回 true. */
     public boolean shouldDropUnknown(@NotNull DataKey key) {
         return !this.registered(key) && this.unknownDrops.contains(key);
     }
@@ -119,12 +107,12 @@ public final class DataRegistry {
         return this.frozen;
     }
 
-    /** 在线分阶段采集保存中的玩家线程槽位, <strong>返回数组只读</strong>. */
+    /** 分阶段采集中需要在玩家线程读取的槽位, <strong>数组只读</strong>. */
     public int @NotNull [] syncCaptureSlots() {
         return this.syncCaptureSlots;
     }
 
-    /** 在线分阶段采集保存中的串行线程槽位, <strong>返回数组只读</strong>. */
+    /** 分阶段采集中可在串行线程读取的槽位, <strong>数组只读</strong>. */
     public int @NotNull [] asyncCaptureSlots() {
         return this.asyncCaptureSlots;
     }
@@ -147,50 +135,37 @@ public final class DataRegistry {
         return Collections.unmodifiableCollection(this.types.values());
     }
 
-    /** 固定的数据类型索引布局中的数据类型数量. */
     public int size() {
         return this.frozen ? this.orderedTypes.length : this.types.size();
     }
 
-    /**
-     * 返回固定的数据类型索引布局中指定槽位的数据标识.
-     *
-     * @param slot 拓扑顺序槽位
-     */
+    /** 返回槽位对应的数据标识. */
     @NotNull
     public DataKey keyAt(int slot) {
         return this.orderedKeys[slot];
     }
 
-    /**
-     * 返回固定的数据类型索引布局中指定槽位的数据类型.
-     *
-     * @param slot 拓扑顺序槽位
-     */
+    /** 返回槽位对应的数据类型. */
     @NotNull
     public PlayerDataType<?> typeAt(int slot) {
         return this.orderedTypes[slot];
     }
 
-    /** 返回数据类型槽位的登录数据源写入实现, join-only 类型返回 null. */
+    /** 返回登录前应用实现, 只支持 Join 的类型返回 null. */
     @Nullable
     public NativePlayerDataType<?> nativeTypeAt(int slot) {
         return this.orderedNativeTypes[slot];
     }
 
-    /**
-     * 查询数据标识在固定的数据类型索引布局中的槽位, 未注册时返回 {@code -1}.
-     */
+    /** 返回类型对应的槽位, 未注册时返回 -1. */
     public int slot(@NotNull DataKey key) {
         Integer slot = this.slots.get(key);
         return slot == null ? -1 : slot;
     }
 
     /**
-     * 计算全部已注册类型的应用顺序, 依赖者排在其依赖之后, 同层按 key 字典序保证结果稳定.
-     *
-     * @return 按应用先后排列的数据标识
-     * @throws IllegalStateException 当依赖关系存在环时, 异常信息列出环上的全部节点
+     * 按依赖排序类型, 同层按 key 字典序排列.
+     * @throws IllegalStateException 依赖成环时, 错误中列出环上的节点
      */
     @NotNull
     public List<DataKey> applyOrder() {
@@ -200,7 +175,7 @@ public final class DataRegistry {
 
     @NotNull
     private List<DataKey> buildApplyOrder() {
-        // 建图. 入度为已注册依赖数, 未注册的依赖直接忽略
+        // 只统计已注册的依赖
         Map<DataKey, Integer> inDegree = new HashMap<>();
         Map<DataKey, List<DataKey>> dependents = new HashMap<>();
         for (PlayerDataType<?> type : this.types.values()) {
@@ -213,7 +188,7 @@ public final class DataRegistry {
             inDegree.put(type.key(), degree);
         }
 
-        // Kahn 拓扑排序, 就绪集用字典序优先队列消除注册顺序的影响
+        // 按拓扑顺序输出, 同时就绪的类型按 key 字典序选择
         PriorityQueue<DataKey> ready = new PriorityQueue<>();
         for (Map.Entry<DataKey, Integer> entry : inDegree.entrySet()) {
             if (entry.getValue() == 0) ready.add(entry.getKey());
@@ -231,14 +206,14 @@ public final class DataRegistry {
             }
         }
 
-        // 有节点没被输出, 说明存在依赖环
+        // 尚有未输出节点时检查依赖环
         if (order.size() < inDegree.size()) {
             throw new IllegalStateException("dependency cycle detected: " + this.describeCycles(inDegree.keySet(), order));
         }
         return order;
     }
 
-    // 逐个检查未输出节点, 找出包含它的闭合路径
+    // 从未输出节点中找出闭合的依赖路径
     private String describeCycles(Set<DataKey> nodes, List<DataKey> ordered) {
         TreeSet<DataKey> remaining = new TreeSet<>(nodes);
         remaining.removeAll(ordered);

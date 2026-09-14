@@ -16,8 +16,8 @@ import java.util.Date;
 import java.util.UUID;
 
 /**
- * MongoDB 文档形态的快照编解码, 元数据保留为 BSON 字段, 整份 data 保存为一个 NBT 二进制帧.
- * 文档含 BSON UUID 字段, <strong>读写两侧必须以 UuidRepresentation.STANDARD 配置 Mongo 驱动</strong>.
+ * MongoDB 快照格式, 元数据使用 BSON 字段, data 保存二进制数据帧.
+ * <strong>MongoDB 驱动的 UUID 读写必须使用 UuidRepresentation.STANDARD</strong>.
  */
 public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     public static final String FIELD_ID = "_id";
@@ -58,7 +58,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         document.append(FIELD_SERVER, meta.server());
         document.append(FIELD_FORMAT, CURRENT_VERSION);
         document.append(FIELD_MC_DATA, meta.mcDataVersion());
-        // data 字段保存各类型的数据帧, 元数据保存在文档的其他字段, 便于直接查询快照信息.
+        // 元数据与 data 分开存储, 查询列表时可以排除 data
         document.append(FIELD_DATA, new Binary(this.dataCodec.encode(snapshot.content())));
         return document;
     }
@@ -71,7 +71,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
             int format = formatNumber.intValue();
-            // 仅在支持范围内进入读取流程, 历史开发格式与未来版本均拒绝.
+            // 只读取支持范围内的格式版本
             if (format < MINIMUM_SUPPORTED_VERSION || format > CURRENT_VERSION) {
                 return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
@@ -91,9 +91,8 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
     }
 
     /**
-     * 解码文档的元数据部分, 供存储层用排除 data 的投影查询快照列表.
-     *
-     * @throws IllegalArgumentException 当文档缺少 player 或快照 id 字段时
+     * 只读取文档元数据, 供排除 data 的列表查询使用.
+     * @throws IllegalArgumentException 缺少 player 或 id 时
      */
     @NotNull
     public static SnapshotMeta decodeMeta(@NotNull Document document) {
@@ -101,7 +100,7 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         if (player == null) throw new IllegalArgumentException("missing player field");
         UUID id = document.get(FIELD_ID, UUID.class);
         if (id == null) throw new IllegalArgumentException("missing snapshot id field");
-        // 数值字段接受任何 Number 形态
+        // 数值字段按 Number 读取
         return new SnapshotMeta(
                 id,
                 player,

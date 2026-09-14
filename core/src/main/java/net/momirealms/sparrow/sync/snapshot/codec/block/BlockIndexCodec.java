@@ -18,16 +18,13 @@ public final class BlockIndexCodec {
     }
 
     /**
-     * 读取各类型的块偏移, 保持传入索引的迭代顺序, 不访问块头或 payload.
-     *
-     * @param index 索引 compoundTag
-     * @return 保持输入迭代顺序的条目表
-     * @throws IOException 当偏移不是 IntTag 或为负数时
+     * 读取索引中的块偏移, 保留输入顺序, 不访问数据块.
+     * @throws IOException 偏移不是 IntTag 或为负数时
      */
     @NotNull
     public static LinkedHashMap<String, BlockIndex> read(@NotNull CompoundTag index) throws IOException {
         LinkedHashMap<String, BlockIndex> entries = new LinkedHashMap<>();
-        // 每个类型名直接对应 IntTag, 旧开发格式中的 compound 条目不再接受.
+        // 类型名直接对应 IntTag 偏移
         for (Map.Entry<String, Tag> tagEntry : index.entrySet()) {
             String key = tagEntry.getKey();
             if (!(tagEntry.getValue() instanceof IntTag value)) {
@@ -42,12 +39,7 @@ public final class BlockIndexCodec {
         return entries;
     }
 
-    /**
-     * 将条目写为未压缩索引的 NBT 树, 保持块的写入顺序.
-     *
-     * @param entries 按物理写入次序收集的条目
-     * @return 使用 LinkedHashMap 保存顶层顺序的索引树
-     */
+    /** 按块写入顺序生成未压缩的索引 NBT. */
     @NotNull
     public static CompoundTag write(@NotNull LinkedHashMap<String, BlockIndex> entries) {
         CompoundTag index = NBT.createCompound(new LinkedHashMap<>());

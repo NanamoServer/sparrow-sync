@@ -6,17 +6,15 @@ import org.bson.Document;
 import org.jetbrains.annotations.NotNull;
 
 public final class SnapshotUpgradePipeline {
-    // 下标即 targetVersion, 下标 0 与 1 恒为 null
+    // 按目标版本索引, 0 和 1 不使用
     private static final SnapshotUpgrade[] BY_TARGET = indexByTarget();
 
     private SnapshotUpgradePipeline() {
     }
 
     /**
-     * 把二进制形态的快照树升到当前布局.
-     *
-     * @param root 已读取的快照树
-     * @param fromVersion 快照自带的格式版本, 必须不小于 1.
+     * 将 NBT 快照升级到当前格式.
+     * @param fromVersion 原格式版本, 必须不小于 1
      */
     @NotNull
     public static CompoundTag upgrade(@NotNull CompoundTag root, int fromVersion) {
@@ -29,10 +27,8 @@ public final class SnapshotUpgradePipeline {
     }
 
     /**
-     * 把文档形态的快照升到当前布局.
-     *
-     * @param document 已读取的文档
-     * @param fromVersion 快照自带的格式版本, 必须不小于 1.
+     * 将文档快照升级到当前格式.
+     * @param fromVersion 原格式版本, 必须不小于 1
      */
     @NotNull
     public static Document upgrade(@NotNull Document document, int fromVersion) {
@@ -44,7 +40,7 @@ public final class SnapshotUpgradePipeline {
         return current;
     }
 
-    // 按目标版本建立直接索引, 并检查每个升级步恰好注册一次.
+    // 按目标版本登记升级步骤, 同一版本只能注册一次
     @NotNull
     private static SnapshotUpgrade[] indexByTarget(SnapshotUpgrade... registered) {
         SnapshotUpgrade[] byTarget = new SnapshotUpgrade[SnapshotCodec.CURRENT_VERSION + 1];

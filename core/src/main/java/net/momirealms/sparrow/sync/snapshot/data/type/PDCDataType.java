@@ -39,7 +39,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
         Map<String, net.minecraft.nbt.Tag> raw = ((CraftPlayer) player).getPersistentDataContainer().getRaw();
         net.minecraft.nbt.CompoundTag captured = new net.minecraft.nbt.CompoundTag();
         for (Map.Entry<String, net.minecraft.nbt.Tag> entry : raw.entrySet()) {
-            // 离线只复制根结构, 子 Tag 在同一最终保存任务编码完以前保持静止.
+            // 退出后只复制根结构, 子 Tag 在最终保存编码结束前不再变化
             captured.put(entry.getKey(), mode == CaptureMode.OFFLINE ? entry.getValue() : entry.getValue().copy());
         }
         return captured;
@@ -108,7 +108,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
                 ? (net.minecraft.nbt.CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, compound)
                 : new net.minecraft.nbt.CompoundTag();
         mergeCompound(merged, value, PluginConfig.synchronization$pdcMergeNamespaces());
-        // 子树在副本中完成合并, 到这里才替换根节点, 合并异常不会污染尚未发布的本地数据.
+        // 子树合并成功后再替换根节点, 合并失败时保留原本地数据
         playerData.put("BukkitValues", NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, merged));
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
@@ -122,7 +122,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
             mergeCompound(targetCompound, sourceCompound, blacklist);
             return targetCompound;
         }
-        // 含黑名单后代的本服 Compound 在类型冲突时保持原值
+        // 含黑名单后代的本地 Compound 遇到类型冲突时保留原值
         if (blacklist != null && blacklist.hasChildren() && current instanceof net.minecraft.nbt.CompoundTag) {
             return current;
         }

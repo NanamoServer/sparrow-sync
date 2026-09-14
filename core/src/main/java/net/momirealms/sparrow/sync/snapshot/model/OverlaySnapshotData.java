@@ -12,9 +12,9 @@ import java.util.Map;
 import java.util.Set;
 
 final class OverlaySnapshotData implements SnapshotData {
-    private final SnapshotData source; // 未替换的类型从这里读取, 继续使用原对象的 Tag 缓存和原始数据块
-    private final Map<DataKey, Tag> overrides; // 这次及此前 with 调用写入的新值, 构造完成后不再修改此 Map
-    private final Set<DataKey> keys; // 所有类型的读取顺序: 原有类型位置不变, 新增类型排在末尾
+    private final SnapshotData source; // 未替换的类型继续使用来源的 Tag 和原始块
+    private final Map<DataKey, Tag> overrides; // 本次及此前替换的值, 构造后只读
+    private final Set<DataKey> keys; // 保留原有类型顺序, 新增类型排在末尾
 
     OverlaySnapshotData(@NotNull SnapshotData source, @NotNull Map<DataKey, Tag> overrides) {
         this.source = source;
@@ -61,7 +61,7 @@ final class OverlaySnapshotData implements SnapshotData {
     @NotNull
     public SnapshotData with(@NotNull Map<DataKey, Tag> values) {
         if (values.isEmpty()) return this;
-        // 将连续替换合并到同一张表, 保留最初来源的原始块读取能力.
+        // 合并连续替换的值, 未修改的块始终从最初来源读取
         Map<DataKey, Tag> overrides = new LinkedHashMap<>(this.overrides);
         overrides.putAll(values);
         return new OverlaySnapshotData(this.source, overrides);

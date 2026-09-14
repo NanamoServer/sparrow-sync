@@ -24,10 +24,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
- * 末影箱同步. 原版 27 槽, 但魔改服务端与扩容插件可放大到 54 槽,
- * 快照记录写入时的实际大小, 应用时适配到本服大小并重排放不下的物品.
- */
 public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.LoadedItems> {
     public static final DataKey ENDER_CHEST = DataKey.sparrow("ender_chest");
     private static final int FALLBACK_SIZE = 27;   // 缺失 size 字段的快照按原版 27 槽处理

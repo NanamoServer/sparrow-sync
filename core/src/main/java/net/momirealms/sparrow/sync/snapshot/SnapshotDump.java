@@ -36,13 +36,13 @@ import java.util.zip.ZipOutputStream;
 
 @ApiStatus.Internal
 public final class SnapshotDump {
-    private static final int BATCH_SIZE = 4; // 每批正文读取上限, 写完后释放.
+    private static final int BATCH_SIZE = 16; // 每批读取的快照上限, 写完后释放引用
 
     private final StorageProvider storage;
     private final SnapshotFiles files;
     private final BinarySnapshotCodec codec;
     private final SnapshotCache cache;
-    private final Function<MapArchiveRecord, CompletableFuture<Void>> mapImported; // 地图落库后的缓存发布回调, 完成后再导入下一条
+    private final Function<MapArchiveRecord, CompletableFuture<Void>> mapImported; // 地图保存后更新缓存, 完成后再导入下一条
 
     public SnapshotDump(@NotNull StorageProvider storage, @NotNull SnapshotFiles files, @NotNull BinarySnapshotCodec codec, @NotNull Function<MapArchiveRecord, CompletableFuture<Void>> mapImported, @NotNull SnapshotCache cache) {
         this.storage = storage;
@@ -53,11 +53,10 @@ public final class SnapshotDump {
     }
 
     /**
-     * 在文件 I/O worker 中导出指定时间之前的快照及配套记录, 完整 ZIP 发布后返回结果.
-     *
+     * 在文件 I/O 线程导出快照及关联记录, 完整 ZIP 写入后返回结果.
      * @param name dump 目录内的 ZIP 文件名
-     * @param before 快照时间的排他上限, 使用命令开始时的 Unix 毫秒时间
-     * @return 文件位置、已处理数量及失败信息; 生成失败时此前的正式 ZIP 保留
+     * @param before 仅导出早于此 Unix 毫秒时间的快照
+     * @return 文件路径、处理数量和错误, 失败时保留原有 ZIP
      */
     @NotNull
     public Result dump(@NotNull String name, long before) {
@@ -67,11 +66,11 @@ public final class SnapshotDump {
         try {
             target = this.files.dumpFile(name);
             Files.createDirectories(this.files.dump());
-            // 临时文件与正式 ZIP 位于同一目录, 整份归档写完后再替换目标.
+            // 先写同目录临时文件, 全部完成后再替换目标 ZIP
             temporary = Files.createTempFile(this.files.dump(), ".dump-", ".tmp");
             try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary)))) {
                 DataOutputStream output = new DataOutputStream(zip);
-                // 固定数量的 ZIP 成员承载连续记录, ZIP 目录也保持固定内存占用.
+                // 同类记录连续写入固定的 ZIP 条目, 目录大小不随记录数量增长
                 zip.putNextEntry(new ZipEntry("users.bin"));
                 this.writeUsers(output, progress);
                 zip.closeEntry();
@@ -81,18 +80,18 @@ public final class SnapshotDump {
                 zip.putNextEntry(new ZipEntry("snapshots.bin"));
                 this.writeSnapshots(output, before, progress);
                 zip.closeEntry();
-                // 保存分配计数, 已删除地图曾占用的 ID 也包含在导入后的分配进度中.
+                // 保留地图 ID 分配进度, 包括已删除地图占用的 ID
                 progress.current = "map-sequence";
                 zip.putNextEntry(new ZipEntry("sequence.bin"));
                 output.writeLong(this.storage.maps().sequence().join());
                 zip.closeEntry();
                 progress.current = "ZIP";
             }
-            // ZIP 完整关闭后才发布正式文件, 之前的成功归档保留到此时.
+            // ZIP 关闭成功后再替换正式文件
             publish(temporary, target);
             return progress.result(target, null);
         } catch (IOException | RuntimeException failure) {
-            // 任一阶段失败即终止导出并清理半成品, 清理故障附加到原始失败中.
+            // 导出失败时清理临时文件, 清理错误附加到原异常
             if (temporary != null) {
                 try {
                     Files.deleteIfExists(temporary);
@@ -104,13 +103,7 @@ public final class SnapshotDump {
         }
     }
 
-    /**
-     * 按玩家 UUID 分批写入名字映射, 并结束当前记录流.
-     *
-     * @param output 已打开的 users.bin 成员
-     * @param progress 导出数量与当前记录位置
-     * @throws IOException 记录写入失败
-     */
+    /** 按玩家 UUID 分批写入用户名记录, 最后写入结束标记. */
     private void writeUsers(DataOutputStream output, Progress progress) throws IOException {
         UUID after = null;
         while (true) {
@@ -128,7 +121,7 @@ public final class SnapshotDump {
         output.writeBoolean(false);
     }
 
-    // 从 0 向更小的全局 ID 分批导出地图, 保留原始数据及来源、版本和更新时间.
+    // 从 0 向更小的全局 ID 分批导出地图, 保留原始数据和来源信息
     private void writeMaps(DataOutputStream output, Progress progress) throws IOException {
         int after = 0;
         while (true) {
@@ -152,13 +145,7 @@ public final class SnapshotDump {
         output.writeBoolean(false);
     }
 
-    /**
-     * 写入截止时间之前的完整快照, 每批处理完后释放正文引用.
-     *
-     * @param output 已打开的 snapshots.bin 成员
-     * @param before 快照时间的排他上限, 整次导出使用同一个值
-     * @param progress 导出数量与当前记录位置
-     */
+    /** 分批写入截止时间之前的快照, 每批写完后释放数据引用. */
     private void writeSnapshots(DataOutputStream output, long before, Progress progress) throws IOException {
         UUID after = null;
         while (true) {
@@ -168,7 +155,7 @@ public final class SnapshotDump {
             for (int i = 0; i < batch.size(); i++) {
                 Snapshot snapshot = batch.get(i);
                 progress.current = "snapshot " + snapshot.meta().id();
-                // 导出时直接复制未修改的数据块; 每份快照前写入长度, 供导入时从 ZIP 中逐条读取.
+                // 每份快照前写入长度, 导入时据此逐条读取
                 byte[] data = this.codec.encode(snapshot);
                 writeSnapshot(output, data);
                 after = snapshot.meta().id();
@@ -178,13 +165,13 @@ public final class SnapshotDump {
         output.writeBoolean(false);
     }
 
-    // 在文件 I/O worker 中逐条导入, 返回成功、归档跳过和中断情况, 源 ZIP 与已落库记录保留.
+    // 逐条导入 ZIP, 返回成功、跳过和中断情况, 保留源文件和已写入的数据
     @NotNull
     public Result importFile(@NotNull String name) {
         return this.importFile(name, progress -> {});
     }
 
-    // 进度在当前导入 worker 中报告, 成功数量只包含已经完成的写入.
+    // 在导入线程报告进度, 成功数量只计算已完成的写入
     @NotNull
     public Result importFile(@NotNull String name, @NotNull Consumer<Result> listener) {
         Progress progress = new Progress();
@@ -201,7 +188,7 @@ public final class SnapshotDump {
                 if (entry == null) throw new IOException("ZIP contains no readable members");
                 do {
                     progress.current = entry.getName();
-                    // 按 ZIP 成员顺序消费记录, 每项数据库写入完成后才继续读取.
+                    // 按 ZIP 条目顺序读取, 每条记录写入完成后再继续
                     switch (entry.getName()) {
                         case "users.bin" -> this.readUsers(input, progress);
                         case "maps.bin" -> this.readMaps(input, progress);
@@ -218,7 +205,7 @@ public final class SnapshotDump {
         }
     }
 
-    // 逐条覆盖玩家名字映射, 每次写入成功后累计用户数.
+    // 逐条写入用户名记录, 覆盖同 UUID 的记录
     private void readUsers(DataInputStream input, Progress progress) throws IOException {
         while (input.readBoolean()) {
             StoredUser user = new StoredUser(UUID.fromString(input.readUTF()), input.readUTF(), input.readLong());
@@ -229,7 +216,7 @@ public final class SnapshotDump {
         }
     }
 
-    // 按原身份导入地图, 每条落库后等待缓存发布回调完成.
+    // 保留原地图 ID 导入, 每条保存后等待缓存更新完成
     private void readMaps(DataInputStream input, Progress progress) throws IOException {
         while (input.readBoolean()) {
             int id = input.readInt();
@@ -237,22 +224,22 @@ public final class SnapshotDump {
             MapSource source = new MapSource(input.readUTF(), input.readInt());
             MapArchiveRecord map = new MapArchiveRecord(new MapIdentity(source, id), input.readInt(), input.readLong(), readBytes(input));
             this.storage.maps().importMap(map).join();
-            // 地图计数表示已落库数量, 后续缓存发布失败时仍保留这条成功记录.
+            // 地图已写入数据库, 后续缓存更新失败也计为已保存
             progress.maps++;
             progress.report();
             this.mapImported.apply(map).join();
         }
     }
 
-    // 单份快照的数据故障归档后继续, 数据库故障和异常文件写入失败交给整次导入处理.
+    // 单份快照损坏时保存到异常目录并继续, 数据库或异常文件写入失败时中断
     private void readSnapshots(DataInputStream input, Progress progress) throws IOException {
         while (input.readBoolean()) {
             progress.current = "snapshot record " + (progress.snapshots + progress.failed + 1);
-            // 先读完当前记录, 损坏的快照正文仍可原样归档, 下一条从独立的长度前缀开始.
+            // 先读完整条记录, 损坏数据也能原样保存, 下一条由独立长度定位
             byte[] data = readBytes(input);
             DecodedSnapshot decoded = this.codec.decode(data);
             if (decoded instanceof DecodedSnapshot.Invalid invalid) {
-                // 解码失败时保留原始字节和原因, 归档成功后才计入跳过数量.
+                // 保存损坏字节和原因后, 才计入跳过数量
                 this.files.archiveImport(data, null, "corrupted", invalid.reason() + ": " + invalid.detail(), null);
                 progress.failed++;
                 progress.report();
@@ -260,7 +247,7 @@ public final class SnapshotDump {
             }
             Snapshot snapshot = ((DecodedSnapshot.Valid) decoded).snapshot();
             progress.current = "snapshot " + snapshot.meta().id();
-            // 逐个读取所有类型, 完成 CRC 校验, 解压和 NBT 解析后才写入数据库; 任一块损坏则归档这份快照.
+            // 写库前逐块完成校验、解压和 NBT 解析, 任一块损坏则保留为异常快照
             try {
                 for (var key : snapshot.keys()) {
                     snapshot.data(key);
@@ -273,15 +260,15 @@ public final class SnapshotDump {
             }
             StorageProvider.SaveOutcome saved = this.storage.importSnapshot(snapshot).join();
             if (saved.result().stored()) {
-                // 每条记录落库后结束缓存删除尝试, 再计入本次导入的成功数量.
+                // 写入数据库并完成缓存删除尝试后, 才计入成功数量
                 this.cache.invalidate(snapshot.meta().player()).join();
                 progress.snapshots++;
                 progress.report();
             } else if (saved.result().retriable()) {
-                // 数据库暂时不可用时中断导入, 后续可使用保留的源 ZIP 重新执行.
+                // 数据库暂不可用时停止导入, 恢复后可用原 ZIP 重试
                 throw new IOException("Database write failed for snapshot " + snapshot.meta().id(), saved.failure());
             } else {
-                // 存储拒绝的数据按原因归入异常目录, 保留快照元数据供后续查看.
+                // 按存储拒绝原因选择异常目录, 同时保留快照信息
                 String category = saved.result() == StorageProvider.SaveResult.REJECTED_OVERSIZED ? "oversized" : "malformed";
                 String reason = saved.failure() == null ? saved.result().name() : saved.failure().toString();
                 this.files.archiveImport(data, snapshot.meta(), category, reason, saved.failure());
@@ -292,11 +279,8 @@ public final class SnapshotDump {
     }
 
     /**
-     * 写入一条名字映射, 供数据库导出和来源迁移使用同一记录格式.
-     *
-     * @param output 当前名字记录流, 调用方在整组结束时写入 false
-     * @param user 原始玩家 UUID、名字与最后上线时间
-     * @throws IOException 记录写入失败
+     * 写入一条用户名记录, 导出和迁移共用此格式.
+     * @param output 记录流, <strong>调用方在整组记录结束后写入 false</strong>
      */
     public static void writeUser(@NotNull DataOutputStream output, @NotNull StoredUser user) throws IOException {
         output.writeBoolean(true);
@@ -306,11 +290,8 @@ public final class SnapshotDump {
     }
 
     /**
-     * 写入一份已编码快照, 长度前缀供导入端定位下一条记录.
-     *
-     * @param output 当前快照记录流, 调用方在整组结束时写入 false
-     * @param data 保留身份与元数据的完整快照字节
-     * @throws IOException 记录写入失败
+     * 写入长度和完整快照字节, 供导入时逐条读取.
+     * @param output 记录流, <strong>调用方在整组记录结束后写入 false</strong>
      */
     public static void writeSnapshot(@NotNull DataOutputStream output, byte @NotNull [] data) throws IOException {
         output.writeBoolean(true);
@@ -318,14 +299,11 @@ public final class SnapshotDump {
     }
 
     /**
-     * 将完整关闭的临时 ZIP 发布到正式路径, 替换此前的同名文件.
-     *
-     * @param temporary 与目标位于同一目录的完整临时 ZIP
-     * @param target 正式 ZIP 路径
-     * @throws IOException 文件替换失败, 由调用方清理临时文件
+     * 用已写完的临时 ZIP 替换同目录的目标文件.
+     * @throws IOException 文件替换失败时, 由调用方清理临时文件
      */
     public static void publish(@NotNull Path temporary, @NotNull Path target) throws IOException {
-        // 优先原子替换; 文件系统不支持时使用普通替换, 此时 ZIP 正文仍已完整写入.
+        // 优先原子替换, 文件系统不支持时使用普通替换
         try {
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException ignored) {
@@ -333,13 +311,13 @@ public final class SnapshotDump {
         }
     }
 
-    // 记录长度使用四字节整数, 随后紧跟该记录的完整字节.
+    // 四字节长度后紧跟完整记录
     private static void writeBytes(DataOutputStream output, byte[] bytes) throws IOException {
         output.writeInt(bytes.length);
         output.write(bytes);
     }
 
-    // 内存中只读取当前一条二进制记录, 长度不足表示归档截断并终止导入.
+    // 一次只读取一条记录, 字节不足时按 ZIP 截断处理
     private static byte[] readBytes(DataInputStream input) throws IOException {
         int length = input.readInt();
         byte[] data = input.readNBytes(length);
@@ -358,7 +336,7 @@ public final class SnapshotDump {
         private long maps;
         private long snapshots;
         private long failed; // 已成功写入异常目录并跳过的快照数
-        private String current = "ZIP"; // 当前阶段或记录身份, 失败时作为控制台定位信息
+        private String current = "ZIP"; // 当前阶段或记录 ID, 用于定位错误
 
         private void report() {
             long now = System.nanoTime();

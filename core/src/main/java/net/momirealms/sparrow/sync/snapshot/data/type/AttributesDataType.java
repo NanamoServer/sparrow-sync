@@ -41,9 +41,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/**
- * 同步白名单内属性的基础值与可跨服 modifier, 服务器本地 modifier 由配置黑名单保留.
- */
 public final class AttributesDataType extends CodecDataType<AttributesDataType.Attributes> implements NativePlayerDataType<AttributesDataType.Attributes> {
     public static final DataKey ATTRIBUTES = DataKey.sparrow("attributes");
 
@@ -83,9 +80,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
         return Set.of(InventoryDataType.INVENTORY, PotionEffectsDataType.POTION_EFFECTS);
     }
 
-    /**
-     * 安装属性变更回调, 安装失败的实例保留普通采集路径.
-     */
+    /** 安装属性变更回调, 失败的属性仍按常规方式采集. */
     public void injectTracker(@NotNull Player player) {
         CaptureTarget[] targets = this.captureTargets(PluginConfig.synchronization$attributes()).attributes();
         if (targets.length == 0) return;
@@ -100,10 +95,10 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
                 if (callback == null) {
                     throw new IllegalStateException("AttributeInstance.onDirty callback is unavailable");
                 }
-                // 回调随属性实例存活, 首次采集时才构建独立采集数据.
+                // 回调随属性实例保留, 首次采集时才创建数据副本
                 AttributeInstanceProxy.INSTANCE.setOnDirty(instance, new CaptureCache(callback));
             } catch (RuntimeException | LinkageError exception) {
-                // 当前项保留普通采集, 其余属性继续安装.
+                // 当前属性改用常规采集, 继续安装其他属性
                 SparrowSync.instance().logger().warn("Could not attach attribute cache for " + player.getName() + " (" + target.key() + "); this attribute will be captured without caching", exception);
             }
         }
@@ -122,7 +117,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
             CaptureTarget target = targets[i];
             net.minecraft.world.entity.ai.attributes.AttributeInstance instance = attributes.getInstance(target.holder());
             if (instance == null) continue;
-            // 动态替换的实例和配置新增项可能尚未注入, 按当前实例选择采集路径.
+            // 新属性或替换后的实例可能尚未安装回调, 按当前实例选择采集方式
             Consumer<net.minecraft.world.entity.ai.attributes.AttributeInstance> callback = AttributeInstanceProxy.INSTANCE.getOnDirty(instance);
             values[count++] = callback instanceof CaptureCache cache ? cache.capture(instance, target.key(), options) : captureAttribute(instance, target.key(), options);
         }
@@ -140,7 +135,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
             if (filterModifiers && options.modifierBlacklisted(id.toString())) continue;
             NamespacedKey key = new NamespacedKey(IdentifierProxy.INSTANCE.getNamespace(id), IdentifierProxy.INSTANCE.getPath(id));
             net.minecraft.world.entity.ai.attributes.AttributeModifier modifier = entry.getValue();
-            // NMS 实例上的 modifier 没有装备槽位; Craft 的转换同样固定为 ANY.
+            // NMS 属性加成没有装备槽位, 与 Craft 一样使用 ANY
             modifiers[count++] = new ModifierValue(key, modifier.amount(), OPERATIONS[modifier.operation().id()], EquipmentSlotGroup.ANY);
         }
         if (count < modifiers.length) modifiers = Arrays.copyOf(modifiers, count);
@@ -150,7 +145,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     private CaptureTargets captureTargets(AttributeOptions options) {
         CaptureTargets targets = this.captureTargets;
         if (targets != null && targets.options() == options) return targets;
-        // 配置在 bootstrap 阶段加载, 属性注册表在首次注入或采集时解析. reload 发布的新配置会重建目标数组.
+        // 首次安装或采集时解析属性注册表, 配置重载后重新生成属性列表
         List<CaptureTarget> attributes = new ArrayList<>();
         Iterator<Holder.Reference<net.minecraft.world.entity.ai.attributes.Attribute>> holders = BuiltInRegistries.ATTRIBUTE.listElements().iterator();
         while (holders.hasNext()) {
@@ -238,7 +233,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
                 CompoundTag modifier = localModifiers.getCompound(i, null);
                 if (modifier == null) continue;
                 String modifierId = modifier.getString("id", null);
-                // 无法识别的本地条目按未知数据保留; 明确命中黑名单的 modifier 也只属于目标服.
+                // 保留无法识别的本地条目, 黑名单内的属性加成也保留本服值
                 if (modifierId == null || options.modifierBlacklisted(modifierId)) modifiers.add(modifier.deepClone());
             }
         }
@@ -316,7 +311,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     public record Attributes(@NotNull AttributeValue @NotNull [] values) {
     }
 
-    /** 缓存与在途采集共享此独立采集数据, 消费方须只读访问 modifiers 数组. */
+    /** 缓存和采集结果共享此对象, <strong>modifiers 数组只读</strong>. */
     public record AttributeValue(@NotNull NamespacedKey key, double base, @NotNull ModifierValue @NotNull [] modifiers) {
     }
 
@@ -332,7 +327,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     private record CaptureTargets(AttributeOptions options, CaptureTarget[] attributes) {
     }
 
-    /** 单实例缓存, 变更时只丢弃引用, 下一次采集才重建独立采集数据. */
+    /** 每个属性实例缓存一份采集结果, 变更时清空, 下次采集再重建. */
     private static final class CaptureCache implements Consumer<net.minecraft.world.entity.ai.attributes.AttributeInstance> {
         private final Consumer<net.minecraft.world.entity.ai.attributes.AttributeInstance> delegate;
         private AttributeOptions capturedOptions;
@@ -344,8 +339,8 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
         @Override
         public void accept(net.minecraft.world.entity.ai.attributes.AttributeInstance instance) {
-            // 先失效, 保证原回调重入采集或抛异常时都无法读到旧值.
-            // 部分 NMS 修改还会在回调返回后收尾, 此处只使属性采集缓存失效, 不采集或编码.
+            // 调用原回调前清空缓存, 重入采集或回调异常时也不会复用旧值
+            // NMS 可能在回调返回后继续修改, 此处只清空缓存, 留到采集时再读取
             this.value = null;
             this.delegate.accept(instance);
         }
@@ -354,7 +349,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
         private AttributeValue capture(net.minecraft.world.entity.ai.attributes.AttributeInstance instance, NamespacedKey key, AttributeOptions options) {
             AttributeValue captured = this.value;
             if (captured != null && this.capturedOptions == options) return captured;
-            // 配置 reload 同样使缓存失效; 完整采集成功后才发布, 失败可在下一轮重试.
+            // 配置重载后缓存也失效, 完整采集成功后才缓存新值
             captured = captureAttribute(instance, key, options);
             this.capturedOptions = options;
             this.value = captured;

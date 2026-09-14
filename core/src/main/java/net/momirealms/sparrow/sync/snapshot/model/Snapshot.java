@@ -8,10 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 一份玩家数据快照, 由快照元数据与各类型的数据组成.
- * 类型数据可以是已解码的 Tag, 也可以保留为按需解码的原始块字节.
- */
+/** 玩家数据快照, 包含元数据和各类型的数据; 类型内容可按需解码. */
 public final class Snapshot {
     private final SnapshotMeta meta;
     private final SnapshotData content;
@@ -35,25 +32,19 @@ public final class Snapshot {
         return this.content;
     }
 
-    /**
-     * 数据体中全部类型的标识, <strong>不触发任何解析</strong>.
-     */
+    /** 返回全部类型标识, <strong>不触发解码</strong>. */
     @NotNull
     public Set<DataKey> keys() {
         return this.content.keys();
     }
 
-    /**
-     * 取一个类型的值, 数据体中没有这个类型时返回 null.
-     */
+    /** 读取指定类型, 不存在时返回 null. */
     @Nullable
     public Tag data(@NotNull DataKey key) {
         return this.content.get(key);
     }
 
-    /**
-     * 全部类型的 Tag, <strong>会还原数据体中的每一个类型</strong>.
-     */
+    /** 读取全部类型的 Tag, <strong>会解码所有尚未读取的数据</strong>. */
     @NotNull
     public Map<DataKey, Tag> allData() {
         return this.content.all();

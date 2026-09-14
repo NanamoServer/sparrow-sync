@@ -11,17 +11,11 @@ public interface SnapshotUpgrade {
      */
     int targetVersion();
 
-    /**
-     * 就地改写二进制形态的快照树.
-     * 入参来自刚解帧的新对象, 允许直接修改.
-     */
+    /** 直接修改刚解码的 NBT 快照. */
     @NotNull
     CompoundTag upgrade(@NotNull CompoundTag root);
 
-    /**
-     * 改写文档形态的快照.
-     * <strong>不得修改入参</strong>, 返回改写后的副本.
-     */
+    /** 返回升级后的文档副本, <strong>不得修改输入文档</strong>. */
     @NotNull
     Document upgrade(@NotNull Document document);
 }

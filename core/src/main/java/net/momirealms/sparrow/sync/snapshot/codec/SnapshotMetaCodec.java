@@ -17,9 +17,9 @@ public final class SnapshotMetaCodec {
     static final String FIELD_PLAYER = "player";   // 玩家 UUID
     static final String FIELD_TIMESTAMP = "ts";    // 逻辑保存时间, 毫秒
     static final String FIELD_CAUSE = "cause";     // 保存原因的枚举名
-    static final String FIELD_PINNED = "pinned";   // 是否排除在自动轮转之外
+    static final String FIELD_PINNED = "pinned";   // 固定快照不参与自动清理
     static final String FIELD_SERVER = "server";   // 采集服务器标识
-    static final String FIELD_MC_DATA = "mcData";  // 保存服务器的 Minecraft 数据版本, 用于展示和诊断
+    static final String FIELD_MC_DATA = "mcData";  // 保存服务器的 Minecraft 数据版本
 
     private SnapshotMetaCodec() {
     }
@@ -37,15 +37,11 @@ public final class SnapshotMetaCodec {
     }
 
     /**
-     * 读取完整快照中的 Meta 段, NBT 根节点须恰好占满该段.
-     *
-     * @param bytes 完整快照的来源数组
-     * @param offset Meta 段起点, <strong>须位于来源数组范围内</strong>
-     * @param length Meta 段字节数, <strong>须处于来源数组范围内</strong>
-     * @return 还原的快照元数据
-     * @throws IOException 当 NBT 无效, 有尾随内容或缺少身份字段时
+     * 读取指定区间内的元数据 NBT, 根节点必须恰好占满区间.
+     * @param offset 区间起点, <strong>须在来源数组内</strong>
+     * @param length 区间字节数, <strong>须在来源数组范围内</strong>
+     * @throws IOException NBT 无效、有多余字节或缺少身份字段时
      */
-    //  读取完整快照中的 Meta 段, NBT 根节点须恰好占满该段.
     @NotNull
     static SnapshotMeta decode(byte @NotNull [] bytes, int offset, int length) throws IOException {
         DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes, offset, length));
@@ -56,7 +52,6 @@ public final class SnapshotMetaCodec {
         return fromCompoundTag(compound);
     }
 
-    // 序列化成 CompoundTag
     @NotNull
     static CompoundTag toCompoundTag(@NotNull SnapshotMeta meta) {
         CompoundTag root = NBT.createCompound();
@@ -70,10 +65,9 @@ public final class SnapshotMetaCodec {
         return root;
     }
 
-    // 从 CompoundTag 解码成 SnapshotMeta
     @NotNull
     static SnapshotMeta fromCompoundTag(@NotNull CompoundTag root) throws IOException {
-        // 身份用于确定快照归属, 必须同时存在;
+        // 快照 ID 和玩家 UUID 都必须存在
         UUID player = root.getUUID(FIELD_PLAYER, null);
         if (player == null) throw new IOException("missing player uuid");
         UUID id = root.getUUID(FIELD_ID, null);

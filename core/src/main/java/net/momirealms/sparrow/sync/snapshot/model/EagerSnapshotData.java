@@ -10,28 +10,25 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 全部内容已保存为 Tag 的数据体, 取值无需解码, 迭代顺序跟随传入的 Map.
- * 对外提供只读视图, 调用方交付后不得再修改来源 Map 或其中的 Tag.
+ * 直接保存已解码的 Tag, 读取顺序与传入 Map 一致.
+ * <strong>交付后不得修改来源 Map 或其中的 Tag</strong>.
  */
 public final class EagerSnapshotData implements SnapshotData {
-    public static final EagerSnapshotData EMPTY = new EagerSnapshotData(Map.of()); // 空数据体共享实例
+    public static final EagerSnapshotData EMPTY = new EagerSnapshotData(Map.of());
 
-    private final Map<DataKey, Tag> values; // 类型与 Tag 的只读视图, all 每次返回同一对象
+    private final Map<DataKey, Tag> values; // 只读视图, all 返回同一对象
 
     /**
-     * 保存已经解码的类型数据, 读取时直接返回其中的 Tag.
-     *
-     * @param values 类型与 Tag, <strong>交付后调用方不得再修改 Map 或其中的 Tag</strong>
+     * 直接保存已解码的数据.
+     * @param values <strong>传入后不得修改 Map 或其中的 Tag</strong>
      */
     public EagerSnapshotData(@NotNull Map<DataKey, Tag> values) {
         this.values = Collections.unmodifiableMap(values);
     }
 
     /**
-     * 从采集或转换结果创建数据体.
-     *
-     * @param values 类型与 Tag, <strong>交付后调用方不得修改 Map 或其中的 Tag</strong>
-     * @return 直接持有这些 Tag 的数据体, 空输入返回 EMPTY
+     * 直接保存传入数据, 空 Map 返回 EMPTY.
+     * @param values <strong>传入后不得修改 Map 或其中的 Tag</strong>
      */
     @NotNull
     public static EagerSnapshotData fromTags(@NotNull Map<DataKey, Tag> values) {

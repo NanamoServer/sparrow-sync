@@ -7,16 +7,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 /**
- * 快照的元数据.
- * timestamp 在保存请求被接受时分配, 不是落库时刻. <strong>同一玩家的 timestamp 必须严格递增</strong>, 同毫秒的两份快照无法定序;
- *
- * @param id            快照身份, 落库主键
- * @param player        玩家 UUID
- * @param timestamp    保存请求被接受时的毫秒时间戳, 快照新旧的唯一裁决依据
- * @param cause         保存原因
- * @param pinned        是否固定, 固定快照豁免轮转清理
- * @param server        创建快照的服务器名
- * @param mcDataVersion 保存此快照的服务器的 Minecraft data version, 用于展示和诊断
+ * 快照元数据. timestamp 在接收保存请求时分配, <strong>同一玩家的时间戳必须严格递增</strong>.
+ * @param pinned 固定的快照不参与自动清理
+ * @param timestamp Unix 毫秒时间, 用于判断快照新旧
+ * @param mcDataVersion 保存时的 Minecraft 数据版本, 用于展示和诊断
  */
 public record SnapshotMeta(@NotNull UUID id,
                            @NotNull UUID player,
@@ -49,7 +43,7 @@ public record SnapshotMeta(@NotNull UUID id,
         private Builder() {
         }
 
-        /** 采集新快照时无需设置, build 会分配一个新身份; 解码既有快照时必须原样带回. */
+        /** 新快照由 build 分配 ID, 读取已有快照时保留原 ID. */
         @NotNull
         public Builder id(@NotNull UUID id) {
             this.id = id;

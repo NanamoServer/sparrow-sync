@@ -51,7 +51,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
     private static final String AMOUNTS_KEY = "amounts";
 
     public StatisticsDataType() {
-        // 服务器启动不代表所有 StatType 初始化完成, 启动时主动遍历访问确保内部的 map 缓存被正确创建.
+        // 启动时遍历 StatType, 初始化各类型的统计 Map
         for (StatType<?> type : BuiltInRegistries.STAT_TYPE) {
             for (Object value : type.getRegistry()) {
                 statistic(type, value);
@@ -217,7 +217,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
         Object2IntMap<Stat<?>> packet;
         synchronized (current) {
             packet = new Object2IntOpenHashMap<>(Math.max(current.size(), statistics.length));
-            // 客户端按键更新统计, 被清除的旧值与已有 dirty 键都需要显式发送零值.
+            // 客户端只更新收到的统计键, 已清除值和待更新键都要发送零值
             for (Stat<?> statistic : current.keySet()) packet.put(statistic, 0);
             for (Stat<?> statistic : dirty) packet.put(statistic, 0);
             current.clear();
@@ -228,7 +228,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
                 current.put(statistic, amount);
                 packet.put(statistic, amount);
             }
-            // forced stats 在原版读取后覆盖文件值, Player 回退沿用同一结果.
+            // 按原版顺序用 forced stats 覆盖文件值, 玩家线程回退也使用此结果
             for (Map.Entry<Object, Integer> entry : forcedStats().entrySet()) {
                 Stat<?> statistic = forcedStatistic(entry.getKey());
                 if (statistic == null) continue;

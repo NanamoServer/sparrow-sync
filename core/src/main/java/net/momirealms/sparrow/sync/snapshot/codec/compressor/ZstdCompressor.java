@@ -25,7 +25,7 @@ public final class ZstdCompressor implements Compressor {
 
     @Override
     public byte @NotNull [] decompress(byte @NotNull [] data, int offset, int length, int sizeLimit) throws IOException {
-        // 帧头声明的原始大小只决定分配, 实际解压受目标容量约束, 伪造的声明骗不出更大的缓冲
+        // 按帧头声明的大小分配结果数组, 解压时以数组容量为上限
         try {
             long contentSize = Zstd.getFrameContentSize(data, offset, length);
             if (contentSize < 0) {
@@ -35,11 +35,11 @@ public final class ZstdCompressor implements Compressor {
                 throw new IOException("decompressed size " + contentSize + " exceeds limit " + sizeLimit);
             }
             byte[] out = new byte[(int) contentSize];
-            // 出错以 unchecked ZstdException 浮出而不是返回错误码, 正常返回时长度必与声明一致
+            // 解压错误抛出 ZstdException, 成功时检查长度与声明一致
             Zstd.decompressByteArray(out, 0, out.length, data, offset, length);
             return out;
         } catch (RuntimeException exception) {
-            // 损坏数据与越界访问都转为接口承诺的 IOException
+            // 将解压和越界错误转换为 IOException
             throw new IOException("zstd decompression failed", exception);
         }
     }

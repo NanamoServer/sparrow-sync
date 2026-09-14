@@ -21,7 +21,7 @@ import java.util.UUID;
 
 @ApiStatus.Internal
 public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String playerName, @Nullable Map<DataKey, Integer> summary) {
-    public static final String SUFFIX = ".head"; // 追加在正文文件名之后, 正文缺失时仍可定位诊断信息
+    public static final String SUFFIX = ".head"; // 追加在快照数据文件名后, 数据文件缺失时仍可读取诊断信息
     private static final int VERSION = 1; // 本地头文件的版本, 独立于快照格式版本
 
     public ExceptionHeader {
@@ -71,7 +71,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
                 if (this.playerName != null) {
                     output.writeUTF(this.playerName);
                 }
-                // -1 与 0 分别表示清单不可得和有效的空清单.
+                // -1 表示没有类型列表, 0 表示列表为空
                 output.writeInt(this.summary == null ? -1 : this.summary.size());
                 if (this.summary != null) {
                     for (var entry : this.summary.entrySet()) {
@@ -90,7 +90,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
         }
     }
 
-    // 读取头文件中的身份与体量摘要, 保留摘要的三种状态和类型顺序.
+    // 读取快照信息和类型大小, 区分缺失、空列表和有数据三种状态
     @NotNull
     public static ExceptionHeader read(@NotNull Path body) throws IOException {
         Path header = path(body);
@@ -114,7 +114,7 @@ public record ExceptionHeader(@Nullable SnapshotMeta meta, @Nullable String play
             }
             Map<DataKey, Integer> summary = null;
             if (count >= 0) {
-                // 文件中的数量尚未可信, 容器随成功读取的条目增长, 截断交给流报告.
+                // 按实际读取的条目扩展列表, 文件截断时由输入流报错
                 summary = new LinkedHashMap<>();
                 for (int i = 0; i < count; i++) {
                     DataKey key = DataKey.parse(input.readUTF());

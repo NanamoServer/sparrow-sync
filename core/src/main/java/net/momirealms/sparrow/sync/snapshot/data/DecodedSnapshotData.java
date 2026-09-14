@@ -7,11 +7,11 @@ import org.jetbrains.annotations.Nullable;
 
 @ApiStatus.Internal
 public final class DecodedSnapshotData {
-    final Object[] values; // 当前请求独占的值缓冲, 应用阶段接管后可以逐槽释放
+    final Object[] values; // 本次请求独占的解码值, 应用后逐槽释放
     private final DataRegistry registry;
-    private final SnapshotData passthrough; // 本服未注册类型的临时视图, 交接到 Context 前复制为紧凑帧
-    private Throwable[] failures; // 首次解码失败时分配, 成功槽位保持 null
-    private int criticalFailure = -1; // 正式加载停止的位置, -1 表示没有关键失败
+    private final SnapshotData passthrough; // 未注册类型的临时视图, 交给应用流程前复制为独立数据帧
+    private Throwable[] failures; // 首次失败时创建, 成功槽位为 null
+    private int criticalFailure = -1; // 首个关键失败的槽位, -1 表示没有
 
     DecodedSnapshotData(@NotNull DataRegistry registry, @NotNull SnapshotData passthrough) {
         this.registry = registry;
@@ -31,13 +31,12 @@ public final class DecodedSnapshotData {
         return slot < 0 || this.failures == null ? null : this.failures[slot];
     }
 
-    // 返回使正式加载提前结束的类型.
+    // 返回首个解码失败的关键类型
     @Nullable
     public DataKey criticalFailure() {
         return this.criticalFailure < 0 ? null : this.registry.keyAt(this.criticalFailure);
     }
 
-    // 记录单个槽位的失败.
     void failed(int slot, @NotNull Throwable failure, boolean critical) {
         if (this.failures == null) {
             this.failures = new Throwable[this.values.length];
@@ -48,13 +47,13 @@ public final class DecodedSnapshotData {
         }
     }
 
-    // 取得未注册类型的临时视图, 供数据流水线在交接前复制原始块.
+    // 返回未注册类型的视图, 供后续复制原始块
     @NotNull
     SnapshotData passthrough() {
         return this.passthrough;
     }
 
-    // 将成功值和非关键失败移交本次玩家应用, 之后由 Context 管理值的生命周期.
+    // 将解码值和非关键失败交给应用流程, 随后由 Context 管理
     @NotNull
     SnapshotApplyContext intoApplyContext(@NotNull SnapshotData passthrough) {
         SnapshotApplyContext context = new SnapshotApplyContext(this.registry, passthrough, this.values);

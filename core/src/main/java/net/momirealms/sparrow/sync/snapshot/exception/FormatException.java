@@ -4,9 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-/**
- * 快照解码失败, 携带精确的失败原因, 让各载体形态对同一故障给出一致的结论.
- */
+/** 快照格式错误, 携带可供不同解码器共用的错误分类. */
 public class FormatException extends IOException {
     private final InvalidReason reason;
 
@@ -20,12 +18,9 @@ public class FormatException extends IOException {
         return this.reason;
     }
 
-    /**
-     * 解码失败的原因分类.
-     */
     public enum InvalidReason {
         UNSUPPORTED_FORMAT,     // 快照格式版本或标志位超出当前可读范围
-        UNSUPPORTED_COMPRESSION,// 字节头声明的压缩算法本版本不认识
+        UNSUPPORTED_COMPRESSION,// 无法识别块头声明的压缩算法
         CORRUPTED               // 数据损坏或结构不完整
     }
 }

@@ -20,14 +20,14 @@ import java.util.Map;
 import java.util.zip.CRC32;
 
 /**
- * 完整快照的二进制读写, 用于本地文件和跨服缓存.
- * 7 字节快照头之后依次保存必需的 Meta 段和一个完整数据帧, 所有整数使用大端序.
- * Meta 和数据帧分别交给各自的编码器, 类型内容在首次取值时校验和解压.
+ * 本地文件和跨服缓存使用的二进制快照格式.
+ * 7 字节快照头后依次写入元数据和数据帧, 整数使用大端序.
+ * 类型内容在首次读取时校验和解压.
  */
 public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     private static final int HEADER_LENGTH = 7; // u8 版本, u16 Meta 长度, u32 Meta CRC
 
-    private final SnapshotDataCodec dataCodec; // 与数据库共用的数据帧编码器及压缩配置
+    private final SnapshotDataCodec dataCodec; // 与数据库共用数据帧格式和压缩配置
 
     public BinarySnapshotCodec(@NotNull SnapshotDataCodec dataCodec) {
         this.dataCodec = dataCodec;
@@ -56,17 +56,14 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         ByteArrayOutputStream output = new ByteArrayOutputStream(HEADER_LENGTH + meta.length);
         output.write(header);
         output.write(meta);
-        // 数据帧直接追加到完整快照的缓冲区, 其中的原始块可从来源数组复制.
+        // 将数据帧追加到元数据之后, 已有原始块直接复制
         this.dataCodec.write(snapshot.content(), output);
         return output.toByteArray();
     }
 
     /**
-     * 从完整快照中取得类型清单与未压缩字节数, 供本地异常头保存诊断摘要.
-     * 清单依赖数据帧索引及其 CRC; Meta 内容损坏仍可提取, payload 保持原样.
-     *
-     * @param encoded 待归档的完整快照字节, 可以包含损坏的数据
-     * @return 按块顺序排列的只读摘要; 无法读取索引时为 null, 单个块头损坏时该类型体量为 -1
+     * 从数据索引和块头提取类型与大小, 供异常快照头文件使用, 元数据损坏时仍可尝试读取.
+     * @return 按块顺序排列的只读摘要, 索引不可读时为 null, 单个块头损坏时大小为 -1
      */
     @Nullable
     public Map<DataKey, Integer> summarize(byte @NotNull [] encoded) {
@@ -77,14 +74,14 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
         int dataOffset = HEADER_LENGTH + metaLength;
         if (metaLength == 0 || dataOffset > encoded.length) return null;
         try {
-            // 区间解码复用输入数组, 并在访问各块之前校验数据帧版本和索引 CRC.
+            // 复用来源数组, 读取块头前先校验数据帧版本和索引 CRC
             SnapshotData data = this.dataCodec.decode(encoded, dataOffset, encoded.length - dataOffset);
             Map<DataKey, Integer> summary = new LinkedHashMap<>();
             for (DataKey key : data.keys()) {
                 try {
                     summary.put(key, data.rawLength(key));
                 } catch (UncheckedIOException failure) {
-                    // 单块头损坏仍保留类型名, 其他块的体量继续读取.
+                    // 块头损坏时仍保留类型名, 继续读取其他块的大小
                     summary.put(key, -1);
                 }
             }
@@ -95,10 +92,9 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
     }
 
     /**
-     * 读取快照身份和数据索引, 返回引用原数组的惰性快照.
-     *
-     * @param encoded 完整快照, <strong>成功返回后调用方不得修改数组内容</strong>
-     * @return 有效快照或带具体原因的无效结果, 块内错误在首次取值时报告
+     * 读取快照元数据和索引, 类型内容延迟到首次取值时校验和解码.
+     * @param encoded <strong>返回后不得修改来源数组</strong>
+     * @return 引用原数组的快照, 或带原因的无效结果
      */
     @Override
     @NotNull
@@ -123,7 +119,7 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
                 throw new FormatException(InvalidReason.CORRUPTED, "meta checksum mismatch");
             }
             SnapshotMeta meta = SnapshotMetaCodec.decode(encoded, HEADER_LENGTH, metaLength);
-            // 数据编码器接收已经确定的区间, 后续原始块引用仍指向同一个输入数组.
+            // 数据帧和后续原始块均引用同一个来源数组
             SnapshotData data = this.dataCodec.decode(encoded, dataOffset, encoded.length - dataOffset);
             return new DecodedSnapshot.Valid(new Snapshot(meta, data));
         } catch (FormatException exception) {

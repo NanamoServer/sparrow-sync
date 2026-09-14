@@ -14,21 +14,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 快照与完整 NBT 树的字段映射, 供 JSON 的类型内容转换使用.
- * id 与 player 必填, 其余元数据按既有缺省值读取; 完整树额外包含以 DataKey 为键的 data.
+ * 快照与完整 NBT 树互转, 供 JSON 编解码使用.
  */
 final class SnapshotNBTCodec {
-    static final String FIELD_DATA = "data";       // 完整树中的数据体, 元数据段省略此键
+    static final String FIELD_DATA = "data";       // 完整快照的数据字段, 独立元数据不包含此字段
 
     private SnapshotNBTCodec() {
     }
 
-    /**
-     * 将完整快照展开为树.
-     *
-     * @param snapshot 待展开的快照
-     * @return 元数据与 data 共存的 compound
-     */
+    /** 将快照转为包含元数据和 data 的 CompoundTag. */
     @NotNull
     static CompoundTag toCompoundTag(@NotNull Snapshot snapshot) {
         CompoundTag root = SnapshotMetaCodec.toCompoundTag(snapshot.meta());
@@ -41,11 +35,8 @@ final class SnapshotNBTCodec {
     }
 
     /**
-     * 将 JSON 等载体提供的完整树还原为已经展开的数据体.
-     *
-     * @param root 同时包含元数据与可选 data 的根
-     * @return 使用 EagerSnapshotData 的快照
-     * @throws IOException 当玩家或快照身份缺失时
+     * 从完整 NBT 树读取快照, 类型数据直接保存为 Tag.
+     * @throws IOException 缺少玩家 UUID 或快照 ID 时
      */
     @NotNull
     static Snapshot fromCompoundTag(@NotNull CompoundTag root) throws IOException {

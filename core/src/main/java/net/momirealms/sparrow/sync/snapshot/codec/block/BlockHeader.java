@@ -1,13 +1,11 @@
 package net.momirealms.sparrow.sync.snapshot.codec.block;
 
 /**
- * 单块二进制头中的四个编码字段, 仅供块读取, 复制和大小预览使用.
- * 字段按算法, payload 长度, 原始长度, CRC32 的顺序写入, 总计 13 字节.
- *
- * @param compressorId payload 使用的压缩算法标识, 只有解码内容时才要求本服支持
- * @param payloadLength 实际存储的 payload 字节数, 不包含块头
- * @param rawLength 解压后单键 compound 的完整 NBT 字节数, 包含类型名
- * @param checksum payload 的 CRC32 位模式, 覆盖实际存储的字节
+ * 13 字节块头, 依次保存压缩算法、存储长度、原始长度和 CRC32.
+ * @param compressorId 解码块内容时才检查算法是否受支持
+ * @param payloadLength 不含块头的存储字节数
+ * @param rawLength 解压后的完整 NBT 长度, 包含类型名
+ * @param checksum 实际存储字节的 CRC32
  */
 public record BlockHeader(byte compressorId, int payloadLength, int rawLength, int checksum) {
 }

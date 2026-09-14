@@ -26,12 +26,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 人工可读的 JSON 形态快照编解码, 用于调试导出与手工修订, 不承担持久化.
- * 元数据为 JSON 字段, data 中每个类型直接保存 SNBT 字符串, 保留数值类型后缀和数组标记.
- * 字段名与二进制形态的树排布一致, 解码把 JSON 还原成同构的树后进入升级管线与树读取.
+ * 供查看和手工编辑的 JSON 快照格式.
+ * 元数据直接保存为 JSON 字段, 各类型数据保存为 SNBT 字符串, 保留数值类型和数组标记.
  */
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
-    static final String FIELD_FORMAT = "format";    // 树形态的版本在帧头字节里, JSON 形态以顶层字段自述
+    static final String FIELD_FORMAT = "format";    // JSON 的格式版本保存在顶层字段
 
     private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5() ? TagParserProxy.INSTANCE.create(NBTOps.INSTANCE) : null;
     private static final JsonWriterSettings JSON_WRITER = JsonWriterSettings.builder().indent(true).build();
@@ -66,7 +65,7 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
                 return new DecodedSnapshot.Invalid(InvalidReason.CORRUPTED, "missing or non-numeric format field");
             }
             int format = formatNumber.intValue();
-            // 仅在支持范围内进入读取流程, 历史开发格式与未来版本均拒绝.
+            // 只读取支持范围内的格式版本
             if (format < MINIMUM_SUPPORTED_VERSION || format > CURRENT_VERSION) {
                 return new DecodedSnapshot.Invalid(InvalidReason.UNSUPPORTED_FORMAT, "snapshot format " + format + ", supported range " + MINIMUM_SUPPORTED_VERSION + ".." + CURRENT_VERSION);
             }
@@ -79,8 +78,8 @@ public final class JsonSnapshotCodec implements SnapshotCodec<String> {
         }
     }
 
-    // JSON 字段还原成与二进制形态同构的树. id 与逻辑时间戳是身份与定序依据必须在场,
-    // cause 等其余元数据沿用树读取的宽容缺省; 手改坏的文件报错直接点名问题字段
+    // 先还原完整 NBT 树, ID 和时间戳必须存在
+    // 其余元数据使用默认值, 无效字段在错误中指明
     private static CompoundTag toTagTree(Document document) throws IOException {
         CompoundTag root = NBT.createCompound();
         root.putUUID(SnapshotMetaCodec.FIELD_ID, UUID.fromString(requireString(document, SnapshotMetaCodec.FIELD_ID)));

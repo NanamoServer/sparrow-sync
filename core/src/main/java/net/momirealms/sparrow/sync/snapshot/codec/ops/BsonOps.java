@@ -27,13 +27,9 @@ import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
 /**
- * BSON 域的 DFU DynamicOps, 与 NBTOps 经 {@code convertTo} 互转. 域值为 Document / List / String /
- * Integer / Long / Double / Boolean / Binary, 空值为 null. 窄数值类型向本域升宽 (byte/short -> int32,
- * float -> double), boolean 为 BSON 布尔且读取兼容数值 0/1 (NBT 转来的布尔是数值).
- * int/long 数组以单键标记文档 {@code {"__i32a": [...]}} / {@code {"__i64a": [...]}} 无损往返,
- * 两个键名为本域保留 (不用 $ 前缀, MongoDB 拒绝存储或查询 $ 开头的字段名).
- * 列表语义只覆盖 List, Binary 与标记文档不参与 {@code getStream}; 生产链路中本域只做 convertTo 结构转换,
- * Codec 的 encode/parse 都发生在 NBT 域.
+ * 在 BSON 和 NBT 之间转换数据, 玩家类型的 Codec 仍在 NBT 上运行.
+ * byte/short 转为 int32, float 转为 double; 布尔读取兼容 NBT 的 0/1.
+ * 整数数组用保留字段 {@code __i32a}、{@code __i64a} 标记, Binary 和标记文档不作为普通列表读取.
  */
 public final class BsonOps implements DynamicOps<Object> {
     public static final BsonOps INSTANCE = new BsonOps();
@@ -63,7 +59,7 @@ public final class BsonOps implements DynamicOps<Object> {
         return switch (input) {
             case null -> outOps.empty();
             case Document document -> {
-                // 标记文档先于普通 map 判定, 否则数组会被当成单字段 record
+                // 先识别数组标记, 再处理普通文档
                 int[] ints = intArrayValue(document);
                 if (ints != null) yield outOps.createIntList(Arrays.stream(ints));
                 long[] longs = longArrayValue(document);
@@ -79,7 +75,7 @@ public final class BsonOps implements DynamicOps<Object> {
             case Long value -> outOps.createLong(value);
             case Double value -> outOps.createDouble(value);
             case Date date -> outOps.createLong(date.getTime());
-            // 驱动可能产出的其余类型逐一给出可读的目标形态, 一个陌生字段不拖垮整份文档
+            // 将 BSON 特有类型转换为目标格式可表示的值
             case UUID uuid -> outOps.createIntList(Arrays.stream(UUIDUtil.uuidToIntArray(uuid)));
             case Decimal128 decimal -> outOps.createDouble(decimal.doubleValue());
             case ObjectId objectId -> outOps.createString(objectId.toHexString());
@@ -89,7 +85,7 @@ public final class BsonOps implements DynamicOps<Object> {
         };
     }
 
-    // BSON null 字段语义等同缺失, 过滤后不会把 EndTag 塞进目标域的 compound (NBT compound 含 EndTag 会提前终止序列化)
+    // 忽略 BSON null 字段, NBT Compound 中的 EndTag 会提前结束序列化
     @Override
     public <U> U convertMap(DynamicOps<U> outOps, Object input) {
         if (!(input instanceof Document document)) {
@@ -106,7 +102,7 @@ public final class BsonOps implements DynamicOps<Object> {
             return outOps.createList(Stream.empty());
         }
         return outOps.createList(list.stream().map(element -> {
-            // 列表元素没有"缺失"语义, null 直接失败好过让 EndTag 混进目标列表
+            // 列表中的 null 直接报错, 不将其转换为 EndTag
             if (element == null) {
                 throw new IllegalArgumentException("null element in bson list");
             }
@@ -125,7 +121,7 @@ public final class BsonOps implements DynamicOps<Object> {
 
     @Override
     public Object createNumeric(Number value) {
-        // 兜底按运行时类型分派, long 不塌 double
+        // 按实际数值类型转换, long 保持整数精度
         return switch (value) {
             case Byte number -> (int) number;
             case Short number -> (int) number;
@@ -170,7 +166,7 @@ public final class BsonOps implements DynamicOps<Object> {
     @Override
     public DataResult<Boolean> getBooleanValue(Object input) {
         if (input instanceof Boolean bool) return DataResult.success(bool);
-        // NBT 域的布尔经 convertTo 到达本域时是数值 0/1
+        // 从 NBT 转来的布尔值使用数值 0/1
         if (input instanceof Number number) return DataResult.success(number.byteValue() != 0);
         return DataResult.error(() -> "Not a boolean: " + input);
     }
@@ -179,8 +175,6 @@ public final class BsonOps implements DynamicOps<Object> {
     public Object createBoolean(boolean value) {
         return value;
     }
-
-    // ---- 字符串 ----
 
     @Override
     public DataResult<String> getStringValue(Object input) {
@@ -192,8 +186,6 @@ public final class BsonOps implements DynamicOps<Object> {
     public Object createString(String value) {
         return value;
     }
-
-    // ---- 列表 ----
 
     @Override
     public DataResult<Stream<Object>> getStream(Object input) {
@@ -239,11 +231,10 @@ public final class BsonOps implements DynamicOps<Object> {
         return DataResult.error(() -> "mergeToList called with not a list: " + list, list);
     }
 
-    // ---- 数组: byte[] 走 Binary, int[]/long[] 走标记文档 ----
-
+    // byte[] 使用 Binary, int[] 和 long[] 使用标记文档
     @Override
     public Object createByteList(ByteBuffer input) {
-        // duplicate().clear() 与 capacity 对齐 DFU 默认实现的取整个缓冲区语义
+        // 按 DFU 约定读取整个缓冲区, 范围由 capacity 决定
         ByteBuffer whole = input.duplicate().clear();
         byte[] bytes = new byte[input.capacity()];
         whole.get(0, bytes, 0, bytes.length);
@@ -254,7 +245,7 @@ public final class BsonOps implements DynamicOps<Object> {
     public DataResult<ByteBuffer> getByteBuffer(Object input) {
         if (input instanceof Binary binary) return DataResult.success(ByteBuffer.wrap(binary.getData()));
         if (input instanceof byte[] bytes) return DataResult.success(ByteBuffer.wrap(bytes));
-        // 回退: 普通数字列表逐位收窄
+        // 普通数字列表逐项转换为字节
         return this.getStream(input).flatMap(stream -> {
             List<Object> list = stream.toList();
             int size = list.size();
@@ -387,7 +378,7 @@ public final class BsonOps implements DynamicOps<Object> {
             return DataResult.error(() -> "mergeToMap called with not a map: " + map, map);
         }
         if (!(key instanceof String stringKey)) {
-            // DataResult 的 partial 不接受 null, 空前缀时退化为无 partial 的错误
+            // DataResult 的 partial 不能为 null, 空前缀时只返回错误
             return map == null ? DataResult.error(() -> "key is not a string: " + key) : DataResult.error(() -> "key is not a string: " + key, map);
         }
         Document result = map instanceof Document existing ? new Document(existing) : new Document();
@@ -457,12 +448,12 @@ public final class BsonOps implements DynamicOps<Object> {
         return value;
     }
 
-    // 与 intArrayValue/longArrayValue 用同一套完整解析判定, 元素类型不符的伪标记文档按普通 map 处理而不是被吞掉
+    // 只有元素类型也正确时才识别为数组标记, 其余按普通文档处理
     private static boolean isArrayMarker(Document document) {
         return intArrayValue(document) != null || longArrayValue(document) != null;
     }
 
-    // key 恒为 String, AbstractStringBuilder 免去 key 装箱与末次全量 merge
+    // 键始终为 String, 直接累积字段并在结束时构造文档
     private final class BsonRecordBuilder extends RecordBuilder.AbstractStringBuilder<Object, Document> {
 
         private BsonRecordBuilder() {

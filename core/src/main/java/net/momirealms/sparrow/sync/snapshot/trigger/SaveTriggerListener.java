@@ -49,11 +49,11 @@ public final class SaveTriggerListener implements Listener {
             PlayerSession session = this.sessions.find(player.getUniqueId());
             if (session == null) continue;
             if (VersionHelper.isFolia()) {
-                // Folia 仅在 global tick 的 saveIncrementally(true) 派发定时世界保存事件, 不拥有任何玩家.
-                // 到玩家的 Region 后才接受保存, SessionManager 会检查通知是否已经过期.
+                // Folia 的定时世界保存事件在全局线程触发
+                // 切到玩家区域后再接受保存, SessionManager 会检查会话是否仍有效
                 this.plugin.scheduler().entity().run(player, () -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {});
             } else {
-                // Paper/Spigot 在主线程派发, 玩家线程采集组当场采完并入队, 不再延后 1 tick.
+                // Paper/Spigot 已在主线程, 立即完成同步类型采集并排队保存
                 this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE);
             }
         }

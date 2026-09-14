@@ -28,7 +28,7 @@ public final class DeflateCompressor implements Compressor {
             int read;
             while ((read = stream.read(buffer)) != -1) {
                 total += read;
-                // 边解压边计量, 超限立即停止, 解压炸弹不会耗尽内存
+                // 边解压边检查长度, 超过上限立即停止
                 if (total > sizeLimit) {
                     throw new IOException("decompressed size exceeds limit " + sizeLimit);
                 }

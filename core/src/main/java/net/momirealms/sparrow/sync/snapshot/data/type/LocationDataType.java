@@ -46,7 +46,6 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
             throw new IllegalStateException("location world is not loaded: " + value.world());
         }
         Location target = new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch());
-        // Folia 没有同步传送, 这里只发起异步传送, 不等待也不校验结果.
         if (VersionHelper.isFolia()) {
             player.teleportAsync(target);
             return;
@@ -74,7 +73,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
         rotation.add(NBT.createFloat(value.yaw()));
         rotation.add(NBT.createFloat(value.pitch()));
 
-        // Paper 优先读取 UUID, world 分支会按当前服务器的同名世界解析目标维度.
+        // Paper 优先按 UUID 找世界, world 字段按本服同名世界解析
         playerData.remove("Dimension");
         playerData.remove("WorldUUIDMost");
         playerData.remove("WorldUUIDLeast");

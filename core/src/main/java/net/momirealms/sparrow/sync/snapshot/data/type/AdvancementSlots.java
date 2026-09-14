@@ -9,13 +9,12 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * 为 advancement ID 分配跨 reload 稳定的整数槽位, 供玩家对象用BitSet记录有过进度的数据.
- * <p>已删除的 ID 继续占用原槽位且 holder 为 null, 因此在线玩家已有的BitSet记录不需要重排.
- * 布局完成后通过 volatile 字段一次发布, 异步 capture 只读取已经完整构造的快照.
+ * 为成就 ID 分配固定槽位, reload 后沿用旧编号.
+ * 删除的 ID 仍保留槽位, holder 为 null; 完整布局通过 volatile 一次发布.
  */
 final class AdvancementSlots {
-    private final Supplier<Map<?, ?>> advancements; // 延迟读取当前服务端 advancement Map
-    private volatile Layout layout = new Layout(null, new Object[0], Map.of()); // 当前索引布局, source 为 null 表示布局尚未首次构建.
+    private final Supplier<Map<?, ?>> advancements; // 延迟获取服务端当前成就 Map
+    private volatile Layout layout = new Layout(null, new Object[0], Map.of()); // 当前布局, source 为 null 时尚未构建
 
     AdvancementSlots() {
         this(() -> MinecraftServer.getServer().getAdvancements().advancements);
@@ -25,11 +24,7 @@ final class AdvancementSlots {
         this.advancements = advancements;
     }
 
-    /**
-     * 返回与当前 advancement Map 对应的布局, 必要时先完成一次索引布局重建.
-     *
-     * @return 稳定布局, 构建期间 Map 连续变化时返回 null
-     */
+    /** 返回当前成就 Map 对应的布局, 必要时重建; Map 连续变化时返回 null. */
     @Nullable
     Layout current() {
         Map<?, ?> source = this.advancements.get();
@@ -39,14 +34,12 @@ final class AdvancementSlots {
     }
 
     /**
-     * 从一个稳定的 advancement Map 构建新索引布局并更新当前布局引用.
-     * 新布局继承旧的 ID -> slot 映射, 布局以服务端 advancement Map 的引用身份区分版本.
-     *
-     * @return 构建完成的索引布局, 两次尝试都撞上 Map 换代时返回 null
+     * 重建布局并沿用原槽位, 按服务端 Map 引用判断版本.
+     * @return 新布局, 两次尝试都遇到 Map 变化时返回 null
      */
     @Nullable
     private synchronized Layout rebuild() {
-        // 一次尝试只接受从读取开始到发布前都保持同一引用的 Map
+        // 从读取到发布期间, 服务端 Map 引用必须保持不变
         for (int attempt = 0; attempt < 2; attempt++) {
             Map<?, ?> source = this.advancements.get();
             Layout current = this.layout;
@@ -57,12 +50,12 @@ final class AdvancementSlots {
             for (Map.Entry<?, ?> entry : source.entrySet()) {
                 slots.putIfAbsent(entry.getKey(), slots.size());
             }
-            // 按完整历史槽位数建表, 当前 generation 已删除的 ID 自然保留为 null
+            // 按历史槽位总数分配数组, 已删除 ID 的位置为 null
             Object[] holders = new Object[slots.size()];
             for (Map.Entry<?, ?> entry : source.entrySet()) {
                 holders[slots.get(entry.getKey())] = entry.getValue();
             }
-            // 扫描期间发生 reload 时丢弃候选布局, 防止新旧 holder 混入同一份快照
+            // 扫描期间发生 reload 时丢弃本次结果, 重新读取
             if (this.advancements.get() != source) continue;
 
             Layout rebuilt = new Layout(source, holders, Map.copyOf(slots));
@@ -73,11 +66,8 @@ final class AdvancementSlots {
     }
 
     /**
-     * 把 NMS 报告的 holder 转换为当前稳定槽位.
-     * 无法匹配时由玩家 tracker 永久回退到 dense 路径, 保证候选集合不会漏项.
-     *
-     * @param holder NMS 加入 progressChanged 的 AdvancementHolder
-     * @return holder 对应槽位, 布局不稳定或 ID 不存在时返回 -1
+     * 查询 holder 的固定槽位, 无法确定时由跟踪器改为全量采集.
+     * @return 槽位编号, 布局不稳定或 ID 不存在时为 -1
      */
     int observe(Object holder) {
         Layout current = this.current();
@@ -85,11 +75,10 @@ final class AdvancementSlots {
     }
 
     /**
-     * 一次完整的 advancement 布局快照.
-     *
-     * @param source 生成此布局的服务端 Map 引用, 初始未构建的布局为 null
-     * @param holders slot -> 当前 holder, 已删除 ID 的位置为 null
-     * @param slots ID -> 生命周期稳定 slot, 包含已经删除的历史 ID
+     * 成就布局快照.
+     * @param source 对应的服务端 Map, 尚未构建时为 null
+     * @param holders 各槽位的 holder, 已删除项为 null
+     * @param slots 成就 ID 对应的固定槽位, 包含已删除 ID
      */
     record Layout(@Nullable Map<?, ?> source, Object[] holders, Map<Object, Integer> slots) {
 
@@ -100,7 +89,7 @@ final class AdvancementSlots {
             return this.holders[slot];
         }
 
-        // 查询 advancement ID 的槽位, 从未出现过的 ID 返回 -1.
+        // 查询成就槽位, 从未出现过的 ID 返回 -1
         int slot(Object id) {
             Integer slot = this.slots.get(id);
             return slot == null ? -1 : slot;

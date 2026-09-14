@@ -44,7 +44,7 @@ public final class EnchantmentSeedDataType extends CodecDataType<Integer> implem
     @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Integer value) {
-        // 原版把零值当作“缺失”并在 load 时重新随机, 该边界只能留给 join setter 保真.
+        // 原版 load 遇到零值会重新随机, 留到 Join 再写回零值
         if (value == 0) return NativeApplyResult.NOT_APPLIED;
         playerData.putInt("XpSeed", value);
         return NativeApplyResult.APPLIED_PLAYER_DATA;
