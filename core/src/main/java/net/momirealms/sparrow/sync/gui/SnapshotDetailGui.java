@@ -7,6 +7,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
 import net.momirealms.sparrow.sync.compatibility.economy.VaultDataType;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
+import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
@@ -321,7 +322,7 @@ public final class SnapshotDetailGui {
     // 渲染当前查看者语言中的 gui 消息
     Component text(String key, Object... values) {
         List<Component> arguments = Arrays.stream(values).map(value -> value instanceof Component component ? component : Component.text(String.valueOf(value))).toList();
-        return TranslationManager.instance().render(Component.translatable("gui." + key).arguments(arguments), this.viewer.locale())
+        return TranslationManager.instance().render(Component.translatable("gui." + key).arguments(arguments), PlayerUtils.locale(this.viewer))
                 .decoration(TextDecoration.ITALIC, false);
     }
 

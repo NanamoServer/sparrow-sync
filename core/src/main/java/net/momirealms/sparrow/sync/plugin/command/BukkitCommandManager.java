@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.plugin.command;
 
 import net.kyori.adventure.util.Index;
+import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotCaptureCommand;
@@ -79,7 +80,7 @@ public final class BukkitCommandManager extends AbstractCommandManager {
     @Override
     protected Locale getLocale(CommandSender sender) {
         if (sender instanceof Player player) {
-            return player.locale();
+            return PlayerUtils.locale(player);
         }
         return null;
     }

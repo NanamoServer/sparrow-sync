@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.session.gate;
 
-import com.destroystokyo.paper.profile.PlayerProfile;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
 import net.minecraft.network.Connection;
@@ -15,6 +16,9 @@ import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerConfigurationPacketListenerImplProxy;
+import net.momirealms.sparrow.sync.proxy.mojang.authlib.GameProfileProxy;
+import net.momirealms.sparrow.sync.proxy.craftbukkit.util.CraftChatMessageProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.operation.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
@@ -61,9 +65,9 @@ public final class ConfigurationPacketGate implements LoginGate {
         Channel channel = user.channel();
         if (!(channel.pipeline().get("packet_handler") instanceof Connection connection)) return;
         if (!(connection.getPacketListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
-        PlayerProfile profile = listener.paperConnection.getProfile();
-        UUID uuid = profile.getId();
-        String name = profile.getName();
+        Object profile = ServerConfigurationPacketListenerImplProxy.INSTANCE.getGameProfile(listener);
+        UUID uuid = GameProfileProxy.INSTANCE.getId(profile);
+        String name = GameProfileProxy.INSTANCE.getName(profile);
         assert uuid != null;
         assert name != null;
         // passed 记录本连接是否已放行过配置结束包, 用于识别再次进入配置阶段
@@ -77,7 +81,7 @@ public final class ConfigurationPacketGate implements LoginGate {
                 ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
                 existing.released().thenRun(() -> channel.eventLoop().execute(() -> {
                     if (channel.isActive()) {
-                        this.beginLogin(user, listener, uuid, name);
+                        this.beginLogin(user, listener, connection, uuid, name);
                     }
                 }));
                 return;
@@ -89,12 +93,12 @@ public final class ConfigurationPacketGate implements LoginGate {
         // 暂缓发送配置结束包, 数据准备期间暂停原版的应答超时计时
         event.cancelled(true);
         ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
-        this.beginLogin(user, listener, uuid, name);
+        this.beginLogin(user, listener, connection, uuid, name);
     }
 
     // 注册会话, 取得锁后准备登录数据
-    private void beginLogin(NetworkUser user, ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
-        PlayerSession session = this.sessionManager.tryOpen(uuid, name, listener.connection);
+    private void beginLogin(NetworkUser user, ServerConfigurationPacketListenerImpl listener, Connection connection, UUID uuid, String name) {
+        PlayerSession session = this.sessionManager.tryOpen(uuid, name, connection);
         if (session == null) {
             this.rejectTooFast(listener, uuid, name, "another connection won session registration");
             return;
@@ -192,13 +196,18 @@ public final class ConfigurationPacketGate implements LoginGate {
     // 已有会话尚未结束时拒绝重复登录
     private void rejectTooFast(ServerConfigurationPacketListenerImpl listener, UUID uuid, String name, String reason) {
         this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, reason);
-        listener.paperConnection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
+        this.disconnect(listener, MessageConstants.KICK_LOGIN_TOO_FAST.build());
     }
 
     // 数据准备失败时作废会话并断开连接
     private void refuse(ServerConfigurationPacketListenerImpl listener, PlayerSession session, String name, String reason) {
         this.sessionManager.abort(session);
         this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
-        listener.paperConnection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());
+        this.disconnect(listener, MessageConstants.KICK_SYNC_NOT_READY.build());
+    }
+
+    private void disconnect(ServerConfigurationPacketListenerImpl listener, Component reason) {
+        String json = GsonComponentSerializer.gson().serialize(reason);
+        this.plugin.scheduler().sync().execute(() -> listener.disconnect((net.minecraft.network.chat.Component) CraftChatMessageProxy.INSTANCE.fromJSON(json)));
     }
 }

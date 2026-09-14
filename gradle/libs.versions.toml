@@ -86,7 +86,7 @@ cloud-minecraft-extras = { module = "org.incendo:cloud-minecraft-extras", versio
 
 sparrow-nbt = { module = "net.momirealms:sparrow-nbt", version.ref = "sparrow-nbt" }
 sparrow-redis-message-broker = { module = "net.momirealms:sparrow-redis-message-broker", version = "0.0.7" }
-sparrow-ui = { module = "net.momirealms:sparrow-ui", version = "beta.24" }
+sparrow-ui = { module = "net.momirealms:sparrow-ui", version = "beta.25" }
 sparrow-nbt-adventure = { module = "net.momirealms:sparrow-nbt-adventure", version.ref = "sparrow-nbt" }
 sparrow-nbt-codec = { module = "net.momirealms:sparrow-nbt-codec", version.ref = "sparrow-nbt" }
 sparrow-nbt-legacy-codec = { module = "net.momirealms:sparrow-nbt-legacy-codec", version.ref = "sparrow-nbt" }

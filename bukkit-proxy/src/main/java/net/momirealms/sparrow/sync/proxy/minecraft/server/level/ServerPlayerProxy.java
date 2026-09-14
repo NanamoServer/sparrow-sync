@@ -1,16 +1,20 @@
 package net.momirealms.sparrow.sync.proxy.minecraft.server.level;
 
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
 import java.util.function.Consumer;
 
-@ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer", activeIf = "min_version=1.21.4 && has_patch=folia")
+@ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer", activeIf = "min_version=1.21.4")
 public interface ServerPlayerProxy {
     ServerPlayerProxy INSTANCE = ASMProxyFactory.create(ServerPlayerProxy.class);
 
-    @MethodInvoker(name = "respawn")
+    @FieldGetter(name = "language")
+    String getLanguage(Object target);
+
+    @MethodInvoker(name = "respawn", activeIf = "has_patch=folia")
     void respawn(Object target, Consumer<Object> completed, PlayerRespawnEvent.RespawnReason reason);
 }

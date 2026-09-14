@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.session;
 
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -77,7 +78,7 @@ public final class SessionListener implements Listener {
     }
 
     private void kick(Player player) {
-        player.kick(MessageConstants.KICK_SYNC_NOT_READY.build());
+        player.kickPlayer(LegacyComponentSerializer.legacySection().serialize(MessageConstants.KICK_SYNC_NOT_READY.build()));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

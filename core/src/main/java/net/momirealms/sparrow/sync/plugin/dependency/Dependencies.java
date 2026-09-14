@@ -106,9 +106,9 @@ public final class Dependencies {
             .artifactId("cloud-bukkit")
             .version(DependencyVersions.CLOUD_BUKKIT)
             .addRelocations(CLOUD_CORE.relocations())
-            .addRelocation("adventure", "net{}kyori{}adventure")
-            .addRelocation("examination", "net{}kyori{}examination")
-            .addRelocation("option", "net{}kyori{}option")
+//            .addRelocation("adventure", "net{}kyori{}adventure")
+//            .addRelocation("examination", "net{}kyori{}examination")
+//            .addRelocation("option", "net{}kyori{}option")
             .build();
 
     public static final Dependency CLOUD_PAPER = Dependency.builder()
