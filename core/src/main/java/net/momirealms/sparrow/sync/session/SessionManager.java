@@ -99,7 +99,7 @@ public final class SessionManager {
                 .loadLatest(session.uuid(), session.playerName())
                 .exceptionally(throwable -> new SnapshotLoadResult.Failed(String.valueOf(throwable)));
 
-        // 两份读取结果齐全后, 在异步线程准备登录数据
+        // 两份读取结果齐全后进入 UUID 串行队列, 新登录的原版数据写入排在旧任务之后.
         return playerData.thenCombineAsync(snapshot, (local, remote) -> {
             long asyncReadNanos = System.nanoTime() - loadStart;
             if (session.state() != SessionState.PREPARING) {
@@ -135,7 +135,7 @@ public final class SessionManager {
                 }
                 return SessionPrepareResult.READY;
             }
-        }, this.plugin.scheduler().async());
+        }, this.plugin.playerExecutor().executor(session.uuid()));
     }
 
     /** 将取得的锁交给会话, 会话已失效或关闭时立即释放. */

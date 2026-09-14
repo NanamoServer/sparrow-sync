@@ -298,12 +298,12 @@ public final class PluginConfig {
         @Comment({
                 "Number of threads for player data tasks, from 1 to 64.",
                 "Use this server's online player count as a starting point, then adjust as needed.",
-                "Suggested values are 2 for up to 150 players, 4 for up to 350, and 8 for up to 700."
+                "Suggested values are 2 for up to 150 players, 4 for up to 300, and 8 for up to 600."
         })
         @Comment(lang = "zh-CN", value = {
                 "处理玩家数据的线程数, 可填 1-64.",
                 "可参考本服的在线人数设置, 再按实际运行情况调整.",
-                "150 人以内建议设为 2, 350 人以内设为 4, 700 人以内设为 8."
+                "150 人以内建议设为 2, 300 人以内设为 4, 600 人以内设为 8."
         })
         int workerThreads = 4;
 
