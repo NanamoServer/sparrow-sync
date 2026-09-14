@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.plugin;
 import com.mysql.cj.conf.ConnectionUrl;
 import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.momirealms.sparrow.sync.api.SparrowSyncAPI;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
 import net.momirealms.sparrow.sync.cluster.RemoteSnapshotManager;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
@@ -59,6 +60,7 @@ import org.apache.logging.log4j.core.Logger;
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.mariadb.jdbc.Configuration;
@@ -78,8 +80,10 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public class SparrowSync implements Plugin {
-    private static SparrowSync instance;
+    private static volatile SparrowSync instance;
 
+    private final SparrowSyncAPI api = new SparrowSyncAPI(this);
+    private volatile boolean apiReady; // 业务初始化完成后接受 API 调用, 停服时先关闭
     private final SyncLogger logger;
     private final Path dataFolderPath;
     private final ClassPathAppender sharedClassPathAppender;
@@ -177,6 +181,12 @@ public class SparrowSync implements Plugin {
 
     public static SparrowSync instance() {
         return instance;
+    }
+
+    @NotNull
+    public static SparrowSyncAPI api() {
+        SparrowSync plugin = instance;
+        return plugin.api;
     }
 
     void setJavaPlugin(JavaPlugin javaPlugin) {
@@ -322,6 +332,7 @@ public class SparrowSync implements Plugin {
         // 预热和标记
         this.scheduler.async().execute(ItemCodec::warmUp);
         this.isInitializing = false;
+        this.apiReady = true;
     }
 
     @Override
@@ -335,6 +346,7 @@ public class SparrowSync implements Plugin {
      */
     @Override
     public void onPluginDisable() {
+        this.apiReady = false;
         if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
         if (this.snapshotService != null)       this.snapshotService.stopOperations();
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
@@ -688,6 +700,11 @@ public class SparrowSync implements Plugin {
     @Override
     public boolean isInitializing() {
         return this.isInitializing;
+    }
+
+    @ApiStatus.Internal
+    public boolean apiReady() {
+        return this.apiReady;
     }
 
     @Override
