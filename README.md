@@ -1,28 +1,36 @@
-# Sparrow Sync 🐦
+<h1 align="center">
+  <img src="./assets/readme/sparrow-sync-logo.png" alt="Sparrow Sync logo" width="100" height="100">
+  <br>
+  Sparrow Sync
+</h1>
 
-**English** | [简体中文](README_CN.md)
+<p align="center">Player data synchronization and snapshot management for Paper and Folia servers.</p>
 
-![Code Size](https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync)
-![bStats Servers](https://img.shields.io/bstats/servers/33952)
-![bStats Players](https://img.shields.io/bstats/players/33952)
-[![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
-[![User Manual](https://img.shields.io/badge/📙-User%20Manual-D2691E)](https://nanamoserver.github.io/sparrow-sync-wiki/)
+<p align="center">
+  <strong>English</strong> · <a href="./README_CN.md">简体中文</a>
+</p>
+
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue" alt="License: GPLv3"></a>
+  <img src="https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync" alt="Code Size">
+  <img src="https://img.shields.io/bstats/servers/33952" alt="bStats Servers">
+  <img src="https://img.shields.io/bstats/players/33952" alt="bStats Players">
+  <a href="https://nanamoserver.github.io/sparrow-sync-wiki/"><img src="https://img.shields.io/badge/📙-User%20Manual-D2691E" alt="User Manual"></a>
+</p>
 
 ## 📌 Overview
 
-Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data across Minecraft servers**. It combines Redis-based session coordination with persistent snapshots, helping server administrators keep player progress connected and recover earlier saves. 🐦
+Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data across Minecraft servers**. It combines Redis-based session coordination with persistent snapshots, helping server administrators keep player progress connected and recover earlier saves.
 
-### 🔥 Key Features
+## 🔥 Key Features
 
 - **🔄 Player Data Synchronization**: Synchronize inventories, ender chests, experience, health, hunger, potion effects, advancements, statistics, attributes, location, and more. Choose which data types participate through configuration.
 - **⚡ Asynchronous Saving**: Capture player state on the appropriate server thread, then encode and store snapshots asynchronously. Tasks for the same player are processed in order.
-- **🗄️ Flexible Storage**: Choose **MongoDB**, **MySQL**, or **PostgreSQL** for persistent storage, with **Redis** handling cross-server coordination.
+- **🗄️ Flexible Storage**: Choose **MongoDB**, **MySQL**, **MariaDB**, or **PostgreSQL** for persistent storage, with **Redis** handling cross-server coordination.
 - **📦 Compressed Snapshots**: Store player data using Sparrow NBT, with **Zstd**, Deflate, and uncompressed formats available.
 - **🖥️ Snapshot Management GUI**: Browse saved snapshots, inspect their contents, restore earlier data, pin records, and export snapshots through an in-game menu.
 - **🗺️ Map Synchronization**: Share map data between servers, with configurable synchronization modes and interaction controls.
 - **🔧 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
-
----
 
 ## 🔧 Building the Project
 
@@ -49,8 +57,6 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 1. Import the project as a **Gradle project**.
 2. Configure the Java 21 toolchain and execute the **Gradle build** action.
 3. Locate the plugin JAR in the **`/target`** folder.
-
----
 
 ## 🚀 Getting Started
 
@@ -80,8 +86,6 @@ Each configuration file maintains its own version. Changes to `commands.yml` req
 | `/sparrow-sync reload` | Reload configuration and translations |
 
 Command permissions and usages can be customized in **`commands.yml`**.
-
----
 
 ## 🤝 Contributing
 
@@ -126,8 +130,6 @@ To translate them, add another `@Comment` carrying your own `lang` tag:
 #### 📬 Submitting your changes
 
 Submit a **pull request** with your changes for review. Contributions are welcome! 💖
-
----
 
 ## 📜 License
 

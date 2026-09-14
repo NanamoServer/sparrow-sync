@@ -1,28 +1,36 @@
-# Sparrow Sync 🐦
+<h1 align="center">
+  <img src="./assets/readme/sparrow-sync-logo.png" alt="Sparrow Sync logo" width="100" height="100">
+  <br>
+  Sparrow Sync
+</h1>
 
-[English](README.md) | **简体中文**
+<p align="center">为 Paper / Folia 服务器提供玩家数据同步与快照管理。</p>
 
-![Code Size](https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync)
-![bStats Servers](https://img.shields.io/bstats/servers/33952)
-![bStats Players](https://img.shields.io/bstats/players/33952)
-[![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
-[![用户手册](https://img.shields.io/badge/📙-用户手册-D2691E)](https://nanamoserver.github.io/sparrow-sync-wiki/zh-Hans/)
+<p align="center">
+  <a href="./README.md">English</a> · <strong>简体中文</strong>
+</p>
+
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue" alt="License: GPLv3"></a>
+  <img src="https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync" alt="Code Size">
+  <img src="https://img.shields.io/bstats/servers/33952" alt="bStats Servers">
+  <img src="https://img.shields.io/bstats/players/33952" alt="bStats Players">
+  <a href="https://nanamoserver.github.io/sparrow-sync-wiki/zh-Hans/"><img src="https://img.shields.io/badge/📙-用户手册-D2691E" alt="用户手册"></a>
+</p>
 
 ## 📌 项目简介
 
-Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Folia 插件**。它通过 Redis 协调玩家会话，并将玩家数据保存为持久化快照，让玩家在不同服务器之间延续游戏进度，也方便管理员恢复历史存档。🐦
+Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Folia 插件**。它通过 Redis 协调玩家会话，并将玩家数据保存为持久化快照，让玩家在不同服务器之间延续游戏进度，也方便管理员恢复历史存档。
 
-### 🔥 核心功能
+## 🔥 核心功能
 
 - **🔄 玩家数据同步**：支持背包、末影箱、经验、生命值、饥饿值、药水效果、进度、统计、属性、位置等数据，可在配置中选择需要同步的数据类型。
 - **⚡ 异步保存**：在对应的服务器线程上采集玩家状态，再异步编码并保存快照。同一玩家的任务按顺序处理。
-- **🗄️ 多种存储后端**：支持使用 **MongoDB**、**MySQL** 或 **PostgreSQL** 持久化数据，通过 **Redis** 协调跨服操作。
+- **🗄️ 多种存储后端**：支持使用 **MongoDB**、**MySQL**、**MariaDB** 或 **PostgreSQL** 持久化数据，通过 **Redis** 协调跨服操作。
 - **📦 快照压缩**：使用 Sparrow NBT 保存玩家数据，支持 **Zstd**、Deflate 和不压缩三种格式。
 - **🖥️ 快照管理菜单**：在游戏内浏览快照、查看内容、恢复历史数据、固定记录和导出快照。
 - **🗺️ 地图同步**：在服务器之间共享地图数据，支持配置同步模式和交互限制。
 - **🔧 数据恢复工具**：查看本地异常档案，通过快照导入、导出和批量归档命令管理数据。
-
----
 
 ## 🔧 构建项目
 
@@ -49,8 +57,6 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 1. 将项目作为 **Gradle 项目**导入 IDE。
 2. 配置 Java 21 工具链，执行 **Gradle build** 任务。
 3. 在 **`/target`** 目录中找到插件 JAR。
-
----
 
 ## 🚀 开始使用
 
@@ -80,8 +86,6 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 | `/sparrow-sync reload` | 重新加载配置和翻译 |
 
 命令权限和用法可以在 **`commands.yml`** 中自定义。
-
----
 
 ## 🤝 参与贡献
 
@@ -126,8 +130,6 @@ boolean metrics = true;
 #### 📬 提交
 
 提交 **Pull Request** 供我们审核。欢迎参与贡献！💖
-
----
 
 ## 📜 许可证
 
