@@ -55,7 +55,7 @@ public abstract class CodecDataType<T> implements PlayerDataType<T> {
 
     @Override
     @NotNull
-    public final T decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public final T decode(@NotNull Tag data) throws IOException {
         return this.codec.parse(this.ops.get(), data)
                 .getOrThrow(message -> new IOException("failed to decode " + this.key + ": " + message));
     }

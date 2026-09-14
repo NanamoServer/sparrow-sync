@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StoredUser;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -64,7 +65,7 @@ class SnapshotMigrationTest {
         Snapshot first = this.snapshots.values().stream().filter(snapshot -> snapshot.meta().player().equals(id(1))).findFirst().orElseThrow();
         assertEquals(SaveCause.MIGRATION, first.meta().cause());
         assertEquals(1001, first.meta().timestamp());
-        assertEquals(4189, first.meta().mcDataVersion());
+        assertEquals(VersionHelper.WORLD_VERSION, first.meta().mcDataVersion());
         assertEquals("migration-server", first.meta().server());
         assertFalse(first.meta().pinned());
         assertEquals(SnapshotFixtures.snapshot().allData(), first.allData());
@@ -80,7 +81,7 @@ class SnapshotMigrationTest {
     @Test
     void unknownLastSeenSurvivesZipAndRepeatedImport() {
         StoredUser user = new StoredUser(id(1), "Player1", 0);
-        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), user, null, 4189, SnapshotFixtures.snapshot().allData())));
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), user, null, SnapshotFixtures.snapshot().allData())));
         assertNull(result.failure());
         assertNull(result.imported().failure());
         assertEquals(1, result.users());
@@ -92,7 +93,7 @@ class SnapshotMigrationTest {
 
     @Test
     void missingSourceTimeUsesBatchTimeWithoutInventingUserMapping() {
-        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, 4189, SnapshotFixtures.snapshot().allData())));
+        SnapshotMigration.Result result = this.migrate(sink -> sink.accept(new MigrationSource.PlayerData(id(1), null, null, SnapshotFixtures.snapshot().allData())));
         assertNull(result.failure());
         assertEquals(0, result.users());
         assertTrue(this.users.isEmpty());
@@ -365,7 +366,7 @@ class SnapshotMigrationTest {
     }
 
     private static MigrationSource.PlayerData data(int value) {
-        return new MigrationSource.PlayerData(id(value), new StoredUser(id(value), "Player" + value, 500 + value), 1000L + value, 4189, SnapshotFixtures.snapshot().allData());
+        return new MigrationSource.PlayerData(id(value), new StoredUser(id(value), "Player" + value, 500 + value), 1000L + value, SnapshotFixtures.snapshot().allData());
     }
 
     private static UUID id(int value) { return new UUID(0, value); }

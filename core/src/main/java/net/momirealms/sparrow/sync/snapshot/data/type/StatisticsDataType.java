@@ -121,7 +121,7 @@ public final class StatisticsDataType implements NativePlayerDataType<Statistics
 
     @Override
     @NotNull
-    public Statistics decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public Statistics decode(@NotNull Tag data) throws IOException {
         if (!(data instanceof CompoundTag root)
                 || !(root.get(TYPES_KEY) instanceof ListTag types)
                 || !(root.get(VALUES_KEY) instanceof ListTag values)

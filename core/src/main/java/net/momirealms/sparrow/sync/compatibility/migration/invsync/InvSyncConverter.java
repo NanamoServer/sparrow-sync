@@ -132,6 +132,8 @@ final class InvSyncConverter {
             size = Math.max(size, slot + 1);
         }
         CompoundTag result = NBT.createCompound();
+        // 原始物品各自携带 DataVersion, 容器没有统一的来源版本.
+        result.putInt("DataVersion", 0);
         result.putInt("size", size);
         result.put("items", items);
         return result;

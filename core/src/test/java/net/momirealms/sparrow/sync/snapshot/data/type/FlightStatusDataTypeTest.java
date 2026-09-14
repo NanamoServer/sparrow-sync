@@ -25,7 +25,7 @@ class FlightStatusDataTypeTest {
         CraftPlayer source = NmsPlayerFixture.create();
         source.getHandle().getAbilities().mayfly = true;
         source.getHandle().getAbilities().flying = true;
-        FlightStatusDataType.FlightStatus captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)), 0);
+        FlightStatusDataType.FlightStatus captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)));
 
         assertEquals(new FlightStatusDataType.FlightStatus(true, true), captured);
 

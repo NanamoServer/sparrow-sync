@@ -114,7 +114,7 @@ class AdvancementsDataTypeTest {
         AdvancementsDataType type = new AdvancementsDataType();
 
         Tag encoded = type.encode(expected);
-        Advancements decoded = type.decode(encoded, 0);
+        Advancements decoded = type.decode(encoded);
 
         assertEquals(firstId, decoded.values()[0].id());
         assertArrayEquals(new String[]{"tick", "second"}, decoded.values()[0].criteria());
@@ -145,7 +145,7 @@ class AdvancementsDataTypeTest {
         CompoundTag encoded = (CompoundTag) type.encode(value);
         encoded.putLongArray("obtained", new long[]{1999, -1});
 
-        Advancements decoded = type.decode(encoded, 0);
+        Advancements decoded = type.decode(encoded);
 
         assertArrayEquals(new Instant[]{Instant.ofEpochSecond(1), Instant.ofEpochSecond(-1)}, decoded.values()[0].obtained());
     }
@@ -321,7 +321,7 @@ class AdvancementsDataTypeTest {
         CriterionProgressProxy.INSTANCE.setObtained(localCriterion, obtained);
         tracking.add(localHolder);
         Advancements captured = type.capture(player, CaptureMode.SYNC);
-        Advancements forwarded = type.decode(type.encode(captured), 0);
+        Advancements forwarded = type.decode(type.encode(captured));
 
         Set<Object> ids = new HashSet<>();
         for (AdvancementValue value : forwarded.values()) ids.add(value.id());
@@ -377,7 +377,7 @@ class AdvancementsDataTypeTest {
         var after = restored.content().raw(external);
         assertArrayEquals(Arrays.copyOfRange(before.bytes(), (int) before.offset(), (int) before.end()),
                 Arrays.copyOfRange(after.bytes(), (int) after.offset(), (int) after.end()));
-        Advancements forwarded = fixture.type.decode(restored.data(AdvancementsDataType.ADVANCEMENTS), 0);
+        Advancements forwarded = fixture.type.decode(restored.data(AdvancementsDataType.ADVANCEMENTS));
         assertEquals(2, forwarded.values().length);
         assertEquals(obtained, findValue(forwarded, unknownId).obtained()[0]);
         assertEquals(obtained.plusSeconds(10), findValue(forwarded, localId).obtained()[0]);
@@ -855,7 +855,7 @@ class AdvancementsDataTypeTest {
         root.putLongArray("obtained", new long[]{Instant.now().toEpochMilli()});
         root.putByteArray("done", new byte[]{0});
 
-        assertThrows(IOException.class, () -> new AdvancementsDataType().decode(root, 0));
+        assertThrows(IOException.class, () -> new AdvancementsDataType().decode(root));
     }
 
     @Test

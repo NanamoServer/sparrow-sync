@@ -193,7 +193,7 @@ class SnapshotDecoderTest {
         /** {@inheritDoc} */
         @Override
         @NotNull
-        public List<String> decode(@NotNull Tag data, int version) throws IOException {
+        public List<String> decode(@NotNull Tag data) throws IOException {
             this.calls.add(this.key);
             if (this.broken) {
                 throw new IOException("invalid type content");

@@ -65,13 +65,13 @@ class DataTypeCodecTest {
         GameMode[] modes = GameMode.values();
         for (int i = 0; i < modes.length; i++) {
             GameMode mode = modes[i];
-            assertEquals(mode, type.decode(NBT.createString(mode.name()), 0));
+            assertEquals(mode, type.decode(NBT.createString(mode.name())));
             assertEquals(mode.name(), type.encode(mode).getAsString());
-            assertEquals(mode, type.decode(type.encode(mode), 0));
+            assertEquals(mode, type.decode(type.encode(mode)));
         }
-        assertThrows(IOException.class, () -> type.decode(NBT.createString("survival"), 0));
-        assertThrows(IOException.class, () -> type.decode(NBT.createString("NOT_A_MODE"), 0));
-        assertThrows(IOException.class, () -> type.decode(ignored, 0));
+        assertThrows(IOException.class, () -> type.decode(NBT.createString("survival")));
+        assertThrows(IOException.class, () -> type.decode(NBT.createString("NOT_A_MODE")));
+        assertThrows(IOException.class, () -> type.decode(ignored));
     }
 
     private static <T> T roundTrip(Codec<T> codec, T value) {

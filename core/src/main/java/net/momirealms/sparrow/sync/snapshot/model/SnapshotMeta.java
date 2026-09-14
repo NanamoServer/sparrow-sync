@@ -16,7 +16,7 @@ import java.util.UUID;
  * @param cause         保存原因
  * @param pinned        是否固定, 固定快照豁免轮转清理
  * @param server        创建快照的服务器名
- * @param mcDataVersion 物品 NBT 对应的 Minecraft data version, 跨版本升级的依据
+ * @param mcDataVersion 保存此快照的服务器的 Minecraft data version, 用于展示和诊断
  */
 public record SnapshotMeta(@NotNull UUID id,
                            @NotNull UUID player,

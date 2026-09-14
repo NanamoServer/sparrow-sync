@@ -48,6 +48,7 @@ import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.ConnectionFixture;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -200,7 +201,10 @@ class CaptureSchedulingTest {
         new Random(42).nextBytes(large);
         String knownValue = Base64.getEncoder().encodeToString(large);
         Map<DataKey, Tag> values = new LinkedHashMap<>();
-        values.put(first, NBT.createString("unknown z"));
+        var versioned = NBT.createCompound();
+        versioned.putInt("DataVersion", 3700);
+        versioned.putString("value", "unknown z");
+        values.put(first, versioned);
         values.put(this.sync.key(), NBT.createString(knownValue));
         values.put(second, NBT.createString("unknown a"));
         values.put(this.async.key(), NBT.createString(knownValue));
@@ -232,6 +236,7 @@ class CaptureSchedulingTest {
         this.finishWrites();
         assertEquals(StorageProvider.SaveResult.SAVED, assertInstanceOf(SnapshotSaveResult.Settled.class, saved.get(2, TimeUnit.SECONDS)).result());
         Snapshot written = this.written.getFirst();
+        assertEquals(VersionHelper.WORLD_VERSION, written.meta().mcDataVersion());
         BinarySnapshotCodec targetCodec = new BinarySnapshotCodec(CompressorRegistry.NONE);
         byte[] firstSave = targetCodec.encode(written);
         assertArrayEquals(firstSave, targetCodec.encode(written));
@@ -318,7 +323,7 @@ class CaptureSchedulingTest {
             }
             @Override
             @NotNull
-            public Integer decode(@NotNull Tag tag, int version) { throw new AssertionError("unexpected decode"); }
+            public Integer decode(@NotNull Tag tag) { throw new AssertionError("unexpected decode"); }
             @Override
             public void apply(@NotNull Player player, @NotNull Integer value) { throw new AssertionError("unexpected apply"); }
         });
@@ -546,7 +551,7 @@ class CaptureSchedulingTest {
 
             @Override
             @NotNull
-            public InventoryDataType.Inventory decode(@NotNull Tag tag, int version) { throw new AssertionError(); }
+            public InventoryDataType.Inventory decode(@NotNull Tag tag) { throw new AssertionError(); }
 
             @Override
             public void apply(@NotNull Player player, @NotNull InventoryDataType.Inventory value) { throw new AssertionError(); }
@@ -849,7 +854,7 @@ class CaptureSchedulingTest {
 
         @Override
         @NotNull
-        public String decode(@NotNull Tag data, int mcDataVersion) {
+        public String decode(@NotNull Tag data) {
             return data.getAsString();
         }
 

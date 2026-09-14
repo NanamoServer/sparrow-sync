@@ -508,7 +508,7 @@ class PlayerDataPipelineTest {
 
         @Override
         @NotNull
-        public String decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+        public String decode(@NotNull Tag data) throws IOException {
             if (this.decodeFails) throw new IOException("corrupted");
             return data.getAsString();
         }

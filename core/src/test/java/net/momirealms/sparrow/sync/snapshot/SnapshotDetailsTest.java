@@ -338,7 +338,7 @@ class SnapshotDetailsTest {
         }
 
         @Override
-        public Tag decode(Tag data, int version) {
+        public Tag decode(Tag data) {
             throw new AssertionError("unsupported preview must not decode data");
         }
 

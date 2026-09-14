@@ -27,7 +27,7 @@ class LocationDataTypeTest {
         Player player = player(location, server(Map.of("source", sourceWorld, "target", targetWorld)));
         LocationDataType type = new LocationDataType();
 
-        LocationDataType.PlayerLocation captured = type.decode(type.encode(type.capture(player, CaptureMode.SYNC)), 0);
+        LocationDataType.PlayerLocation captured = type.decode(type.encode(type.capture(player, CaptureMode.SYNC)));
 
         assertEquals(new LocationDataType.PlayerLocation("source", 12.5, 64.25, -3.75, 91.5f, -18.25f), captured);
 

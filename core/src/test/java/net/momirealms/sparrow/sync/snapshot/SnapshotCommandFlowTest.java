@@ -421,6 +421,7 @@ class SnapshotCommandFlowTest {
         Write write = this.nextWrite();
         assertFalse(result.isDone());
         assertNotEquals(source.meta().id(), write.snapshot.meta().id());
+        assertEquals(VersionHelper.WORLD_VERSION, write.snapshot.meta().mcDataVersion());
         write.complete();
         SnapshotRestoreResult.Restored restored = assertInstanceOf(SnapshotRestoreResult.Restored.class, result.get(2, TimeUnit.SECONDS));
         assertEquals(write.snapshot.meta().id(), restored.snapshotId());
@@ -1124,7 +1125,7 @@ class SnapshotCommandFlowTest {
         }
         @Override
         @NotNull
-        public String decode(@NotNull Tag data, int version) {
+        public String decode(@NotNull Tag data) {
             assertNotSame(SnapshotCommandFlowTest.this.entityThread, Thread.currentThread());
             if (SnapshotCommandFlowTest.this.decodeFailure != null) throw SnapshotCommandFlowTest.this.decodeFailure;
             return data.getAsString();
@@ -1160,7 +1161,7 @@ class SnapshotCommandFlowTest {
         }
         @Override
         @NotNull
-        public HealthDataType.Health decode(@NotNull Tag data, int version) {
+        public HealthDataType.Health decode(@NotNull Tag data) {
             return new HealthDataType.Health(NBTOps.INSTANCE.getNumberValue(data).getOrThrow().doubleValue());
         }
         @Override
@@ -1183,7 +1184,7 @@ class SnapshotCommandFlowTest {
         public Tag encode(@NotNull LocationDataType.PlayerLocation value) { return NBT.createString(value.world()); }
         @Override
         @NotNull
-        public LocationDataType.PlayerLocation decode(@NotNull Tag value, int version) { return new LocationDataType.PlayerLocation("world", 10, 64, 20, 0, 0); }
+        public LocationDataType.PlayerLocation decode(@NotNull Tag value) { return new LocationDataType.PlayerLocation("world", 10, 64, 20, 0, 0); }
         @Override
         public void apply(@NotNull Player player, @NotNull LocationDataType.PlayerLocation value) {
             throw new AssertionError("online location must use its async completion");

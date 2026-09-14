@@ -99,7 +99,7 @@ public final class ItemCodec {
     /**
      * 解析单个物品, 需要时先做跨版本升级.
      *
-     * @param dataVersion 数据写入时的 Minecraft data version, 0 表示未知则跳过升级
+     * @param dataVersion 容器 Tag 记录的 Minecraft data version, 物品自身的 DataVersion 优先, 0 表示未知则跳过升级
      * @throws IOException 当数据来自更高版本或无法解析时
      */
     @NotNull

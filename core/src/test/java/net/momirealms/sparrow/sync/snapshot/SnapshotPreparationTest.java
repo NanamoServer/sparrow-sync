@@ -67,7 +67,7 @@ class SnapshotPreparationTest {
             public Tag encode(@NotNull Integer value) { throw new AssertionError(); }
             @Override
             @NotNull
-            public Integer decode(@NotNull Tag tag, int version) {
+            public Integer decode(@NotNull Tag tag) {
                 decodes.incrementAndGet();
                 return ((CompoundTag) tag).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id");
             }

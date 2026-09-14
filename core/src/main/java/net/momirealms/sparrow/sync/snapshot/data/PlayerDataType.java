@@ -55,12 +55,13 @@ public interface PlayerDataType<T> {
 
     /**
      * 解码并校验快照中的数据, 可在任意线程调用.
+     * 涉及 Minecraft 格式升级的类型在自身 Tag 中保存并读取数据版本.
      *
-     * @param mcDataVersion 快照记录的 Minecraft data version, 物品类数据据此做跨版本升级
+     * @param data 本类型编码的完整 Tag, 包含解码所需的版本信息
      * @throws IOException 当数据损坏或不符合本类型的结构时
      */
     @NotNull
-    T decode(@NotNull Tag data, int mcDataVersion) throws IOException;
+    T decode(@NotNull Tag data) throws IOException;
 
     /**
      * 把解码后的值应用到玩家.

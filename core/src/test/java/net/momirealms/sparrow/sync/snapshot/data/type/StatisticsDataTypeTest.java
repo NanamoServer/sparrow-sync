@@ -144,7 +144,7 @@ class StatisticsDataTypeTest {
                 tasks.add(workers.submit(() -> {
                     assertTrue(start.await(5, TimeUnit.SECONDS));
                     for (int round = 0; round < 8; round++) {
-                        Statistics decoded = type.decode(encoded, 0);
+                        Statistics decoded = type.decode(encoded);
                         assertArrayEquals(amounts, decoded.amounts());
                         for (int i = 0; i < statistics.length; i++) {
                             assertSame(statistics[i], decoded.statistics()[i]);
@@ -240,7 +240,7 @@ class StatisticsDataTypeTest {
         StatisticsDataType type = new StatisticsDataType();
 
         Tag encoded = type.encode(expected);
-        Statistics decoded = type.decode(encoded, 0);
+        Statistics decoded = type.decode(encoded);
 
         assertEquals(values(expected), values(decoded));
         CompoundTag root = (CompoundTag) encoded;
@@ -265,7 +265,7 @@ class StatisticsDataTypeTest {
         incompatible.put("items", NBT.createCompound());
         incompatible.put("entities", NBT.createCompound());
 
-        assertThrows(IOException.class, () -> new StatisticsDataType().decode(incompatible, 0));
+        assertThrows(IOException.class, () -> new StatisticsDataType().decode(incompatible));
     }
 
     @Test

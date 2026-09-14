@@ -30,7 +30,15 @@ import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
+import net.momirealms.sparrow.sync.snapshot.data.DecodedSnapshotData;
+import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -81,7 +89,7 @@ class ItemCodecNativeTest {
     }
 
     @Test
-    void sourceItemVersionOverridesSnapshotVersion() throws IOException {
+    void sourceItemVersionOverridesContainerVersion() throws IOException {
         var item = NBT.createCompound();
         item.putString("id", "minecraft:diamond");
         item.putByte("Count", (byte) 12);
@@ -92,6 +100,112 @@ class ItemCodecNativeTest {
         assertEquals(3700, item.getInt("DataVersion"));
         item.putInt("DataVersion", VersionHelper.WORLD_VERSION + 1);
         assertThrows(IOException.class, () -> ItemCodec.loadItem(item, VersionHelper.WORLD_VERSION));
+    }
+
+    @Test
+    void containersRecordTheirEncodingVersion() {
+        InventoryDataType inventory = NmsPlayerFixture.allocate(InventoryDataType.class);
+        EnderChestDataType enderChest = NmsPlayerFixture.allocate(EnderChestDataType.class);
+        ItemStack[] items = {new ItemStack(Items.DIAMOND, 12)};
+
+        var inventoryTag = (net.momirealms.sparrow.nbt.CompoundTag) inventory.encode(new InventoryDataType.Inventory(items, 0, 0));
+        var enderChestTag = (net.momirealms.sparrow.nbt.CompoundTag) enderChest.encode(new ItemCodec.LoadedItems(items, 0));
+
+        assertEquals(VersionHelper.WORLD_VERSION, inventoryTag.getInt("DataVersion"));
+        assertEquals(VersionHelper.WORLD_VERSION, enderChestTag.getInt("DataVersion"));
+    }
+
+    @Test
+    void forwardedContainersUseTheirOwnVersionsUnderNewServerMeta() throws IOException {
+        InventoryDataType inventory = NmsPlayerFixture.allocate(InventoryDataType.class);
+        EnderChestDataType enderChest = NmsPlayerFixture.allocate(EnderChestDataType.class);
+        DataRegistry registry = new DataRegistry();
+        registry.register(inventory);
+        registry.register(enderChest);
+        registry.freeze();
+        SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE);
+        BinarySnapshotCodec codec = new BinarySnapshotCodec(dataCodec);
+        var oldItem = NBT.createCompound();
+        oldItem.putString("id", "minecraft:diamond");
+        oldItem.putByte("Count", (byte) 12);
+        oldItem.putInt("slot", 0);
+        var oldItems = NBT.createList();
+        oldItems.add(oldItem);
+        var oldContainer = NBT.createCompound();
+        oldContainer.putInt("DataVersion", 3700);
+        oldContainer.putInt("size", 1);
+        oldContainer.put("items", oldItems);
+        ItemStack[] currentItems = {new ItemStack(Items.DIAMOND, 5)};
+        DataKey[] keys = {InventoryDataType.INVENTORY, EnderChestDataType.ENDER_CHEST};
+
+        for (int i = 0; i < keys.length; i++) {
+            DataKey retainedKey = keys[i];
+            DataKey capturedKey = keys[1 - i];
+            SnapshotMeta sourceMeta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.DISCONNECT, false, "A", 3700);
+            Snapshot source = assertInstanceOf(DecodedSnapshot.Valid.class,
+                    codec.decode(codec.encode(new Snapshot(sourceMeta, Map.of(retainedKey, oldContainer))))).snapshot();
+            SnapshotData retained = dataCodec.decode(dataCodec.encode(source.content().select(retainedKey::equals)));
+            var captured = capturedKey.equals(InventoryDataType.INVENTORY)
+                    ? inventory.encode(new InventoryDataType.Inventory(currentItems, 0, 0))
+                    : enderChest.encode(new ItemCodec.LoadedItems(currentItems, 0));
+            SnapshotMeta savedMeta = new SnapshotMeta(UUID.randomUUID(), sourceMeta.player(), 2, SaveCause.DISCONNECT, false, "B", VersionHelper.WORLD_VERSION + 1);
+            Snapshot saved = assertInstanceOf(DecodedSnapshot.Valid.class,
+                    codec.decode(codec.encode(new Snapshot(savedMeta, retained.with(capturedKey, captured))))).snapshot();
+
+            assertEquals(savedMeta, saved.meta());
+            assertEquals(3700, ((net.momirealms.sparrow.nbt.CompoundTag) saved.data(retainedKey)).getInt("DataVersion"));
+            assertEquals(VersionHelper.WORLD_VERSION, ((net.momirealms.sparrow.nbt.CompoundTag) saved.data(capturedKey)).getInt("DataVersion"));
+            DecodedSnapshotData decoded = new SnapshotDecoder(registry).decodeForApply(saved);
+            assertNull(decoded.criticalFailure());
+            ItemStack[] decodedInventory = ((InventoryDataType.Inventory) decoded.value(InventoryDataType.INVENTORY)).contents();
+            ItemStack[] decodedChest = ((ItemCodec.LoadedItems) decoded.value(EnderChestDataType.ENDER_CHEST)).items();
+            assertEquals(i == 0 ? 12 : 5, decodedInventory[0].getCount());
+            assertEquals(i == 1 ? 12 : 5, decodedChest[0].getCount());
+            assertTrue(decodedInventory[0].is(Items.DIAMOND));
+            assertTrue(decodedChest[0].is(Items.DIAMOND));
+            assertEquals((byte) 12, oldItem.getByte("Count"));
+        }
+    }
+
+    @Test
+    void newerContainerVersionIsRejectedEvenUnderOlderMeta() {
+        InventoryDataType inventory = NmsPlayerFixture.allocate(InventoryDataType.class);
+        EnderChestDataType enderChest = NmsPlayerFixture.allocate(EnderChestDataType.class);
+        var item = ItemCodec.saveItem(new ItemStack(Items.DIAMOND));
+        var items = NBT.createList();
+        items.add(item);
+        var container = NBT.createCompound();
+        container.putInt("DataVersion", VersionHelper.WORLD_VERSION + 1);
+        container.putInt("size", 1);
+        container.put("items", items);
+        SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.COMMAND, false, "A", 3700);
+
+        var types = List.of(inventory, enderChest);
+        for (int i = 0; i < types.size(); i++) {
+            var type = types.get(i);
+            DataRegistry registry = new DataRegistry();
+            registry.register(type);
+            registry.freeze();
+            DecodedSnapshotData decoded = new SnapshotDecoder(registry).decodeForApply(new Snapshot(meta, Map.of(type.key(), container)));
+            assertEquals(type.key(), decoded.criticalFailure());
+            assertInstanceOf(IOException.class, decoded.failure(type.key()));
+        }
+    }
+
+    @Test
+    void unversionedContainersStillReadItemVersions() throws IOException {
+        var item = NBT.createCompound();
+        item.putString("id", "minecraft:diamond");
+        item.putByte("Count", (byte) 12);
+        item.putInt("DataVersion", 3700);
+        var items = NBT.createList();
+        items.add(item);
+        var container = NBT.createCompound();
+        container.putInt("size", 1);
+        container.put("items", items);
+
+        assertEquals(12, NmsPlayerFixture.allocate(InventoryDataType.class).decode(container).contents()[0].getCount());
+        assertEquals(12, NmsPlayerFixture.allocate(EnderChestDataType.class).decode(container).items()[0].getCount());
     }
 
     @Test
@@ -224,8 +338,8 @@ class ItemCodecNativeTest {
         MapPipeline pipeline = new MapPipeline(registry, List.of(new HideMapHandler()), new SyncLogger(console));
         Snapshot compiled = pipeline.encodeAsync(original, MapType.HIDE, "A-world", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot hidden = pipeline.decodeAsync(compiled, "B-world").join();
-        InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
-        ItemCodec.LoadedItems decodedEnder = enderChestType.decode(hidden.data(EnderChestDataType.ENDER_CHEST), meta.mcDataVersion());
+        InventoryDataType.Inventory decodedInventory = inventoryType.decode(hidden.data(InventoryDataType.INVENTORY));
+        ItemCodec.LoadedItems decodedEnder = enderChestType.decode(hidden.data(EnderChestDataType.ENDER_CHEST));
         assertNull(decodedInventory.contents()[0].get(DataComponents.MAP_ID));
         assertEquals(map.get(DataComponents.CUSTOM_NAME), decodedInventory.contents()[0].get(DataComponents.CUSTOM_NAME));
         assertEquals(hidden.data(InventoryDataType.INVENTORY), inventoryType.encode(decodedInventory));
@@ -248,7 +362,7 @@ class ItemCodecNativeTest {
         Snapshot forwarded = pipeline.encodeAsync(saved, MapType.HIDE, "B-world", nativeMapId -> { throw new AssertionError("unexpected source publication"); }).join();
         Snapshot restored = pipeline.decodeAsync(forwarded, "A-world").join();
         assertEquals(original.allData(), restored.allData());
-        InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY), meta.mcDataVersion());
+        InventoryDataType.Inventory decodedRestored = inventoryType.decode(restored.data(InventoryDataType.INVENTORY));
         assertTrue(ItemStack.matches(map, decodedRestored.contents()[0]));
         assertTrue(ItemStack.matches(box, decodedRestored.contents()[40]));
     }

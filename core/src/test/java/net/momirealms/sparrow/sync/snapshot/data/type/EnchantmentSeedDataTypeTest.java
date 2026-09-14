@@ -22,7 +22,7 @@ class EnchantmentSeedDataTypeTest {
 
         CraftPlayer source = NmsPlayerFixture.create();
         source.getHandle().enchantmentSeed = 135792468;
-        int captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)), 0);
+        int captured = type.decode(type.encode(type.capture(source, CaptureMode.SYNC)));
 
         assertEquals(135792468, captured);
 

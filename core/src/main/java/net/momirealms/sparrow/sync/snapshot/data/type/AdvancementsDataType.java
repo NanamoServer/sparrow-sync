@@ -225,7 +225,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
 
     @Override
     @NotNull
-    public Advancements decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public Advancements decode(@NotNull Tag data) throws IOException {
         if (!(data instanceof CompoundTag root)
                 || !(root.get(IDS_KEY) instanceof ListTag ids)
                 || !(root.get(CRITERIA_KEY) instanceof ListTag criteria)

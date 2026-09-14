@@ -72,6 +72,7 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     @NotNull
     public Tag encode(@NotNull Inventory value) {
         CompoundTag root = NBT.createCompound();
+        root.putInt("DataVersion", VersionHelper.WORLD_VERSION);
         root.putInt(SIZE_KEY, value.contents().length);
         root.putInt(HELD_SLOT_KEY, value.heldSlot());
         root.put(ITEMS_KEY, ItemCodec.saveItems(value.contents()));
@@ -80,12 +81,12 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
 
     @Override
     @NotNull
-    public Inventory decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public Inventory decode(@NotNull Tag data) throws IOException {
         if (!(data instanceof CompoundTag root)) {
             throw new IOException("inventory data is not a compound");
         }
         int size = Math.max(1, root.getInt(SIZE_KEY, FALLBACK_SIZE));
-        ItemCodec.LoadedItems loaded = ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, mcDataVersion);
+        ItemCodec.LoadedItems loaded = ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, root.getInt("DataVersion"));
         return new Inventory(loaded.items(), root.getInt(HELD_SLOT_KEY), loaded.dropped());
     }
 

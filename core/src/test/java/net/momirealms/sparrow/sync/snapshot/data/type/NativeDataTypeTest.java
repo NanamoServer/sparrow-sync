@@ -195,7 +195,7 @@ class NativeDataTypeTest {
 
         assertNull(encoded.get("cursor"));
         encoded.putString("cursor", "legacy");
-        Inventory decoded = type.decode(encoded, 0);
+        Inventory decoded = type.decode(encoded);
         assertEquals(41, decoded.contents().length);
         assertEquals(3, decoded.heldSlot());
     }
@@ -211,7 +211,7 @@ class NativeDataTypeTest {
             CompoundTag encoded = assertInstanceOf(CompoundTag.class, type.encode(value));
             assertEquals(expected, encoded.getInt("heldSlot"));
             encoded.putInt("heldSlot", heldSlot);
-            assertEquals(expected, type.decode(encoded, 0).heldSlot());
+            assertEquals(expected, type.decode(encoded).heldSlot());
 
             CompoundTag playerData = NBT.createCompound();
             assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, value));

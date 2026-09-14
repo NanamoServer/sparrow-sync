@@ -226,7 +226,7 @@ final class SnapshotSaver {
                 .timestamp(timestamp)
                 .cause(SaveCause.RESTORE)
                 .server(ServerConfig.serverId())
-                .mcDataVersion(source.meta().mcDataVersion())
+                .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
         Snapshot restored = new Snapshot(meta, source.content());
         SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, null);

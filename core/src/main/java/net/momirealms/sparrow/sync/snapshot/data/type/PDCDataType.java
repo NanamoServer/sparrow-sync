@@ -74,7 +74,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
 
     @Override
     @NotNull
-    public net.minecraft.nbt.CompoundTag decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public net.minecraft.nbt.CompoundTag decode(@NotNull Tag data) throws IOException {
         if (!(data instanceof CompoundTag compound)) {
             throw new IOException("persistent data is not a compound");
         }

@@ -34,7 +34,7 @@ public record StubPlayerDataType(@NotNull DataKey key, boolean critical, @NotNul
 
     @Override
     @NotNull
-    public Tag decode(@NotNull Tag data, int mcDataVersion) {
+    public Tag decode(@NotNull Tag data) {
         throw new AssertionError("stub decode must not be called");
     }
 

@@ -4,7 +4,6 @@ import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -109,8 +108,12 @@ public final class InvSyncSource implements MigrationSource {
         try {
             Object gson = call(this.plugin, "getGson");
             raw = ((String) call(gson, "toJson", Object.class, data)).getBytes(StandardCharsets.UTF_8);
-            converted = new PlayerData(uuid, name == null ? null : new StoredUser(uuid, name, 0), null,
-                    Bukkit.getUnsafe().getDataVersion(), this.converter.convert(data));
+            converted = new PlayerData(
+                    uuid,
+                    name == null ? null : new StoredUser(uuid, name, 0),
+                    null,
+                    this.converter.convert(data)
+            );
         } catch (InterruptedException exception) {
             throw exception;
         } catch (Exception exception) {

@@ -87,13 +87,13 @@ class HuskSyncConverterTest {
         runtime.freeze();
         Map<DataKey, Tag> converted = new HuskSyncConverter(this.registry).convert(this.fields());
         assertEquals(Set.of("inventory", "ender_chest", "health", "health_scale", "hunger", "experience", "game_mode", "flight_status", "location", "potion_effects", "attributes", "advancements", "statistics").stream().map(DataKey::sparrow).collect(Collectors.toSet()), converted.keySet());
-        assertEquals(new HealthDataType.Health(12), new HealthDataType().decode(converted.get(HealthDataType.HEALTH), 0));
-        assertEquals(new HealthScaleDataType.HealthScale(40, true), new HealthScaleDataType().decode(converted.get(HealthScaleDataType.HEALTH_SCALE), 0));
-        assertEquals(new HungerDataType.Hunger(13, 4, 2, 0), new HungerDataType().decode(converted.get(HungerDataType.HUNGER), 0));
+        assertEquals(new HealthDataType.Health(12), new HealthDataType().decode(converted.get(HealthDataType.HEALTH)));
+        assertEquals(new HealthScaleDataType.HealthScale(40, true), new HealthScaleDataType().decode(converted.get(HealthScaleDataType.HEALTH_SCALE)));
+        assertEquals(new HungerDataType.Hunger(13, 4, 2, 0), new HungerDataType().decode(converted.get(HungerDataType.HUNGER)));
         MigrationSource source = new MigrationSource() {
             public String id() { return "husksync"; }
             public void read(Sink sink) throws Exception {
-                sink.accept(new PlayerData(new UUID(0, 1), null, null, SharedConstants.getCurrentVersion().dataVersion().version(), converted));
+                sink.accept(new PlayerData(new UUID(0, 1), null, null, converted));
             }
         };
         var snapshot = MigrationAssertions.assertZipRoundTrip(directory, source, converted);

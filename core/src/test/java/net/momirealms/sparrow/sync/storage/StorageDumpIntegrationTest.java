@@ -76,7 +76,7 @@ class StorageDumpIntegrationTest {
             public String id() { return "fixture"; }
             @Override
             public void read(Sink sink) throws Exception {
-                sink.accept(new PlayerData(player, new StoredUser(player, "Migrated", 123), 456L, 4189, SnapshotFixtures.snapshot().allData()));
+                sink.accept(new PlayerData(player, new StoredUser(player, "Migrated", 123), 456L, SnapshotFixtures.snapshot().allData()));
             }
         };
         SnapshotMigration.Result migrated = new SnapshotMigration(files, this.codec, importer, "source-server").migrate("migration.zip", source, 999);

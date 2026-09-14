@@ -22,12 +22,21 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
+import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
+import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
@@ -36,6 +45,7 @@ import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.SnapshotDecoder;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.inventory.CraftInventoryPlayer;
@@ -46,11 +56,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -222,17 +234,17 @@ class NmsCaptureTest {
                 return assertInstanceOf(PlayerDataPipeline.EncodeResult.Ready.class, pipeline.encode(captured)).data();
             }).get(2, TimeUnit.SECONDS);
 
-            InventoryDataType.Inventory savedInventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(encoded.get(InventoryDataType.INVENTORY), 0);
-            ItemCodec.LoadedItems savedChest = NmsPlayerFixture.allocate(EnderChestDataType.class).decode(encoded.get(EnderChestDataType.ENDER_CHEST), 0);
+            InventoryDataType.Inventory savedInventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(encoded.get(InventoryDataType.INVENTORY));
+            ItemCodec.LoadedItems savedChest = NmsPlayerFixture.allocate(EnderChestDataType.class).decode(encoded.get(EnderChestDataType.ENDER_CHEST));
             assertEquals(1, savedInventory.contents()[0].getCount());
             assertEquals("captured", savedInventory.contents()[0].get(DataComponents.CUSTOM_NAME).getString());
             assertEquals(1, savedChest.items()[0].getCount());
             assertEquals("captured", savedChest.items()[0].get(DataComponents.CUSTOM_NAME).getString());
             assertEquals(1, ((CompoundTag) encoded.get(PDCDataType.PERSISTENT_DATA)).getCompound("example:data").getInt("value"));
-            assertEquals(80, new PotionEffectsDataType().decode(encoded.get(PotionEffectsDataType.POTION_EFFECTS), 0).getFirst().getDuration());
-            AttributesDataType.Attributes attributes = new AttributesDataType().decode(encoded.get(AttributesDataType.ATTRIBUTES), 0);
+            assertEquals(80, new PotionEffectsDataType().decode(encoded.get(PotionEffectsDataType.POTION_EFFECTS)).getFirst().getDuration());
+            AttributesDataType.Attributes attributes = new AttributesDataType().decode(encoded.get(AttributesDataType.ATTRIBUTES));
             assertEquals(32.0, Arrays.stream(attributes.values()).filter(value -> value.key().getKey().equals("max_health")).findFirst().orElseThrow().base());
-            assertEquals(4321, new ExperienceDataType().decode(encoded.get(ExperienceDataType.EXPERIENCE), 0).total());
+            assertEquals(4321, new ExperienceDataType().decode(encoded.get(ExperienceDataType.EXPERIENCE)).total());
         }
     }
 
@@ -361,11 +373,65 @@ class NmsCaptureTest {
         Tag encoded = type.encode(offline);
         effect.update(new MobEffectInstance(MobEffects.SPEED, 1200, 3));
         hidden.update(new MobEffectInstance(MobEffects.SPEED, 1600, 2));
-        MobEffectInstance restored = type.decode(encoded, 0).getFirst();
+        MobEffectInstance restored = type.decode(encoded).getFirst();
         assertEquals(80, restored.getDuration());
         assertEquals(400, restored.hiddenEffect.getDuration());
         assertEquals(80, sync.getFirst().getDuration());
         assertEquals(400, sync.getFirst().hiddenEffect.getDuration());
+    }
+
+    @Test
+    void potionVersionStaysInTheBlockWhileNativeApplyWritesAList() throws IOException {
+        PotionEffectsDataType type = new PotionEffectsDataType();
+        List<MobEffectInstance> effects = List.of(new MobEffectInstance(MobEffects.SPEED, 80, 1));
+        CompoundTag encoded = assertInstanceOf(CompoundTag.class, type.encode(effects));
+        assertEquals(VersionHelper.WORLD_VERSION, encoded.getInt("DataVersion"));
+        ListTag storedEffects = assertInstanceOf(ListTag.class, encoded.get("active_effects"));
+
+        CompoundTag playerData = NBT.createCompound();
+        playerData.putInt("DataVersion", 123);
+        type.applyNative(NmsPlayerFixture.allocate(PlayerSession.class), playerData, effects);
+        assertEquals(storedEffects, assertInstanceOf(ListTag.class, playerData.get("active_effects")));
+        assertEquals(123, playerData.getInt("DataVersion"));
+        assertEquals(80, type.decode(storedEffects).getFirst().getDuration());
+
+        encoded.putInt("DataVersion", VersionHelper.WORLD_VERSION + 1);
+        assertThrows(IOException.class, () -> type.decode(encoded));
+    }
+
+    @Test
+    void potionDfuUpgradesOldFieldsAndHiddenEffectsUsingTheBlockVersion() throws IOException {
+        CompoundTag hidden = NBT.createCompound();
+        hidden.putByte("Id", (byte) 1);
+        hidden.putInt("Duration", 400);
+        hidden.putByte("Amplifier", (byte) 0);
+        CompoundTag effect = hidden.deepClone();
+        effect.putInt("Duration", 80);
+        effect.putByte("Amplifier", (byte) 1);
+        effect.put("HiddenEffect", hidden);
+        ListTag effects = NBT.createList();
+        effects.add(effect);
+        CompoundTag block = NBT.createCompound();
+        block.putInt("DataVersion", 3337);
+        block.put("ActiveEffects", effects);
+        CompoundTag expected = block.deepClone();
+        SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1, SaveCause.DISCONNECT, false, "B", VersionHelper.WORLD_VERSION + 1);
+        BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0);
+        Snapshot snapshot = assertInstanceOf(DecodedSnapshot.Valid.class,
+                codec.decode(codec.encode(new Snapshot(meta, Map.of(PotionEffectsDataType.POTION_EFFECTS, block))))).snapshot();
+        DataRegistry registry = new DataRegistry();
+        registry.register(new PotionEffectsDataType());
+        registry.freeze();
+        var decoded = new SnapshotDecoder(registry).decodeForApply(snapshot);
+
+        assertNull(decoded.failure(PotionEffectsDataType.POTION_EFFECTS));
+        MobEffectInstance upgraded = (MobEffectInstance) ((List<?>) decoded.value(PotionEffectsDataType.POTION_EFFECTS)).getFirst();
+        assertEquals(MobEffects.SPEED, upgraded.getEffect());
+        assertEquals(80, upgraded.getDuration());
+        assertEquals(1, upgraded.getAmplifier());
+        assertEquals(400, upgraded.hiddenEffect.getDuration());
+        assertEquals(0, upgraded.hiddenEffect.getAmplifier());
+        assertEquals(expected, snapshot.data(PotionEffectsDataType.POTION_EFFECTS));
     }
 
     @Test

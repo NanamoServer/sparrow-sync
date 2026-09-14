@@ -7,6 +7,7 @@ import net.momirealms.sparrow.sync.snapshot.SnapshotDump;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -79,7 +80,7 @@ public final class SnapshotMigration {
                             progress.current = "player " + data.player();
                             // 身份在生成时固定, 后续导入直接读取包内元数据, 重跑沿用同一个 ID.
                             long timestamp = data.timestamp() == null ? startedAt : data.timestamp();
-                            SnapshotMeta meta = new SnapshotMeta(UUIDUtils.timeOrdered(), data.player(), timestamp, SaveCause.MIGRATION, false, SnapshotMigration.this.server, data.mcDataVersion());
+                            SnapshotMeta meta = new SnapshotMeta(UUIDUtils.timeOrdered(), data.player(), timestamp, SaveCause.MIGRATION, false, SnapshotMigration.this.server, VersionHelper.WORLD_VERSION);
                             Snapshot snapshot = new Snapshot(meta, data.data());
                             byte[] encoded;
                             try {
@@ -104,8 +105,8 @@ public final class SnapshotMigration {
                         @Override
                         public void reject(@NotNull UUID player, @Nullable String playerName, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException {
                             progress.current = "player " + player + " " + stage;
-                            // 诊断头提供列表所需的玩家身份, DataVersion 为 0 表示此时没有可用的转换后正文.
-                            SnapshotMeta meta = new SnapshotMeta(UUIDUtils.timeOrdered(), player, startedAt, SaveCause.MIGRATION, false, SnapshotMigration.this.server, 0);
+                            // 诊断头提供列表所需的玩家身份和迁移服务器信息.
+                            SnapshotMeta meta = new SnapshotMeta(UUIDUtils.timeOrdered(), player, startedAt, SaveCause.MIGRATION, false, SnapshotMigration.this.server, VersionHelper.WORLD_VERSION);
                             SnapshotMigration.this.files.archiveMigration(meta, playerName, source.id(), stage, failure, raw);
                             progress.failed++;
                             progress.report();

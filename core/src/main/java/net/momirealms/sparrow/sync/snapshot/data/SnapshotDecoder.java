@@ -61,7 +61,7 @@ public final class SnapshotDecoder {
             try {
                 Tag tag = snapshot.data(key);
                 if (tag == null) continue;
-                result.values[i] = type.decode(tag, snapshot.meta().mcDataVersion());
+                result.values[i] = type.decode(tag);
             } catch (Throwable failure) {
                 // 预览只把 IOException 和 RuntimeException 记为该类型的读取失败, Error 继续向外抛出.
                 if (!applying && !(failure instanceof IOException || failure instanceof RuntimeException)) {

@@ -350,7 +350,7 @@ class UnknownDataFlowTest {
         /** {@inheritDoc} */
         @Override
         @NotNull
-        public String decode(@NotNull Tag tag, int mcDataVersion) { return tag.getAsString(); }
+        public String decode(@NotNull Tag tag) { return tag.getAsString(); }
 
         /** {@inheritDoc} */
         @Override

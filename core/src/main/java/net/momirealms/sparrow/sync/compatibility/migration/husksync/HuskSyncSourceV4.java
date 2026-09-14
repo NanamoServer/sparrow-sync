@@ -5,7 +5,6 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.storage.StoredUser;
-import net.momirealms.sparrow.sync.util.VersionHelper;
 import net.william278.husksync.HuskSync;
 import net.william278.husksync.adapter.DataAdapter.AdaptionException;
 import net.william278.husksync.data.Data;
@@ -88,7 +87,7 @@ public final class HuskSyncSourceV4 implements MigrationSource {
         }
         Map<DataKey, Tag> data = this.converter.convert(fields);
         long timestamp = packed.getTimestamp().toInstant().toEpochMilli();
-        return new PlayerData(player, new StoredUser(player, name, 0), timestamp, VersionHelper.WORLD_VERSION, data);
+        return new PlayerData(player, new StoredUser(player, name, 0), timestamp, data);
     }
 
 }

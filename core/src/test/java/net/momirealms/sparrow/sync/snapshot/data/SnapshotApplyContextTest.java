@@ -82,7 +82,7 @@ class SnapshotApplyContextTest {
 
         @Override
         @NotNull
-        public String decode(@NotNull Tag data, int mcDataVersion) {
+        public String decode(@NotNull Tag data) {
             return data.getAsString();
         }
 

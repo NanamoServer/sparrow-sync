@@ -12,7 +12,6 @@ import net.william278.husksync.data.DataSnapshot;
 import net.william278.husksync.data.Identifier;
 import net.william278.husksync.database.Database;
 import net.william278.husksync.user.User;
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -88,7 +87,7 @@ public final class HuskSyncSourceV3 implements MigrationSource {
         }
         Map<DataKey, Tag> data = this.converter.convert(fields);
         long timestamp = packed.getTimestamp().toInstant().toEpochMilli();
-        return new PlayerData(player, new StoredUser(player, name, 0), timestamp, Bukkit.getUnsafe().getDataVersion(), data);
+        return new PlayerData(player, new StoredUser(player, name, 0), timestamp, data);
     }
 
 }

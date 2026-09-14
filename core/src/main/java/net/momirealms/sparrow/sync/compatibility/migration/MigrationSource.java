@@ -42,6 +42,6 @@ public interface MigrationSource {
         void reject(@NotNull UUID player, @Nullable String name, @NotNull String stage, @NotNull Throwable failure, byte @Nullable [] raw) throws IOException;
     }
 
-    record PlayerData(@NotNull UUID player, @Nullable StoredUser user, @Nullable Long timestamp, int mcDataVersion, @NotNull Map<DataKey, Tag> data) {
+    record PlayerData(@NotNull UUID player, @Nullable StoredUser user, @Nullable Long timestamp, @NotNull Map<DataKey, Tag> data) {
     }
 }

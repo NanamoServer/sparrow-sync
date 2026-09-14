@@ -19,7 +19,7 @@ public final class SnapshotMetaCodec {
     static final String FIELD_CAUSE = "cause";     // 保存原因的枚举名
     static final String FIELD_PINNED = "pinned";   // 是否排除在自动轮转之外
     static final String FIELD_SERVER = "server";   // 采集服务器标识
-    static final String FIELD_MC_DATA = "mcData";  // Minecraft 数据版本, 用于内容升级
+    static final String FIELD_MC_DATA = "mcData";  // 保存服务器的 Minecraft 数据版本, 用于展示和诊断
 
     private SnapshotMetaCodec() {
     }

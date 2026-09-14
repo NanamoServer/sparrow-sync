@@ -186,9 +186,9 @@ class InvSyncSourceTest {
         this.storage = new MysqlManager(new SourceData());
         new InvSyncSource(this.plugin(), this.registry).read(this.sink);
         var data = this.accepted.getFirst().data();
-        assertEquals(new HungerDataType.Hunger(13, 0, 0, 0), new HungerDataType().decode(data.get(HungerDataType.HUNGER), CraftMagicNumbers.INSTANCE.getDataVersion()));
-        assertEquals(new ExperienceDataType.Experience(0, 25, 0.75f), new ExperienceDataType().decode(data.get(ExperienceDataType.EXPERIENCE), CraftMagicNumbers.INSTANCE.getDataVersion()));
-        var attributes = new AttributesDataType().decode(data.get(AttributesDataType.ATTRIBUTES), CraftMagicNumbers.INSTANCE.getDataVersion());
+        assertEquals(new HungerDataType.Hunger(13, 0, 0, 0), new HungerDataType().decode(data.get(HungerDataType.HUNGER)));
+        assertEquals(new ExperienceDataType.Experience(0, 25, 0.75f), new ExperienceDataType().decode(data.get(ExperienceDataType.EXPERIENCE)));
+        var attributes = new AttributesDataType().decode(data.get(AttributesDataType.ATTRIBUTES));
         assertEquals(1, attributes.values().length);
         assertEquals(36, attributes.values()[0].base());
     }
@@ -206,7 +206,7 @@ class InvSyncSourceTest {
                 return Thread.currentThread();
             }).get();
         }
-        var inventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(this.accepted.getFirst().data().get(InventoryDataType.INVENTORY), CraftMagicNumbers.INSTANCE.getDataVersion());
+        var inventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(this.accepted.getFirst().data().get(InventoryDataType.INVENTORY));
         assertEquals(41, inventory.contents().length);
         assertTrue(inventory.contents()[36].is(Items.DIAMOND_BOOTS));
         assertTrue(inventory.contents()[39].is(Items.DIAMOND_HELMET));
@@ -235,7 +235,7 @@ class InvSyncSourceTest {
         source.inventory = items(Map.of(42, "{id:'minecraft:saddle',count:1}"));
         this.storage = new MysqlManager(source);
         new InvSyncSource(this.plugin(), this.registry).read(this.sink);
-        var inventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(this.accepted.getFirst().data().get(InventoryDataType.INVENTORY), CraftMagicNumbers.INSTANCE.getDataVersion());
+        var inventory = NmsPlayerFixture.allocate(InventoryDataType.class).decode(this.accepted.getFirst().data().get(InventoryDataType.INVENTORY));
         assertEquals(43, inventory.contents().length);
         assertTrue(inventory.contents()[42].is(Items.SADDLE));
     }

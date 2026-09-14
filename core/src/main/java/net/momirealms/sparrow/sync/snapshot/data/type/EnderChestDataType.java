@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -60,6 +61,7 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
     @NotNull
     public Tag encode(@NotNull ItemCodec.LoadedItems value) {
         CompoundTag root = NBT.createCompound();
+        root.putInt("DataVersion", VersionHelper.WORLD_VERSION);
         root.putInt(SIZE_KEY, value.items().length);
         root.put(ITEMS_KEY, ItemCodec.saveItems(value.items()));
         return root;
@@ -67,12 +69,12 @@ public final class EnderChestDataType implements NativePlayerDataType<ItemCodec.
 
     @Override
     @NotNull
-    public ItemCodec.LoadedItems decode(@NotNull Tag data, int mcDataVersion) throws IOException {
+    public ItemCodec.LoadedItems decode(@NotNull Tag data) throws IOException {
         if (!(data instanceof CompoundTag root)) {
             throw new IOException("ender chest data is not a compound");
         }
         int size = Math.max(1, root.getInt(SIZE_KEY, FALLBACK_SIZE));
-        return ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, mcDataVersion);
+        return ItemCodec.loadItems(root.getList(ITEMS_KEY, NBT.createList()), size, root.getInt("DataVersion"));
     }
 
     @Override
