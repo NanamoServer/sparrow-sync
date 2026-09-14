@@ -31,7 +31,7 @@ import org.jetbrains.annotations.Nullable;
 @ApiStatus.Internal
 public final class MapInteractionListener implements Listener {
 
-    // 地图总开关在启动时确定, 交互开关在每次事件中读取最新配置.
+    // 地图总开关启动时读取, 交互开关每次事件读取.
     public void register(@NotNull Plugin plugin) {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         if (VersionHelper.isPaper()) {
@@ -47,7 +47,7 @@ public final class MapInteractionListener implements Listener {
         if (item != null) {
             MapId id = item.get(DataComponents.MAP_ID);
             if (id != null && id.id() < 0 && event.getClickedBlock() != null && event.getClickedBlock().getState() instanceof Banner) {
-                // 按本次交互的手拒绝物品使用, 保留其他插件对方块交互的判定.
+                // 只禁止当前手使用物品, 保留其他插件对方块交互的处理结果.
                 event.setUseItemInHand(Event.Result.DENY);
             }
         }
@@ -59,7 +59,7 @@ public final class MapInteractionListener implements Listener {
         InventoryType type = event.getView().getTopInventory().getType();
         int slot = event.getRawSlot();
         if (type == InventoryType.CARTOGRAPHY ? slot != 2 : (type != InventoryType.WORKBENCH && type != InventoryType.CRAFTING) || slot != 0) return;
-        // 点击事件早于原版取出和后处理, Shift、快捷栏交换和丢出结果也沿此入口取消.
+        // 在取出和后处理前拦截, 同时覆盖 Shift、快捷栏交换和丢出成品.
         if (this.blocked(event.getCurrentItem())) {
             event.setCancelled(true);
         }
@@ -74,7 +74,7 @@ public final class MapInteractionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onCrafter(CrafterCraftEvent event) {
-        // 合成器在此事件之后才分配地图 ID、发出成品并扣除材料.
+        // 取消事件可阻止合成器分配地图 ID、产出成品和扣除材料.
         if (this.blocked(event.getResult())) {
             event.setCancelled(true);
         }
@@ -92,14 +92,14 @@ public final class MapInteractionListener implements Listener {
         return !options.allowCopy();
     }
 
-    // 原版事件使用 Craft 物品镜像, 直接只读访问组件, 不为判定复制物品.
+    // 直接读取 Craft 物品的组件, 无需复制物品.
     @Nullable
     private net.minecraft.world.item.ItemStack nativeMap(@Nullable ItemStack item) {
         if (item == null || item.getType() != Material.FILLED_MAP) return null;
         return CraftItemStackProxy.INSTANCE.getHandle(item);
     }
 
-    // Paper 预览入口单独装载, Spigot 的实际取出拦截由上面的 Bukkit 点击事件完成.
+    // 仅在 Paper 加载预览监听器; Spigot 通过 Bukkit 点击事件拦截取出.
     private final class PaperPreview implements Listener {
 
         @EventHandler(priority = EventPriority.HIGHEST)

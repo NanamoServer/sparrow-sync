@@ -64,11 +64,11 @@ public final class MapPipeline {
         this.handlers = Map.copyOf(indexed);
     }
 
-    // 等待地图发布获取到全局唯一ID后生成传输快照.
+    // 按同步模式处理地图物品, 完成后生成传输快照.
     @NotNull
     public CompletableFuture<Snapshot> encodeAsync(@NotNull Snapshot snapshot, @NotNull MapType type, @NotNull String ownerId, @NotNull IntFunction<CompletableFuture<StoredMap>> publish) {
         Map<Integer, CompletableFuture<StoredMap>> publications = new HashMap<>();
-        // 同次保存的来源地图只采集发布一次, 失败结果也由各件物品共用并独立回退.
+        // 同次保存中, 每张来源地图只采集发布一次; 失败时各物品分别保留原内容.
         IntFunction<CompletableFuture<StoredMap>> publishOnce = id -> publications.computeIfAbsent(id, nativeId -> {
             try {
                 return publish.apply(nativeId);
@@ -78,7 +78,7 @@ public final class MapPipeline {
         });
         Map<Integer, CompletableFuture<Boolean>> renewals = new HashMap<>();
         return this.rewriteAsync(snapshot, components -> {
-            // 已有模式的中转地图交给其处理器续行
+            // 中转地图沿用已有的同步模式.
             CompoundTag marker = this.marker(components);
             if (marker != null && marker.containsKey(MAP_TYPE)) {
                 MapOrigin origin = this.origin(marker);
@@ -89,7 +89,7 @@ public final class MapPipeline {
             return this.handler(type)
                     .compileAsync(components, new MapOrigin(type, ownerId, ((IntTag) mapId).getAsInt()), publishOnce)
                     .thenApply(compiled -> {
-                        // 在处理器成功后写入地图来源字段, 保留同命名空间的其他业务字段.
+                        // 处理成功后写入来源标记, 保留同一命名空间中的其他字段.
                         CompoundTag origin = marker == null ? NBT.createCompound() : new CompoundTag(new HashMap<>(marker.tags));
                         origin.putString(MAP_TYPE, type.name());
                         origin.putString(ORIGIN_SERVER, ownerId);
@@ -99,7 +99,7 @@ public final class MapPipeline {
         }, LogConstants.DATA_MAP_COMPILE_FAILED);
     }
 
-    // 按物品的来源模式准备接收数据, 等本服地图副本可用后返回快照.
+    // 按物品记录的模式处理地图, 等待所需地图就绪后返回快照.
     @NotNull
     public CompletableFuture<Snapshot> decodeAsync(@NotNull Snapshot snapshot, @NotNull String ownerId) {
         return this.rewriteAsync(snapshot, components -> {
@@ -107,7 +107,7 @@ public final class MapPipeline {
             if (marker == null || !marker.containsKey(MAP_TYPE)) return CompletableFuture.completedFuture(components);
             MapOrigin origin = this.origin(marker);
             return this.handler(origin.type()).decodeAsync(components, origin, ownerId).thenApply(decoded -> {
-                // 只有实际恢复来源地图 ID 才清理标记, 返回来源服时若找不到来源地图, 则保留本服地图副本的同步标识.
+                // 恢复原地图 ID 后才移除来源标记; 原地图丢失时保留副本标记.
                 if (!ownerId.equals(origin.ownerId()) || !(decoded.get(MAP_ID) instanceof IntTag restoredId) || restoredId.getAsInt() != origin.id()) return decoded;
                 CompoundTag remaining = new CompoundTag(new HashMap<>(marker.tags));
                 remaining.remove(MAP_TYPE);
@@ -118,7 +118,7 @@ public final class MapPipeline {
         }, LogConstants.DATA_MAP_DECODE_FAILED);
     }
 
-    // 校验并读取物品记录的模式和地图来源.
+    // 校验并读取同步模式和地图来源.
     private MapOrigin origin(CompoundTag marker) {
         if (!(marker.get(MAP_TYPE) instanceof StringTag type) || !(marker.get(ORIGIN_SERVER) instanceof StringTag server) || server.getAsString().isBlank() || !(marker.get(ORIGIN_ID) instanceof IntTag id)) {
             throw new IllegalArgumentException("invalid map origin metadata");
@@ -126,10 +126,10 @@ public final class MapPipeline {
         return new MapOrigin(MapType.valueOf(type.getAsString()), server.getAsString(), id.getAsInt());
     }
 
-    // 并行准备单张地图结果, 完成后沿原快照结构生成改写结果.
+    // 并行处理地图物品, 完成后按原快照结构替换结果.
     private CompletableFuture<Snapshot> rewriteAsync(Snapshot snapshot, Function<CompoundTag, CompletableFuture<CompoundTag>> operation, String failureKey) {
         if (this.closed.isDone()) return CompletableFuture.completedFuture(snapshot);
-        // 按标签对象身份记住准备结果, 两次遍历可准确对应同一物品的组件
+        // 按标签对象引用保存结果, 让两次遍历对应到同一物品.
         Map<CompoundTag, CompletableFuture<CompoundTag>> prepared = new IdentityHashMap<>();
         this.rewrite(snapshot, components -> {
             prepared.computeIfAbsent(components, item -> {
@@ -139,7 +139,7 @@ public final class MapPipeline {
                 } catch (RuntimeException exception) {
                     result = CompletableFuture.failedFuture(exception);
                 }
-                // 超时只结束本次物品等待, 不截断底层发布链, 防止旧写入迟到越过新写入.
+                // 超时只结束物品的等待, 发布仍按顺序完成, 避免旧数据覆盖新数据.
                 return result.copy().orTimeout(5, TimeUnit.SECONDS).exceptionally(failure -> {
                     if (!this.closed.isDone()) {
                         this.logger.warnWithFileCause(LogCategory.DATA, snapshot.meta().player(), null, failure, failureKey, snapshot.meta().player().toString(), snapshot.meta().id().toString(), String.valueOf(failure));
@@ -150,7 +150,7 @@ public final class MapPipeline {
             return components;
         });
         if (prepared.isEmpty()) return CompletableFuture.completedFuture(snapshot);
-        // 关闭信号只参与完成竞争, 快照引用留在本次操作中, 完成后即可释放.
+        // 关闭信号与处理结果任一完成即可继续, 快照引用随本次操作释放.
         return CompletableFuture.allOf(prepared.values().toArray(CompletableFuture[]::new))
                 .applyToEither(this.closed, Function.identity())
                 .thenApply(ignored -> {
@@ -160,7 +160,7 @@ public final class MapPipeline {
                 });
     }
 
-    // 结束当前管线的物品等待并返回原快照, 底层发布由服务生命周期另行收尾
+    // 结束物品等待并返回原快照, 地图发布由服务关闭流程处理.
     public void close() {
         this.closed.complete(null);
     }
@@ -174,7 +174,7 @@ public final class MapPipeline {
         return handler;
     }
 
-    // 读取物品的来源命名空间
+    // 读取 custom_data 中的来源标记.
     @Nullable
     private CompoundTag marker(CompoundTag components) {
         Tag custom = components.get(CUSTOM_DATA);
@@ -187,7 +187,7 @@ public final class MapPipeline {
         return compound;
     }
 
-    // 以新父节点写入来源命名空间, 空命名空间就移除.
+    // 复制父节点后写入来源标记, 空节点直接移除.
     private CompoundTag writeMarker(CompoundTag components, CompoundTag marker) {
         CompoundTag custom = components.get(CUSTOM_DATA) instanceof CompoundTag data
                 ? new CompoundTag(new HashMap<>(data.tags))
@@ -206,7 +206,7 @@ public final class MapPipeline {
         return result;
     }
 
-    // 只读取已注册的背包和末影箱数据, 替换其中改过地图的部分; 没有变化时返回原快照.
+    // 只处理已注册的背包和末影箱数据, 没有变化时返回原快照.
     private Snapshot rewrite(Snapshot snapshot, UnaryOperator<CompoundTag> operation) {
         SnapshotData changed = snapshot.content();
         for (int i = 0; i < ITEM_DATA_KEYS.length; i++) {
@@ -220,7 +220,7 @@ public final class MapPipeline {
         return changed == snapshot.content() ? snapshot : new Snapshot(snapshot.meta(), changed);
     }
 
-    // 改写当前物品中的地图信息, 并递归处理潜影盒等原版物品组件中存放的物品.
+    // 处理物品的地图信息, 递归遍历潜影盒等组件内的物品.
     private CompoundTag rewriteItem(CompoundTag item, UnaryOperator<CompoundTag> operation) {
         if (!(item.get("components") instanceof CompoundTag components)) return item;
         CompoundTag changed = components;
@@ -228,7 +228,7 @@ public final class MapPipeline {
         if (id.equals("minecraft:filled_map") || id.equals("filled_map")) {
             changed = operation.apply(changed);
         }
-        // 嵌套遍历限定原版物品组件, custom_data 中的任意业务 NBT 按原值保留
+        // 只遍历原版物品组件, 保留 custom_data 中的自定义数据.
         changed = this.rewriteList(changed, "minecraft:container", true, operation);
         for (int i = 0; i < ITEM_LISTS.length; i++) {
             changed = this.rewriteList(changed, ITEM_LISTS[i], false, operation);
@@ -246,7 +246,7 @@ public final class MapPipeline {
         return result;
     }
 
-    // 逐项处理物品列表, 仅在某项变化后复制列表与父节点.
+    // 逐项处理物品, 有变化时才复制列表和父节点.
     private CompoundTag rewriteList(CompoundTag parent, String key, boolean slotted, UnaryOperator<CompoundTag> operation) {
         if (!(parent.get(key) instanceof ListTag items)) return parent;
         ListTag changed = null;

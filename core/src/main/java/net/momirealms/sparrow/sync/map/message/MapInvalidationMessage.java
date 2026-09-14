@@ -13,8 +13,8 @@ import java.util.function.IntConsumer;
 public final class MapInvalidationMessage implements RedisMessage<ByteBuf> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "map_invalidation");
     public static final MessageCodec<ByteBuf, MapInvalidationMessage> CODEC = RedisMessage.codec(MapInvalidationMessage::write, MapInvalidationMessage::new);
-    private static volatile @Nullable IntConsumer listener; // 当前服务的通知入口, null 表示尚未启用或正在关闭
-    private final int globalId; // 当前集群需要重新读取的负数地图 ID
+    private static volatile @Nullable IntConsumer listener; // 未启用或关闭时为 null
+    private final int globalId; // 需要重新读取的全局地图 ID (负数)
 
     public MapInvalidationMessage(int globalId) {
         if (globalId >= 0) {

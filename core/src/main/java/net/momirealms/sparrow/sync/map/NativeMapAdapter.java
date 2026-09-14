@@ -29,13 +29,13 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 
-// 在 NMS 地图对象与地图同步数据之间转换, 并维护本服地图副本.
+// 转换原版地图与同步数据, 更新本服地图副本.
 @ApiStatus.Internal
 public final class NativeMapAdapter {
     private final HolderLookup.Provider registries;
-    private final DynamicOps<Tag> ops; // 携带当前注册表的插件 NBT 编解码上下文
+    private final DynamicOps<Tag> ops; // 带有当前注册表的 NBT 编解码上下文
     private final int dataVersion;
-    private final Codec<MapItemSavedData> codec = MapItemSavedDataProxy.INSTANCE.getCodec(); // 版本代理提供的地图 Codec; 旧分支返回 null 并使用 load/save
+    private final Codec<MapItemSavedData> codec = MapItemSavedDataProxy.INSTANCE.getCodec(); // 旧版本没有 Codec, 使用 load/save
 
     public NativeMapAdapter(@NotNull HolderLookup.Provider registries, int dataVersion) {
         this.registries = registries;
@@ -43,7 +43,7 @@ public final class NativeMapAdapter {
         this.dataVersion = dataVersion;
     }
 
-    // 只读已准备的 NMS 地图存储缓存; 未加载的嵌套地图直接读文件, 不异步触发原版加载事件.
+    // 优先采集缓存中的地图, 未加载时直接读文件, 避免在异步线程触发原版加载事件.
     @Nullable
     public MapData capture(@NotNull NativeMapStorage storage, int mapId) throws IOException {
         MapItemSavedData data = storage.cached(mapId);
@@ -52,7 +52,7 @@ public final class NativeMapAdapter {
         try {
             root = storage.read(mapId);
         } catch (IOException exception) {
-            // 文件读取可能与原版加载后的保存重叠. 已出现内存来源地图时优先采集它, 不重试文件.
+            // 读文件可能撞上原版保存; 若地图已加载到内存, 改为采集内存数据.
             data = storage.cached(mapId);
             if (data != null) return this.capture(data);
             throw exception;
@@ -68,14 +68,14 @@ public final class NativeMapAdapter {
     }
 
     private MapData capture(MapItemSavedData data) {
-        // 原版更新地图时不获取 data 的监视器. 并发集合保证可遍历, 像素允许采到一次更新中的画面.
+        // 原版更新地图时不锁定 data. 集合可并发遍历, 但像素可能包含更新中的画面.
         Tag tag = this.codec == null
                 ? NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, MapItemSavedDataProxy.INSTANCE.save(data, new net.minecraft.nbt.CompoundTag(), this.registries))
                 : this.codec.encodeStart(this.ops, data).getOrThrow();
         return new MapData(this.dataVersion, (CompoundTag) tag);
     }
 
-    // 将地图同步数据转换为独立的 NMS 地图对象, 此阶段可由异步线程调用.
+    // 构造独立的原版地图副本, 可在异步线程调用.
     @NotNull
     public MapItemSavedData prepareReplica(@NotNull MapIdentity identity, @NotNull MapData data) throws IOException {
         if (data.dataVersion() > this.dataVersion) {
@@ -83,7 +83,7 @@ public final class NativeMapAdapter {
         }
         CompoundTag tag = data.getTag();
         if (data.dataVersion() < this.dataVersion) {
-            // SAVED_DATA_MAP_DATA 的升级入口读取外层 data 字段, 这里补齐原版地图文件格式
+            // 数据升级器需要外层 data 字段, 按原版地图文件格式包装.
             CompoundTag root = NBT.createCompound();
             root.put("data", tag);
             Tag fixed = DataFixers.getDataFixer().update(References.SAVED_DATA_MAP_DATA, new Dynamic<>(NBTOps.INSTANCE, root), data.dataVersion(), this.dataVersion).getValue();
@@ -92,7 +92,7 @@ public final class NativeMapAdapter {
             }
             tag = upgraded;
         }
-        // 地图数据使用副本专用维度标识, 展示框和 Bukkit 世界绑定随后由本服建立
+        // 使用副本专用维度, 展示框和 Bukkit 世界关联由本服重建.
         tag.putString("dimension", identity.replicaDimension());
         tag.remove("UUIDMost");
         tag.remove("UUIDLeast");
@@ -104,7 +104,7 @@ public final class NativeMapAdapter {
                 .getOrThrow(message -> new IOException("failed to decode map: " + message));
     }
 
-    // 将经 prepareReplica 得到的地图同步数据写入本服地图副本, 已有对象的地图同步标识与内容一起更新.
+    // 安装准备好的地图副本; 副本已存在时, 在原对象上更新标识和内容.
     @NotNull
     public MapItemSavedData updateReplica(@NotNull ServerLevel level, @NotNull MapIdentity identity, @NotNull MapItemSavedData prepared) {
         MapId id = new MapId(identity.globalId());
@@ -132,7 +132,7 @@ public final class NativeMapAdapter {
             target.trackingPosition = prepared.trackingPosition;
             target.unlimitedTracking = prepared.unlimitedTracking;
             MapItemSavedDataProxy proxy = MapItemSavedDataProxy.INSTANCE;
-            // 相同画面只比较数组; 变化像素原地写入, 保留 MapView 和渲染缓冲的身份.
+            // 只修改变化的像素, 保留原有 MapView 和渲染缓冲.
             int firstDifference = Arrays.mismatch(target.colors, prepared.colors);
             if (firstDifference >= 0) {
                 int minX = 127;
@@ -147,11 +147,11 @@ public final class NativeMapAdapter {
                     maxX = Math.max(maxX, x);
                     maxY = i >> 7;
                 }
-                // NMS 地图查看者记录会合并本次与尚未发送的像素变化范围, 同时标记地图文件待保存.
+                // 原版会合并尚未发送的像素范围, 并标记地图待保存.
                 proxy.setColorsDirty(target, minX, minY);
                 proxy.setColorsDirty(target, maxX, maxY);
             }
-            // 来源旗帜负责自己的装饰键, 本服玩家与展示框的其他装饰继续保留.
+            // 更新来源地图的旗帜, 保留本服玩家和展示框的其他标记.
             Map<String, MapBanner> banners = proxy.getBannerMarkers(target);
             Map<String, MapBanner> incomingBanners = proxy.getBannerMarkers(prepared);
             boolean bannersChanged = !banners.equals(incomingBanners);
@@ -178,7 +178,7 @@ public final class NativeMapAdapter {
                 }
                 proxy.setTrackedDecorationCount(target, tracked);
             }
-            // 元数据和旗帜可在像素不变时修改, 仍须保存; 包头随原版装饰更新一并发送.
+            // 像素不变时也要保存元数据和旗帜; 缩放与锁定状态随装饰更新发送.
             if (metadataChanged || bannersChanged) target.setDirty();
             if (headerChanged || decorationsChanged) proxy.setDecorationsDirty(target);
         }

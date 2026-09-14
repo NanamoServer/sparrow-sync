@@ -25,7 +25,7 @@ public final class NativeMapStorage {
     private final MapDataCache cache;
     private final int dataVersion;
 
-    // 注入原版的地图缓存Map, 替换为线程安全Map, 实现异步采集
+    // 替换原版地图缓存, 允许异步采集时遍历.
     public NativeMapStorage(@NotNull MinecraftServer server, int dataVersion) {
         this.storage = VersionHelper.isOrAbove26_1()
                 ? MinecraftServerProxy.INSTANCE.getDataStorage(server)
@@ -42,7 +42,7 @@ public final class NativeMapStorage {
         return value != null && value.orElse(null) instanceof MapItemSavedData data ? data : null;
     }
 
-    /** 沿用原版的压缩检测与数据升级, 返回独立 NBT, 不写入 NMS 地图存储缓存. */
+    /** 按原版规则解压并升级地图文件, 返回独立 NBT, 不写入原版缓存. 文件不存在时返回 null. */
     @Nullable
     public CompoundTag read(int mapId) throws IOException {
         SavedDataStorageProxy proxy = SavedDataStorageProxy.INSTANCE;

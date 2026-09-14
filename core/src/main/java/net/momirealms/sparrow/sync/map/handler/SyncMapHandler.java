@@ -31,7 +31,7 @@ public final class SyncMapHandler implements MapHandler {
     @NotNull
     public CompletableFuture<CompoundTag> compileAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull IntFunction<CompletableFuture<StoredMap>> publish) {
         CompletableFuture<StoredMap> publication = publish.apply(origin.id());
-        // 发布 Future 完成后才写负数引用, 接收服此时已经能查到对应记录
+        // 发布完成后才写入负数 ID, 确保接收服能查到记录.
         return publication.thenApply(map -> {
             if (!map.identity().source().equals(new MapSource(origin.ownerId(), origin.id()))) {
                 throw new IllegalArgumentException("published map origin mismatch");
@@ -45,7 +45,7 @@ public final class SyncMapHandler implements MapHandler {
     public CompletableFuture<CompoundTag> decodeAsync(@NotNull CompoundTag components, @NotNull MapOrigin origin, @NotNull String ownerId) {
         if (!(components.get("minecraft:map_id") instanceof IntTag id)) return CompletableFuture.failedFuture(new IllegalArgumentException("SYNC map has no integer global id"));
         MapIdentity identity = new MapIdentity(new MapSource(origin.ownerId(), origin.id()), id.getAsInt());
-        // 接收结果可能是外服负数 ID, 也可能是返回来源服后找到的来源地图 ID
+        // 回到来源服且原地图存在时恢复原 ID, 否则使用负数 ID 的副本.
         return this.receiver.receive(identity).thenApply(localId -> localId == identity.globalId() ? components : this.withId(components, localId));
     }
 
@@ -58,13 +58,13 @@ public final class SyncMapHandler implements MapHandler {
             try {
                 return this.receiver.touch(idToRenew);
             } catch (RuntimeException exception) {
-                // Redis 提交阶段的失败也归入本次共享结果, 每件物品各自告警并原样回退.
+                // 提交 Redis 请求时的异常也作为共享结果, 各物品分别告警并保留原内容.
                 return CompletableFuture.failedFuture(exception);
             }
         }).thenApply(ignored -> components);
     }
 
-    // 替换地图 ID 并保留其他组件的共享引用.
+    // 只替换地图 ID, 其他组件仍共用原引用.
     private CompoundTag withId(CompoundTag components, int id) {
         CompoundTag result = new CompoundTag(new HashMap<>(components.tags));
         result.putInt("minecraft:map_id", id);

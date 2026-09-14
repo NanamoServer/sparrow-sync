@@ -9,7 +9,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-// 保存一次采集得到的地图持久内容, 供异步编码、内容比较和跨服传输使用.
+// 一次采集得到的地图内容, 用于异步编码、比较和跨服传输.
 @ApiStatus.Internal
 public final class MapData {
     public static final int PIXEL_COUNT = 128 * 128;
@@ -24,7 +24,7 @@ public final class MapData {
         }
         this.dataVersion = dataVersion;
         this.tag = tag.deepClone();
-        // 展示框由接收服重建, Bukkit 世界 UUID 随接收维度重新生成.
+        // 展示框和 Bukkit 世界 UUID 由接收服重建.
         this.tag.remove("frames");
         this.tag.remove("UUIDMost");
         this.tag.remove("UUIDLeast");

@@ -22,7 +22,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 
-// 在现有 Redis 连接上保存地图缓存并广播失效通知.
 public final class RedisMapCache implements MapCache {
     private static final long TTL_SECONDS = 7 * 24 * 60 * 60;
     private final RedisAsyncCommands<byte[], byte[]> commands;
@@ -72,7 +71,7 @@ public final class RedisMapCache implements MapCache {
                 throw new CompletionException(exception);
             }
         }, this.worker).thenCompose(bytes -> this.commands.set(this.key(identity.globalId()), bytes, SetArgs.Builder.ex(TTL_SECONDS)).toCompletableFuture())
-                // PUBLISH 命令成功后发布链才完成, 这里等待的是 Redis 接受命令, 接收服刷新各自异步进行
+                // 等待 Redis 接受广播命令后完成发布, 各接收服随后异步刷新.
                 .thenCompose(ignored -> this.commands.publish(this.broker.channel(), this.broker.encode(new MapInvalidationMessage(identity.globalId()))).toCompletableFuture())
                 .thenApply(ignored -> null);
     }

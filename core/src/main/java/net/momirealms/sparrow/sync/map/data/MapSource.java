@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.map.data;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-// 来源地图标识, 由地图源 ID 和该来源服上的非负地图 ID 组成.
+// 地图来源: 地图源 ID 和来源服上的非负地图 ID.
 @ApiStatus.Internal
 public record MapSource(@NotNull String ownerId, int id) {
     public MapSource {
