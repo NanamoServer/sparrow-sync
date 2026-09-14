@@ -463,7 +463,7 @@ class CommandFeaturesTest {
         CommandSender viewer = player(Set.of("sparrow_sync.command.view", "custom.delete", "sparrow_sync.command.export"));
         this.showSnapshots(viewer, new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 12, List.of(meta)));
         assertEquals(3, this.text().lines().count());
-        assertTrue(this.text().contains("<red>or..."));
+        assertTrue(this.text().contains("<red>..."));
         assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, "<red>origin")));
         assertTrue(this.text().contains("1/3"));
         assertFalse(this.text().contains("command.panel"));
@@ -472,7 +472,7 @@ class CommandFeaturesTest {
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom erase " + id)));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export binary " + id)));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/sparrow-sync snapshot export json " + id)));
-        assertTrue(this.text().contains(language.equals("zh_cn") ? "★ [查][删][导]" : "★ [V][D][J]"));
+        assertTrue(this.text().contains(language.equals("zh_cn") ? "★ [查] [删] [导]" : "★ [V] [D] [J]"));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 2")));
         assertFalse(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 0")));
         assertTrue(this.messages.stream().anyMatch(message -> hasClick(message, "/custom history Steve 1")));
@@ -773,8 +773,8 @@ class CommandFeaturesTest {
                 new SnapshotMeta(UUID.fromString("ffffaaaa-0000-0000-0000-000000000000"), playerId, 1, SaveCause.WORLD_SAVE, false, "server-name-is-long", 0));
         this.showSnapshots(player(Set.of("sparrow_sync.command.view")), new PlayerIdentity(playerId, "Steve"), new SnapshotPage(0, 5, 3, records));
         assertEquals(5, this.text().lines().count());
-        assertTrue(this.text().contains("WWWWWWWWWW"));
-        assertTrue(this.text().contains("server-..."));
+        assertTrue(this.text().contains("WWWWW..."));
+        assertTrue(this.text().contains("serve..."));
         assertFalse(this.text().contains("server-name-is-long"));
         for (SnapshotMeta meta : records) {
             assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, meta.server())));
@@ -786,14 +786,14 @@ class CommandFeaturesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1234567890", "12345678901", "测试服务器名字超过十个字符", "abcdef😀ghijkl"})
-    void sourceAbbreviationKeepsTenCodePointsIncludingDotsAndConsoleKeepsFullName(String server) {
+    @ValueSource(strings = {"12345678", "123456789", "测试服务器名字超过八个字符", "abcd😀fghijkl"})
+    void sourceAbbreviationKeepsEightCodePointsIncludingDotsAndConsoleKeepsFullName(String server) {
         this.registerPanelCommands();
         UUID playerId = UUID.randomUUID();
         SnapshotPage page = new SnapshotPage(0, 5, 1, List.of(new SnapshotMeta(UUID.randomUUID(), playerId, 1, SaveCause.COMMAND, false, server, 0)));
         PlayerIdentity identity = new PlayerIdentity(playerId, "Steve");
         this.showSnapshots(player(Set.of()), identity, page);
-        String expected = server.codePointCount(0, server.length()) <= 10 ? server : server.substring(0, server.offsetByCodePoints(0, 7)) + "...";
+        String expected = server.codePointCount(0, server.length()) <= 8 ? server : server.substring(0, server.offsetByCodePoints(0, 5)) + "...";
         assertTrue(this.text().contains(expected));
         assertTrue(this.messages.stream().anyMatch(message -> hasCopy(message, server)));
         this.messages.clear();

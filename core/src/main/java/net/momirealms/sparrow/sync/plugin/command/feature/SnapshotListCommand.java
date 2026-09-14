@@ -27,8 +27,8 @@ import java.util.List;
 // 查询指定玩家的数据库快照并输出分页文字列表.
 public final class SnapshotListCommand extends AbstractSnapshotCommand {
     private static final DateTimeFormatter FULL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss XXX").withZone(ZoneId.systemDefault());
-    private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault());
-    private static final int SERVER_NAME_LENGTH = 10; // 来源服显示上限, 包含末尾省略点, 单位为 Unicode 码点
+    private static final DateTimeFormatter SHORT_TIME = DateTimeFormatter.ofPattern("MM.dd HH:mm").withZone(ZoneId.systemDefault());
+    private static final int SERVER_NAME_LENGTH = 8; // 来源服显示上限, 包含末尾省略点, 单位为 Unicode 码点
 
     public SnapshotListCommand(@NotNull CommandManager manager, @NotNull SparrowSync plugin) {
         super(manager, plugin);
@@ -74,9 +74,8 @@ public final class SnapshotListCommand extends AbstractSnapshotCommand {
             if (sender instanceof Player) {
                 actions = this.action(sender, "view", "snapshot_view", player.name() + " " + id, false, true);
             }
-            Component separator = sender instanceof Player ? Component.empty() : Component.space();
-            actions = actions.append(separator).append(this.action(sender, "delete", "snapshot_delete", id, true, true))
-                    .append(separator).append(this.action(sender, "json", "snapshot_export", "json " + id, false, true));
+            actions = actions.append(Component.space()).append(this.action(sender, "delete", "snapshot_delete", id, true, true))
+                    .append(Component.space()).append(this.action(sender, "json", "snapshot_export", "json " + id, false, true));
             String pinAction = meta.pinned() ? "unpin" : "pin";
             Component source = Component.text(meta.server());
             Component snapshotId = Component.text(id);
@@ -111,7 +110,7 @@ public final class SnapshotListCommand extends AbstractSnapshotCommand {
         return ChatTextUtils.width(meta.id().toString().substring(0, 8)) + ChatTextUtils.width(meta.cause().name()) + ChatTextUtils.width(this.sourceName(meta.server()));
     }
 
-    // 将玩家可见的来源服名称限制为十个 Unicode 码点, 超出部分用三个点表示.
+    // 将玩家可见的来源服名称限制为八个 Unicode 码点, 超出部分用三个点表示.
     @NotNull
     private String sourceName(@NotNull String server) {
         if (server.codePointCount(0, server.length()) <= SERVER_NAME_LENGTH) {
