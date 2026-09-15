@@ -25,7 +25,8 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 ## 🔥 Key Features
 
 - **🔄 Player Data Synchronization**: Synchronize inventories, ender chests, experience, health, hunger, potion effects, advancements, statistics, attributes, location, and more. Choose which data types participate through configuration.
-- **⚡ Asynchronous Saving**: Capture player state on the appropriate server thread, then encode and store snapshots asynchronously. Tasks for the same player are processed in order.
+- **🚀 Minimal Main-Thread Time**: Nearly all tasks during player join and quit can run asynchronously, allowing main-thread time to remain independent of data size. In measured tests, main-thread time per join was **≤ 0.2 ms** in nearly all cases.
+- **✨ Freeze-Free Synchronization**: Complete most data synchronization before `onJoin`, providing a seamless join experience without freezing players after they enter the world.
 - **🗄️ Flexible Storage**: Choose **MongoDB**, **MySQL**, **MariaDB**, or **PostgreSQL** for persistent storage, with **Redis** handling cross-server coordination.
 - **📦 Compressed Snapshots**: Store player data using Sparrow NBT, with **Zstd**, Deflate, and uncompressed formats available.
 - **🖥️ Snapshot Management GUI**: Browse saved snapshots, inspect their contents, restore earlier data, pin records, and export snapshots through an in-game menu.
