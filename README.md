@@ -102,6 +102,14 @@ To translate them, add another `@Comment` carrying your own `lang` tag:
 
 Submit a **pull request** with your changes for review. Contributions are welcome! 💖
 
+### 💖 Support the Developer
+Purchase the official license for SparrowSync on the following platforms to get official support and sustain SparrowSync's development.
+
+- **VoxelShop**: [Soon](https://voxel.shop)
+- **BuiltByBit**: [Soon](https://builtbybit.com)
+- **NMCrate**: [Soon](https://nmcrate.com)
+- **Afdian**: [Support via Afdian](https://afdian.com/@xiaomomi/)
+
 ## 📜 License
 
 Sparrow Sync is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE) for details.

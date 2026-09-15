@@ -102,6 +102,14 @@ boolean metrics = true;
 
 提交 **Pull Request** 供我们审核。欢迎参与贡献！💖
 
+### 💖 Support the Developer
+在以下平台购买 SparrowSync 的许可证, 获得官方支持, 维持 SparrowSync 的开发.
+
+- **VoxelShop**: [Soon](https://voxel.shop)
+- **BuiltByBit**: [Soon](https://builtbybit.com)
+- **NMCrate**: [Soon](https://nmcrate.com)
+- **Afdian**: [Support via Afdian](https://afdian.com/@xiaomomi/)
+
 ## 📜 许可证
 
 Sparrow Sync 采用 **GNU General Public License v3.0** 许可证。详情请参阅 [LICENSE](LICENSE)。
