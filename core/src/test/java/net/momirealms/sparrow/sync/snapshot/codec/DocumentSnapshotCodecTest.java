@@ -47,6 +47,11 @@ class DocumentSnapshotCodecTest {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
     }
 
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
+
     @Test
     void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
         Document original = this.codec.encode(SnapshotFixtures.snapshot());

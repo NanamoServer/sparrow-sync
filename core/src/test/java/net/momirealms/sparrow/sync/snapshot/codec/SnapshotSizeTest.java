@@ -17,6 +17,7 @@ import net.momirealms.sparrow.sync.storage.mongo.MongoStorageProvider;
 import net.momirealms.sparrow.sync.storage.mysql.MysqlStorageProvider;
 import net.momirealms.sparrow.sync.storage.postgresql.PostgresStorageProvider;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -34,6 +35,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class SnapshotSizeTest {
     private static final int LARGE_PAYLOAD_SIZE = 17 * 1024 * 1024;
     @TempDir Path directory;
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
 
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)

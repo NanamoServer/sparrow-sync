@@ -6,9 +6,11 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.ZstdTestSupport;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -27,6 +29,11 @@ class SnapshotDataOverlayTest {
 
     private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE);
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
 
     @Test
     void replacementsAndAppendsKeepSourceAndEarlierViewsUnchanged() throws IOException {

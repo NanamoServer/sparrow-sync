@@ -8,6 +8,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
+import net.momirealms.sparrow.sync.snapshot.codec.ZstdTestSupport;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockIndexCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
@@ -15,6 +16,7 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -34,6 +36,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class BlockFrameTest {
     private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE);
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
 
     @Test
     void eachDamagedBlockIsIsolated() throws IOException {

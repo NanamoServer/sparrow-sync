@@ -21,18 +21,21 @@ public final class Dependencies {
             .groupId("org.ow2.asm")
             .artifactId("asm")
             .version(DependencyVersions.ASM)
+            .autoLoad(false)
             .build();
 
     public static final Dependency ASM_COMMONS = Dependency.builder()
             .groupId("org.ow2.asm")
             .artifactId("asm-commons")
             .version(DependencyVersions.ASM_COMMONS)
+            .autoLoad(false)
             .build();
 
     public static final Dependency JAR_RELOCATOR = Dependency.builder()
             .groupId("me.lucko")
             .artifactId("jar-relocator")
             .version(DependencyVersions.JAR_RELOCATOR)
+            .autoLoad(false)
             .build();
 
     /**
@@ -49,6 +52,7 @@ public final class Dependencies {
             .groupId("com{}github{}luben")
             .artifactId("zstd-jni")
             .version(DependencyVersions.ZSTD_JNI)
+            .autoLoad(false)
             .build();
 
     /**

@@ -5,6 +5,7 @@ import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidRea
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.LazySnapshotData;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -21,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BinarySnapshotCodecTest {
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
 
     @Test
     void roundTripPreservesSnapshot() throws IOException {

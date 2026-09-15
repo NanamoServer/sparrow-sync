@@ -1,10 +1,14 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
+import com.github.luben.zstd.Zstd;
+import net.momirealms.sparrow.sync.plugin.dependency.Dependencies;
+import net.momirealms.sparrow.sync.plugin.dependency.classloader.IsolatedClassLoader;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.Compressor;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.ZstdCompressor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.io.IOException;
 
@@ -13,9 +17,33 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 class CompressorRegistryTest {
     private static final int NO_LIMIT = Integer.MAX_VALUE;
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
+
+    @Test
+    void zstdUsesAnIsolatedDependencyAndReadsExistingFrames() throws Exception {
+        ClassLoader loader = ZstdTestSupport.initialize();
+        assertFalse(Dependencies.ZSTD_JNI.autoLoad());
+        assertInstanceOf(IsolatedClassLoader.class, loader);
+        assertSame(loader, loader.loadClass(Zstd.class.getName()).getClassLoader());
+        assertNotSame(Zstd.class, loader.loadClass(Zstd.class.getName()));
+
+        byte[] data = "existing-frame".repeat(100).getBytes();
+        byte[] compressed = Zstd.compress(data, 3);
+        byte[] padded = new byte[compressed.length + 17];
+        System.arraycopy(compressed, 0, padded, 7, compressed.length);
+        assertArrayEquals(data, CompressorRegistry.ZSTD.decompress(padded, 7, compressed.length, NO_LIMIT));
+        assertArrayEquals(data, Zstd.decompress(CompressorRegistry.ZSTD.compress(data), data.length));
+    }
 
     @Test
     void deflateRejectsOversizedDecompressedPayload() throws IOException {

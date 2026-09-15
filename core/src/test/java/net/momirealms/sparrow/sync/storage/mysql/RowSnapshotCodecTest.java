@@ -14,9 +14,11 @@ import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotFixtures;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotCodec;
+import net.momirealms.sparrow.sync.snapshot.codec.ZstdTestSupport;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.util.UUIDUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -31,6 +33,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RowSnapshotCodecTest {
     private final RowSnapshotCodec codec = new RowSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
+
+    @BeforeAll
+    static void initializeZstd() throws Exception {
+        ZstdTestSupport.initialize();
+    }
 
     @Test
     void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
