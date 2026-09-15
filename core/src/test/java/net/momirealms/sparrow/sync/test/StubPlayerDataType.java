@@ -9,7 +9,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
 
-/** 只提供注册元数据的测试类型, 任何行为调用都代表测试越界. */
 public record StubPlayerDataType(@NotNull DataKey key, boolean critical, @NotNull Set<DataKey> dependencies) implements PlayerDataType<Tag> {
 
     public StubPlayerDataType {

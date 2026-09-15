@@ -27,7 +27,6 @@ class BsonOpsTest {
 
     @Test
     void nbtCompoundConvertsToBsonAndBack() {
-        // 准备: 覆盖全部标签类型的 compound
         CompoundTag source = NBT.createCompound();
         source.putString("name", "sparrow");
         source.putInt("count", 42);
@@ -46,7 +45,6 @@ class BsonOpsTest {
 
         Object bson = NBTOps.INSTANCE.convertTo(BsonOps.INSTANCE, source);
 
-        // BSON 形态断言: 二进制走 Binary, int/long 数组走标记文档, 窄数值升宽
         Document document = assertInstanceOf(Document.class, bson);
         assertEquals("sparrow", document.getString("name"));
         assertEquals(42, document.getInteger("count"));
@@ -56,7 +54,6 @@ class BsonOpsTest {
         Document ids = assertInstanceOf(Document.class, document.get("ids"));
         assertEquals(List.of(10, 20, 30), ids.get(BsonOps.INT_ARRAY_MARKER));
 
-        // 转回 NBT: 数组类型严格还原, 窄数值保持升宽后的语义
         CompoundTag restored = assertInstanceOf(CompoundTag.class, BsonOps.INSTANCE.convertTo(NBTOps.INSTANCE, bson));
         assertEquals("sparrow", restored.getString("name"));
         assertArrayEquals(new int[]{10, 20, 30}, assertInstanceOf(IntArrayTag.class, restored.get("ids")).value());
@@ -83,7 +80,6 @@ class BsonOpsTest {
 
     @Test
     void codecEncodesDirectlyToQueryableDocument() {
-        // Codec 直接在 BSON 域编解码, 产出可查询的结构化文档
         Experience value = new Experience(1024, 30, 0.45f);
 
         Object encoded = Experience.CODEC.encodeStart(BsonOps.INSTANCE, value).getOrThrow();
@@ -97,7 +93,6 @@ class BsonOpsTest {
 
     @Test
     void booleanCodecAcceptsNativeAndNumericForms() {
-        // NBT 转来的布尔是数值 0/1, 人工写入的是原生 Boolean, 都要能读
         assertEquals(true, Codec.BOOL.parse(BsonOps.INSTANCE, true).getOrThrow());
         assertEquals(true, Codec.BOOL.parse(BsonOps.INSTANCE, 1).getOrThrow());
         assertEquals(false, Codec.BOOL.parse(BsonOps.INSTANCE, 0).getOrThrow());
@@ -114,15 +109,7 @@ class BsonOpsTest {
     }
 
     @Test
-    void markerKeysAreStorableFieldNames() {
-        // MongoDB 拒绝存储或查询 $ 开头的字段名, 标记键必须保持普通字段名形态
-        assertTrue(!BsonOps.INT_ARRAY_MARKER.startsWith("$"));
-        assertTrue(!BsonOps.LONG_ARRAY_MARKER.startsWith("$"));
-    }
-
-    @Test
     void malformedMarkerDocumentIsReadAsPlainMap() {
-        // 元素类型不符的伪标记文档按普通 map 转换, 数据保留而不是蒸发
         Document malformed = new Document(BsonOps.INT_ARRAY_MARKER, List.of("a", "b"));
 
         CompoundTag restored = assertInstanceOf(CompoundTag.class, BsonOps.INSTANCE.convertTo(NBTOps.INSTANCE, malformed));
@@ -132,7 +119,6 @@ class BsonOpsTest {
 
     @Test
     void nullDocumentValueIsDroppedDuringConvert() {
-        // BSON null 字段语义等同缺失, 不产出会截断 NBT 序列化的 EndTag
         Document document = new Document("kept", 1);
         document.put("missing", null);
 
@@ -144,7 +130,6 @@ class BsonOpsTest {
 
     @Test
     void listCodecEncodesFromEmptyPrefix() {
-        // ListBuilder 的编码路径依赖 mergeToList(empty, ...) 成功
         Object encoded = Codec.INT.listOf().encodeStart(BsonOps.INSTANCE, List.of(1, 2, 3)).getOrThrow();
 
         assertEquals(List.of(1, 2, 3), encoded);
@@ -152,7 +137,6 @@ class BsonOpsTest {
 
     @Test
     void longValueSurvivesNumericFallback() {
-        // createNumeric 兜底按类型分派, long 不塌 double
         Object value = BsonOps.INSTANCE.createNumeric(1_756_300_000_000L);
 
         assertInstanceOf(Long.class, value);

@@ -72,7 +72,6 @@ class MapPipelineTest {
 
     @BeforeEach
     void setUpPipeline() {
-        // 配置扩展先装入启动配置, 再创建本用例的注册表和地图流水线.
         this.registry = registry();
         this.pipeline = new MapPipeline(this.registry, List.of(new HideMapHandler()), LOGGER);
     }
@@ -598,13 +597,6 @@ class MapPipelineTest {
         }
     }
 
-    /**
-     * 连续执行两次地图处理后, 验证只有背包和末影箱的两个数据块被解析为 NBT.
-     * 无论是否存在需要改写的地图, 随后保存快照都不应解析其余十三个类型的数据块.
-     *
-     * @param hasMap 是否在背包中放入需要改写的地图
-     * @throws Exception 当测试快照编解码或读取已解析块数失败时
-     */
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void lazyRewriteOnlyDecodesTwoContainers(boolean hasMap) throws Exception {

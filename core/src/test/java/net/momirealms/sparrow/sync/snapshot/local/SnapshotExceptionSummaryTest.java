@@ -41,44 +41,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 用真实异常文件验证头文件体量摘要, 延迟预览, 错误摘要与正文优先的修复规则. */
 @ExtendWith(PluginConfigExtension.class)
 class SnapshotExceptionSummaryTest {
-    private static final byte COUNTED_DEFLATE = 77; // 测试专用算法标识, 对应的载荷仍采用 DEFLATE
-    private static final AtomicInteger DECOMPRESSIONS = new AtomicInteger(); // 统计整个文件与详情调用链的实际解压次数
+    private static final byte COUNTED_DEFLATE = 77;
+    private static final AtomicInteger DECOMPRESSIONS = new AtomicInteger();
 
-    @TempDir Path directory; // 每轮测试独立的本地快照目录
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0); // 强制压缩以观察延迟解块
-    private final SnapshotFileTestLogger logger = new SnapshotFileTestLogger(); // 核对头文件修复日志
+    @TempDir Path directory;
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0);
+    private final SnapshotFileTestLogger logger = new SnapshotFileTestLogger();
 
-    /** 初始化 JSON 解析代理并登记计数算法, 供本类独立执行时读取测试正文. */
     @BeforeAll
     static void initialize() {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
         CompressorRegistry.register(COUNTED_DEFLATE, new Compressor() {
-            /**
-             * 保持测试载荷与正式 DEFLATE 相同.
-             *
-             * @param data 压缩前的完整载荷
-             * @return 压缩后的字节
-             * @throws IOException 当 DEFLATE 编码失败时
-             */
             @Override
             @NotNull
             public byte[] compress(byte @NotNull [] data) throws IOException {
                 return CompressorRegistry.DEFLATE.compress(data);
             }
 
-            /**
-             * 每次真实解压都计数, 包括后续类型转换失败的情况.
-             *
-             * @param data 保存压缩载荷的来源数组
-             * @param offset 载荷起点
-             * @param length 压缩后的载荷长度
-             * @param sizeLimit 解压允许的最大字节数
-             * @return DEFLATE 还原的载荷
-             * @throws IOException 当解压失败或超过大小限制时
-             */
             @Override
             @NotNull
             public byte[] decompress(byte @NotNull [] data, int offset, int length, int sizeLimit) throws IOException {
@@ -88,16 +69,10 @@ class SnapshotExceptionSummaryTest {
         });
     }
 
-    /** 每个测试分别观察自己的解压次数. */
     @BeforeEach
     void resetDecompressionCount() {
         DECOMPRESSIONS.set(0);
     }
-    /**
-     * 正文被独占锁定时, 一页异常记录和概览仍能从头文件获得全部类型与体量.
-     *
-     * @throws Exception 当测试文件读写或解块计数读取失败时
-     */
     @Test
     void overviewReadsOnlyHeadersAndDoesNotDecodeBlocks() throws Exception {
         SnapshotFiles files = this.files();
@@ -121,7 +96,6 @@ class SnapshotExceptionSummaryTest {
             assertEquals(0, DECOMPRESSIONS.get());
         }
         assertEquals(0, SnapshotFixtures.decodedBlockCount(lazy));
-        // 删除正文后清单仍来自同一份头文件, 正文缺失单独记录.
         Files.delete(body);
         var entry = files.listExceptions(null, null, 0, 27).content().getFirst();
         assertFalse(entry.bodyPresent());
@@ -130,11 +104,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(0, DECOMPRESSIONS.get());
     }
 
-    /**
-     * 正文初次读取只准备索引, 每次预览恰好解开选中的类型并保留之前的结果.
-     *
-     * @throws Exception 当测试正文或解块计数读取失败时
-     */
     @Test
     void eachPreviewDecodesOnlyItsSelectedType() throws Exception {
         SnapshotFiles files = this.files();
@@ -165,11 +134,6 @@ class SnapshotExceptionSummaryTest {
         assertSame(next, details.preview(next, ExperienceDataType.EXPERIENCE).join());
     }
 
-    /**
-     * 头文件投影与正文不一致时按正文重建, 后续读取不重复记录已完成的修复.
-     *
-     * @throws Exception 当测试文件或解块计数读取失败时
-     */
     @Test
     void bodyRepairsSummaryWithoutDecodingPayloads() throws Exception {
         SnapshotFiles files = this.files();
@@ -190,11 +154,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(1, this.logger.infos.size());
     }
 
-    /**
-     * 头文件目标无法替换时, 新正文仍保存成功且可以读取, 修复失败只记录日志.
-     *
-     * @throws IOException 当测试文件操作失败时
-     */
     @Test
     void headerWriteFailureKeepsTheSavedBodyReadable() throws IOException {
         SnapshotFiles files = this.files();
@@ -212,11 +171,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(1, this.logger.warnings.size());
     }
 
-    /**
-     * 损坏正文写无摘要, 已知的玩家身份仍能通过头文件进入异常列表.
-     *
-     * @throws IOException 当测试归档或头文件读写失败时
-     */
     @Test
     void damagedBodyDoesNotHideArchiveIdentity() throws IOException {
         SnapshotFiles files = this.files();
@@ -232,11 +186,6 @@ class SnapshotExceptionSummaryTest {
         assertNull(entry.summary());
     }
 
-    /**
-     * 导入与迁移共用单行 JSON 摘要格式, 仅填写可得字段, 空行后完整保留原始堆栈.
-     *
-     * @throws IOException 当测试归档或错误文件读取失败时
-     */
     @Test
     void importAndMigrationWriteMachineReadableSummariesAndOriginalStacks() throws IOException {
         SnapshotFiles files = this.files();
@@ -263,11 +212,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals("bad \"item\"", migration.getString("reason"));
     }
 
-    /**
-     * 只有失败原因时只写可得字段, 没有原始附件的迁移记录明确标记 rawAttached=false.
-     *
-     * @throws IOException 当测试归档或摘要读取失败时
-     */
     @Test
     void summariesOmitUnavailableFieldsAndReportMissingSourceAttachment() throws IOException {
         SnapshotFiles files = this.files();
@@ -285,14 +229,6 @@ class SnapshotExceptionSummaryTest {
         assertNull(entry.header().summary());
     }
 
-    /**
-     * 读取实际错误文件并核对摘要和堆栈分隔.
-     *
-     * @param body 异常正文目标路径
-     * @param failure 原始异常, null 表示没有可写出的堆栈
-     * @return 已解析的首行 JSON
-     * @throws IOException 当错误文件读取失败时
-     */
     private Document summary(Path body, Throwable failure) throws IOException {
         String text = Files.readString(body.resolveSibling(body.getFileName() + ".error.txt"));
         String separator = System.lineSeparator() + System.lineSeparator();
@@ -310,11 +246,6 @@ class SnapshotExceptionSummaryTest {
         return Document.parse(text.substring(0, split));
     }
 
-    /**
-     * 列表条目保留无摘要, 有效空摘要和非空摘要三种信息, 不受正文是否存在影响.
-     *
-     * @throws IOException 当测试头文件读写失败时
-     */
     @Test
     void exceptionEntriesKeepAllThreeSummaryStates() throws IOException {
         SnapshotFiles files = this.files();
@@ -329,11 +260,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(3, files.listExceptions(null, null, 0, 27).total());
     }
 
-    /**
-     * 旧魔数头在列表中标为不可读, 显式读取正文后可按新格式重建.
-     *
-     * @throws IOException 当测试正文或头文件读写失败时
-     */
     @Test
     void legacyHeaderIsUnreadableButBodyCanRebuildIt() throws IOException {
         SnapshotFiles files = this.files();
@@ -351,11 +277,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(1, this.logger.infos.size());
     }
 
-    /**
-     * JSON 清单由显式正文读取取得, 所有类型保持未知体量, 头文件摘要仍不可得.
-     *
-     * @throws IOException 当测试 JSON 或头文件读写失败时
-     */
     @Test
     void jsonBodyIsReadExplicitlyAndNeverReencodedForSizes() throws IOException {
         SnapshotFiles files = this.files();
@@ -377,11 +298,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(0, DECOMPRESSIONS.get());
     }
 
-    /**
-     * 同一份未知类型正文的保留状态随本服名单改变, 查看状态不会解开它的 payload.
-     *
-     * @throws IOException 当测试快照写入失败时
-     */
     @Test
     void unknownTypeStateComesFromTheLocalRegistry() throws IOException {
         SnapshotFiles files = this.files();
@@ -398,15 +314,6 @@ class SnapshotExceptionSummaryTest {
         assertEquals(0, DECOMPRESSIONS.get());
     }
 
-    /**
-     * 为压缩块换上计数算法标识, 块头中的体量与 payload 字节保持原值.
-     *
-     * @param files 当前测试的文件入口
-     * @param snapshot 待写出的测试快照
-     * @param category 异常目录类别
-     * @return 写入完成的正文路径
-     * @throws IOException 当测试文件读写失败时
-     */
     private Path writeCounted(SnapshotFiles files, Snapshot snapshot, String category) throws IOException {
         Path body = files.write(snapshot, "Steve", category);
         byte[] bytes = Files.readAllBytes(body);
@@ -418,11 +325,6 @@ class SnapshotExceptionSummaryTest {
         return body;
     }
 
-    /**
-     * 创建当前测试的文件入口, 记录修复成功与失败日志.
-     *
-     * @return 使用本次临时目录和编码器的文件入口
-     */
     private SnapshotFiles files() {
         return new SnapshotFiles(this.directory, this.codec, this.logger);
     }

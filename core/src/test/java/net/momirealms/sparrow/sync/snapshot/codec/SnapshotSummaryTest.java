@@ -19,15 +19,9 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 验证摘要提取只依赖帧结构, 索引校验与块头, 损坏输入按整帧或单块分别降级. */
 class SnapshotSummaryTest {
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0); // 保持测试块压缩存储
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE, 0);
 
-    /**
-     * 正常摘要按物理块次序返回, 体量对应包含完整类型名的单键 NBT 文档.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void sizesMatchSerializedNbtAndKeepPhysicalOrder() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
@@ -44,11 +38,6 @@ class SnapshotSummaryTest {
         assertEquals(Map.of(), this.codec.summarize(this.codec.encode(new Snapshot(source.meta(), Map.of()))));
     }
 
-    /**
-     * JSON, 独立数据帧与随机字节都不能成为完整快照摘要, 提取过程保持不抛出.
-     *
-     * @throws IOException 当测试数据帧编码失败时
-     */
     @Test
     void nonSnapshotInputsHaveNoSummary() throws IOException {
         assertNull(assertDoesNotThrow(() -> this.codec.summarize("{\"data\":{}}".getBytes(StandardCharsets.UTF_8))));
@@ -60,7 +49,6 @@ class SnapshotSummaryTest {
             random.nextBytes(bytes);
             assertNull(assertDoesNotThrow(() -> this.codec.summarize(bytes)));
         }
-        // 随机字节也可能碰巧通过版本与段边界, 此时仍须通过索引校验.
         byte[] bytes = new byte[300];
         random.nextBytes(bytes);
         ByteBuffer.wrap(bytes).put((byte) 1).putShort((short) 1).putInt(0).put((byte) 0)
@@ -68,12 +56,6 @@ class SnapshotSummaryTest {
         assertNull(assertDoesNotThrow(() -> this.codec.summarize(bytes)));
     }
 
-    /**
-     * 外层或内嵌数据帧版本超出支持范围时, 摘要不可得.
-     *
-     * @param version 不受支持的版本字节
-     * @throws IOException 当测试快照编码失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {0, 2, 255})
     void unsupportedFrameVersionsHaveNoSummary(int version) throws IOException {
@@ -85,11 +67,6 @@ class SnapshotSummaryTest {
         }
     }
 
-    /**
-     * Meta 长度为零或超出正文, 索引长度非法以及截断都不能产出可信清单.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void invalidSegmentLengthsAndTruncationHaveNoSummary() throws IOException {
         byte[] source = this.codec.encode(SnapshotFixtures.snapshot());
@@ -106,12 +83,6 @@ class SnapshotSummaryTest {
         assertNull(this.codec.summarize(source));
     }
 
-    /**
-     * Meta 内容及其 CRC 都与类型摘要无关, 只损坏 Meta 时仍取得全部体量.
-     *
-     * @param position Meta 内容或 CRC 的字节位置
-     * @throws IOException 当测试快照编码失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {3, 7})
     void damagedMetaDoesNotDiscardIntactDataSummary(int position) throws IOException {
@@ -122,11 +93,6 @@ class SnapshotSummaryTest {
         assertEquals(expected, assertDoesNotThrow(() -> this.codec.summarize(bytes)));
     }
 
-    /**
-     * 索引必须通过 CRC 与内容校验, 任一失败都使整份清单不可得.
-     *
-     * @throws IOException 当测试索引和正文编码失败时
-     */
     @Test
     void corruptChecksumAndInvalidIndexHaveNoSummary() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
@@ -139,12 +105,6 @@ class SnapshotSummaryTest {
         assertNull(assertDoesNotThrow(() -> this.codec.summarize(malformed)));
     }
 
-    /**
-     * 单个块的长度字段或块头损坏时, 只把这一类型的体量标记为未知.
-     *
-     * @param damage 本次破坏的块头部分
-     * @throws IOException 当测试快照编码失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"payload", "raw", "truncated"})
     void badBlockHeaderOnlyLosesItsOwnSize(String damage) throws IOException {
@@ -161,11 +121,6 @@ class SnapshotSummaryTest {
         assertEquals(expected, assertDoesNotThrow(() -> this.codec.summarize(bytes)));
     }
 
-    /**
-     * 算法标识和 payload CRC 由内容预览处理, 摘要仍读取块头中的零字节体量.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void unknownCompressionAndPayloadDamageStillKeepDeclaredSizes() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());

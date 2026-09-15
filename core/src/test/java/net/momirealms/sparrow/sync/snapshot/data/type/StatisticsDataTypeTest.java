@@ -201,7 +201,6 @@ class StatisticsDataTypeTest {
             });
             start.countDown();
             for (int i = 1; i <= 1000; i++) {
-                // 原版写入走同一同步 Map. 读端应在这组更新之前或之后取得一致的键值数组
                 synchronized (fixture.current) {
                     fixture.counter.setValue(fixture.player.getHandle(), first, i);
                     fixture.counter.setValue(fixture.player.getHandle(), second, i);
@@ -434,7 +433,6 @@ class StatisticsDataTypeTest {
         return (byte[]) method.invoke(null, value);
     }
 
-    // 用原版 dirty 合并与 sendStats 作为发包参考, 快照在本测试中只含 item 统计.
     private static void referenceApply(PlayerFixture fixture, Statistics value) {
         synchronized (fixture.current) {
             fixture.counter.markAllDirty();
@@ -466,7 +464,6 @@ class StatisticsDataTypeTest {
         return new PlayerFixture(player, counter, current, dirty, connection);
     }
 
-    // 隔离服务器构造与网络连接, 字段装配后仍调用真实的 capture、apply 和原版发包逻辑.
     private static <T> T allocateWithoutConstructor(Class<T> type) throws Exception {
         Class<?> unsafeType = Class.forName("sun.misc.Unsafe");
         Field field = unsafeType.getDeclaredField("theUnsafe");

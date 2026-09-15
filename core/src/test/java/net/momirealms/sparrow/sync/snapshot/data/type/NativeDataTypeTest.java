@@ -293,7 +293,6 @@ class NativeDataTypeTest {
         return modifier;
     }
 
-    // Native 分支不读取 logger, 测试直接反射分配实例, 不给生产类型增加注入构造器.
     private static <T> T allocateWithoutConstructor(Class<T> type) {
         try {
             Class<?> unsafeType = Class.forName("sun.misc.Unsafe");

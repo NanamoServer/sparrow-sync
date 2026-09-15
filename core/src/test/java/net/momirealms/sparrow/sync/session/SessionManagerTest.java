@@ -17,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 覆盖不触碰 Bukkit 与外部服务的会话注册和最终保存边界.
 class SessionManagerTest {
     private final SessionManager manager = new SessionManager(null);
     private final Connection connection = ConnectionFixture.create();

@@ -83,10 +83,8 @@ class AdvancementsDataTypeTest {
     private static Field pluginConfigField;
     private static Object previousPluginConfig;
 
-    /** 初始化 1.21.8 代理描述与测试所需的原版注册表. */
     @BeforeAll
     static void bootstrapRegistries() throws ReflectiveOperationException {
-        // final setter 和进度字段访问必须先绑定到本测试使用的 NMS 版本
         BukkitProxy.init("1.21.8", List.of("paper"));
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
@@ -191,10 +189,8 @@ class AdvancementsDataTypeTest {
         assertArrayEquals(new Instant[]{original}, before.values()[0].obtained());
     }
 
-    /** 验证 Map 换代后旧 ID 槽位保持稳定, holder 替换生效, 删除项留下空槽. */
     @Test
     void advancementSlotsKeepIdsStableAcrossReloads() throws Exception {
-        // 编译只有 firstId 的首个布局
         Object firstId = IdentifierProxy.INSTANCE.tryParse("minecraft:adventure/root");
         Object secondId = IdentifierProxy.INSTANCE.tryParse("example:second");
         AdvancementHolder first = holder(firstId);
@@ -207,7 +203,6 @@ class AdvancementsDataTypeTest {
         assertNotNull(initial);
         int firstSlot = initial.slot(firstId);
 
-        // reload 用新 holder 替换旧 ID, 并在末尾追加一个新 ID
         source.set(Map.of(firstId, replacement, secondId, second));
         AdvancementSlots.Layout reloaded = slots.current();
 
@@ -216,7 +211,6 @@ class AdvancementsDataTypeTest {
         assertSame(replacement, reloaded.holder(firstSlot));
         assertNotEquals(firstSlot, reloaded.slot(secondId));
 
-        // 删除 firstId 后保留其历史槽位, 在线玩家的旧候选位不会指向其他 ID
         source.set(Map.of(secondId, second));
         AdvancementSlots.Layout removed = slots.current();
 
@@ -225,10 +219,8 @@ class AdvancementsDataTypeTest {
         assertEquals(reloaded.slot(secondId), removed.slot(secondId));
     }
 
-    /** 验证 wrapper 保持原 dirty Set 行为, 并让真实进度候选跨 clear 和 revoke 单调保留. */
     @Test
     void trackingSetKeepsDirtyDelegateAndRetainsProgressCandidates() throws Exception {
-        // progressed 有真实进度, pending 只有空的 AdvancementProgress
         Object progressedId = IdentifierProxy.INSTANCE.tryParse("minecraft:adventure/root");
         Object pendingId = IdentifierProxy.INSTANCE.tryParse("example:pending");
         AdvancementHolder progressedHolder = holder(progressedId);
@@ -244,29 +236,24 @@ class AdvancementsDataTypeTest {
         AdvancementSlots slots = new AdvancementSlots(() -> advancements);
         AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(dirty, progress, slots);
 
-        // 构造时从原 dirty Set 播种 progressed, visibility-only 的 pending 不进入候选
         assertEquals(1, BitSet.valueOf(tracking.candidates()).cardinality());
         tracking.add(pendingHolder);
         assertEquals(1, BitSet.valueOf(tracking.candidates()).cardinality());
         assertTrue(dirty.contains(pendingHolder));
 
-        // NMS flush 清空共享 dirty Set, 历史候选仍然存在
         tracking.clear();
         assertTrue(dirty.isEmpty());
         assertTrue(tracking.complete());
         assertEquals(1, BitSet.valueOf(tracking.candidates()).cardinality());
 
-        // 最后一个 criterion 被撤销后仍保留候选, 后续 apply 才能识别远端缺失并维持撤销
         CriterionProgress criterion = (CriterionProgress) AdvancementProgressProxy.INSTANCE.getCriteria(progressed).get("complete");
         CriterionProgressProxy.INSTANCE.setObtained(criterion, null);
         tracking.add(progressedHolder);
         assertEquals(1, BitSet.valueOf(tracking.candidates()).cardinality());
     }
 
-    /** 验证 sparse capture 与完整 Map 扫描产出相同的 ID, criterion 和完成时间. */
     @Test
     void sparseCaptureMatchesDenseProgressScan() throws Exception {
-        // 同时准备一个有进度项目和一个无进度项目, 候选中只应出现前者
         Object progressedId = IdentifierProxy.INSTANCE.tryParse("minecraft:adventure/root");
         Object pendingId = IdentifierProxy.INSTANCE.tryParse("example:pending");
         AdvancementHolder progressedHolder = holder(progressedId);
@@ -281,18 +268,15 @@ class AdvancementsDataTypeTest {
         AdvancementSlots slots = new AdvancementSlots(() -> advancements);
         AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(dirty, progress, slots);
 
-        // 对同一份 NMS 状态分别执行参考算法和稀疏算法
         Advancements dense = AdvancementsDataType.captureDense(progress);
         Advancements sparse = AdvancementsDataType.captureSparse(progress, tracking.candidates(), slots.current());
 
-        // 比较持久化可见字段, 排除仅靠数量相等掩盖内容错误
         assertEquals(1, dense.values().length);
         assertEquals(dense.values()[0].id(), sparse.values()[0].id());
         assertArrayEquals(dense.values()[0].criteria(), sparse.values()[0].criteria());
         assertArrayEquals(dense.values()[0].obtained(), sparse.values()[0].obtained());
     }
 
-    /** 验证本服无法识别的远端 advancement 会随下一份快照继续传递. */
     @Test
     void unknownAdvancementSurvivesApplyAndNextServerCapture() throws Exception {
         Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
@@ -328,12 +312,6 @@ class AdvancementsDataTypeTest {
         assertEquals(Set.of(localId, unknownId), ids);
     }
 
-    /**
-     * 成就块中的未知 ID 与整个未知类型共同往返, 本服新增进度写入新成就块.
-     *
-     * @param nativeHandoff 是否通过原生 JSON 分类后的 Join 交接保留未知成就
-     * @throws Exception 当测试 NMS 装配或块编解码失败时
-     */
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void partialRetentionCoexistsWithUnknownRawBlocks(boolean nativeHandoff) throws Exception {
@@ -386,7 +364,6 @@ class AdvancementsDataTypeTest {
         assertEquals(1, SnapshotFixtures.decodedBlockCount(restored));
     }
 
-    /** 验证关闭 Native 时仍由保留配置决定 Player apply 是否转发未知进度. */
     @Test
     void playerApplyDiscardsUnknownAdvancementsWhenRetentionIsDisabled() throws Exception {
         Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
@@ -410,7 +387,6 @@ class AdvancementsDataTypeTest {
         assertEquals(0, fixture.tracking.retainedUnknown().length);
     }
 
-    /** 验证 Native 分类结果在布局稳定时直接进入已安装的玩家 tracker. */
     @Test
     void nativeHandoffSeedsTrackerWithoutPlayerApply() throws Exception {
         Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
@@ -431,7 +407,6 @@ class AdvancementsDataTypeTest {
         assertSame(unknown, fixture.type.capture(fixture.player, CaptureMode.SYNC).values()[0]);
     }
 
-    /** 验证 Gate 与 Join 之间的布局换代会恢复完整 Player apply. */
     @Test
     void nativeHandoffFallsBackWhenAdvancementLayoutChanges() throws Exception {
         Object firstId = IdentifierProxy.INSTANCE.tryParse("ce:a");
@@ -451,7 +426,6 @@ class AdvancementsDataTypeTest {
         assertArrayEquals(snapshot.values(), fixture.tracking.retainedUnknown());
     }
 
-    /** 验证 Native JSON 在同一轮编码中分开本服进度与未知进度. */
     @Test
     void nativeJsonPartitionsUnknownAdvancementIds() throws Exception {
         Object localId = IdentifierProxy.INSTANCE.tryParse("ce:b");
@@ -470,7 +444,6 @@ class AdvancementsDataTypeTest {
         assertArrayEquals(new AdvancementValue[]{unknown}, encoded.unknown());
     }
 
-    /** 验证关闭未知进度保留时, Native 编码不查询布局并交由 Vanilla 处理完整 JSON. */
     @Test
     void nativeJsonKeepsEverySnapshotValueWhenUnknownRetentionIsDisabled() {
         CountingId localId = new CountingId("ce:b");
@@ -487,7 +460,6 @@ class AdvancementsDataTypeTest {
         assertEquals(0, localId.hashCalls + unknownId.hashCalls);
     }
 
-    /** 验证未知 ID 注册后本服进度及撤销优先, 采集不修改 retained 数组. */
     @Test
     void retainedUnknownDoesNotShadowProgressCreatedAfterReload() throws Exception {
         Object id = IdentifierProxy.INSTANCE.tryParse("ce:unknown");
@@ -537,7 +509,6 @@ class AdvancementsDataTypeTest {
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
 
         Advancements before = fixture.type.capture(fixture.player, CaptureMode.SYNC);
-        // 调用真实 NMS flush, 验证客户端 dirty 清理不会使保存缓存失效
         fixture.player.getHandle().getAdvancements().flushDirty(fixture.player.getHandle(), false);
         assertTrue(fixture.tracking.isEmpty());
         assertSame(before, fixture.type.capture(fixture.player, CaptureMode.SYNC));
@@ -622,7 +593,6 @@ class AdvancementsDataTypeTest {
         PlayerFixture fixture = playerFixture(progress, new AdvancementSlots(() -> registry));
         assertEquals(1, fixture.type.capture(fixture.player, CaptureMode.SYNC).values().length);
 
-        // 对照 PlayerAdvancements.reload 的顺序, progress 在 dirty Set 之前清空
         progress.clear();
         fixture.tracking.clear();
         progress.put(holder, progress("done", null));
@@ -770,10 +740,8 @@ class AdvancementsDataTypeTest {
         assertSame(known, fixture.type.capture(fixture.player, CaptureMode.SYNC));
     }
 
-    /** 验证玩家线程扩展候选位图时, 并发 capture 副本不会破坏或永久丢失已写入槽位. */
     @Test
     void candidateSnapshotsDoNotLoseBitsWhileTheWriterGrowsTheArray() throws Exception {
-        // 130 个槽位会跨越三个 long word, 覆盖 BitSet 扩容边界
         int count = 130;
         Map<Object, Object> progress = new LinkedHashMap<>();
         Map<Object, Object> advancements = new LinkedHashMap<>();
@@ -789,7 +757,6 @@ class AdvancementsDataTypeTest {
         AdvancementProgressChangedWrapperSet tracking = new AdvancementProgressChangedWrapperSet(new HashSet<>(), progress, slots);
         AtomicReference<Throwable> failure = new AtomicReference<>();
 
-        // writer 模拟玩家线程 grant, 当前线程持续模拟异步 capture 复制
         Thread writer = Thread.ofPlatform().start(() -> {
             try {
                 for (int i = 0; i < holders.length; i++) tracking.add(holders[i]);
@@ -800,15 +767,12 @@ class AdvancementsDataTypeTest {
         while (writer.isAlive()) tracking.candidates();
         writer.join();
 
-        // writer 正常结束后所有永久候选都必须可见
         assertNull(failure.get());
         assertEquals(count, BitSet.valueOf(tracking.candidates()).cardinality());
     }
 
-    /** 验证布局来源在编译期间持续换代时, tracker 会标记候选不完整. */
     @Test
     void unstableLayoutMarksTrackingCandidatesIncomplete() throws Exception {
-        // Supplier 每次返回新 Map 身份, 两次布局编译都无法取得稳定 generation
         Object id = IdentifierProxy.INSTANCE.tryParse("minecraft:adventure/root");
         AdvancementHolder holder = holder(id);
         Map<Object, Object> progress = Map.of(holder, progress("complete", Instant.now()));
@@ -891,13 +855,6 @@ class AdvancementsDataTypeTest {
         return (AdvancementValue) method.invoke(null, advancement, progress);
     }
 
-    /**
-     * 创建只用于 ID 与对象身份测试的 AdvancementHolder.
-     *
-     * @param id holder 的资源标识
-     * @return 不含 Advancement value 的测试 holder
-     * @throws Exception 当当前 NMS 构造器描述与测试假设不一致时
-     */
     private static AdvancementHolder holder(Object id) throws Exception {
         return (AdvancementHolder) AdvancementHolder.class.getDeclaredConstructors()[0].newInstance(id, null);
     }
@@ -907,14 +864,6 @@ class AdvancementsDataTypeTest {
         return (AdvancementHolder) AdvancementHolder.class.getDeclaredConstructors()[0].newInstance(id, advancement);
     }
 
-    /**
-     * 分配不执行构造器的 NMS 实例, 供 final 字段代理测试隔离服务器依赖.
-     *
-     * @param type 要分配的 NMS 类型
-     * @param <T> 实例类型
-     * @return 未执行构造器的实例
-     * @throws Exception 当 Unsafe 或目标类型不可访问时
-     */
     private static <T> T allocateWithoutConstructor(Class<T> type) throws Exception {
         Class<?> unsafeType = Class.forName("sun.misc.Unsafe");
         Field field = unsafeType.getDeclaredField("theUnsafe");
@@ -923,7 +872,6 @@ class AdvancementsDataTypeTest {
         return type.cast(unsafeType.getMethod("allocateInstance", Class.class).invoke(unsafe, type));
     }
 
-    /** 把测试状态装入跳过构造器创建的 NMS 或 CraftBukkit 对象. */
     private static void setField(Class<?> owner, Object target, String name, Object value) throws Exception {
         Field field = owner.getDeclaredField(name);
         field.setAccessible(true);
@@ -937,13 +885,6 @@ class AdvancementsDataTypeTest {
         keepUnknown.setBoolean(options, value);
     }
 
-    /**
-     * 创建只含一个 criterion 的 AdvancementProgress.
-     *
-     * @param criterionName criterion 名称
-     * @param obtained 完成时间, null 表示尚未取得
-     * @return 与指定完成状态一致的进度对象
-     */
     private static AdvancementProgress progress(String criterionName, Instant obtained) {
         AdvancementProgress progress = new AdvancementProgress();
         progress.update(AdvancementRequirements.allOf(List.of(criterionName)));

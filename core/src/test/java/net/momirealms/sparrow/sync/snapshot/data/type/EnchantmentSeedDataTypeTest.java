@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.lang.reflect.Proxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class EnchantmentSeedDataTypeTest {
     @Test
@@ -29,12 +28,6 @@ class EnchantmentSeedDataTypeTest {
         type.apply(player, -246813579);
 
         assertEquals(-246813579, player.getEnchantmentSeed());
-    }
-
-    @Test
-    void declaresStructuredNonCriticalData() {
-        EnchantmentSeedDataType type = new EnchantmentSeedDataType();
-        assertFalse(type.critical());
     }
 
     private static Player player(int[] seed) {

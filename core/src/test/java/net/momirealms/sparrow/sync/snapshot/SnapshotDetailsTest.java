@@ -244,12 +244,6 @@ class SnapshotDetailsTest {
         assertEquals(new Preview.Unsupported(false, ready.snapshot().content().rawLength(unknown), false), ready.previews().get(unknown));
     }
 
-    /**
-     * 破坏不支持预览及未注册类型的数据块, 验证详情页仍能展示其他已支持的类型.
-     * 被跳过的类型只从块头取得未压缩 NBT 的字节数, 损坏的 payload 不会被解码.
-     *
-     * @throws Exception 当测试快照编解码或读取已解析块数失败时
-     */
     @Test
     void lazyPreviewSkipsUnsupportedPayloadsAndReportsHeaderSizes() throws Exception {
         this.registry.register(new EnchantmentSeedDataType());
@@ -270,13 +264,6 @@ class SnapshotDetailsTest {
         assertTrue(assertInstanceOf(Preview.Unsupported.class, ready.previews().get(unknown)).rawLength() > 0);
         assertEquals(1, SnapshotFixtures.decodedBlockCount(source));
     }
-    /**
-     * 未适配或未注册类型的块头损坏只产生本项 Failed, 其他类型仍可展示.
-     *
-     * @param registered 是否注册损坏类型, 两种状态都没有适配内容预览
-     * @param damage 损坏位置, 覆盖 payload 长度, 原始长度与块头截断
-     * @throws Exception 当测试快照编解码或读取缓存计数失败时
-     */
     @ParameterizedTest
     @CsvSource({"false,payload", "true,payload", "false,raw", "true,raw", "false,truncated", "true,truncated"})
     void badHeaderOnlyFailsItsOwnPreview(boolean registered, String damage) throws Exception {

@@ -921,7 +921,6 @@ class SnapshotCommandFlowTest {
         NmsPlayerFixture.set(MessageBrokerManager.class, this.plugin.messageBrokerManager(), "broker", broker);
     }
 
-    // 复用实际解码与 Join 应用, 通过测试反射准备 Gate 已发布的数据和 Native 回调.
     private void prepareJoin(Snapshot snapshot, boolean nativeApplied) throws Exception {
         SessionManager sessions = this.plugin.sessionManager();
         NmsPlayerFixture.set(SessionManager.class, sessions, "sessions", new ConcurrentHashMap<>());
@@ -969,11 +968,6 @@ class SnapshotCommandFlowTest {
         }
     }
 
-    /**
-     * 默认过滤后允许事件主动补回血量与位置, 零血量及 RESTORE 写入等待传送成功.
-     *
-     * @throws Exception 测试玩家调度或异步结果未能完成
-     */
     @Test
     void onlineDefaultsAllowEventToRestoreHealthAndLocation() throws Exception {
         Snapshot source = this.sourceWithHealth(0);
@@ -984,7 +978,6 @@ class SnapshotCommandFlowTest {
             event.decoded().put(LocationDataType.LOCATION, new LocationType().capture(this.player, CaptureMode.SYNC));
         };
         CompletableFuture<SnapshotRestoreResult> result = this.restoreAndRun(source);
-        // 默认配置先过滤历史值, 事件补回的值继续参与本次应用.
         assertEquals(List.of("data", "location"), this.actions);
         assertFalse(this.dead.get());
         assertEquals(20.0, this.health.get());

@@ -386,7 +386,6 @@ class PlayerDataPipelineTest {
         assertEquals(Set.of(unknown), context.passthrough().keys());
     }
 
-    /** 全部类型都已注册时, 应用上下文复用无帧字节的空数据体. */
     @Test
     void knownTypesDoNotAllocateRetainedFrame() {
         PlayerDataPipeline pipeline = this.createPipeline(new FakeType(ALPHA));

@@ -27,7 +27,6 @@ import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 验证合并后的异常快照文件查询和门面异步调度, 异常快照数据损坏时仍可读取异常快照头文件. */
 class SnapshotArchiveQueryTest {
     @TempDir Path directory;
     private final UUID player = UUID.randomUUID();
@@ -133,13 +132,6 @@ class SnapshotArchiveQueryTest {
         assertThrows(IllegalArgumentException.class, () -> service.listExceptions(null, null, 0, 0));
     }
 
-    /**
-     * 将实际文件操作绑定到可控制的异步执行器, 观察目录查询的执行时机.
-     *
-     * @param files 本次测试的本地文件对象
-     * @param executor 保存查询任务的执行器
-     * @return 仅装配查询所需依赖的门面
-     */
     private SnapshotService service(SnapshotFiles files, Executor executor) {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         SchedulerAdapter<?> scheduler = (SchedulerAdapter<?>) Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (proxy, method, args) -> {

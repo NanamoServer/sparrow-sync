@@ -29,7 +29,6 @@ class BinarySnapshotCodecTest {
         byte[] bytes = this.codec.encode(snapshot);
         DecodedSnapshot decoded = this.codec.decode(bytes);
 
-        // 完整快照携带 Meta 和独立数据帧, 元数据与全部类型字段往返一致
         assertEquals(SnapshotCodec.CURRENT_VERSION, bytes[0]);
         assertEquals(1, bytes[0]);
         assertEquals(1, bytes[SnapshotFixtures.dataOffset(bytes)]);
@@ -41,13 +40,11 @@ class BinarySnapshotCodecTest {
     void encodingTheSameSnapshotTwiceYieldsIdenticalBytes() throws IOException {
         Snapshot snapshot = SnapshotFixtures.snapshot();
 
-        // 数据体隔了一层取用后, 迭代顺序仍跟随构造时的 Map, 编码结果逐字节可重复
         assertArrayEquals(this.codec.encode(snapshot), this.codec.encode(snapshot));
     }
 
     @Test
     void smallSnapshotStoredUncompressed() throws IOException {
-        // 空数据仍然携带完整元数据, 索引为空
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of());
 
         byte[] bytes = this.codec.encode(snapshot);
@@ -59,7 +56,6 @@ class BinarySnapshotCodecTest {
 
     @Test
     void decodeSelectsCompressorByHeaderNotByConfiguration() throws IOException {
-        // DEFLATE 配置写出的字节, 由 NONE 配置的实例解码
         Snapshot snapshot = SnapshotFixtures.snapshot();
         byte[] bytes = this.codec.encode(snapshot);
         BinarySnapshotCodec plainCodec = new BinarySnapshotCodec(CompressorRegistry.NONE);
@@ -69,12 +65,6 @@ class BinarySnapshotCodecTest {
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot());
     }
 
-    /**
-     * 数据库保存的数据帧与完整快照中的数据段逐字节一致, 读取完整快照后继续引用原数组.
-     *
-     * @param compressor 本轮新块的压缩算法
-     * @throws Exception 当编解码或缓存计数读取失败时
-     */
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)
     void embeddedDataFrameMatchesStandaloneBytes(CompressorRegistry compressor) throws Exception {
@@ -94,11 +84,6 @@ class BinarySnapshotCodecTest {
         assertEquals(0, SnapshotFixtures.decodedBlockCount(restored));
     }
 
-    /**
-     * Meta 损坏使完整快照读取失败, 内部独立数据帧仍可单独校验和读取.
-     *
-     * @throws IOException 当测试快照编解码失败时
-     */
     @Test
     void metadataChecksumIsIndependentOfDataFrame() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
@@ -112,11 +97,6 @@ class BinarySnapshotCodecTest {
         assertEquals(source.allData(), dataCodec.decode(Arrays.copyOfRange(complete, dataOffset, complete.length)).all());
     }
 
-    /**
-     * 完整快照需要有效的 Meta 段长, 缺失或超出数组范围时在段读取前拒绝.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void metadataLengthIsRequiredAndBounded() throws IOException {
         for (int length : new int[]{0, 65535}) {
@@ -163,6 +143,5 @@ class BinarySnapshotCodecTest {
 
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
     }
-
 
 }

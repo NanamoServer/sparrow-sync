@@ -50,9 +50,9 @@ class SnapshotManagementTest {
     @TempDir Path directory;
     private final Map<UUID, Snapshot> stored = new HashMap<>();
     private final AtomicInteger writes = new AtomicInteger();
-    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 保留旧正文以检查管理操作后的失效
-    private StorageProvider.SaveResult importResult = StorageProvider.SaveResult.SAVED; // 本次导入由伪存储返回的结果
-    private boolean rejectBodyReads; // 删除只需身份信息, 此开关让任何正文查询立即失败
+    private final MemorySnapshotCache cache = new MemorySnapshotCache();
+    private StorageProvider.SaveResult importResult = StorageProvider.SaveResult.SAVED;
+    private boolean rejectBodyReads;
     private SnapshotService service;
     private SparrowSync plugin;
 
@@ -148,13 +148,6 @@ class SnapshotManagementTest {
         assertSame(SnapshotImportResult.INVALID_FILE, this.service.importFile(relative).join());
     }
 
-    /**
-     * 有效容器中的坏块必须在覆盖前被拒绝, 包括排在最后的外部类型.
-     *
-     * @param type 破坏背包块或本服未注册的外部块
-     * @param damage 校验和、NBT、压缩算法或原始长度故障
-     * @throws Exception 导出文件或测试字节无法读写时
-     */
     @ParameterizedTest
     @CsvSource({"inventory,crc", "external,crc", "inventory,nbt", "external,nbt", "inventory,compression", "external,compression", "inventory,length", "external,length"})
     void damagedBlockImportKeepsExistingRecordAndCache(String type, String damage) throws Exception {
@@ -178,7 +171,6 @@ class SnapshotManagementTest {
         ByteBuffer header = ByteBuffer.wrap(damaged);
         int payload = block + BlockCodec.BLOCK_HEADER_LENGTH;
         int length = header.getInt(block + 1);
-        // NONE 载荷可直接破坏 NBT, 重算 CRC 后专门检验结构读取阶段.
         assertEquals(CompressorRegistry.NONE.id(), damaged[block]);
         switch (damage) {
             case "crc" -> damaged[payload] ^= 1;
@@ -201,7 +193,6 @@ class SnapshotManagementTest {
         assertSame(snapshot, this.cache.consume(snapshot.meta().player()).join().orElseThrow());
     }
 
-    /** 删除坏正文时仍能按元数据清缓存, 回执在删除尝试结束后完成. */
     @Test
     void deletionInvalidatesCachedBodyBeforeReportingSuccess() {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
@@ -218,7 +209,6 @@ class SnapshotManagementTest {
         assertTrue(this.cache.consume(snapshot.meta().player()).join().isEmpty());
     }
 
-    /** 删除不存在的快照不会删除其他玩家的缓存. */
     @Test
     void missingDeletionLeavesExistingCacheIntact() {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
@@ -228,11 +218,6 @@ class SnapshotManagementTest {
         assertSame(snapshot, this.cache.consume(snapshot.meta().player()).join().orElseThrow());
     }
 
-    /**
-     * 同 ID 导入替换正文后清缓存, 成功回执等待删除完成.
-     *
-     * @throws Exception 本地导出文件无法生成时
-     */
     @Test
     void importInvalidatesPreviousBodyBeforeReportingSuccess() throws Exception {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
@@ -250,11 +235,6 @@ class SnapshotManagementTest {
         assertTrue(this.cache.consume(snapshot.meta().player()).join().isEmpty());
     }
 
-    /**
-     * 导入被存储拒绝时, 原数据库正文和缓存均继续可用.
-     *
-     * @throws Exception 本地导出文件无法生成时
-     */
     @Test
     void rejectedImportKeepsExistingCache() throws Exception {
         Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());

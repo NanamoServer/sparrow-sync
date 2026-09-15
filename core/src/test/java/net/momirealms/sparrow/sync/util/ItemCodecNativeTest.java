@@ -79,7 +79,6 @@ class ItemCodecNativeTest {
 
     @BeforeEach
     void bindRegistries() throws Exception {
-        // 数据生成注册表使用独立 Holder owner, 必须由 provider 提供匹配的序列化上下文.
         this.previousSparrowOps = replaceOps("sparrowNbt", registries.createSerializationContext(NBTOps.INSTANCE));
     }
 
@@ -253,7 +252,6 @@ class ItemCodecNativeTest {
         assertEquals(expected, second);
         assertEquals(expected, convertedNative(item));
 
-        // 直接改源组件的底层 Tag, 验证编码结果没有借用它; 不依赖替换组件后的 COW.
         item.get(DataComponents.CUSTOM_DATA).getUnsafe().getCompoundOrEmpty("nested").putString("marker", "changed-source");
         item.setCount(5);
         assertEquals(expected, second);

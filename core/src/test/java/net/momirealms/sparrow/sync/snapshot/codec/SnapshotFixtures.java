@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 
-// 编解码测试共享的标准快照
 public final class SnapshotFixtures {
     static final DataKey INVENTORY = DataKey.of("sparrow", "inventory");
     static final DataKey HEALTH = DataKey.of("sparrow", "health");
@@ -29,56 +28,25 @@ public final class SnapshotFixtures {
     private SnapshotFixtures() {
     }
 
-    /**
-     * 通过反射读取 LazySnapshotData 中已成功解析并缓存的类型数量, 供测试检查是否多读了数据块.
-     *
-     * @param snapshot content 为 LazySnapshotData 的快照
-     * @return 已成功解析为 Tag 的数据块数量, 尚未读取任何块时为 0
-     * @throws ReflectiveOperationException 当无法访问或调用 decodedBlockCount 方法时
-     */
     public static int decodedBlockCount(Snapshot snapshot) throws ReflectiveOperationException {
         var counter = LazySnapshotData.class.getDeclaredMethod("decodedBlockCount");
         counter.setAccessible(true);
         return (int) counter.invoke(snapshot.content());
     }
 
-    /**
-     * 从帧头读取元数据和索引的长度, 计算第一个数据块的起点, 供测试修改块头或块内数据.
-     *
-     * @param frame 格式正确的二进制帧
-     * @return 第一个数据块的块头在 frame 数组中的起始下标
-     */
     public static int blockBase(byte[] frame) {
         int dataOffset = dataOffset(frame);
         return dataOffset + 9 + ByteBuffer.wrap(frame).getInt(dataOffset + 1);
     }
 
-    /**
-     * 从完整快照的 Meta 长度定位内部数据帧.
-     *
-     * @param frame 格式正确的完整快照
-     * @return 数据帧首字节在数组中的位置
-     */
     public static int dataOffset(byte[] frame) {
         return 7 + Short.toUnsignedInt(ByteBuffer.wrap(frame).getShort(1));
     }
 
-    /**
-     * 从独立数据帧的索引长度定位块区, 不尝试识别输入的帧种类.
-     *
-     * @param frame 格式正确的独立数据帧
-     * @return 块区在该数组中的起点
-     */
     public static int dataBlockBase(byte[] frame) {
         return 9 + ByteBuffer.wrap(frame).getInt(1);
     }
 
-    /**
-     * 构造 CRC 正确但索引根为整数的数据帧, 检查载体是否拒绝非法 NBT 结构.
-     *
-     * @return 仅索引结构非法的分块帧
-     * @throws IOException 当测试 NBT 序列化失败时
-     */
     public static byte[] nonCompoundIndexFrame() throws IOException {
         byte[] index = NBT.toBytes(NBT.createInt(3), false);
         CRC32 crc = new CRC32();
@@ -99,7 +67,6 @@ public final class SnapshotFixtures {
                 .build();
     }
 
-    // 覆盖嵌套物品数据, 普通数值和外部类型的数据, 总大小超过压缩阈值
     public static Snapshot snapshot() {
         return new Snapshot(meta(), Map.of(
                 INVENTORY, inventoryTag(),

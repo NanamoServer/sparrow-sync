@@ -137,7 +137,6 @@ class SparrowSyncAPITest {
 
     @Test
     void disableRejectsCachedApiBeforeClosingStorage() {
-        // 模拟业务装配尚未完成时的停服, 只保留已创建的存储与 API.
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotService", null);
         NmsPlayerFixture.set(Bukkit.class, null, "server", proxy(Server.class, (receiver, method, args) -> {
             assertEquals("isStopping", method.getName());

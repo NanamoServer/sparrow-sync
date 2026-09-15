@@ -64,36 +64,27 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * 验证接收、最终等待与停服暂存跨越 Saver 和 Writer 的生命周期契约.
- * 数据库结果和任务先后通过 Future 与信号控制, 原交接测试的有效覆盖迁移到最终保存结果上.
- */
 class SnapshotSaveLifecycleTest {
-    private static final UUID PLAYER = new UUID(0, 23); // 各测试共用的玩家队列键
-    private static final DataKey RETAINED = DataKey.of("external", "retained"); // 验证原正文和准备后正文的未知数据
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE); // 读取实际暂存产物
-    private final LinkedBlockingQueue<Submission> submissions = new LinkedBlockingQueue<>(); // 测试逐次接管数据库结果
-    private final AtomicInteger rotations = new AtomicInteger(); // 只计发起轮转, 轮转 Future 故意保持未完成
-    private final AtomicInteger stashReports = new AtomicInteger(); // 每次真实暂存尝试的报告次数
-    private final List<Throwable> failures = new CopyOnWriteArrayList<>(); // 控制台收到的异常原因
+    private static final UUID PLAYER = new UUID(0, 23);
+    private static final DataKey RETAINED = DataKey.of("external", "retained");
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
+    private final LinkedBlockingQueue<Submission> submissions = new LinkedBlockingQueue<>();
+    private final AtomicInteger rotations = new AtomicInteger();
+    private final AtomicInteger stashReports = new AtomicInteger();
+    private final List<Throwable> failures = new CopyOnWriteArrayList<>();
     private final LinkedBlockingQueue<String> shutdownLogs = new LinkedBlockingQueue<>();
     private Object previousTranslations;
-    private volatile Runnable onWarning = () -> {}; // 在暂存报告时暂停收尾, 检查结果完成的边界
-    private Function<Snapshot, CompletableFuture<SaveOutcome>> onSave; // 默认返回可控写入, 单个测试可换成真实队列投递
-    private PluginConfig.ConfigDefinition config; // 当前测试固定的配置
-    private Object previousConfig; // 测试结束时恢复静态配置
-    private SnapshotWriter writer; // 被测在途集合和写入管理器
-    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 核对保存回执前已经发出的缓存命令
-    private PlayerSerialExecutor executor; // 复用真实串行队列验证提交与重试
+    private volatile Runnable onWarning = () -> {};
+    private Function<Snapshot, CompletableFuture<SaveOutcome>> onSave;
+    private PluginConfig.ConfigDefinition config;
+    private Object previousConfig;
+    private SnapshotWriter writer;
+    private final MemorySnapshotCache cache = new MemorySnapshotCache();
+    private PlayerSerialExecutor executor;
 
     @TempDir
-    Path directory; // 仅属于当前用例的暂存目录
+    Path directory;
 
-    /**
-     * 装配真实 Writer、串行执行器和文件暂存, 存储边界由测试控制.
-     *
-     * @throws Exception 静态测试配置无法替换时
-     */
     @BeforeEach
     void setUp() throws Exception {
         this.config = new PluginConfig.ConfigDefinition();
@@ -134,11 +125,6 @@ class SnapshotSaveLifecycleTest {
         this.writer = new SnapshotWriter(logger, storage, new SnapshotStash(this.directory, this.codec, logger, new NoopSnapshotCache()), this.executor, this.cache);
     }
 
-    /**
-     * 排空测试任务并恢复共享配置, 未完成的伪数据库 Future 不持有外部连接.
-     *
-     * @throws Exception 静态配置无法恢复时
-     */
     @AfterEach
     void tearDown() throws Exception {
         this.executor.shutdown(2, TimeUnit.SECONDS);
@@ -331,7 +317,6 @@ class SnapshotSaveLifecycleTest {
         return message;
     }
 
-    /** 首次提交以后仍等待最终回执, 汇总超时不会修改任何原始 Future. */
     @Test
     void shutdownWaitsPastFirstSubmissionAndIncludesEveryAcceptedSave() {
         SaveRequest first = this.accept(true);
@@ -346,7 +331,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(2, this.rotations.get());
     }
 
-    /** 单份异常结束也必须继续等待整批中的其他请求. */
     @Test
     void failureDoesNotEndTheBatchWhileAnotherSaveIsPending() {
         SaveRequest failed = this.accept(false);
@@ -357,7 +341,6 @@ class SnapshotSaveLifecycleTest {
         assertTrue(this.writer.sealAndAwaitSaves(1, TimeUnit.SECONDS));
     }
 
-    /** 封口永久拒绝后续登记, 即使第一轮等待因预算耗尽退出. */
     @Test
     void shutdownSealRejectsLaterSaveRequests() {
         this.accept(false);
@@ -365,11 +348,6 @@ class SnapshotSaveLifecycleTest {
         assertThrows(RejectedExecutionException.class, () -> this.accept(false));
     }
 
-    /**
-     * 采集任务追加的存储子任务在停服哨兵之前运行, worker 不等待自己的队尾任务.
-     *
-     * @throws Exception 同步信号未按期限到达时
-     */
     @Test
     void storageTaskSubmittedByCaptureRunsBeforeExecutorShutdown() throws Exception {
         CountDownLatch captureStarted = new CountDownLatch(1);
@@ -397,7 +375,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(0, storageRan.getCount());
     }
 
-    /** 已接收的千份保存从多个完成线程返回时, 等待仍能覆盖整个批次. */
     @Test
     void concurrentCompletionsDrainTheAcceptedBatch() {
         List<SaveRequest> requests = new ArrayList<>();
@@ -411,11 +388,6 @@ class SnapshotSaveLifecycleTest {
         }
     }
 
-    /**
-     * 接收和封口同时发生时, 每份请求要么拒绝, 要么进入固定等待批次.
-     *
-     * @throws Exception 并发任务未按期限结束时
-     */
     @Test
     void concurrentRegistrationCannotEscapeTheSealedBatch() throws Exception {
         List<SaveRequest> accepted = new CopyOnWriteArrayList<>();
@@ -445,11 +417,6 @@ class SnapshotSaveLifecycleTest {
         assertTrue(this.writer.sealAndAwaitSaves(1, TimeUnit.SECONDS));
     }
 
-    /**
-     * 封口后的等待允许重试, 配置在首次写入固定, 请求排队时的旧配置不影响该时刻.
-     *
-     * @throws Exception 测试配置字段无法写入时
-     */
     @Test
     void retriesContinueWithinShutdownWaitAndKeepFirstWritePolicy() throws Exception {
         this.maxRetries(0);
@@ -467,12 +434,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(SaveResult.SAVED, assertInstanceOf(SnapshotSaveResult.Settled.class, request.completion().join()).result());
     }
 
-    /**
-     * 存储结果保持现有轮转和归档分类, 文件暂存结束后才完成回执.
-     *
-     * @param result 覆盖所有存储分类
-     * @throws Exception 测试配置或暂存文件读取失败时
-     */
     @ParameterizedTest
     @EnumSource(SaveResult.class)
     void storageClassificationsKeepRotationAndStashDestinations(SaveResult result) throws Exception {
@@ -489,12 +450,6 @@ class SnapshotSaveLifecycleTest {
         }
     }
 
-    /**
-     * 原正文与准备后正文在请求中交替发布时, 停服只选取收尾时已发布的完整内容.
-     *
-     * @param prepared 是否已经发布地图准备后的正文
-     * @throws Exception 暂存结果无法读取时
-     */
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void shutdownStashesThePublishedBodyAndFreezesFurtherUpdates(boolean prepared) throws Exception {
@@ -513,7 +468,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(1, this.stashReports.get());
     }
 
-    /** 未编码请求在预算耗尽后明确失败, 不能补发正文或伪装成已暂存. */
     @Test
     void unencodedRequestFailsWithTimeoutAndCannotResume() {
         SaveRequest request = this.accept(false);
@@ -526,11 +480,6 @@ class SnapshotSaveLifecycleTest {
         assertTrue(this.submissions.isEmpty());
     }
 
-    /**
-     * 普通异步异常保留原失败并退出在途集合, 即使已经编码也不会在停服时补写.
-     *
-     * @throws Exception 暂存目录无法读取时
-     */
     @Test
     void ordinaryWriteFailureDoesNotAutomaticallyStashTheEncodedBody() throws Exception {
         SaveRequest request = this.accept(true);
@@ -543,12 +492,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(List.of(failure), this.failures);
     }
 
-    /**
-     * 暂存已取得收尾权时, 迟到数据库结果不得反转结果、再重试或重复归档.
-     *
-     * @param lateResult 数据库在暂存期间返回的分类
-     * @throws Exception 同步信号或文件读取失败时
-     */
     @ParameterizedTest
     @EnumSource(value = SaveResult.class, names = {"SAVED", "RETRY_LATER", "REJECTED_MALFORMED"})
     void finalFutureWaitsForStashAndLateDatabaseResultsCannotFinishAgain(SaveResult lateResult) throws Exception {
@@ -581,11 +524,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(0, this.rotations.get());
     }
 
-    /**
-     * 重试已入队但尚未执行时, 停服收尾让该任务结束而不再访问存储.
-     *
-     * @throws Exception 测试队列标记未按期限完成时
-     */
     @Test
     void queuedRetryDoesNotRestartASettledRequest() throws Exception {
         CountDownLatch blocked = new CountDownLatch(1);
@@ -607,11 +545,6 @@ class SnapshotSaveLifecycleTest {
         assertEquals(1, this.bodies().size());
     }
 
-    /**
-     * 文件系统拒绝暂存时仍如实报告失败, 结果分类保留 RETRY_LATER 的原契约.
-     *
-     * @throws Exception 测试目录无法准备时
-     */
     @Test
     void failedStashIsReportedBeforeFinalCompletion() throws Exception {
         Files.createDirectories(this.directory.resolve("snapshot"));
@@ -623,12 +556,6 @@ class SnapshotSaveLifecycleTest {
         assertTrue(this.bodies().isEmpty());
     }
 
-    /**
-     * 建立并登记测试请求, 可选择从尚未编码或已发布原正文的阶段开始.
-     *
-     * @param encoded 是否立即发布完整原正文
-     * @return Writer 已接收的请求
-     */
     private SaveRequest accept(boolean encoded) {
         SnapshotMeta meta = new SnapshotMeta(UUID.randomUUID(), PLAYER, 1, SaveCause.COMMAND, false, "test", 0);
         SaveRequest request = new SaveRequest(meta, "TestPlayer", EagerSnapshotData.EMPTY, null);
@@ -637,11 +564,6 @@ class SnapshotSaveLifecycleTest {
         return request;
     }
 
-    /**
-     * 本服关闭发布时清掉上一服条目, 删除命令先于保存回执发出且不等待 Redis 响应.
-     *
-     * @param cause 退出或关服的收尾原因
-     */
     @ParameterizedTest
     @EnumSource(value = SaveCause.class, names = {"DISCONNECT", "SHUTDOWN"})
     void disabledCacheInvalidatesBeforeFinalSaveCompletion(SaveCause cause) {
@@ -666,11 +588,6 @@ class SnapshotSaveLifecycleTest {
         assertSame(snapshot, loaded);
     }
 
-    /**
-     * 缓存启用时, 收尾保存发布已确认的正文, 回执完成时新条目已经可消费.
-     *
-     * @param result 新写入或幂等重放的存储结果
-     */
     @ParameterizedTest
     @EnumSource(value = SaveResult.class, names = {"SAVED", "DUPLICATE"})
     void enabledCachePublishesBeforeFinalSaveCompletion(SaveResult result) {
@@ -687,11 +604,6 @@ class SnapshotSaveLifecycleTest {
         assertTrue(this.cache.invalidations.isEmpty());
     }
 
-    /**
-     * 等待下一次实际存储调用, 信号超时直接让用例失败.
-     *
-     * @return 本次写入的正文和结果控制器
-     */
     private Submission nextSubmission() {
         try {
             Submission submission = this.submissions.poll(2, TimeUnit.SECONDS);
@@ -703,24 +615,12 @@ class SnapshotSaveLifecycleTest {
         }
     }
 
-    /**
-     * 列举当前用例实际发布的正文文件.
-     *
-     * @return 正文路径, 不包含伴随头
-     * @throws IOException 测试目录无法遍历时
-     */
     private List<Path> bodies() throws IOException {
         try (var paths = Files.walk(this.directory)) {
             return paths.filter(path -> path.toString().endsWith(".snapshot")).toList();
         }
     }
 
-    /**
-     * 设置测试使用的最大重试次数, 可在登记和首次写入之间改变配置.
-     *
-     * @param retries 首发之后允许的重试次数
-     * @throws Exception 配置字段无法访问时
-     */
     private void maxRetries(int retries) throws Exception {
         Field optionsField = PluginConfig.ConfigDefinition.class.getDeclaredField("synchronization");
         optionsField.setAccessible(true);
@@ -730,11 +630,6 @@ class SnapshotSaveLifecycleTest {
         retriesField.setInt(options, retries);
     }
 
-    /**
-     * 由测试线程显式释放队列阶段, 中断转换为可定位的用例失败.
-     *
-     * @param latch 当前阶段的继续信号
-     */
     private static void await(CountDownLatch latch) {
         try {
             assertTrue(latch.await(5, TimeUnit.SECONDS), "test stage was not released");
@@ -744,12 +639,6 @@ class SnapshotSaveLifecycleTest {
         }
     }
 
-    /**
-     * 一次受控数据库写入, 对应真实 Provider 的异步结果边界.
-     *
-     * @param snapshot 本次收到的完整正文
-     * @param outcome 由测试确认的数据库结果
-     */
     private record Submission(Snapshot snapshot, CompletableFuture<SaveOutcome> outcome) {
     }
 }

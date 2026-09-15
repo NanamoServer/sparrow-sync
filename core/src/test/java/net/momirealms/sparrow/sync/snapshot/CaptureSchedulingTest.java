@@ -92,7 +92,7 @@ class CaptureSchedulingTest {
     private final RecordingType sync = new RecordingType("sync", false);
     private final RecordingType async = new RecordingType("async", true);
     private final List<Snapshot> written = new CopyOnWriteArrayList<>();
-    private final List<CompletableFuture<StorageProvider.SaveOutcome>> writes = new CopyOnWriteArrayList<>(); // 测试控制数据库确认时刻
+    private final List<CompletableFuture<StorageProvider.SaveOutcome>> writes = new CopyOnWriteArrayList<>();
     private final List<SnapshotSaveEvent> events = new CopyOnWriteArrayList<>();
     private final CountDownLatch releaseWorker = new CountDownLatch(1);
     private final AtomicReference<Thread> worker = new AtomicReference<>();
@@ -102,13 +102,13 @@ class CaptureSchedulingTest {
     private SnapshotSaver saver;
     private SessionManager sessions;
     private PlayerSession session;
-    private PlayerDataPipeline pipeline; // 测试装配的真实解码、应用和采集流水线
+    private PlayerDataPipeline pipeline;
     private Object previousServer;
     private Object previousConfig;
     private Object previousServerConfig;
     private volatile boolean cancelEvent;
-    private java.util.function.Consumer<SnapshotSaveEvent> eventAction = event -> {}; // 控制监听器返回的时刻
-    private Throwable writeFailure; // 模拟任务已经入队后, 存储提交同步抛出的失败
+    private java.util.function.Consumer<SnapshotSaveEvent> eventAction = event -> {};
+    private Throwable writeFailure;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -186,12 +186,6 @@ class CaptureSchedulingTest {
         this.session.transition(SessionState.ACTIVE);
     }
 
-    /**
-     * 未注册类型经解码、应用、会话交接和实际保存后保持原块字节, 会话只持有紧凑的小帧.
-     *
-     * @param mode 本次往返采用的采集方式
-     * @throws Exception 当测试快照编解码或保存任务失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"SYNC", "ASYNC", "OFFLINE"})
     void unknownBlocksSurviveSessionSaveWithoutDecoding(String mode) throws Exception {
@@ -252,12 +246,6 @@ class CaptureSchedulingTest {
         assertEquals("0", restored.data(this.sync.key()).getAsString());
     }
 
-    /**
-     * 提取块头和载荷, 用于比较跨服往返时实际复制的字节.
-     *
-     * @param block 原始块的位置及其来源数组
-     * @return 只包含该块的独立字节数组
-     */
     private static byte[] blockBytes(RawBlock block) {
         int start = (int) block.offset();
         return Arrays.copyOfRange(block.bytes(), start, (int) block.end());
@@ -272,12 +260,6 @@ class CaptureSchedulingTest {
         replace(ServerConfig.class, "config", this.previousServerConfig);
     }
 
-    /**
-     * 用受控地图结果验证原串行任务续行、关闭回退、普通异常及同桶阻塞.
-     *
-     * @param outcome 地图完成或停服发生的时点
-     * @throws Exception 调度、反射装配或文件检查失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"published", "closed", "stash", "singleFailure", "chainFailure", "buckets", "restore"})
     void mapWaitKeepsSubmissionInTheSameSerialTask(String outcome) throws Exception {
@@ -307,7 +289,6 @@ class CaptureSchedulingTest {
             @NotNull
             public Tag encode(@NotNull Integer value) {
                 if (value == 2 && outcome.equals("stash")) {
-                    // 关停中断后队列仍可能进入第二次编码, 保持该正文未发布以固定暂存检查时刻.
                     secondEncodeRelease.join();
                 }
                 CompoundTag components = NBT.createCompound();
@@ -464,11 +445,6 @@ class CaptureSchedulingTest {
         assertEquals(expected, this.written.stream().map(snapshot -> ((CompoundTag) snapshot.data(InventoryDataType.INVENTORY)).getList("items").getCompound(0).getCompound("components").getInt("minecraft:map_id")).toList());
     }
 
-    /**
-     * 世界保存先采集同步组, 死亡保存独立采集, 两者返回时无需等待 worker 或数据库确认.
-     *
-     * @throws Exception 测试调度、结果等待或文件检查失败时
-     */
     @Test
     void worldSavePreCapturesBeforeDeathAndDoesNotWaitForWorkerOrDatabase() throws Exception {
         this.sync.value.set(1);
@@ -506,12 +482,6 @@ class CaptureSchedulingTest {
         assertTrue(this.service.sealAndAwaitSaves(2, TimeUnit.SECONDS));
     }
 
-    /**
-     * 在三种采集模式下验证编码后才开始地图准备, 排队期间重载不改变请求固定的地图模式.
-     *
-     * @param mode 当前验证的采集模式
-     * @throws Exception 测试调度、结果等待或文件检查失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"SYNC", "ASYNC", "OFFLINE"})
     void mapsRunAfterEncodingOnExistingWorkerAndKeepRequestMode(String mode) throws Exception {
@@ -605,11 +575,6 @@ class CaptureSchedulingTest {
         if (mode.equals("OFFLINE")) assertSame(this.worker.get(), capturedOn.get());
     }
 
-    /**
-     * RESTORE 保留历史原内容并创建新身份, 与普通采集共享同玩家逻辑时间顺序.
-     *
-     * @throws Exception 测试调度、结果等待或文件检查失败时
-     */
     @Test
     void restoreCreatesNewIdentityAndSharesTimestampOrderWithCaptures() throws Exception {
         Snapshot source = new Snapshot(new SnapshotMeta(UUID.randomUUID(), this.player.getUniqueId(), 1, SaveCause.COMMAND, true, "old", 0),
@@ -632,11 +597,6 @@ class CaptureSchedulingTest {
         assertEquals(1, source.meta().timestamp());
     }
 
-    /**
-     * 会话停止接受普通保存后, 退出的静止状态仍由同一 worker 采集和编码.
-     *
-     * @throws Exception 测试调度、结果等待或文件检查失败时
-     */
     @Test
     void finalOfflineTaskCapturesAndEncodesOnSameWorkerAndSealedSessionRejectsLateNotice() throws Exception {
         this.session.transition(SessionState.SAVING);
@@ -656,12 +616,6 @@ class CaptureSchedulingTest {
         assertEquals(SaveCause.DISCONNECT, this.written.getFirst().meta().cause());
     }
 
-    /**
-     * 关键采集、编码失败和事件取消均结束请求, 关服清理不会补写这些正文.
-     *
-     * @param stage 当前验证的失败或取消阶段
-     * @throws Exception 测试调度、结果等待或文件检查失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"syncCapture", "asyncCapture", "encode", "cancel"})
     void failuresAndCancellationFinishAcceptedSaves(String stage) throws Exception {
@@ -682,11 +636,6 @@ class CaptureSchedulingTest {
         assertFalse(Files.exists(this.directory.resolve("snapshot/pending")));
     }
 
-    /**
-     * 执行器关闭后拒绝新任务, 保存仍以失败回执终结且不遗留在途请求.
-     *
-     * @throws Exception 测试任务未能按期限结束或等待最终保存失败
-     */
     @Test
     void rejectedSubmissionCompletesAcceptedSave() throws Exception {
         this.releaseWorker.countDown();
@@ -700,12 +649,6 @@ class CaptureSchedulingTest {
         assertTrue(this.written.isEmpty());
     }
 
-    /**
-     * 已入队任务异常时结束保存回执, 原异常继续交给执行器计数和报告.
-     *
-     * @param kind 同步抛出的异常类别
-     * @throws Exception 测试任务未能按期限结束或等待最终保存失败
-     */
     @ParameterizedTest
     @ValueSource(strings = {"runtime", "error"})
     void taskFailureCompletesSaveAndStillReachesExecutor(String kind) throws Exception {
@@ -716,7 +659,6 @@ class CaptureSchedulingTest {
         ExecutionException failure = assertThrows(ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
         assertSame(this.writeFailure, failure.getCause());
         assertTrue(this.service.sealAndAwaitSaves(0, TimeUnit.NANOSECONDS));
-        // 回执在执行器报告之前完成, 排在其后的任务用于等待该次报告结束.
         CountDownLatch reported = new CountDownLatch(1);
         this.executor.submit(this.player.getUniqueId(), reported::countDown);
         assertTrue(reported.await(2, TimeUnit.SECONDS));
@@ -724,11 +666,6 @@ class CaptureSchedulingTest {
         assertTrue(this.written.isEmpty());
     }
 
-    /**
-     * 管理操作停止以后, ACTIVE 会话的最终保存仍能先被接受, 封口后拒绝新采集.
-     *
-     * @throws Exception 保存队列未按期限结束时
-     */
     @Test
     void shutdownSaveIsAcceptedAfterManagementStopsAndBeforeWriterSeals() throws Exception {
         this.service.stopOperations();
@@ -745,11 +682,6 @@ class CaptureSchedulingTest {
         assertEquals(SaveCause.SHUTDOWN, this.written.getFirst().meta().cause());
     }
 
-    /**
-     * 监听器还在处理事件时停服先决定暂存, 迟到取消保留已完成的暂存结果.
-     *
-     * @throws Exception 监听器信号或文件检查失败时
-     */
     @Test
     void lateEventCancellationDoesNotRetractShutdownStash() throws Exception {
         CountDownLatch enteredEvent = new CountDownLatch(1);
@@ -778,18 +710,12 @@ class CaptureSchedulingTest {
         }
     }
 
-    /**
-     * 等待已经投递的保存任务退出, 供测试在数据库尚未确认时检查提交结果.
-     *
-     * @throws InterruptedException 等待测试队列标记时被中断
-     */
     private void awaitSubmissions() throws InterruptedException {
         CountDownLatch submitted = new CountDownLatch(1);
         this.executor.submit(this.player.getUniqueId(), submitted::countDown);
         assertTrue(submitted.await(2, TimeUnit.SECONDS));
     }
 
-    /** 由测试确认已发出的全部数据库写入, 保存回执随后才允许完成. */
     private void finishWrites() {
         for (int i = 0; i < this.writes.size(); i++) {
             this.writes.get(i).complete(new StorageProvider.SaveOutcome(StorageProvider.SaveResult.SAVED, null));

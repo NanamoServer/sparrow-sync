@@ -55,7 +55,6 @@ class SnapshotSizeTest {
         SyncLogger logger = new SyncLogger(recorded);
         PlayerSerialExecutor serial = new PlayerSerialExecutor(logger, 1);
         SnapshotDataCodec codec = new SnapshotDataCodec(CompressorRegistry.NONE);
-        // 不初始化连接池, 任何误入数据库的分支都会使本测试失败.
         List<StorageProvider> providers = List.of(
                 new MysqlStorageProvider(new PluginConfig.MysqlOptions(), codec, serial, Runnable::run, logger),
                 new PostgresStorageProvider(new PluginConfig.PostgresOptions(), codec, serial, Runnable::run, logger),

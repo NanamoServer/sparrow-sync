@@ -83,12 +83,6 @@ class RetryLogTest {
         return count;
     }
 
-    /**
-     * 固定日志使用的保存身份, 创建关联完整请求的首次写入尝试.
-     *
-     * @param maxRetries 首发后允许的重试次数
-     * @return 供日志次数和最终失败断言使用的尝试
-     */
     private static WriteAttempt attempt(int maxRetries) {
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(UUID.randomUUID())

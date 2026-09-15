@@ -120,7 +120,6 @@ class MapReceiverRefreshTest {
         this.shared.contents.put(-1, map(1));
         CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
         worker.runAll();
-        // 旧画面已准备, 连续通知先合并到同一更新任务.
         this.shared.contents.put(-1, map(2));
         receiver.refresh(-1);
         receiver.refresh(-1);
@@ -145,7 +144,6 @@ class MapReceiverRefreshTest {
         this.shared.contents.put(-1, map(1));
         CompletableFuture<Integer> waiting = receiver.receive(IDENTITY);
         worker.runAll();
-        // 首次观察加入已有任务, 继续使用该次读取取得的缓存画面.
         receiver.observe(-1);
         worker.runAll();
         assertSame(waiting, receiver.receive(IDENTITY));

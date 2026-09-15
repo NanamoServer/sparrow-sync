@@ -47,12 +47,6 @@ class DocumentSnapshotCodecTest {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
     }
 
-    /**
-     * 读取数据库格式的快照后直接重新编码, 验证保存的帧字节保持一致.
-     * 重新保存期间不应将任何数据块解析为 Tag.
-     *
-     * @throws Exception 当快照编码或读取已解析块数失败时
-     */
     @Test
     void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
         Document original = this.codec.encode(SnapshotFixtures.snapshot());
@@ -112,7 +106,6 @@ class DocumentSnapshotCodecTest {
 
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(this.codec.encode(snapshot))).snapshot();
 
-        // 本服未注册的两个字段原样透传
         assertEquals(snapshot.data(SnapshotFixtures.UNKNOWN_BLOB), restored.data(SnapshotFixtures.UNKNOWN_BLOB));
         assertEquals(snapshot.data(SnapshotFixtures.UNKNOWN_DOC), restored.data(SnapshotFixtures.UNKNOWN_DOC));
     }
@@ -207,12 +200,6 @@ class DocumentSnapshotCodecTest {
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
     }
 
-    /**
-     * 数据帧先返回惰性快照, 坏块取值时才报告具体原因, 其他类型仍可读取.
-     *
-     * @param corruption 0 表示翻转载荷, 99 表示未知压缩算法
-     * @throws IOException 当对照快照编码失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {0, 99})
     void damagedBlocksFailOnAccessAndLeaveOtherTypesReadable(int corruption) throws IOException {
@@ -220,7 +207,6 @@ class DocumentSnapshotCodecTest {
         Document document = this.codec.encode(source);
         byte[] bytes = document.get("data", Binary.class).getData();
         int blockBase = SnapshotFixtures.dataBlockBase(bytes);
-        // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
             bytes[blockBase + 13] ^= 1;
         } else {
@@ -242,7 +228,6 @@ class DocumentSnapshotCodecTest {
 
     @Test
     void binaryFieldWithGarbageBodyReportsCorrupted() throws IOException {
-        // 帧头合法但 NBT 体是垃圾字节
         Document document = this.codec.encode(SnapshotFixtures.snapshot());
         document.put("data", new Binary(new byte[]{'S', 'S', 1, 0, 11, 22}));
 
@@ -280,7 +265,6 @@ class DocumentSnapshotCodecTest {
 
     @Test
     void documentSurvivesRealBsonCodecRoundTrip() throws IOException {
-        // 经真实 BSON 编解码往返, 覆盖 UUID 的 UuidRepresentation.STANDARD 契约
         Snapshot snapshot = SnapshotFixtures.snapshot();
         Document document = this.codec.encode(snapshot);
         CodecRegistry registry = CodecRegistries.withUuidRepresentation(MongoClientSettings.getDefaultCodecRegistry(), UuidRepresentation.STANDARD);

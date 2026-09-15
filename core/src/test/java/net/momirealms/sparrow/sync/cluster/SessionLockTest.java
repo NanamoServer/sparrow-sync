@@ -26,10 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 集成测试, 依赖本机 6379 端口的 Redis, 不可达时整类跳过
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SessionLockTest {
-    private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);  // 与 SessionLock.LOCK_TTL_MILLIS 同步
+    private static final long LOCK_TTL_MILLIS = TimeUnit.DAYS.toMillis(15);
 
     private final SyncLogger logger = new SyncLogger(new QuietLogger());
     private RedisConnector connectorA;
@@ -38,13 +37,12 @@ class SessionLockTest {
     private SessionLock lockA;
     private SessionLock lockB;
     private SessionLock lockC;
-    private RedisClient inspector;                              // 直查键的裸客户端
+    private RedisClient inspector;
     private StatefulRedisConnection<String, String> inspection;
 
     @BeforeAll
     void connect() {
         PluginConfig.RedisOptions options = RedisTestSupport.options(0);
-        // 每台模拟服务器一条自己的连接, 与真实拓扑同构
         this.connectorA = new RedisConnector(options, this.logger);
         try {
             this.connectorA.initialize();
@@ -64,7 +62,6 @@ class SessionLockTest {
 
     @AfterAll
     void disconnect() {
-        // 清掉本轮测试写下的锁键
         if (this.inspection != null) {
             List<String> keys = this.inspection.sync().keys("sparrow-sync:lock:*");
             if (!keys.isEmpty()) this.inspection.sync().del(keys.toArray(String[]::new));
@@ -82,7 +79,6 @@ class SessionLockTest {
 
         AcquireOutcome outcome = this.lockA.tryAcquire(player).get(5, TimeUnit.SECONDS);
 
-        // 锁值携带本服 id, TTL 落在垃圾回收档位上
         AcquireOutcome.Acquired acquired = assertInstanceOf(AcquireOutcome.Acquired.class, outcome);
         LockValue value = LockValue.parse(acquired.value());
         assertNotNull(value);
@@ -96,7 +92,6 @@ class SessionLockTest {
         UUID player = UUID.randomUUID();
         String held = this.acquire(this.lockA, player);
 
-        // 别的服和本服自己再来抢, 都拿到持有者的锁值
         AcquireOutcome fromB = this.lockB.tryAcquire(player).get(5, TimeUnit.SECONDS);
         AcquireOutcome fromA = this.lockA.tryAcquire(player).get(5, TimeUnit.SECONDS);
 
@@ -111,7 +106,6 @@ class SessionLockTest {
 
         assertTrue(this.lockA.release(player, held).get(5, TimeUnit.SECONDS));
 
-        // 锁已消失, 别的服能立刻抢到
         assertInstanceOf(AcquireOutcome.Acquired.class, this.lockB.tryAcquire(player).get(5, TimeUnit.SECONDS));
     }
 
@@ -120,7 +114,6 @@ class SessionLockTest {
         UUID player = UUID.randomUUID();
         String held = this.acquire(this.lockA, player);
 
-        // token 不对删不掉锁
         assertFalse(this.lockA.release(player, "serverA:" + UUID.randomUUID()).get(5, TimeUnit.SECONDS));
 
         AcquireOutcome outcome = this.lockB.tryAcquire(player).get(5, TimeUnit.SECONDS);
@@ -137,7 +130,6 @@ class SessionLockTest {
             AcquireOutcome first = fromA.get(5, TimeUnit.SECONDS);
             AcquireOutcome second = fromB.get(5, TimeUnit.SECONDS);
 
-            // 每一轮恰好一方抢到, 输家看到的正是赢家写入的值
             AcquireOutcome winner = first instanceof AcquireOutcome.Acquired ? first : second;
             AcquireOutcome loser = winner == first ? second : first;
             String acquired = assertInstanceOf(AcquireOutcome.Acquired.class, winner).value();
@@ -150,13 +142,11 @@ class SessionLockTest {
         UUID player = UUID.randomUUID();
         String observed = this.acquire(this.lockA, player);
 
-        // 两台服务器同时判死持有者并发起夺锁
         CompletableFuture<Optional<String>> fromB = this.lockB.seize(player, observed);
         CompletableFuture<Optional<String>> fromC = this.lockC.seize(player, observed);
         Optional<String> byB = fromB.get(5, TimeUnit.SECONDS);
         Optional<String> byC = fromC.get(5, TimeUnit.SECONDS);
 
-        // 恰好一个成功, 键里躺着胜者的新值
         assertTrue(byB.isPresent() ^ byC.isPresent());
         String next = byB.orElseGet(byC::get);
         assertEquals(next, this.inspection.sync().get(this.key(player)));
@@ -168,7 +158,6 @@ class SessionLockTest {
         String original = this.acquire(this.lockA, player);
         String seized = this.lockB.seize(player, original).get(5, TimeUnit.SECONDS).orElseThrow();
 
-        // 被夺锁的原持有者复活后释放, 删不掉新锁
         assertFalse(this.lockA.release(player, original).get(5, TimeUnit.SECONDS));
 
         assertEquals(seized, this.inspection.sync().get(this.key(player)));
@@ -181,7 +170,6 @@ class SessionLockTest {
         String observed = this.acquire(this.lockA, player);
         assertTrue(this.lockA.release(player, observed).get(5, TimeUnit.SECONDS));
 
-        // 观察值早已过期, 键都不存在了
         assertTrue(this.lockB.seize(player, observed).get(5, TimeUnit.SECONDS).isEmpty());
     }
 
@@ -192,7 +180,6 @@ class SessionLockTest {
         assertTrue(this.lockA.release(player, stale).get(5, TimeUnit.SECONDS));
         String current = this.acquire(this.lockB, player);
 
-        // 锁已换主, 拿旧观察值夺不动
         assertTrue(this.lockC.seize(player, stale).get(5, TimeUnit.SECONDS).isEmpty());
 
         assertEquals(current, this.inspection.sync().get(this.key(player)));

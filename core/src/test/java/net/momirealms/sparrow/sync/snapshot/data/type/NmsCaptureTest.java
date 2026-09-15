@@ -219,7 +219,6 @@ class NmsCaptureTest {
         NmsPlayerFixture.set(PlayerDataPipeline.class, pipeline, "logger", new SyncLogger(console));
         PlayerDataPipeline.CaptureResult.Pending pending = assertInstanceOf(PlayerDataPipeline.CaptureResult.Pending.class, pipeline.capture(this.player, CaptureMode.ASYNC));
 
-        // 第一阶段返回后继续修改玩家, worker 编码同步组时仍应看到采集时的状态
         item.setCount(4);
         item.set(DataComponents.CUSTOM_NAME, Component.literal("changed"));
         pdc.putInt("value", 2);

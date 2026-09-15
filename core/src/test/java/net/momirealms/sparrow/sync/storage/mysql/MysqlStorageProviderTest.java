@@ -80,42 +80,33 @@ import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * 在真实 MySQL 上验证连接池、表结构迁移和快照行映射.
- * 通过环境变量选择测试服务器, 每轮测试创建独立数据库, 每个用例使用独立表前缀.
- */
 @EnabledIfEnvironmentVariable(named = "SPARROW_TEST_MYSQL_URL", matches = ".+")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MysqlStorageProviderTest {
     private final QuietLogger console = new QuietLogger();
     private final SyncLogger logger = new SyncLogger(this.console);
-    private final List<MysqlStorageProvider> providers = new ArrayList<>(); // 当前用例需要关闭的实例
+    private final List<MysqlStorageProvider> providers = new ArrayList<>();
     private final SnapshotDataCodec binary = new SnapshotDataCodec(CompressorRegistry.DEFLATE);
-    private final RowSnapshotCodec codec = new RowSnapshotCodec(this.binary); // 真实行写入前后的编码对照
-    private Jdbi admin; // 创建和删除临时数据库的入口
-    private Jdbi direct; // 绕过被测连接池检查数据库状态的入口
-    private String database; // 本轮创建的独立测试数据库名
-    private String url; // 已经选定测试数据库的连接地址
-    private String prefix; // 当前用例独占的业务表前缀
-    private String username; // 从测试环境读取的数据库账号
-    private String password; // 从测试环境读取的认证密码
+    private final RowSnapshotCodec codec = new RowSnapshotCodec(this.binary);
+    private Jdbi admin;
+    private Jdbi direct;
+    private String database;
+    private String url;
+    private String prefix;
+    private String username;
+    private String password;
     private PlayerSerialExecutor serialExecutor;
     @TempDir
     Path stashDirectory;
 
-    /**
-     * 读取测试连接参数并创建本轮专用数据库.
-     */
     @BeforeAll
     void connect() {
         String configuredUrl = System.getenv("SPARROW_TEST_MYSQL_URL");
         this.username = System.getenv().getOrDefault("SPARROW_TEST_MYSQL_USERNAME", "root");
         this.password = System.getenv().getOrDefault("SPARROW_TEST_MYSQL_PASSWORD", "");
         this.admin = Jdbi.create(configuredUrl, this.username, this.password);
-        // 本轮数据全部写入随机命名的测试库, 清理由 AfterAll 执行.
         this.database = "sparrow_mysql_it_" + UUID.randomUUID().toString().replace("-", "");
         this.admin.useHandle(handle -> handle.execute("CREATE DATABASE `" + this.database + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"));
-        // 保留环境提供的地址和驱动参数, 将选中的数据库替换为测试库.
         int query = configuredUrl.indexOf('?');
         String address = query < 0 ? configuredUrl : configuredUrl.substring(0, query);
         String options = query < 0 ? "" : configuredUrl.substring(query);
@@ -124,9 +115,6 @@ class MysqlStorageProviderTest {
         System.out.println("MySQL integration server: " + this.direct.withHandle(handle -> handle.createQuery("SELECT VERSION()").mapTo(String.class).one()));
     }
 
-    /**
-     * 为当前用例分配独立表前缀, 将并发与故障注入限制在用例自己的表内.
-     */
     @BeforeEach
     void prepare() {
         this.prefix = "it_" + UUID.randomUUID().toString().replace("-", "") + "_";
@@ -134,9 +122,6 @@ class MysqlStorageProviderTest {
         this.console.messages.clear();
     }
 
-    /**
-     * 关闭当前用例登记的所有连接池, 包括初始化失败的实例.
-     */
     @AfterEach
     void closeProviders() {
         this.serialExecutor.shutdown(5, TimeUnit.SECONDS);
@@ -144,9 +129,6 @@ class MysqlStorageProviderTest {
         this.providers.clear();
     }
 
-    /**
-     * 删除本轮创建的测试数据库, 清理各用例留下的表和迁移中间状态.
-     */
     @AfterAll
     void dropDatabase() {
         if (this.database != null) {
@@ -154,24 +136,17 @@ class MysqlStorageProviderTest {
         }
     }
 
-    /**
-     * 验证初始四张表、索引和元记录, 并让快照经过真实 JDBC 写入和读取.
-     *
-     * @throws Exception 当配置注入、快照编码或数据库操作失败时
-     */
     @Test
     void createsFourTablesAndRoundTripsTheBinaryRow() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         provider.initialize();
         Snapshot snapshot = new Snapshot(new SnapshotMeta(UUID.randomUUID(), UUID.randomUUID(), 1756300000001L, SaveCause.COMMAND, true, "大厅-É😀", 4440),
                 Map.of(DataKey.of("external", "data"), NBT.createLongArray(new long[]{Long.MIN_VALUE, 42})));
-        // 通过正式类型绑定和行映射走一次数据库往返.
         SnapshotRow row = this.codec.encode(snapshot);
         this.insert(provider.jdbi(), row);
         SnapshotRow restored = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT * FROM `" + this.prefix + "snapshots` WHERE id = :id")
                 .bind("id", snapshot.meta().id()).mapTo(SnapshotRow.class).one());
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(restored)).snapshot());
-        // 检查初始业务表、元记录和用于地图时间筛选的列.
         assertEquals(Set.of(this.prefix + "meta", this.prefix + "maps", this.prefix + "snapshots", this.prefix + "users"),
                 Set.copyOf(provider.jdbi().withHandle(handle -> handle.createQuery("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND LEFT(table_name, :length) = :prefix")
                         .bind("length", this.prefix.length()).bind("prefix", this.prefix).mapTo(String.class).list())));
@@ -183,11 +158,6 @@ class MysqlStorageProviderTest {
                 .bind("table", this.prefix + "maps").mapTo(String.class).one()));
     }
 
-    /**
-     * 验证独立元信息投影可以读取含未知格式和损坏数据帧的记录.
-     *
-     * @throws Exception 当测试配置注入或数据库操作失败时
-     */
     @Test
     void metadataProjectionDoesNotReadFormatOrPayload() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
@@ -330,7 +300,6 @@ class MysqlStorageProviderTest {
         SnapshotRowMapper mapper = new SnapshotRowMapper();
         provider.jdbi().registerRowMapper(SnapshotRow.class, (result, context) -> {
             SnapshotRow row = mapper.map(result, context);
-            // 数据帧在连接归还前不可解码, 提前解码会使本次查询失败.
             row.data()[0] = 0;
             rows.addLast(row);
             return row;
@@ -579,7 +548,6 @@ class MysqlStorageProviderTest {
             assertTrue(beforeRead.await(5, TimeUnit.SECONDS));
             assertFalse(first.isDone());
             assertEquals(1, this.meta("maps"));
-            // 第一条连接尚未读取自己的编号, 第二条连接仍能分配并完成登记.
             StoredMap second = provider.maps().register(new MapSource("second", 0), mapData(2)).get(5, TimeUnit.SECONDS);
             assertEquals(-2, second.identity().globalId());
         } finally {
@@ -804,7 +772,6 @@ class MysqlStorageProviderTest {
         CompletableFuture<Integer> rotation = provider.rotate(player, 0);
         CompletableFuture<SaveResult> secondSave = provider.saveSnapshot(second);
         assertEquals(2, encodings.size());
-        // 后一份先编码完成, 写库仍等待第一份及其后的轮转.
         encodings.removeLast().run();
         assertFalse(secondSave.isDone());
         int before = provider.jdbi().withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "snapshots`").mapTo(Integer.class).one());
@@ -1044,14 +1011,8 @@ class MysqlStorageProviderTest {
         assertEquals(Optional.of(player), second.lookupUser("Second").join());
     }
 
-    /**
-     * 验证关闭后的入口失效, 重开保留计数器, 且全局驱动注册表保持稳定.
-     *
-     * @throws Exception 当测试配置注入、连接池检查或数据库操作失败时
-     */
     @Test
     void closesThePoolAndPreservesMetadataOnReopen() throws Exception {
-        // 记录进程级驱动状态, 与关闭后重开的状态比较.
         List<?> drivers = Collections.list(DriverManager.getDrivers());
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         assertThrows(IllegalStateException.class, provider::jdbi);
@@ -1059,7 +1020,6 @@ class MysqlStorageProviderTest {
         Jdbi connected = provider.jdbi();
         HikariDataSource pool = this.pool(provider);
         connected.useHandle(handle -> handle.execute("UPDATE `" + this.prefix + "meta` SET value = 73 WHERE id = 'maps'"));
-        // 重复关闭应安全, 已持有的查询入口应随连接池失效.
         provider.shutdown();
         provider.shutdown();
         assertTrue(pool.isClosed());
@@ -1070,11 +1030,6 @@ class MysqlStorageProviderTest {
         assertEquals(drivers, Collections.list(DriverManager.getDrivers()));
     }
 
-    /**
-     * 验证两个实例同时初始化相同前缀时能依次完成同一代表结构准备.
-     *
-     * @throws Exception 当配置注入、并发初始化或等待失败时
-     */
     @Test
     void concurrentStartupCreatesOneSchema() throws Exception {
         MysqlStorageProvider first = this.provider(this.url, this.prefix);
@@ -1086,11 +1041,6 @@ class MysqlStorageProviderTest {
         assertEquals(0, this.pendingCount());
     }
 
-    /**
-     * 验证遇到高于代码支持范围的表版本时关闭所有初始化连接.
-     *
-     * @throws Exception 当测试配置注入或数据库操作失败时
-     */
     @Test
     void failedInitializationClosesEveryConnection() throws Exception {
         new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix);
@@ -1104,22 +1054,12 @@ class MysqlStorageProviderTest {
         assertEquals(MysqlSchema.CURRENT_VERSION + 1, this.meta("schema"));
     }
 
-    /**
-     * 验证含非法字符或超过长度限制的表前缀在建表前失败.
-     *
-     * @throws Exception 当测试配置注入失败时
-     */
     @Test
     void rejectsInvalidOptionsBeforeCreatingTables() throws Exception {
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "bad-prefix")::initialize);
         assertThrows(IllegalArgumentException.class, this.provider(this.url, "a".repeat(53))::initialize);
     }
 
-    /**
-     * 验证 URL 的驱动参数覆盖默认值, 且池中连接启用严格写入模式.
-     *
-     * @throws Exception 当测试配置注入或数据库操作失败时
-     */
     @Test
     void urlDriverParametersOverrideInternalDefaults() throws Exception {
         MysqlStorageProvider provider = this.provider(this.urlWith("connectTimeout=4321&socketTimeout=8765&maxAllowedPacket=1048576&autoReconnect=true"), this.prefix);
@@ -1134,9 +1074,6 @@ class MysqlStorageProviderTest {
         });
     }
 
-    /**
-     * 验证初始版本包含快照查询与轮转索引, 重启后表结构和数据保持不变.
-     */
     @Test
     void initialSchemaIncludesRetentionIndexAndPreservesStoredDataOnRestart() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
@@ -1200,7 +1137,6 @@ class MysqlStorageProviderTest {
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             CompletableFuture<Void> second = CompletableFuture.runAsync(() -> migrator.migrate(provider.jdbi(), this.prefix), executor);
             try {
-                // 未提交的读事务持有元数据锁, 让真实 ADD INDEX 持续等待超过旧网络和迁移锁预算.
                 Thread.sleep(6_000);
                 assertFalse(first.isDone());
                 assertFalse(second.isDone());
@@ -1258,9 +1194,6 @@ class MysqlStorageProviderTest {
         assertEquals(List.of(LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING, LogConstants.STORAGE_MYSQL_SCHEMA_MIGRATING), List.copyOf(this.console.messages));
     }
 
-    /**
-     * 验证当前完整建表中断后可以重入, 已分配的地图编号进度得到保留.
-     */
     @Test
     void partialInitialDdlCanResumeWithoutLosingData() {
         BiConsumer<Handle, String> interrupted = (handle, prefix) -> {
@@ -1276,18 +1209,12 @@ class MysqlStorageProviderTest {
         assertEquals(0, this.pendingCount());
     }
 
-    /**
-     * 验证整表替换后中断可以恢复, 恢复前的进行中版本会阻止旧迁移代码启动.
-     *
-     * @throws Exception 当测试配置注入或数据库操作失败时
-     */
     @Test
     void wholeTableRebuildResumesAfterRenameAndRejectsOlderCode() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         provider.initialize();
         UUID player = UUID.randomUUID();
         provider.jdbi().useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.prefix + "users` (player, name, last_seen) VALUES (:player, 'MiXeD', 123)").bind("player", player).execute());
-        // 在新表接替原表后中断, 此时 DDL 已提交而 schema 尚未更新.
         AtomicBoolean failAfterRename = new AtomicBoolean(true);
         MysqlSchemaMigration rebuild = this.rebuildUsers(failAfterRename);
         MysqlSchemaMigrator newer = new MysqlSchemaMigrator(this.logger, 2, (handle, prefix) -> fail("Existing schemas must use migrations"), List.of(rebuild));
@@ -1296,7 +1223,6 @@ class MysqlStorageProviderTest {
         assertEquals(2, this.meta("schema_pending"));
         assertTrue(this.tableExists(this.prefix + "users_old"));
         assertThrows(IllegalStateException.class, () -> new MysqlSchemaMigrator(this.logger, 1, MysqlSchema::initialize, List.of()).migrate(this.direct, this.prefix));
-        // 同代迁移根据实际表布局恢复, 完成后清理进度标记和临时表.
         newer.migrate(this.direct, this.prefix);
         assertEquals(2, this.meta("schema"));
         assertEquals(0, this.pendingCount());
@@ -1310,11 +1236,6 @@ class MysqlStorageProviderTest {
         });
     }
 
-    /**
-     * 验证迁移锁跨越 DDL 提交保持有效, 且不同前缀可独立升级.
-     *
-     * @throws Exception 当配置注入、并发迁移或等待失败时
-     */
     @Test
     void migrationLockSurvivesDdlAndSeparatesPrefixes() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
@@ -1323,17 +1244,14 @@ class MysqlStorageProviderTest {
         CountDownLatch release = new CountDownLatch(1);
         AtomicInteger runs = new AtomicInteger();
         MysqlSchemaMigration migration = new MysqlSchemaMigration() {
-            /** {@inheritDoc} */
             @Override
             public int targetVersion() {
                 return 2;
             }
 
-            /** {@inheritDoc} */
             @Override
             public void migrate(@NonNull Handle handle, @NonNull String prefix) {
                 runs.incrementAndGet();
-                // DDL 隐式提交后保持迁移暂停, 让另一个连接尝试获取同一把锁.
                 handle.execute("ALTER TABLE `" + prefix + "users` ADD COLUMN extra INT NOT NULL DEFAULT 0");
                 entered.countDown();
                 try {
@@ -1350,7 +1268,6 @@ class MysqlStorageProviderTest {
             try {
                 assertTrue(entered.await(3, TimeUnit.SECONDS));
                 CompletableFuture<Void> second = CompletableFuture.runAsync(() -> migrator.migrate(this.direct, this.prefix), executor);
-                // 相同前缀仍在等待, 不同前缀的迁移应当可以完成.
                 new MysqlSchemaMigrator(this.logger, MysqlSchema.CURRENT_VERSION, MysqlSchema::initialize, List.of()).migrate(this.direct, "other_" + this.prefix);
                 assertFalse(second.isDone());
                 release.countDown();
@@ -1362,9 +1279,6 @@ class MysqlStorageProviderTest {
         }
     }
 
-    /**
-     * 验证无版本业务表以及缺失或重复的迁移版本会被拒绝.
-     */
     @Test
     void rejectsUnversionedTablesAndInvalidMigrationSequences() {
         this.direct.useHandle(handle -> handle.execute("CREATE TABLE `" + this.prefix + "users` (name VARCHAR(16))"));
@@ -1380,7 +1294,6 @@ class MysqlStorageProviderTest {
         assertThrows(IllegalArgumentException.class, () -> new MysqlSchemaMigrator(this.logger, 3, MysqlSchema::initialize, reversed));
     }
 
-    // 用测试 V10 对比空库直建和已有 V7 逐级升级, 两条路径的最终 DDL 应相同.
     @Test
     void freshAndUpgradedDatabasesReachTheSameLatestSchema() {
         List<Integer> applied = new ArrayList<>();
@@ -1420,7 +1333,6 @@ class MysqlStorageProviderTest {
         assertEquals(List.of(8, 9, 10), applied);
     }
 
-    // V10 初始化中断后保留目标和已有数据, 只有同一版完整结构可以继续初始化.
     @Test
     void interruptedLatestInitializationRequiresTheSameTargetVersion() {
         List<Integer> applied = new ArrayList<>();
@@ -1455,7 +1367,6 @@ class MysqlStorageProviderTest {
         assertEquals("preserved", this.direct.withHandle(handle -> handle.createQuery("SELECT name FROM `" + this.prefix + "users` WHERE player = 42").mapTo(String.class).one()));
     }
 
-    // 已有旧库的进行中目标必须紧接已完成版本, 异常记录保持原样供检查.
     @Test
     void rejectsPendingMigrationsThatDoNotFollowTheStoredVersion() {
         List<Integer> applied = new ArrayList<>();
@@ -1472,7 +1383,6 @@ class MysqlStorageProviderTest {
         assertTrue(applied.isEmpty());
     }
 
-    // 测试完整结构在一次 CREATE 中包含目标版本的所有列, 同版本重入保留原表和数据.
     private void initializeUsers(Handle handle, String prefix, int version) {
         StringBuilder ddl = new StringBuilder("CREATE TABLE IF NOT EXISTS `" + prefix + "users` (player INT NOT NULL PRIMARY KEY, name VARCHAR(64) NOT NULL");
         for (int target = 2; target <= version; target++) {
@@ -1481,7 +1391,6 @@ class MysqlStorageProviderTest {
         handle.execute(ddl.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin").toString());
     }
 
-    // 每个测试迁移只增加下一代的列, 并检查进入该步时上一代已公布完成.
     private List<MysqlSchemaMigration> userMigrations(int version, List<Integer> applied) {
         List<MysqlSchemaMigration> migrations = new ArrayList<>();
         for (int target = 2; target <= version; target++) {
@@ -1504,34 +1413,20 @@ class MysqlStorageProviderTest {
         return migrations;
     }
 
-    /**
-     * 构造扩大名称列并转换名称内容的测试迁移, 支持表替换后的故障恢复.
-     *
-     * @param failAfterRename 是否在首次表替换后抛出异常, 触发时自动复位
-     * @return 从第一代表结构升级到测试第二代的迁移
-     */
     private MysqlSchemaMigration rebuildUsers(AtomicBoolean failAfterRename) {
         return new MysqlSchemaMigration() {
-            /** {@inheritDoc} */
             @Override
             public int targetVersion() {
                 return 2;
             }
 
-            /**
-             * {@inheritDoc}
-             *
-             * @throws IllegalStateException 当用例注入迁移中断时
-             */
             @Override
             public void migrate(@NonNull Handle handle, @NonNull String prefix) {
-                // 列宽反映表交换是否已经完成, 重入时据此选择恢复位置.
                 boolean renamed = handle.createQuery("SELECT character_maximum_length FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :table AND column_name = 'name'")
                         .bind("table", prefix + "users").mapTo(Integer.class).one() == 128;
                 if (!renamed) {
                     handle.execute("CREATE TABLE IF NOT EXISTS `" + prefix + "users_new` (player BINARY(16) NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL, last_seen BIGINT NOT NULL) ENGINE=InnoDB");
                     handle.execute("INSERT INTO `" + prefix + "users_new` SELECT player, CONCAT(name, '_v2'), last_seen FROM `" + prefix + "users` ON DUPLICATE KEY UPDATE name = VALUES(name), last_seen = VALUES(last_seen)");
-                    // 同一条 RENAME 原子交换表名, 故障点放在交换完成之后.
                     handle.execute("RENAME TABLE `" + prefix + "users` TO `" + prefix + "users_old`, `" + prefix + "users_new` TO `" + prefix + "users`");
                     if (failAfterRename.getAndSet(false)) throw new IllegalStateException("injected failure after table swap");
                 }
@@ -1540,25 +1435,15 @@ class MysqlStorageProviderTest {
         };
     }
 
-    /**
-     * 通过配置字段注入构造待初始化实例, 并登记到当前用例的清理列表.
-     *
-     * @param url 本次连接使用的 JDBC URL
-     * @param prefix 当前用例使用的表前缀
-     * @return 尚未初始化的存储实例
-     * @throws Exception 当反射配置字段失败时
-     */
     private MysqlStorageProvider provider(String url, String prefix) throws Exception {
         return this.provider(url, prefix, ForkJoinPool.commonPool());
     }
 
-    // 查询阶段测试使用可手动推进的执行器, 普通用例使用真实异步线程.
     private MysqlStorageProvider provider(String url, String prefix, Executor executor) throws Exception {
         return this.provider(url, prefix, this.binary, executor);
     }
 
     private MysqlStorageProvider provider(String url, String prefix, SnapshotDataCodec codec, Executor executor) throws Exception {
-        // 复用配置加载器写入的字段, 在测试内构造所需连接参数.
         PluginConfig.MysqlOptions options = new PluginConfig.MysqlOptions();
         for (Map.Entry<String, String> entry : Map.of("url", url, "username", this.username, "password", this.password, "tablePrefix", prefix).entrySet()) {
             Field field = PluginConfig.MysqlOptions.class.getDeclaredField(entry.getKey());
@@ -1570,25 +1455,12 @@ class MysqlStorageProviderTest {
         return provider;
     }
 
-    /**
-     * 读取实例当前持有的连接池, 供测试确认其关闭状态.
-     *
-     * @param provider 已完成初始化的存储实例
-     * @return 实例内部持有的连接池
-     * @throws Exception 当反射读取连接池失败时
-     */
     private HikariDataSource pool(MysqlStorageProvider provider) throws Exception {
         Field field = MysqlStorageProvider.class.getDeclaredField("dataSource");
         field.setAccessible(true);
         return (HikariDataSource) field.get(provider);
     }
 
-    /**
-     * 使用正式 UUID 参数绑定将快照行写入当前用例的快照表.
-     *
-     * @param jdbi 已注册快照类型映射的查询入口
-     * @param row 待写入的完整快照行
-     */
     private void insert(Jdbi jdbi, SnapshotRow row) {
         SnapshotMeta meta = row.meta();
         jdbi.useHandle(handle -> handle.createUpdate("INSERT INTO `" + this.prefix + "snapshots` (id, player, ts, cause, pinned, server, format, mc_data, data) VALUES (:id, :player, :ts, :cause, :pinned, :server, :format, :mcData, :data)")
@@ -1596,41 +1468,18 @@ class MysqlStorageProviderTest {
                 .bind("pinned", meta.pinned()).bind("server", meta.server()).bind("format", row.format()).bind("mcData", meta.mcDataVersion()).bind("data", row.data()).execute());
     }
 
-    /**
-     * 读取当前用例的指定元记录, 供检查版本和计数器进度.
-     *
-     * @param key 元记录主键
-     * @return 元记录保存的数值
-     */
     private long meta(String key) {
         return this.direct.withHandle(handle -> handle.createQuery("SELECT value FROM `" + this.prefix + "meta` WHERE id = :id").bind("id", key).mapTo(Long.class).one());
     }
 
-    /**
-     * 检查当前用例是否仍有未完成迁移标记.
-     *
-     * @return 进行中标记的记录数, 为 0 或 1
-     */
     private int pendingCount() {
         return this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM `" + this.prefix + "meta` WHERE id = 'schema_pending'").mapTo(Integer.class).one());
     }
 
-    /**
-     * 查询测试数据库中是否存在指定表, 用于检查迁移临时表清理结果.
-     *
-     * @param table 包含前缀的完整表名
-     * @return 表存在时为 true
-     */
     private boolean tableExists(String table) {
         return this.direct.withHandle(handle -> handle.createQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table").bind("table", table).mapTo(Integer.class).one()) != 0;
     }
 
-    /**
-     * 在测试连接地址末尾附加驱动参数, 用于覆盖默认配置.
-     *
-     * @param properties 用 &amp; 分隔的 JDBC 参数文本
-     * @return 附加参数后的连接地址
-     */
     private String urlWith(String properties) {
         return this.url + (this.url.contains("?") ? "&" : "?") + properties;
     }

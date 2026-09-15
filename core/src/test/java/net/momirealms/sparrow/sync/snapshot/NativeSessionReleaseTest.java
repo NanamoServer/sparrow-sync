@@ -143,14 +143,12 @@ class NativeSessionReleaseTest {
         PlayerSession first = this.open();
         CompletableFuture<SessionPrepareResult> preparing = this.sessions.prepare(first);
         assertTrue(this.entered.await(5, TimeUnit.SECONDS));
-        // 旧文件安装暂停期间正常释放会话和 Redis 锁, 允许下一次登录准备数据.
         CompletableFuture.runAsync(() -> this.close(first, finalClose), this.executor).get(5, TimeUnit.SECONDS);
         assertEquals(SessionState.CLOSED, first.state());
         first.released().get(5, TimeUnit.SECONDS);
         assertEquals(1, this.releases.get());
         assertNull(this.sessions.find(this.player));
         assertFalse(this.sessions.abort(first));
-        // 新登录的 Native 阶段已入队, 须等旧任务完成才能写文件和放行.
         this.latest = CompletableFuture.completedFuture(Optional.of(this.snapshot("new")));
         PlayerSession second = this.open();
         CompletableFuture<SessionPrepareResult> nextPreparing = this.sessions.prepare(second);

@@ -40,35 +40,28 @@ class FileLogWriterTest {
 
     @Test
     void writesFormattedLinesAndFlushesOnClose() throws IOException {
-        // Arrange
         FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
         UUID player = UUID.fromString("00000000-0000-0000-0000-000000000042");
         long now = System.currentTimeMillis();
 
-        // Act
         writer.submit(now, LogCategory.SAVE, player, "Catnies", "raw message", null, null);
         writer.submit(now, LogCategory.LIFECYCLE, null, null, "§x§0§0§f§b§9§acolored§r plain", null, null);
         writer.close();
 
-        // Assert
         List<String> lines = Files.readAllLines(this.todayFile(now));
         assertEquals(2, lines.size());
         assertTrue(lines.get(0).matches("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[SAVE] \\[Catnies 00000000-0000-0000-0000-000000000042] raw message"), lines.get(0));
-        // 透传线的 § 颜色序列被剥净, 文件保持纯文本
         assertTrue(lines.get(1).matches("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}] \\[LIFECYCLE] colored plain"), lines.get(1));
     }
 
     @Test
     void appendsStackTraceOfTheCause() throws IOException {
-        // Arrange
         FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
         long now = System.currentTimeMillis();
 
-        // Act
         writer.submit(now, LogCategory.STORAGE, null, null, "boom", null, new IllegalStateException("db gone"));
         writer.close();
 
-        // Assert
         String content = Files.readString(this.todayFile(now));
         assertTrue(content.contains("boom"));
         assertTrue(content.contains("java.lang.IllegalStateException: db gone"));
@@ -76,17 +69,14 @@ class FileLogWriterTest {
 
     @Test
     void rollsOverToANewFilePerDay() throws IOException {
-        // Arrange
         FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
         long dayA = System.currentTimeMillis();
         long dayB = dayA + 24 * 60 * 60 * 1000L;
 
-        // Act
         writer.submit(dayA, LogCategory.JOIN, null, null, "first day", null, null);
         writer.submit(dayB, LogCategory.QUIT, null, null, "second day", null, null);
         writer.close();
 
-        // Assert
         assertFalse(Files.exists(this.todayFile(dayA)));
         assertTrue(readGzip(this.archiveFile(this.todayFile(dayA), 1)).contains("first day"));
         assertTrue(Files.readString(this.todayFile(dayB)).contains("second day"));
@@ -210,16 +200,13 @@ class FileLogWriterTest {
 
     @Test
     void rejectsSubmissionsAfterClose() throws IOException {
-        // Arrange
         FileLogWriter writer = new FileLogWriter(this.directory, new QuietLogger());
         long now = System.currentTimeMillis();
         assertTrue(writer.submit(now, LogCategory.SAVE, null, null, "kept", null, null));
 
-        // Act
         writer.close();
         assertFalse(writer.submit(now, LogCategory.SAVE, null, null, "dropped", null, null));
 
-        // Assert
         String content = Files.readString(this.todayFile(now));
         assertTrue(content.contains("kept"));
         assertFalse(content.contains("dropped"));

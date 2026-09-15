@@ -21,15 +21,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 用真实文件验证本地头的三态摘要, 类型顺序与损坏边界. */
 class ExceptionHeaderTest {
-    @TempDir Path directory; // 每轮测试独立的头文件目录
+    @TempDir Path directory;
 
-    /**
-     * 无摘要, 有效空摘要与非空摘要分别往返, 字节布局独立于快照格式.
-     *
-     * @throws IOException 当测试头文件读写失败时
-     */
     @Test
     void summaryStatesAndEntryOrderSurviveRoundTrip() throws IOException {
         Path body = this.directory.resolve("entry.snapshot");
@@ -55,12 +49,6 @@ class ExceptionHeaderTest {
         assertFalse(Files.exists(body));
     }
 
-    /**
-     * 首字节决定本地头版本, 开发期的 int 魔数头直接落入版本不受支持的分支.
-     *
-     * @param version 不支持的首字节
-     * @throws IOException 当测试文件写入失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {0, 2, 83, 255})
     void unsupportedVersionsAreRejected(int version) throws IOException {
@@ -69,12 +57,6 @@ class ExceptionHeaderTest {
         assertThrows(IOException.class, () -> ExceptionHeader.read(body));
     }
 
-    /**
-     * -1 是唯一合法的负数量, 巨大数量由 EOF 中止, 容器按已读条目增长.
-     *
-     * @param count 文件声明的损坏数量
-     * @throws IOException 当测试文件写入失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {-2, Integer.MIN_VALUE, 1, Integer.MAX_VALUE})
     void invalidCountsAndTruncatedListsAreRejected(int count) throws IOException {
@@ -86,12 +68,6 @@ class ExceptionHeaderTest {
         }
     }
 
-    /**
-     * 条目缺少体量, 体量小于 -1 或类型名重复时拒绝整份摘要.
-     *
-     * @param damage 本次破坏的条目字段
-     * @throws IOException 当测试文件写入失败时
-     */
     @ParameterizedTest
     @ValueSource(strings = {"truncated", "negative", "duplicate"})
     void malformedEntriesAreRejected(String damage) throws IOException {
@@ -115,11 +91,6 @@ class ExceptionHeaderTest {
         assertThrows(IOException.class, () -> ExceptionHeader.read(body));
     }
 
-    /**
-     * 三种摘要状态都以文件末尾为边界, 多出的字节不能被忽略.
-     *
-     * @throws IOException 当测试文件写入失败时
-     */
     @Test
     void everySummaryStateRejectsTrailingBytes() throws IOException {
         Path body = this.directory.resolve("entry.snapshot");

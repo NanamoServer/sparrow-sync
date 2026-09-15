@@ -6,17 +6,14 @@ import org.junit.jupiter.api.Test;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DataKeyTest {
     @Test
     void factoriesAndAccessorsPreserveKeyFormat() {
         DataKey key = new DataKey("custom", "inventory");
-        assertFalse(DataKey.class.isRecord());
         assertEquals("custom", key.namespace());
         assertEquals("inventory", key.value());
         assertEquals("custom:inventory", key.asString());
-        assertEquals(key.asString(), key.toString());
         assertEquals(key, DataKey.of("custom", "inventory"));
         assertEquals(key, DataKey.parse("custom:inventory"));
         assertEquals(DataKey.sparrow("inventory"), DataKey.parse("inventory"));

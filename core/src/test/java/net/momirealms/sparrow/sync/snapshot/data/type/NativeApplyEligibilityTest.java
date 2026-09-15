@@ -68,7 +68,6 @@ class NativeApplyEligibilityTest {
         setOption("statistics", statistics);
         Connection connection = ConnectionFixture.create();
         PlayerSession session = new SessionManager(null).tryOpen(UUID.randomUUID(), "Steve", connection);
-        // 测试只需要已有玩家的引用, 构造 ServerPlayer 会读取真实服务器和本地 JSON
         ServerPlayer cached = earlyPlayer ? (ServerPlayer) allocateWithoutConstructor(ServerPlayer.class) : null;
         connection.savedPlayerForLoginEventLegacy = cached;
 
@@ -80,7 +79,6 @@ class NativeApplyEligibilityTest {
 
     @Test
     void missingPaperPatchDisablesBothTypesBeforeReadingTheConnection() throws ReflectiveOperationException {
-        // 在隔离加载器中隐藏 Paper 标识类, 两种类型重新计算静态支持条件
         Set<String> isolated = Set.of(AdvancementsDataType.class.getName(), StatisticsDataType.class.getName(), "net.momirealms.sparrow.sync.util.VersionHelper");
         ClassLoader loader = new ClassLoader(this.getClass().getClassLoader()) {
             @Override

@@ -8,7 +8,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-// 不接 Redis 的缓存替身, 供只关心保存与加载流程的测试使用.
 public final class NoopSnapshotCache implements SnapshotCache {
 
     @Override

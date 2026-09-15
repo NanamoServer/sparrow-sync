@@ -131,12 +131,12 @@ class CommandFeaturesTest {
         this.plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "playerDirectory", new PlayerDirectory(this.plugin));
         PaperJavaPlugin javaPlugin = NmsPlayerFixture.allocate(PaperJavaPlugin.class);
-        PluginDescriptionFile description = new PluginDescriptionFile(new StringReader("""
-                name: SparrowSync
-                version: test
-                main: test.Main
-                authors: [TestAuthor]
-                website: https://example.com/docs
+        PluginDescriptionFile description = new PluginDescriptionFile(new StringReader("""
+                name: SparrowSync
+                version: test
+                main: test.Main
+                authors: [TestAuthor]
+                website: https://example.com/docs
                 """));
         NmsPlayerFixture.set(JavaPlugin.class, javaPlugin, "description", description);
         NmsPlayerFixture.set(JavaPlugin.class, javaPlugin, "pluginMeta", description);
@@ -388,7 +388,6 @@ class CommandFeaturesTest {
         assertEquals(1, this.text().lines().count());
         assertTrue(this.text().startsWith(">> SparrowSync · "));
         assertTrue(this.text().contains(language.equals("zh") ? "耗时 18 毫秒" : "18 ms"));
-        // 只说明重载流程走完了, 不对配置是否全部生效下结论
         assertTrue(this.text().contains(language.equals("zh") ? "配置已重载" : "Configuration reloaded"));
         assertFalse(this.text().contains("999"));
         assertFalse(this.text().contains("981"));
@@ -594,11 +593,6 @@ class CommandFeaturesTest {
         assertTrue(this.text().contains("Page must be an integer"));
     }
 
-    /**
-     * 控制台概览只读头文件, 已删除正文的条目仍区分零字节与未知体量.
-     *
-     * @throws Exception 当测试文件写入或命令执行失败时
-     */
     @Test
     void exceptionViewDistinguishesUnknownSizeFromZeroBytes() throws Exception {
         SnapshotFiles files = this.installArchiveService();
@@ -701,7 +695,6 @@ class CommandFeaturesTest {
 
     private AtomicInteger installGuiScheduler() {
         AtomicInteger scheduled = new AtomicInteger();
-        // 只记录异步构建任务, 命令入口无需先访问实体调度器或玩家物品栏.
         Executor async = task -> scheduled.incrementAndGet();
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "scheduler", proxy(SchedulerAdapter.class, (instance, method, args) -> method.getName().equals("async") ? async : null));
         return scheduled;
@@ -733,7 +726,6 @@ class CommandFeaturesTest {
         this.assertTranslatedHover(this.messages.getFirst());
     }
 
-    // 直接验证具体命令的文字输出, 分页查询与命令权限由相邻的执行测试覆盖.
     private void showSnapshots(CommandSender sender, PlayerIdentity player, SnapshotPage page) {
         try {
             var render = SnapshotListCommand.class.getDeclaredMethod("renderPage", CommandSender.class, PlayerIdentity.class, SnapshotPage.class);

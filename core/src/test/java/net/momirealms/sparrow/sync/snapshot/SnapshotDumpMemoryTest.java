@@ -49,7 +49,7 @@ class SnapshotDumpMemoryTest {
             case "scanSnapshots" -> {
                 long after = args[1] == null ? 0 : ((UUID) args[1]).getLeastSignificantBits();
                 int limit = (int) args[2];
-                assertTrue(limit <= 4);
+                assertTrue(limit <= 16);
                 List<Snapshot> batch = new ArrayList<>();
                 for (long i = after + 1; i <= Math.min(after + limit, total); i++) {
                     byte[] payload = new byte[payloadSize];

@@ -33,7 +33,6 @@ class MapReceiverTest {
         MapReceiver receiver = this.nativeMaps.receiver(storage, new Shared(), "B-world", worker, nativeThread, logger(new ArrayList<>()));
         CompletableFuture<Integer> runtime = receiver.receive(-1);
         worker.runAll();
-        // 物品在地图已准备、尚未写入世界时加入, 来源约束仍须生效.
         MapIdentity item = matches ? IDENTITY : new MapIdentity(new MapSource("wrong", 1), -1);
         assertSame(runtime, receiver.receive(item));
         nativeThread.runAll();
@@ -55,7 +54,6 @@ class MapReceiverTest {
         shared.contents.put(-1, map(1));
         MapReceiver receiver = this.nativeMaps.receiver(storage, shared, "B-world", Runnable::run, Runnable::run, logger(new ArrayList<>()));
         assertEquals(-1, receiver.receive(IDENTITY).join());
-        // 本地更新完成后即参与通知刷新, 展示观察尚未发生也能取得新画面.
         shared.contents.put(-1, map(2));
         receiver.refresh(-1);
         assertEquals(List.of(map(1), map(2)), this.nativeMaps.updates);

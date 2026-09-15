@@ -50,7 +50,7 @@ class SnapshotStashTest {
     private static final DataKey HEALTH = DataKey.of("sparrow", "health");
 
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
-    private final MemorySnapshotCache cache = new MemorySnapshotCache(); // 核对恢复成功与失败时的缓存状态
+    private final MemorySnapshotCache cache = new MemorySnapshotCache();
 
     @TempDir
     Path dataFolder;
@@ -107,7 +107,6 @@ class SnapshotStashTest {
 
     @Test
     void duplicateOnRestoreStillDeletesTheFile() throws IOException {
-        // 上次写入数据库后未收到回执, 再次插入得到幂等结果后同样删除本地快照文件
         stash.stash(snapshotAt(1_756_300_000_000L), "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.DUPLICATE);
 
@@ -127,7 +126,6 @@ class SnapshotStashTest {
         assertTrue(this.cache.invalidations.isEmpty());
         assertTrue(this.cache.consume(PLAYER).join().isPresent());
 
-        // 第一份就撞上数据库不可用, 本轮收工, 两份文件原样留给下次启动
         assertEquals(1, storage.savedIds().size());
         assertEquals(2, listFiles(dataFolder.resolve("snapshot/pending")).size());
     }
@@ -150,11 +148,6 @@ class SnapshotStashTest {
         }
     }
 
-    /**
-     * 通过共享文件对象把失败留存、启动拒绝、异常快照查询、快照数据读取及双侧删除连成一次流程.
-     *
-     * @throws IOException 本地文件操作失败
-     */
     @Test
     void sharedFilesExposeRejectedReplayForInspectionAndDeletion() throws IOException {
         SnapshotFiles files = new SnapshotFiles(this.dataFolder, this.codec, new SnapshotFileTestLogger());
@@ -248,7 +241,6 @@ class SnapshotStashTest {
     void samePlayerSnapshotsRestoreInCaptureOrder() throws IOException {
         Snapshot earlier = snapshotAt(1_756_300_000_000L);
         Snapshot later = snapshotAt(1_756_300_999_000L);
-        // 故意倒序落盘, 插回顺序应由文件名里的逻辑时间戳决定
         stash.stash(later, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         stash.stash(earlier, "Steve", StorageProvider.SaveResult.RETRY_LATER);
         RecordingStorage storage = new RecordingStorage(StorageProvider.SaveResult.SAVED_OUT_OF_ORDER);
@@ -278,7 +270,6 @@ class SnapshotStashTest {
         }
     }
 
-    // 记录保存请求并返回完整结果, 结果按脚本出队, 队列耗尽后重复最后一个.
     private static final class RecordingStorage implements StorageProvider {
         private final Queue<SaveResult> script = new ArrayDeque<>();
         private final List<UUID> savedIds = new ArrayList<>();

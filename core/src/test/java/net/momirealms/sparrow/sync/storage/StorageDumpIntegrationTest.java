@@ -196,7 +196,6 @@ class StorageDumpIntegrationTest {
         assertThrows(CompletionException.class, () -> maps.importMap(collisionOnBothKeys).join());
         assertMapRecord(changed, maps.scan(0, 10).join().getFirst());
         assertMapRecord(occupied, maps.scan(0, 10).join().getLast());
-        // SQL 的地图写入和序列推进处于同一个事务.
         if (!kind.equals("mongo")) assertEquals(2L, maps.sequence().join());
     }
 

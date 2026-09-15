@@ -31,7 +31,6 @@ class SnapshotInventoryTest {
         Bootstrap.bootStrap();
     }
 
-    /** 尚未预览的容器会阻止完整领取, 两个容器都读取后才允许打包原始内容. */
     @Test
     void unreadArchiveContainersAreNotTreatedAsEmptyForClaims() {
         var snapshot = SnapshotFixtures.snapshot();

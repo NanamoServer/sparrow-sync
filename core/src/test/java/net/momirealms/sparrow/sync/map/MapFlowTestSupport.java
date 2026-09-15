@@ -94,7 +94,6 @@ final class MapFlowTestSupport {
         });
     }
 
-    // 使用真实 NMS 地图对象验证线程切换后的更新, 内存存储预置已加载副本.
     static final class NativeMaps {
         private static final HolderLookup.Provider REGISTRIES = bootstrap();
         final MinecraftServer server = NmsPlayerFixture.allocate(DedicatedServer.class);

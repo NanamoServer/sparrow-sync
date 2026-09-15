@@ -31,8 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 集成测试, 依赖本机 6379 端口的 Redis, 不可达时整类跳过.
-// 压缩心跳与探测节奏让全链秒级完成; 每个用例用独立 serverId 隔离, 应答槽是单值的, 需要应答方时显式指定
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ServerHeartBeatsTest {
     private static final long HEARTBEAT_INTERVAL = 200;
@@ -79,7 +77,6 @@ class ServerHeartBeatsTest {
         this.connectorB.initialize();
         this.connectorC = new RedisConnector(options, this.logger);
         this.connectorC.initialize();
-        // A 与 B 共用身份 dup, 模拟两台误配同一个 server-id 的服务器; C 以 stale 模拟崩溃后带残键重启的单台服务器
         this.brokerA = new MessageBrokerManager(this.connectorA, "dup", this.logger);
         this.brokerA.initialize();
         this.brokerB = new MessageBrokerManager(this.connectorB, "dup", this.logger);
@@ -113,11 +110,9 @@ class ServerHeartBeatsTest {
         assertTrue(registry.initialize());
         String registered = this.inspection.sync().get(this.serverKey("fresh"));
         assertNotNull(registered, "heartbeat key should exist after registration");
-        // 存活超过两个 TTL 周期, 证明心跳在续期
         Thread.sleep(HEARTBEAT_TTL * 2);
         assertEquals(registered, this.inspection.sync().get(this.serverKey("fresh")), "heartbeat should keep the same token alive");
         registry.shutdown();
-        // 等待盖过一个 TTL: 停跳瞬间在途的最后一跳心跳可能把键写回, 由 TTL 兜底清掉
         Thread.sleep(HEARTBEAT_TTL + 200);
         assertNull(this.inspection.sync().get(this.serverKey("fresh")), "the identity must be gone after shutdown");
     }
@@ -129,7 +124,6 @@ class ServerHeartBeatsTest {
         String holderToken = this.inspection.sync().get(this.serverKey("dup"));
         try {
             ServerHeartBeats duplicate = this.registry(this.connectorB, this.brokerB, "dup");
-            // 应答槽是单值的, 两台服务器同 JVM 共存时显式指回持有方
             ServerProbeMessage.registry(holder);
             assertFalse(duplicate.initialize(), "a live holder must reject the duplicate");
             assertEquals(holderToken, this.inspection.sync().get(this.serverKey("dup")), "the holder identity must stay untouched");
@@ -141,7 +135,6 @@ class ServerHeartBeatsTest {
     @Test
     void staleIdentityIsSeizedAfterSilence() {
         this.inspection.sync().set(this.serverKey("stale"), "dead-token");
-        // 崩溃后带残键重启的单机路径: 本服的 broker 就以 stale 存活, 探测经 pub/sub 回到自己手里, 靠 token 认出并保持沉默
         ServerHeartBeats registry = this.registry(this.connectorC, this.brokerC, "stale");
         try {
             assertTrue(registry.initialize(), "a silent identity must be seized");

@@ -27,7 +27,6 @@ class WriteAttemptTest {
 
     @Test
     void limitCountsRetriesAfterTheFirstAttempt() {
-        // max-save-retries = 3 表示首发之后还能再排三次队尾, 一共四次尝试
         WriteAttempt first = attemptWith(3);
         assertTrue(first.canRetry());
         WriteAttempt second = first.next();
@@ -47,7 +46,6 @@ class WriteAttemptTest {
 
     @Test
     void cooldownRampsUpAndCapsAtOneSecond() {
-        // 抖动和主从切换通常几十毫秒就过去, 前 5 次不等; 第 6 次起每次多等 100 毫秒, 封顶 1 秒
         WriteAttempt attempt = attemptWith(-1);
         for (int i = 1; i <= 5; i++) {
             assertEquals(0, attempt.retryDelayMillis(), "attempt " + i + " should not wait");
@@ -64,7 +62,6 @@ class WriteAttemptTest {
         assertEquals(1000, late.retryDelayMillis());
     }
 
-    /** 重试推进次数时沿用同一请求, 正文、耗时和策略不会生成第二份登记. */
     @Test
     void nextKeepsSnapshotAndPolicy() {
         WriteAttempt first = attemptWith(5);
@@ -85,12 +82,6 @@ class WriteAttemptTest {
         }
     }
 
-    /**
-     * 创建正文已发布的测试请求, 从首次写入阶段验证重试规则.
-     *
-     * @param maxRetries 首发后允许的重试次数
-     * @return 关联同一保存请求的首次尝试
-     */
     private static WriteAttempt attemptWith(int maxRetries) {
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(UUID.randomUUID())

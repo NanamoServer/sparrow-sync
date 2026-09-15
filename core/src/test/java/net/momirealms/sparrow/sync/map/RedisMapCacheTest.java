@@ -111,7 +111,6 @@ class RedisMapCacheTest {
             NmsPlayerFixture.set(MapItemSavedData.class, nativeMaps.replica, "dimension", Level.OVERWORLD);
             nativeMaps.replica.setDirty(false);
             MapInvalidationMessage.listener(receiver::refresh);
-            // 来源发布经过真实 Redis 通知, 接收侧修正身份、更新像素并标脏.
             publisher.publish(MapFlowTestSupport.SOURCE, MapFlowTestSupport.map(8).data()).get(5, TimeUnit.SECONDS);
             assertTrue(refreshed.await(3, TimeUnit.SECONDS));
             assertSame(nativeMaps.replica, nativeMaps.level.getMapData(new MapId(-1)));
@@ -152,7 +151,6 @@ class RedisMapCacheTest {
             otherCache.publish(otherStored).join();
             assertEquals(stored, this.source.find(-1).join().orElseThrow());
             assertEquals(otherStored, otherCache.find(-1).join().orElseThrow());
-            // 两个 broker 均已订阅, 本库广播只有本库的一个订阅者收到.
             assertEquals(1L, this.connector.connection().sync().publish(this.broker.broker().channel(), this.broker.broker().encode(new MapInvalidationMessage(-1))));
             assertEquals(1L, other.connection().sync().publish(otherBroker.broker().channel(), otherBroker.broker().encode(new MapInvalidationMessage(-1))));
             UUID player = UUID.randomUUID();

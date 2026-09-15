@@ -186,7 +186,6 @@ class NativeMapAdapterTest {
         NmsPlayerFixture.set(net.minecraft.world.entity.player.Player.class, player.getHandle(), "inventory", new Inventory(player.getHandle(), new EntityEquipment()));
         MapType captured = PluginConfig.synchronization$map().synchronization_mode();
         assertEquals(MapType.HIDE, captured);
-        // 保存已经开始, 配置重载只影响下一次采集.
         NmsPlayerFixture.set(PluginConfig.MapOptions.class, PluginConfig.synchronization$map(), "synchronization_mode", MapType.SYNC);
         CompoundTag components = NBT.createCompound();
         components.putInt("minecraft:map_id", 1);
@@ -247,7 +246,6 @@ class NativeMapAdapterTest {
         database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
         MapReceiver receiver = new MapReceiver(database, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), "B-world", MapFlowTestSupport.logger(new ArrayList<>()));
         MapFlowTestSupport.scheduler(Runnable::run, Runnable::run);
-        // 首次观察按全局 ID 查库, 原地修正本地副本的身份与内容.
         receiver.observe(-1);
         assertEquals(1, database.reads);
         assertSame(old, this.level.getMapData(new MapId(-1)));
@@ -297,7 +295,6 @@ class NativeMapAdapterTest {
         inventory.setItem(0, map);
         inventory.setItem(1, consumable);
         InventoryDataType.Inventory captured = (InventoryDataType.Inventory) this.capture(player, registry).value(InventoryDataType.INVENTORY);
-        // 玩家物品在采集时固定, 来源像素取编码之后开始地图处理时的内容.
         inventory.clearContent();
         source.colors[0] = 15;
         Snapshot snapshot = this.encodedItems(captured.contents());

@@ -33,11 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 集成测试, 依赖本机 6379 端口的 Redis, 不可达时整类跳过.
-// 两套 broker 与锁模拟持有服 serverA 和等锁服 serverB, appId 每次随机隔离
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class HandoffManagerTest {
-    // 压缩节奏让判死场景秒级完成
     private static final long PROBE_INTERVAL = 100;
     private static final long PROBE_TIMEOUT = 300;
     private static final long DEAD_SILENCE = 600;
@@ -77,7 +74,6 @@ class HandoffManagerTest {
         HandoffManager.ProbeScheduler scheduler = (task, delayMillis) -> this.probeExecutor.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
         this.serviceA = new HandoffManager(this.brokerA.broker(), this.lockA, this.sessionsA::contains, scheduler, PROBE_INTERVAL, PROBE_TIMEOUT, DEAD_SILENCE);
         this.serviceB = new HandoffManager(this.brokerB.broker(), this.lockB, uuid -> false, scheduler, PROBE_INTERVAL, PROBE_TIMEOUT, DEAD_SILENCE);
-        // 应答槽是单值的, 两个服务同 JVM 共存时显式指回持有服一侧
         HandoffRequestMessage.service(this.serviceA);
         this.inspector = RedisClient.create(options.url());
         this.inspection = this.inspector.connect();
@@ -131,12 +127,10 @@ class HandoffManagerTest {
     @Test
     void handoffCompletesAfterHolderSettles() throws Exception {
         UUID player = UUID.randomUUID();
-        // A 侧持锁且会话在保存中
         String heldByA = this.acquire(this.lockA, player);
         this.sessionsA.add(player);
 
         CompletableFuture<HandoffOutcome> handoff = this.serviceB.awaitHandoff(player, heldByA, System.nanoTime() + TimeUnit.SECONDS.toNanos(8));
-        // 让 B 至少吃到一轮 SAVING, 再按生产顺序 settle: 登记 -> 移除会话 -> 释放锁
         Thread.sleep(350);
         this.serviceA.recordSettled(player);
         this.sessionsA.remove(player);
@@ -152,7 +146,6 @@ class HandoffManagerTest {
     @Test
     void handoffSeizesSilentHolder() throws Exception {
         UUID player = UUID.randomUUID();
-        // 锁值指向一台不存在的服务器, 探测得不到任何应答
         String ghost = "serverGhost:" + UUID.randomUUID();
         this.inspection.sync().set(this.key(player), ghost);
 
@@ -184,9 +177,7 @@ class HandoffManagerTest {
         this.sessionsA.add(player);
 
         CompletableFuture<HandoffOutcome> handoff = this.serviceB.awaitHandoff(player, heldByA, System.nanoTime() + TimeUnit.SECONDS.toNanos(8));
-        // 让 B 至少吃到一轮 SAVING
         Thread.sleep(350);
-        // A 已落库但还没释放锁, B 只能反复重抢失败并带着最新锁值继续探测
         this.serviceA.recordSettled(player);
         this.sessionsA.remove(player);
         Thread.sleep(350);
@@ -202,7 +193,6 @@ class HandoffManagerTest {
     @Test
     void handoffSeizesUnparseableLockValue() throws Exception {
         UUID player = UUID.randomUUID();
-        // 锁值不是本插件格式, 解析不出持有者, 不等待应答直接夺锁
         String legacy = "unmanaged-lock";
         this.inspection.sync().set(this.key(player), legacy);
 

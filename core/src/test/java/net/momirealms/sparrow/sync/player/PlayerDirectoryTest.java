@@ -185,7 +185,6 @@ class PlayerDirectoryTest {
         Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
         first.join(UUID.randomUUID(), "Alex");
         UUID steve = UUID.randomUUID();
-        // 校准读完远端名单、尚未替换本地视图时, Steve 登录第二台服务器的广播到达.
         redis.afterRosterRead = () -> first.directory.acceptPresence(new PlayerPresenceMessage(second.serverId, steve, "Steve", true));
         first.directory.refresh();
         assertEquals(List.of(Suggestion.suggestion("Alex"), Suggestion.suggestion("Steve")), first.directory.suggestions(""));
@@ -198,7 +197,6 @@ class PlayerDirectoryTest {
         Fixture second = fixture(redis, name -> CompletableFuture.completedFuture(Optional.empty()));
         UUID steve = UUID.randomUUID();
         second.directory.presence(steve, "Steve", true);
-        // 校准读到第二台服务器仍有 Steve 的旧名单, 但退出广播在替换本地视图前已经到达.
         redis.afterRosterRead = () -> first.directory.acceptPresence(new PlayerPresenceMessage(second.serverId, steve, "Steve", false));
         first.directory.refresh();
         assertTrue(first.directory.suggestions("").isEmpty());
@@ -214,7 +212,6 @@ class PlayerDirectoryTest {
         UUID steve = UUID.randomUUID();
         PlayerSession oldSession = joined ? null : first.join(steve, "Steve");
         first.directory.refresh();
-        // 全量任务已采样并执行 DEL, 此时的进退服写入必须排在旧名单 HSET 之后.
         redis.afterRosterDelete = () -> {
             assertFalse(Thread.holdsLock(first.directory));
             if (joined) {
@@ -548,7 +545,7 @@ class PlayerDirectoryTest {
         private Runnable afterRosterRemoval;
         private Runnable afterRosterDelete;
         private String rosterReadKey;
-        private Runnable afterRosterRead; // 校准读完一批远端名单后触发一次, 供测试注入并发通知
+        private Runnable afterRosterRead;
 
         @SuppressWarnings("unchecked")
         private StatefulRedisConnection<byte[], byte[]> connection() {
@@ -651,7 +648,6 @@ class PlayerDirectoryTest {
                 }
                 default -> throw new AssertionError(command);
             };
-            // 名单读取完成后触发一次, 供测试在远端名单已读出后注入通知.
             if ("hgetall".equals(command) && this.afterRosterRead != null && (this.rosterReadKey == null || this.rosterReadKey.equals(new String((byte[]) args[0], StandardCharsets.UTF_8)))) {
                 Runnable hook = this.afterRosterRead;
                 this.afterRosterRead = null;

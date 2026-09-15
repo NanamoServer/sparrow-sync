@@ -55,8 +55,6 @@ class DataTypeCodecTest {
         assertEquals(new HungerDataType.Hunger(18, 5.0f, 0.4f, 0), HungerDataType.Hunger.CODEC.parse(NBTOps.INSTANCE, legacy).getOrThrow());
     }
 
-    // 药水效果改走 NMS MobEffectInstance CODEC (保留隐藏效果链), 依赖注册表, 由 3.8 真机手测覆盖
-
     @Test
     void gameModeDecodesKnownNameAndRejectsUnknown() throws IOException {
         GameModeDataType type = new GameModeDataType();

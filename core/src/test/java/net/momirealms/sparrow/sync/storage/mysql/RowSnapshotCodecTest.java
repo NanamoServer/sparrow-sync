@@ -29,18 +29,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * 验证数据库行编解码后各类型的 NBT 值保持一致, 元数据可单独修改, 损坏数据返回对应的错误原因.
- */
 class RowSnapshotCodecTest {
-    private final RowSnapshotCodec codec = new RowSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE)); // 用同一个解码器读取各压缩方式生成的快照, 验证读取结果与写入时的压缩配置无关
+    private final RowSnapshotCodec codec = new RowSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
 
-    /**
-     * 读取数据库格式的快照后直接重新编码, 验证保存的帧字节保持一致.
-     * 重新保存期间不应将任何数据块解析为 Tag.
-     *
-     * @throws Exception 当快照编码或读取已解析块数失败时
-     */
     @Test
     void writingBackLazyDataDoesNotDecodeBlocks() throws Exception {
         SnapshotRow original = this.codec.encode(SnapshotFixtures.snapshot());
@@ -61,12 +52,6 @@ class RowSnapshotCodecTest {
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, codec.decode(encoded)).snapshot());
     }
 
-    /**
-     * 验证读取压缩方式取自帧头, 可以读取由不同压缩器写出的快照.
-     *
-     * @param compressor 本轮写入使用的压缩器
-     * @throws IOException 当测试快照编码失败时
-     */
     @ParameterizedTest
     @EnumSource(CompressorRegistry.class)
     void everyCompressorCanBeReadByTheSameDecoder(CompressorRegistry compressor) throws IOException {
@@ -77,14 +62,8 @@ class RowSnapshotCodecTest {
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());
     }
 
-    /**
-     * 验证所有 NBT 标签类型以及未注册的数据键能够完整往返.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void dataFrameKeepsEveryTagTypeAndUnknownKeys() throws IOException {
-        // 覆盖数值、数组、容器和 Unicode 文本, 使用未注册键模拟第三方数据.
         CompoundTag data = NBT.createCompound();
         data.putByte("byte", (byte) 1);
         data.putShort("short", (short) 2);
@@ -102,23 +81,16 @@ class RowSnapshotCodecTest {
         data.put("compound", NBT.createCompound());
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of(SnapshotFixtures.UNKNOWN_DOC, data));
         SnapshotRow row = this.codec.encode(snapshot);
-        // 检查帧内数据结构, 再验证完整快照往返结果.
         SnapshotData frame = new SnapshotDataCodec(CompressorRegistry.NONE).decode(row.data());
         assertEquals(1, frame.keys().size());
         assertEquals(data, frame.get(SnapshotFixtures.UNKNOWN_DOC));
         assertEquals(snapshot, assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(row)).snapshot());
     }
 
-    /**
-     * 验证空数据快照可读, 且固定标记变更使用已有数据帧.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void emptyDataAndChangedMetadataNeedNoPayloadRewrite() throws IOException {
         Snapshot snapshot = new Snapshot(SnapshotFixtures.meta(), Map.of());
         SnapshotRow row = this.codec.encode(snapshot);
-        // 复用原数组并只替换元信息, 验证固定状态与帧内容独立.
         SnapshotRow pinned = new SnapshotRow(row.meta().withPinned(true), row.format(), row.data());
         Snapshot decoded = assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(pinned)).snapshot();
         assertTrue(decoded.meta().pinned());
@@ -126,11 +98,6 @@ class RowSnapshotCodecTest {
         assertSame(row.data(), pinned.data());
     }
 
-    /**
-     * 验证未知行版本优先返回格式错误, 即使二进制内容为空.
-     *
-     * @param format 当前行编解码器不支持的版本
-     */
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 2, 3, 255})
     void unsupportedRowFormatsFailBeforeReadingData(int format) {
@@ -138,16 +105,10 @@ class RowSnapshotCodecTest {
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, decoded).reason());
     }
 
-    /**
-     * 验证帧头、压缩标记、根标签和版本不一致各自返回约定的错误原因.
-     *
-     * @throws IOException 当有效对照帧编码失败时
-     */
     @Test
     void malformedFramesPreserveTheFailureReason() throws IOException {
         SnapshotRow row = this.codec.encode(SnapshotFixtures.snapshot());
         assertEquals(InvalidReason.CORRUPTED, this.reason(new byte[]{'S', 'S'}));
-        // 每种损坏都从有效帧重新复制, 让失败原因只对应当前注入的错误.
         byte[] bytes = row.data().clone();
         bytes[0] = 0;
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, this.reason(bytes));
@@ -160,9 +121,6 @@ class RowSnapshotCodecTest {
         assertEquals(InvalidReason.CORRUPTED, this.reason(SnapshotFixtures.nonCompoundIndexFrame()));
     }
 
-    /**
-     * 验证 UUID 字节顺序与文本表示对应, 并拒绝长度错误的数据库内容.
-     */
     @Test
     void uuidEncodingHasStableByteOrder() {
         UUID uuid = UUID.fromString("fedcba98-7654-3210-0123-456789abcdef");
@@ -173,29 +131,16 @@ class RowSnapshotCodecTest {
         assertThrows(IllegalArgumentException.class, () -> UUIDUtils.fromBytes(new byte[17]));
     }
 
-    /**
-     * 读取坏帧的解码原因, 将错误分类断言集中在测试调用处.
-     *
-     * @param bytes 待验证的二进制帧
-     * @return 解码返回的无效原因
-     */
     private InvalidReason reason(byte[] bytes) {
         return assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(new SnapshotRow(SnapshotFixtures.meta(), SnapshotCodec.CURRENT_VERSION, bytes))).reason();
     }
 
-    /**
-     * 数据帧先返回惰性快照, 坏块取值时才报告具体原因, 其他类型仍可读取.
-     *
-     * @param corruption 0 表示翻转载荷, 99 表示未知压缩算法
-     * @throws IOException 当对照快照编码失败时
-     */
     @ParameterizedTest
     @ValueSource(ints = {0, 99})
     void damagedBlocksFailOnAccessAndLeaveOtherTypesReadable(int corruption) throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
         SnapshotRow row = this.codec.encode(source);
         int blockBase = SnapshotFixtures.dataBlockBase(row.data());
-        // 两种损坏都保留容器头和索引, 只改变首块中的字节.
         if (corruption == 0) {
             row.data()[blockBase + 13] ^= 1;
         } else {

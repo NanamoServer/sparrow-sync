@@ -24,20 +24,12 @@ import java.util.zip.CRC32;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 验证索引读取, 块头结构检查与 payload 解码各自的失败边界. */
 class BlockHeaderTest {
-    private static final DataKey FIRST = DataKey.of("test", "first"); // 前块用于验证后块损坏时仍可读
-    private static final DataKey LAST = DataKey.of("test", "last");   // 后块用于注入截断和长度错误
+    private static final DataKey FIRST = DataKey.of("test", "first");
+    private static final DataKey LAST = DataKey.of("test", "last");
 
     private final SnapshotDataCodec codec = new SnapshotDataCodec(CompressorRegistry.DEFLATE, 0);
 
-    /**
-     * 长度字段损坏不阻止读取索引, 访问, 大小预览和逐块复制才报告对应类型.
-     *
-     * @param field 长度字段在块头中的偏移
-     * @param value 注入的非法长度
-     * @throws IOException 当测试数据帧编码失败时
-     */
     @ParameterizedTest
     @CsvSource({"1,-1", "1,0", "1,2147483647", "5,-1"})
     void malformedLengthsFailOnlyWhenTheBlockIsAccessed(int field, int value) throws IOException {
@@ -53,15 +45,9 @@ class BlockHeaderTest {
         assertTrue(assertThrows(UncheckedIOException.class, () -> data.get(LAST)).getMessage().contains(LAST.asString()));
         assertTrue(assertThrows(FormatException.class, () -> this.codec.encode(data.select(LAST::equals))).getMessage().contains(LAST.asString()));
         assertEquals(NBT.createString("first"), data.get(FIRST));
-        // 整帧复制沿用已保存的数据帧区间, 不逐块读取结构或内容.
         assertArrayEquals(bytes, this.codec.encode(data));
     }
 
-    /**
-     * 在块头每个位置截断后, 索引仍可读, 前面的完整块不受影响.
-     *
-     * @throws IOException 当测试数据帧编解码失败时
-     */
     @Test
     void everyTruncatedHeaderIsReportedLocally() throws IOException {
         byte[] original = this.frame();
@@ -75,12 +61,6 @@ class BlockHeaderTest {
         }
     }
 
-    /**
-     * 原始块透传允许未知算法及坏 CRC, 大小读取也不触碰 payload 解码.
-     *
-     * @param badCrc 是否同时破坏 payload, 使其与保存的 CRC 不符
-     * @throws IOException 当测试帧编解码失败时
-     */
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void copyingUnknownCompressionDoesNotValidatePayload(boolean badCrc) throws IOException {
@@ -102,11 +82,6 @@ class BlockHeaderTest {
         assertThrows(UncheckedIOException.class, () -> restored.get(LAST));
     }
 
-    /**
-     * 只凭偏移就能拒绝重复和负位置, 打乱索引写入顺序仍按物理顺序读取.
-     *
-     * @throws IOException 当测试索引序列化失败时
-     */
     @Test
     void offsetsAreSortedAndDuplicateOrNegativeOffsetsAreRejected() throws IOException {
         byte[] frame = this.frame();
@@ -125,11 +100,6 @@ class BlockHeaderTest {
         assertThrows(FormatException.class, () -> this.codec.decode(reindex(frame, index)));
     }
 
-    /**
-     * 索引边界留出的额外字节不能被逐块复制静默忽略.
-     *
-     * @throws IOException 当测试帧编解码失败时
-     */
     @Test
     void trailingBytesDisagreeWithTheLastBlockHeader() throws IOException {
         byte[] frame = this.frame();
@@ -139,12 +109,6 @@ class BlockHeaderTest {
         assertThrows(FormatException.class, () -> this.codec.encode(data.select(LAST::equals)));
     }
 
-    /**
-     * 创建两个连续的压缩块, 输入顺序固定以便注入后块损坏.
-     *
-     * @return 独立数据帧
-     * @throws IOException 当 NBT 编码或压缩失败时
-     */
     private byte[] frame() throws IOException {
         Map<DataKey, Tag> values = new LinkedHashMap<>();
         values.put(FIRST, NBT.createString("first"));
@@ -152,14 +116,6 @@ class BlockHeaderTest {
         return this.codec.encode(new EagerSnapshotData(values));
     }
 
-    /**
-     * 用指定索引重建测试数据帧, 保留所有块字节并重新计算索引 CRC.
-     *
-     * @param frame 独立数据帧
-     * @param index 要注入的索引树
-     * @return 索引 CRC 正确的新数据帧
-     * @throws IOException 当测试索引编码失败时
-     */
     private static byte[] reindex(byte[] frame, CompoundTag index) throws IOException {
         byte[] encoded = NBT.toBytes(index, false);
         int base = SnapshotFixtures.dataBlockBase(frame);

@@ -35,12 +35,12 @@ import java.util.zip.ZipFile;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SnapshotMigrationTest {
-    @TempDir Path directory; // 每项测试独立的插件数据目录
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE); // 真实快照编码, 便于验证正文往返
-    private final Map<UUID, Snapshot> snapshots = new HashMap<>(); // 按快照 ID 覆盖的目标存储
-    private final Map<UUID, StoredUser> users = new HashMap<>(); // 按玩家 UUID 保存名字映射
-    private int writes; // 已调用的存储写入次数, 包含失败尝试
-    private Function<Snapshot, CompletableFuture<StorageProvider.SaveOutcome>> save = this::store; // 可替换的保存结果, 用于模拟断库
+    @TempDir Path directory;
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.NONE);
+    private final Map<UUID, Snapshot> snapshots = new HashMap<>();
+    private final Map<UUID, StoredUser> users = new HashMap<>();
+    private int writes;
+    private Function<Snapshot, CompletableFuture<StorageProvider.SaveOutcome>> save = this::store;
 
     @Test
     void generatesCompleteStandardZipBeforeWritingAndReplaysWithoutSource() throws Exception {
@@ -324,10 +324,8 @@ class SnapshotMigrationTest {
 
     private SnapshotMigration.Result migrate(Reader reader, Consumer<SnapshotMigration.Result> listener) {
         MigrationSource source = new MigrationSource() {
-            /** {@inheritDoc} */
             @Override
             public @NonNull String id() { return "husksync"; }
-            /** {@inheritDoc} */
             @Override
             public void read(@NonNull Sink sink) throws Exception { reader.read(sink); }
         };

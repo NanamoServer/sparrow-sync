@@ -15,14 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 验证共享 YAML 的 DataKey 序列化与启动期名单, 配置重载后已冻结注册表继续使用原名单. */
 class UnknownDataConfigurationTest {
-    /**
-     * 配置和第三方注册共同组成丢弃名单, 重载配置不会改动已冻结的运行时集合.
-     *
-     * @param directory 本次测试的配置目录
-     * @throws Exception 当配置加载或恢复静态配置失败时
-     */
     @Test
     void keysRoundTripAndFrozenRegistrySurvivesReload(@TempDir Path directory) throws Exception {
         Plugin plugin = (Plugin) Proxy.newProxyInstance(Plugin.class.getClassLoader(), new Class<?>[]{Plugin.class}, (proxy, method, args) -> {
@@ -80,7 +73,6 @@ class UnknownDataConfigurationTest {
             registry.registerUnknownDrop(apiKey);
             registry.freeze();
 
-            // 使用同一 SparrowYaml 写回配置, DataKey 应以带命名空间的字符串保存.
             var mapper = YamlMapperFactory.builder().sparrowYaml(manager.sparrowYaml()).build()
                     .create(PluginConfig.ConfigDefinition.class, PluginConfig.ConfigDefinition::new);
             mapper.save(path, (PluginConfig.ConfigDefinition) current.get(null));

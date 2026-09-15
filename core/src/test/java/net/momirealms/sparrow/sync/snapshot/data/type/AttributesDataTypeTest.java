@@ -220,7 +220,6 @@ class AttributesDataTypeTest {
         assertSame(callback, AttributeInstanceProxy.INSTANCE.getOnDirty(health));
         health.setBaseValue(31.0);
         health.getValue();
-        // 原版 getValue 清 dirty 后, 采集仍须重建这一项.
         Attributes changed = type.capture(player, CaptureMode.SYNC);
         assertNotSame(find(first, "max_health"), find(changed, "max_health"));
         assertEquals(31.0, find(changed, "max_health").base());

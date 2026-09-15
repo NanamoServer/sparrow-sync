@@ -126,7 +126,6 @@ class MapSyncLifecycleTest {
         assertFalse(receiving.isDone());
         maps.stopReceiving();
         assertTrue(receiving.isCompletedExceptionally());
-        // 最终保存仍可在停接收后发布来源内容, 编译等待完整发布链.
         CompletableFuture<StoredMap> publication = publisher.publish(SOURCE, map(2).data());
         CompoundTag components = NBT.createCompound();
         components.putInt("minecraft:map_id", 1);
@@ -151,7 +150,6 @@ class MapSyncLifecycleTest {
             assertEquals(-1, encoded.getInt("minecraft:map_id"));
             assertEquals(List.of(2), shared.writes);
         } else {
-            // 期限结束释放原快照, 后续保存或 stash 继续取得原生地图 ID.
             assertSame(original, compiled);
             assertTrue(shared.writes.isEmpty());
         }

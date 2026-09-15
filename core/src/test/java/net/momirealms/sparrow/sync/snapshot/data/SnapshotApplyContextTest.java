@@ -25,7 +25,6 @@ class SnapshotApplyContextTest {
 
     @BeforeEach
     void setUp() throws ReflectiveOperationException {
-        // 注册表构造时读取启动配置, 每个用例使用独立的空丢弃名单.
         this.configField = PluginConfig.class.getDeclaredField("config");
         this.configField.setAccessible(true);
         this.previousConfig = this.configField.get(null);

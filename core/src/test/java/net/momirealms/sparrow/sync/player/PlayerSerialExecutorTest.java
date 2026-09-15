@@ -40,7 +40,6 @@ class PlayerSerialExecutorTest {
 
     @Test
     void delayedTaskDoesNotHoldUpOtherPlayers() throws InterruptedException {
-        // 同一个桶里, 没到点的任务既不占线程也不挡别人
         executor = new PlayerSerialExecutor(logger, 1);
         List<String> order = new CopyOnWriteArrayList<>();
         CountDownLatch done = new CountDownLatch(2);
@@ -60,7 +59,6 @@ class PlayerSerialExecutorTest {
 
     @Test
     void delayedTaskHoldsBackLaterTasksOfTheSamePlayer() throws InterruptedException {
-        // 同一玩家的提交序不能被冷却打乱, 后面的任务跟着一起等
         executor = new PlayerSerialExecutor(logger, 1);
         List<String> order = new CopyOnWriteArrayList<>();
         CountDownLatch done = new CountDownLatch(2);
@@ -80,7 +78,6 @@ class PlayerSerialExecutorTest {
 
     @Test
     void delayedTaskWaitsWithoutBurningTheWorker() throws InterruptedException {
-        // 到点之前 worker 应当在等而不是空转, 等待期间不产生任何任务执行
         executor = new PlayerSerialExecutor(logger, 1);
         AtomicInteger runs = new AtomicInteger();
         CountDownLatch done = new CountDownLatch(1);
@@ -104,7 +101,6 @@ class PlayerSerialExecutorTest {
         List<Integer> bobOrder = new ArrayList<>(taskCount);
         CountDownLatch done = new CountDownLatch(taskCount * 2);
 
-        // 交叉提交两位玩家各 1000 个任务
         for (int i = 0; i < taskCount; i++) {
             int sequence = i;
             executor.submit(ALICE, () -> {
@@ -118,7 +114,6 @@ class PlayerSerialExecutorTest {
         }
 
         assertTrue(done.await(10, TimeUnit.SECONDS));
-        // 各自严格按提交序执行且一个不少 (同桶单线程写入, list 无需同步)
         for (int i = 0; i < taskCount; i++) {
             assertEquals(i, aliceOrder.get(i));
             assertEquals(i, bobOrder.get(i));
@@ -142,7 +137,6 @@ class PlayerSerialExecutorTest {
         assertTrue(done.await(5, TimeUnit.SECONDS));
         assertEquals(1, threads.size());
     }
-
 
     @Test
     void failingTaskDoesNotKillWorker() throws InterruptedException {
@@ -183,7 +177,6 @@ class PlayerSerialExecutorTest {
         AtomicReference<Thread> workerThread = new AtomicReference<>();
         AtomicInteger executed = new AtomicInteger();
 
-        // 永久阻塞任务卡住 worker, 身后积压 10 个任务
         executor.submit(ALICE, () -> {
             workerThread.set(Thread.currentThread());
             blockerStarted.countDown();
@@ -213,7 +206,6 @@ class PlayerSerialExecutorTest {
 
     @Test
     void idleShutdownReturnsPromptly() {
-        // 空闲 worker 靠退出哨兵立刻收工, 不用等满一个轮询周期
         executor = new PlayerSerialExecutor(logger, 16);
         long start = System.nanoTime();
 

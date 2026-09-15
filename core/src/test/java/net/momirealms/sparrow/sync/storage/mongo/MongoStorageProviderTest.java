@@ -62,7 +62,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// 集成测试, 依赖本机 27017 端口的 MongoDB, 不可达时整类跳过
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MongoStorageProviderTest {
     private static final String TEST_DATABASE = "sparrow_sync_it_" + UUID.randomUUID().toString().replace("-", "");
@@ -80,7 +79,6 @@ class MongoStorageProviderTest {
         PluginConfig.MongoOptions options = new PluginConfig.MongoOptions("mongodb://localhost:27017", TEST_DATABASE, "", "", "admin", "it_");
         DocumentSnapshotCodec codec = new DocumentSnapshotCodec(new SnapshotDataCodec(CompressorRegistry.DEFLATE));
         this.serialExecutor = new PlayerSerialExecutor(this.logger, 4);
-        // 读走内联执行, 写按玩家投递到 worker, 与运行期同构
         this.provider = new MongoStorageProvider(options, codec, this.serialExecutor, Runnable::run, this.logger);
         try {
             this.provider.initialize();
@@ -164,18 +162,14 @@ class MongoStorageProviderTest {
 
     @Test
     void duplicateKeyFromForeignUniqueIndexFailsInsteadOfReportingDuplicate() {
-        // 模拟 beta 遗留的 (player, version) 唯一索引: 新文档不带 version, 同一玩家第二份起统统撞 null 键.
-        // 这类冲突是写入失败, 报成 DUPLICATE 等于把静默丢数据伪装成幂等成功
         try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
             MongoCollection<Document> snapshots = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
-            // 先清掉其他测试的存量文档, 它们的 version 同为 null, 会让唯一索引建不起来
             snapshots.deleteMany(new Document());
             Bson legacyKeys = Indexes.compoundIndex(Indexes.ascending("player"), Indexes.descending("version"));
             snapshots.createIndex(legacyKeys, new IndexOptions().unique(true));
             try {
                 assertEquals(SaveResult.SAVED, this.provider.saveSnapshot(snapshot(1, false)).join());
 
-                // 报成 DUPLICATE 等于把静默丢数据伪装成幂等成功, 这类冲突重试也不会好
                 SaveResult result = this.provider.saveSnapshot(snapshot(2, false)).join();
 
                 assertEquals(SaveResult.REJECTED_MALFORMED, result);
@@ -189,8 +183,6 @@ class MongoStorageProviderTest {
 
     @Test
     void indexesAreReconciledToDeclarationOnInitialize() {
-        // 从旧版升级上来的库带着 (player, version) 唯一索引与已退场字段的查询索引,
-        // 启动对账必须清掉一切未声明的索引并建出声明的, 否则遗留唯一索引让每名玩家只能存一份
         try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
             MongoCollection<Document> snapshots = client.getDatabase(TEST_DATABASE).getCollection("it_snapshots");
             snapshots.deleteMany(new Document());
@@ -212,7 +204,6 @@ class MongoStorageProviderTest {
                 }
                 names.sort(String::compareTo);
                 assertEquals(List.of("_id_", "player_1_ts_-1__id_-1"), names);
-                // 对账完成后本版的 schema 代数被写回, 此后更旧的插件版本连不上这个库
                 Document schema = client.getDatabase(TEST_DATABASE).getCollection("it_meta").find(new Document("_id", "schema")).first();
                 assertEquals(2, schema.getInteger("version"));
             } finally {
@@ -332,7 +323,6 @@ class MongoStorageProviderTest {
                     assertEquals(schema, meta.find(new Document("_id", "schema")).first());
                     assertEquals(sequence, meta.find(new Document("_id", "maps")).first());
                     assertEquals(2, maps.countDocuments());
-                    // 测试显式移除制造冲突的记录, 下一次启动重新完成索引对账.
                     maps.deleteOne(new Document("_id", -2));
                     upgraded.initialize();
                     assertEquals(2, meta.find(new Document("_id", "schema")).first().getInteger("version"));
@@ -347,8 +337,6 @@ class MongoStorageProviderTest {
 
     @Test
     void newerSchemaGenerationRefusesToStart() {
-        // 共库的另一台服务器已用更新版本的插件升级了库结构, 本插件 (更旧) 必须拒绝启动,
-        // 否则它的对账会把新版索引拆回旧样, 两个版本互相改写没有尽头
         try (MongoClient client = MongoClients.create("mongodb://localhost:27017")) {
             MongoCollection<Document> meta = client.getDatabase(TEST_DATABASE).getCollection("it_meta");
             meta.replaceOne(new Document("_id", "schema"),
@@ -374,7 +362,6 @@ class MongoStorageProviderTest {
 
     @Test
     void lateSnapshotLandsInHistoryWithoutDisplacingTheNewest() {
-        // 本机关服落库失败 -> 别的子服放人并写出更晚的快照 -> 本机重启后把留存的快照插回
         Snapshot fromOtherServer = snapshot(5, false);
         this.provider.saveSnapshot(fromOtherServer).join();
         Snapshot recovered = snapshot(3, false);
@@ -388,8 +375,6 @@ class MongoStorageProviderTest {
 
     @Test
     void backToBackSavesForOnePlayerStayInSubmissionOrder() {
-        // 不 join 直接连发 20 份: 分桶收在 provider 内部, 同一玩家的写入必须仍按提交序落库.
-        // 若写入被投递到共享池, 其中若干份会后到先写, 结果就是 SAVED_OUT_OF_ORDER —— 那正是脑亡信号被自家污染的样子
         List<CompletableFuture<SaveResult>> pending = new ArrayList<>();
         for (int offset = 1; offset <= 20; offset++) {
             pending.add(this.provider.saveSnapshot(snapshot(offset, false)));
@@ -540,7 +525,6 @@ class MongoStorageProviderTest {
                 .withPinned(SnapshotQuery.PinFilter.PINNED)
                 .withLimit(1)).join();
 
-        // 区间挡掉 +9, pinned 挡掉 +2, limit 只留最新的 +3
         assertEquals(List.of(BASE_TIME + 3), found.stream().map(SnapshotMeta::timestamp).toList());
     }
 
@@ -553,7 +537,6 @@ class MongoStorageProviderTest {
 
         int removed = this.provider.rotate(this.player, 2).join();
 
-        // 未固定的四份只留采集最晚的两份, 固定的那份不参与轮转
         assertEquals(2, removed);
         assertEquals(List.of(BASE_TIME + 5, BASE_TIME + 4, BASE_TIME + 1),
                 this.provider.listSnapshots(this.player).join().stream().map(SnapshotMeta::timestamp).toList());
@@ -580,14 +563,12 @@ class MongoStorageProviderTest {
 
     @Test
     void oversizedSnapshotIsRejectedBeforeWrite() {
-        // 不可压缩的载荷超过 15 MiB, 触发 Mongo 写前大小检查
         Map<DataKey, Tag> data = new LinkedHashMap<>();
         byte[] payload = new byte[15 * 1024 * 1024 + 1024];
         new Random(7L).nextBytes(payload);
         data.put(BLOB, NBT.createByteArray(payload));
         Snapshot oversized = new Snapshot(meta(1, false), data);
 
-        // 重试也不会变小, 归类为需要人工介入而不是留在重试队列里
         SaveResult result = this.provider.saveSnapshot(oversized).join();
 
         assertEquals(SaveResult.REJECTED_OVERSIZED, result);

@@ -39,7 +39,6 @@ class PlayerSessionTest {
 
     @Test
     void transitionMatrixMatchesLifecycle() {
-        // 全枚举 5x5 转移矩阵, 合法集合之外的一律拒绝
         record Case(SessionState from, SessionState to, boolean legal) {
         }
         List<Case> cases = List.of(
@@ -94,7 +93,6 @@ class PlayerSessionTest {
 
     @Test
     void concurrentTransitionAdmitsExactlyOneWinner() throws InterruptedException {
-        // 并发争抢 PREPARING -> CLOSED (断线清理) 与 PREPARING -> APPLYING (应用段), 恰有一方赢
         for (int round = 0; round < 100; round++) {
             PlayerSession session = new PlayerSession(UUID.randomUUID(), "Steve", this.connection);
             CountDownLatch start = new CountDownLatch(1);

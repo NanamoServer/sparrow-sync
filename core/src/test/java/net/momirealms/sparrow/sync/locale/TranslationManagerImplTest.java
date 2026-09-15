@@ -106,10 +106,10 @@ class TranslationManagerImplTest {
     @SuppressWarnings("unchecked")
     void joinsSequenceTranslationElements() throws Exception {
         SparrowYaml yaml = SparrowYaml.builder().build();
-        YamlDocument document = yaml.load("""
-                message:
-                  - first
-                  - second
+        YamlDocument document = yaml.load("""
+                message:
+                  - first
+                  - second
                 """);
         Method loadLangData = TranslationManagerImpl.class.getDeclaredMethod("loadLangData", YamlDocument.class);
         loadLangData.setAccessible(true);
@@ -126,9 +126,9 @@ class TranslationManagerImplTest {
         }
         Path folder = this.directory.resolve("translations");
         Files.createDirectories(folder);
-        Files.writeString(folder.resolve("en.yml"), """
-                lang-version: "39"
-                log.sync.shutdown_saved: 'custom shutdown text'
+        Files.writeString(folder.resolve("en.yml"), """
+                lang-version: "39"
+                log.sync.shutdown_saved: 'custom shutdown text'
                 """);
         TranslationManagerImpl manager = new TranslationManagerImpl(new TestPlugin(this.directory, bundled));
         manager.reload();
@@ -167,9 +167,9 @@ class TranslationManagerImplTest {
     }
 
     private static String translationYaml(String value) {
-        return """
-                lang-version: "%s"
-                %s: '%s'
+        return """
+                lang-version: "%s"
+                %s: '%s'
                 """.formatted(DependencyVersions.LANG_VERSION, TRANSLATION_KEY, value);
     }
 

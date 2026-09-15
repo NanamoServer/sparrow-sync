@@ -31,13 +31,11 @@ class MongoFailureClassifierTest {
 
     @Test
     void unknownFailureIsRetriable() {
-        // 拿不准时留在重试队列里, 数据不会被丢到需要人工介入的角落
         assertEquals(SaveResult.RETRY_LATER, MongoFailureClassifier.classify(new IllegalStateException("something odd")));
     }
 
     @Test
     void classificationLooksThroughWrapperExceptions() {
-        // 异步链路会把原始异常包一层, 分类要顺着 cause 找下去
         Throwable wrapped = new CompletionException(new MongoException("write failed", new BsonMaximumSizeExceededException("too big")));
 
         assertEquals(SaveResult.REJECTED_OVERSIZED, MongoFailureClassifier.classify(wrapped));

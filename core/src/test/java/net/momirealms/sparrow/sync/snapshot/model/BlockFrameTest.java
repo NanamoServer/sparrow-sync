@@ -31,16 +31,10 @@ import java.util.zip.CRC32;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 覆盖分块容器的字节布局, 惰性缓存和损坏边界, 直接修改帧来模拟存储损坏. */
 class BlockFrameTest {
-    private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE); // 读写独立数据帧
-    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE); // 固定写入算法
+    private final SnapshotDataCodec dataCodec = new SnapshotDataCodec(CompressorRegistry.NONE);
+    private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);
 
-    /**
-     * 每轮仅破坏一个 payload, 校验全部其他类型仍可读取.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void eachDamagedBlockIsIsolated() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
@@ -60,11 +54,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 在每个块内截断, 已完整保留的块仍可读, 后续块分别报告自己的名字.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void truncationReportsIndividualKeys() throws IOException {
         Snapshot source = SnapshotFixtures.snapshot();
@@ -84,11 +73,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 索引损坏会使寻址失去依据, 整份容器应在读取块前拒绝.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void indexChecksumRejectsWholeFrame() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
@@ -98,11 +82,6 @@ class BlockFrameTest {
         assertTrue(invalid.detail().contains("index"));
     }
 
-    /**
-     * 完整快照内的数据帧也检查版本, 过早或未来版本在解块前拒绝.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void unsupportedDataVersionsAreRejected() throws IOException {
         for (int version : new int[]{0, 99}) {
@@ -112,11 +91,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 读取键集合不解块, 并发取同一类型也只缓存一个 Tag 实例.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void lazyCachePreservesIdentityAcrossThreads() throws Exception {
         Snapshot source = SnapshotFixtures.snapshot();
@@ -139,11 +113,6 @@ class BlockFrameTest {
         assertEquals(source.keys().size(), data.decodedBlockCount());
     }
 
-    /**
-     * 陌生类型仍按原顺序保存, 索引只描述块的位置.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void unknownTypesAndPhysicalOrderSurviveRoundTrip() throws IOException {
         Map<DataKey, Tag> values = new LinkedHashMap<>();
@@ -160,11 +129,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 空索引没有数据块, 完整快照和数据库数据帧均可往返.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void emptyAndDataOnlyFramesRoundTrip() throws IOException {
         Snapshot empty = new Snapshot(SnapshotFixtures.meta(), Map.of());
@@ -186,11 +150,6 @@ class BlockFrameTest {
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(framed)).reason());
     }
 
-    /**
-     * 数据帧入口拒绝含元数据的完整快照, 让两种容器的用途保持明确.
-     *
-     * @throws IOException 当测试快照编码失败时
-     */
     @Test
     void dataFrameReaderRejectsSnapshotContainer() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
@@ -198,11 +157,6 @@ class BlockFrameTest {
         assertEquals(InvalidReason.CORRUPTED, failure.reason());
     }
 
-    /**
-     * 单块头的未知算法只在取该类型时报告.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void unknownCompressorIsLocalToBlock() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
@@ -211,11 +165,6 @@ class BlockFrameTest {
         assertBlockFailure(this.valid(bytes), DataKey.parse(item.getKey()), InvalidReason.UNSUPPORTED_COMPRESSION);
     }
 
-    /**
-     * 三种内置压缩器都可以还原单块, 阈值恰好相等时开始压缩.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void blockRoundTripAndThreshold() throws IOException {
         String key = "other:value";
@@ -235,11 +184,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 长度不一致和整数溢出都应作为指定块损坏报告.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void blockLengthsAndOffsetsAreChecked() throws IOException {
         String key = "other:value";
@@ -252,11 +196,6 @@ class BlockFrameTest {
                 () -> BlockCodec.decode(new RawBlock(block, 14L + Integer.MAX_VALUE, 28L + Integer.MAX_VALUE), key)).reason());
     }
 
-    /**
-     * CRC 合法也必须校验块的 NBT 形状, 类型名和实际解压长度.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void malformedBlockRootsAreCorrupted() throws IOException {
         String key = "other:value";
@@ -276,11 +215,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * 索引偏移必须为 IntTag, 负偏移和旧 compound 条目不能进入惰性数据体.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void indexRoundTripAndValidation() throws IOException {
         LinkedHashMap<String, BlockIndex> values = new LinkedHashMap<>();
@@ -297,11 +231,6 @@ class BlockFrameTest {
         }
     }
 
-    /**
-     * u32 段长超出帧容量时应拒绝, 不能按负数或溢出后的短段处理.
-     *
-     * @throws Exception 当测试帧构造, 编解码或并发任务失败时
-     */
     @Test
     void unsignedIndexLengthIsChecked() throws IOException {
         byte[] bytes = this.codec.encode(SnapshotFixtures.snapshot());
@@ -309,30 +238,14 @@ class BlockFrameTest {
         assertEquals(InvalidReason.CORRUPTED, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode(bytes)).reason());
     }
 
-    /**
-     * 读取已通过容器检查的快照, 方便测试单块失败.
-     * @param bytes 待解码帧
-     * @return 有效快照
-     */
     private Snapshot valid(byte[] bytes) {
         return assertInstanceOf(DecodedSnapshot.Valid.class, this.codec.decode(bytes)).snapshot();
     }
 
-    /**
-     * 从固定头计算块区起点, 测试不依赖生产代码的私有帧解析器.
-     * @param bytes 帧字节
-     * @return 块区绝对偏移
-     */
     private static int base(byte[] bytes) {
         return SnapshotFixtures.blockBase(bytes);
     }
 
-    /**
-     * 读取帧内索引以定位待损坏的块.
-     * @param bytes 有效帧
-     * @return 类型与索引条目
-     * @throws IOException 当测试输入无法解析时
-     */
     private static LinkedHashMap<String, BlockIndex> entries(byte[] bytes) throws IOException {
         int dataOffset = SnapshotFixtures.dataOffset(bytes);
         int indexLength = ByteBuffer.wrap(bytes).getInt(dataOffset + 1);
@@ -340,12 +253,6 @@ class BlockFrameTest {
         return BlockIndexCodec.read(tree);
     }
 
-    /**
-     * 核对块异常的包装, 分类及具体类型名.
-     * @param snapshot 惰性快照
-     * @param key 损坏类型
-     * @param reason 预期分类
-     */
     private static void assertBlockFailure(Snapshot snapshot, DataKey key, InvalidReason reason) {
         UncheckedIOException failure = assertThrows(UncheckedIOException.class, () -> snapshot.data(key));
         FormatException cause = assertInstanceOf(FormatException.class, failure.getCause());

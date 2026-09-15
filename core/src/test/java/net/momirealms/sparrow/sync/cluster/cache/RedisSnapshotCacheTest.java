@@ -40,7 +40,6 @@ class RedisSnapshotCacheTest {
         } catch (RuntimeException exception) {
             Assumptions.assumeTrue(false, "local Redis unavailable: " + exception.getMessage());
         }
-        // 构造器只接插件实例, 这里逐字段注入测试用的依赖
         this.cache = NmsPlayerFixture.allocate(RedisSnapshotCache.class);
         NmsPlayerFixture.set(RedisSnapshotCache.class, this.cache, "connector", this.connector);
         NmsPlayerFixture.set(RedisSnapshotCache.class, this.cache, "codec", new BinarySnapshotCodec(CompressorRegistry.DEFLATE));
@@ -61,7 +60,6 @@ class RedisSnapshotCacheTest {
         Snapshot snapshot = this.snapshot();
         this.cache.publish(snapshot, 15).join();
         assertEquals(snapshot, this.cache.consume(PLAYER).join().orElseThrow());
-        // GETDEL 取回的同时已经删掉条目
         assertEquals(0L, this.connector.connection().sync().exists(this.key()));
         assertTrue(this.cache.consume(PLAYER).join().isEmpty());
     }

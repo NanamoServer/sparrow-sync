@@ -29,11 +29,6 @@ class JsonSnapshotCodecTest {
         BukkitProxy.init(VersionHelper.MINECRAFT_VERSION.version(), List.of("paper"));
     }
 
-    /**
-     * 未知类型直到 JSON 导出才读取 Tag, 类型自有版本字段随 SNBT 往返.
-     *
-     * @throws Exception 当测试快照编解码或解块计数读取失败时
-     */
     @Test
     void jsonExportDecodesUnknownBlockOnlyWhenRequested() throws Exception {
         DataKey unknown = DataKey.of("external", "book");
@@ -62,11 +57,6 @@ class JsonSnapshotCodecTest {
         assertEquals(value, restored.data(unknown));
     }
 
-    /**
-     * 每个类型直接保存 SNBT, 类型自己的版本字段随内容往返.
-     *
-     * @throws Exception 当快照编解码或计数读取失败时
-     */
     @Test
     void eachJsonValueIsSnbtAndPreservesTypeOwnedVersion() throws Exception {
         DataKey key = DataKey.of("external", "state");
@@ -85,7 +75,6 @@ class JsonSnapshotCodecTest {
         assertEquals(tag, restored.data(key));
     }
 
-    /** JSON 的类型值必须为 SNBT 字符串, 包装对象和其他 JSON 类型均按数据格式错误报告. */
     @Test
     void nonStringTypeValuesAreRejected() {
         Document document = Document.parse(this.codec.encode(SnapshotFixtures.snapshot()));
@@ -109,7 +98,6 @@ class JsonSnapshotCodecTest {
 
         DecodedSnapshot decoded = codec.decode(codec.encode(snapshot));
 
-        // SNBT 往返对 Tag 类型保真, 数组与数值后缀原样回来
         Snapshot restored = assertInstanceOf(DecodedSnapshot.Valid.class, decoded).snapshot();
         assertEquals(snapshot.meta(), restored.meta());
         assertEquals(snapshot.allData(), restored.allData());
@@ -142,7 +130,6 @@ class JsonSnapshotCodecTest {
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, invalid.reason());
     }
 
-    /** 版本检查先于字段读取, 零版本与旧开发期的 format 2 都明确拒绝. */
     @Test
     void versionsOutsideTheNewFormatRangeAreRejected() {
         assertEquals(InvalidReason.UNSUPPORTED_FORMAT, assertInstanceOf(DecodedSnapshot.Invalid.class, this.codec.decode("{\"format\": 0}")).reason());
@@ -158,7 +145,6 @@ class JsonSnapshotCodecTest {
 
     @Test
     void brokenSnbtReportsDataKey() {
-        // 手改坏某个类型的 SNBT 时要点名是哪个 key, 这里的 compound 少了闭合花括号
         Document document = Document.parse(this.codec.encode(SnapshotFixtures.snapshot()));
         document.get("data", Document.class).put("other:doc", "{origin:1");
         String json = document.toJson();
