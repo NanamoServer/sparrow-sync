@@ -8,7 +8,6 @@ import org.bukkit.event.player.PlayerEvent;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** 在线恢复快照写入玩家前派发, 监听器可以修改本次通过 Bukkit 路径应用的解码数据. */
@@ -22,7 +21,7 @@ public final class PreApplyEvent extends PlayerEvent {
     public PreApplyEvent(@NotNull Player player, @NotNull Snapshot snapshot, @NotNull Map<DataKey, Object> decoded) {
         super(player);
         this.snapshot = snapshot;
-        this.decoded = new LinkedHashMap<>(decoded);
+        this.decoded = decoded;
     }
 
     @NotNull

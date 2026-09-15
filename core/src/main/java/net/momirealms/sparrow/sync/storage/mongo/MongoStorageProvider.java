@@ -21,6 +21,8 @@ import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.storage.StoredUser;
 import java.io.IOException;
 import net.momirealms.sparrow.sync.map.MapStorage;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.bson.Document;
 import org.bson.BsonMaximumSizeExceededException;
 import org.bson.UuidRepresentation;
@@ -90,6 +92,8 @@ public final class MongoStorageProvider implements StorageProvider {
                         this.options.password().toCharArray())
                 );
             }
+            Configurator.setLevel("org.mongodb.driver.client", Level.WARN);
+            Configurator.setLevel("org.mongodb.driver.cluster", Level.WARN);
             this.mongoClient = MongoClients.create(builder.build());
             this.mongoDatabase = this.mongoClient.getDatabase(this.options.database());
             this.mongoDatabase.runCommand(new Document("ping", 1));

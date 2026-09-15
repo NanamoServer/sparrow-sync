@@ -125,7 +125,7 @@ tasks {
             attributes["paperweight-mappings-namespace"] = "mojang"
         }
         from(project(":bukkit-proxy").tasks.shadowJar.flatMap { it.archiveFile })
-        archiveFileName = "sparrow-sync-${libs.versions.project.version.get()}.jar"
+        archiveFileName = "SparrowSync-${libs.versions.project.version.get()}.jar"
         destinationDirectory.set(file("$rootDir/target"))
     }
 
@@ -140,7 +140,7 @@ tasks {
 bukkit {
     name = "SparrowSync"
     main = "net.momirealms.sparrow.sync.plugin.SpigotJavaPlugin"
-    apiVersion = "1.21.8"
+    apiVersion = "26.2"
     softDepend = listOf("InvSync", "HuskSync", "Vault")
 }
 

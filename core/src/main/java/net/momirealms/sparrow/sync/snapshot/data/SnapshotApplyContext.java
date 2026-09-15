@@ -36,14 +36,14 @@ public final class SnapshotApplyContext {
         this.passthrough = passthrough;
     }
 
-    /** 返回待应用数据的 Map 副本. */
+    /** 返回待应用数据的可变 Map 副本, 解码值仍与本 Context 共享. */
     @NotNull
     public Map<DataKey, Object> pendingValues() {
         Map<DataKey, Object> pending = new LinkedHashMap<>(this.values.length);
         for (int i = 0; i < this.values.length; i++) {
             if (this.states[i] == ApplyState.PENDING) pending.put(this.dataRegistry.keyAt(i), this.values[i]);
         }
-        return Collections.unmodifiableMap(pending);
+        return pending;
     }
 
     /** 接收预应用事件修改后的数据. */
