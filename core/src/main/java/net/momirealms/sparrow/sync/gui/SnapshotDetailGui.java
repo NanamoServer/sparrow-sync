@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.gui;
 
-import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
@@ -28,6 +27,7 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.util.ItemUtils;
+import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.item.Item;
@@ -120,7 +120,9 @@ public final class SnapshotDetailGui {
             }
             return elements;
         }), this.plugin.scheduler().async());
-        this.window = NormalWindow.builder().setUpperPane(this.pane).setTitle(this.text(this.archivePath == null ? "title.snapshot" : "title.archive", this.playerName))
+        this.window = NormalWindow.builder()
+                .setUpperPane(this.pane)
+                .setTitle(this.text(this.archivePath == null ? "title.snapshot" : "title.archive", this.playerName))
                 .addOpenHandler(opened -> {
                     this.pane.setItem(0, this.buildNavigationButton());
                     this.load();
@@ -344,8 +346,8 @@ public final class SnapshotDetailGui {
     ItemStack icon(Material material, Component name, boolean glint, List<Component> lore) {
         // 直接修改 NMS 组件, 最后以 CraftItemStack 镜像交给 SparrowUI.
         var item = new net.minecraft.world.item.ItemStack(CraftMagicNumbers.getItem(material));
-        item.set(DataComponents.CUSTOM_NAME, PaperAdventure.asVanilla(name));
-        item.set(DataComponents.LORE, new ItemLore(lore.stream().map(PaperAdventure::asVanilla).toList()));
+        item.set(DataComponents.CUSTOM_NAME, MinecraftComponents.fromAdventure(name));
+        item.set(DataComponents.LORE, new ItemLore(lore.stream().map(MinecraftComponents::fromAdventure).toList()));
         item.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, glint);
         return CraftItemStack.asCraftMirror(item);
     }
@@ -695,7 +697,7 @@ public final class SnapshotDetailGui {
             this.message("incomplete");
             return;
         }
-        List<ItemStack> items = ItemUtils.pack(this.contents.allItems(), PaperAdventure.asVanilla(this.text("package")));
+        List<ItemStack> items = ItemUtils.pack(this.contents.allItems(), MinecraftComponents.fromAdventure(this.text("package")));
         if (items.isEmpty()) {
             this.message("nothing_to_pack");
             return;

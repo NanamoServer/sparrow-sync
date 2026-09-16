@@ -19,6 +19,7 @@ import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.operation.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -61,21 +62,22 @@ public final class PaperEventGate implements LoginGate, Listener {
             if (state == SessionState.SAVING || state == SessionState.CLOSED) {
                 existing.released().join();
             } else {
-                this.rejectTooFast(connection, uuid, name, "previous session is still " + state);
+                this.rejectTooFast(listener, uuid, name, "previous session is still " + state);
                 return;
             }
         }
         if (channel.isActive()) {
-            this.beginLogin(connection, listener.connection, uuid, name);
+            this.beginLogin(listener, uuid, name);
         }
     }
 
     // Paper 等监听器返回后才继续配置流程, 此处等待数据准备完成
-    private void beginLogin(PlayerConfigurationConnection connection, Connection handle, UUID uuid, String name) {
+    private void beginLogin(ServerConfigurationPacketListenerImpl listener, UUID uuid, String name) {
+        Connection handle = listener.connection;
         Channel channel = handle.channel;
         PlayerSession session = this.sessionManager.tryOpen(uuid, name, handle);
         if (session == null) {
-            this.rejectTooFast(connection, uuid, name, "another connection won session registration");
+            this.rejectTooFast(listener, uuid, name, "another connection won session registration");
             return;
         }
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_HELD, name);
@@ -109,7 +111,7 @@ public final class PaperEventGate implements LoginGate, Listener {
                 .join();
         if (!channel.isActive() || session.state() != SessionState.PREPARING) return;
         if (outcome instanceof SessionPrepareResult.Failed failed) {
-            this.refuse(connection, session, name, failed.detail());
+            this.refuse(listener, session, name, failed.detail());
         } else if (outcome == SessionPrepareResult.READY) {
             this.release(uuid, name);
         }
@@ -161,14 +163,14 @@ public final class PaperEventGate implements LoginGate, Listener {
         this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
     }
 
-    private void rejectTooFast(PlayerConfigurationConnection connection, UUID uuid, String name, String reason) {
+    private void rejectTooFast(ServerConfigurationPacketListenerImpl listener, UUID uuid, String name, String reason) {
         this.plugin.logger().file(LogCategory.KICK, uuid, name, LogConstants.GATE_KICKED, name, reason);
-        connection.disconnect(MessageConstants.KICK_LOGIN_TOO_FAST.build());
+        listener.disconnect(MinecraftComponents.fromAdventure(MessageConstants.KICK_LOGIN_TOO_FAST.build()));
     }
 
-    private void refuse(PlayerConfigurationConnection connection, PlayerSession session, String name, String reason) {
+    private void refuse(ServerConfigurationPacketListenerImpl listener, PlayerSession session, String name, String reason) {
         this.sessionManager.abort(session);
         this.plugin.logger().error(LogCategory.KICK, session.uuid(), name, LogConstants.GATE_KICKED, name, reason);
-        connection.disconnect(MessageConstants.KICK_SYNC_NOT_READY.build());
+        listener.disconnect(MinecraftComponents.fromAdventure(MessageConstants.KICK_SYNC_NOT_READY.build()));
     }
 }

@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.sync.gui;
 
-import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
+import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -188,8 +188,8 @@ public final class SnapshotListGui {
     ItemStack icon(Material material, Component name, boolean glint, List<Component> lore) {
         // 直接修改 NMS 组件, 最后以 CraftItemStack 镜像交给 SparrowUI.
         var item = new net.minecraft.world.item.ItemStack(CraftMagicNumbers.getItem(material));
-        item.set(DataComponents.CUSTOM_NAME, PaperAdventure.asVanilla(name));
-        item.set(DataComponents.LORE, new ItemLore(lore.stream().map(PaperAdventure::asVanilla).toList()));
+        item.set(DataComponents.CUSTOM_NAME, MinecraftComponents.fromAdventure(name));
+        item.set(DataComponents.LORE, new ItemLore(lore.stream().map(MinecraftComponents::fromAdventure).toList()));
         item.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, glint);
         return CraftItemStack.asCraftMirror(item);
     }

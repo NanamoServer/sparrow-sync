@@ -82,7 +82,7 @@ public final class HuskSyncSourceV3 implements MigrationSource {
         Map<Identifier, Data> decoded = unpacked.getData();
         Map<String, Data> fields = new LinkedHashMap<>();
         for (Map.Entry<Identifier, Data> entry : decoded.entrySet()) {
-            String key = entry.getKey().getKey().toString();
+            String key = entry.getKey().getKeyNamespace() + ":" + entry.getKey().getKeyValue();
             fields.put(key, entry.getValue());
         }
         Map<DataKey, Tag> data = this.converter.convert(fields);

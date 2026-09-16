@@ -7,6 +7,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig.PDCMergeBlacklist;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.CompoundTagProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
@@ -18,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
 
 public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt.CompoundTag> {
     public static final DataKey PERSISTENT_DATA = DataKey.sparrow("persistent_data");
@@ -48,7 +50,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     @Override
     @NotNull
     public Tag encode(@NotNull net.minecraft.nbt.CompoundTag value) {
-        return encodeCompound(value.entrySet(), PluginConfig.synchronization$pdcMergeNamespaces());
+        return encodeCompound(entries(value), PluginConfig.synchronization$pdcMergeNamespaces());
     }
 
     @NotNull
@@ -67,7 +69,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     @NotNull
     private static Tag encodeTag(@NotNull net.minecraft.nbt.Tag value, @Nullable PDCMergeBlacklist blacklist) {
         if (blacklist != null && blacklist.hasChildren() && value instanceof net.minecraft.nbt.CompoundTag compound) {
-            return encodeCompound(compound.entrySet(), blacklist);
+            return encodeCompound(entries(compound), blacklist);
         }
         return NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, value);
     }
@@ -86,7 +88,7 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
         Map<String, net.minecraft.nbt.Tag> target = ((CraftPlayer) player).getPersistentDataContainer().getRaw();
         PDCMergeBlacklist blacklist = PluginConfig.synchronization$pdcMergeNamespaces();
 
-        for (Map.Entry<String, net.minecraft.nbt.Tag> entry : value.entrySet()) {
+        for (Map.Entry<String, net.minecraft.nbt.Tag> entry : entries(value)) {
             PDCMergeBlacklist child = blacklist.child(entry.getKey());
             if (child != null && child.terminal()) {
                 continue;
@@ -130,12 +132,18 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
     }
 
     private static void mergeCompound(@NotNull net.minecraft.nbt.CompoundTag target, @NotNull net.minecraft.nbt.CompoundTag source, @Nullable PDCMergeBlacklist blacklist) {
-        for (Map.Entry<String, net.minecraft.nbt.Tag> entry : source.entrySet()) {
+        for (Map.Entry<String, net.minecraft.nbt.Tag> entry : entries(source)) {
             PDCMergeBlacklist child = blacklist == null ? null : blacklist.child(entry.getKey());
             if (child != null && child.terminal()) {
                 continue;
             }
             target.put(entry.getKey(), mergeTag(target.get(entry.getKey()), entry.getValue(), child));
         }
+    }
+
+    // CompoundTag.entrySet() 在 1.21.4 上还是 protected, 直接读内部 map 才能跨版本用
+    @NotNull
+    private static Set<Map.Entry<String, net.minecraft.nbt.Tag>> entries(@NotNull net.minecraft.nbt.CompoundTag tag) {
+        return CompoundTagProxy.INSTANCE.getTags(tag).entrySet();
     }
 }
