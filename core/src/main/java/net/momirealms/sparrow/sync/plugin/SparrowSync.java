@@ -375,7 +375,7 @@ public class SparrowSync implements Plugin {
             this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.PLUGIN_STOPPED);
             this.logger.close();
         }
-        if (!Bukkit.getServer().isStopping()) {
+        if (VersionHelper.isPaper() && ServerUtils.isRunning()) {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
