@@ -58,7 +58,6 @@ dependencies {
     testImplementation(libs.zstd.jni)
     testImplementation(project(":bukkit-proxy"))
     testRuntimeOnly(libs.junit.platformLauncher)
-    testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)
     testImplementation(libs.bundles.cloud)
 }
@@ -149,7 +148,7 @@ paper {
     name = "SparrowSync"
     bootstrapper = "net.momirealms.sparrow.sync.plugin.PaperBootstrap"
     main = "net.momirealms.sparrow.sync.plugin.PaperJavaPlugin"
-    apiVersion = "1.21.8"
+    apiVersion = "1.21.4"
     foliaSupported = true
     serverDependencies {
         register("InvSync") {

@@ -38,7 +38,10 @@ public final class NativeMapStorage {
 
     @Nullable
     public MapItemSavedData cached(int mapId) {
-        Optional<?> value = this.cache.get(MapItemSavedDataProxy.INSTANCE.type(new MapId(mapId)));
+        MapId id = new MapId(mapId);
+        // 1.21.5 起缓存按 SavedDataType 建索引, 更早的版本用存档文件名
+        Object key = VersionHelper.isOrAbove1_21_5() ? MapItemSavedDataProxy.INSTANCE.type(id) : id.key();
+        Optional<?> value = this.cache.get(key);
         return value != null && value.orElse(null) instanceof MapItemSavedData data ? data : null;
     }
 

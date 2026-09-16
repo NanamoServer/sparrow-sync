@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.gui;
 
-import net.kyori.adventure.text.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
@@ -28,6 +27,7 @@ class SnapshotGuiPermissionTest {
     @Test
     void editingRequiresOnlyCurrentUiEditPermission() throws Exception {
         BukkitProxy.init("1.21.8", List.of("paper"));
+        NmsPlayerFixture.bindStaticRegistryOps();
         Field translation = TranslationManagerImpl.class.getDeclaredField("instance");
         translation.setAccessible(true);
         Object previous = translation.get(null);
@@ -42,24 +42,25 @@ class SnapshotGuiPermissionTest {
             TestViewer viewer = viewer(edit, checked);
             var menu = new SnapshotDetailGui(null, viewer, "Target", null, null, null);
             assertTrue(invoke(menu, "editable"));
-            assertNull(viewer.feedback);
+            assertTrue(locales.isEmpty());
             edit.set(false);
             assertFalse(invoke(menu, "editable"));
             assertEquals(List.of("sparrow_sync.ui.edit", "sparrow_sync.ui.edit"), checked);
             assertEquals(List.of(Locale.SIMPLIFIED_CHINESE, Locale.SIMPLIFIED_CHINESE), locales);
-            assertNotNull(viewer.feedback);
         } finally {
             translation.set(null, previous);
         }
     }
 
     private static TestViewer viewer(AtomicBoolean edit, List<String> checked) {
-        ServerPlayer handle = NmsPlayerFixture.create().getHandle();
+        CraftPlayer source = NmsPlayerFixture.create();
+        ServerPlayer handle = source.getHandle();
         handle.language = "zh_cn";
         TestViewer viewer = NmsPlayerFixture.allocate(TestViewer.class);
         NmsPlayerFixture.set(CraftEntity.class, viewer, "entity", handle);
         viewer.edit = edit;
         viewer.checked = checked;
+        NmsPlayerFixture.silenceOutgoingPackets(source);
         return viewer;
     }
 
@@ -94,7 +95,6 @@ class SnapshotGuiPermissionTest {
     private static final class TestViewer extends CraftPlayer {
         private AtomicBoolean edit;
         private List<String> checked;
-        private Component feedback;
 
         private TestViewer() {
             super(null, null);
@@ -104,11 +104,6 @@ class SnapshotGuiPermissionTest {
         public boolean hasPermission(String permission) {
             this.checked.add(permission);
             return permission.equals("sparrow_sync.ui.edit") && this.edit.get();
-        }
-
-        @Override
-        public void sendMessage(Component message) {
-            this.feedback = message;
         }
     }
 }

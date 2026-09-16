@@ -15,6 +15,9 @@ public interface ServerPlayerProxy {
     @FieldGetter(name = "language")
     String getLanguage(Object target);
 
+    @FieldGetter(name = "connection")
+    Object getConnection(Object target);
+
     @MethodInvoker(name = "respawn", activeIf = "has_patch=folia")
     void respawn(Object target, Consumer<Object> completed, PlayerRespawnEvent.RespawnReason reason);
 }

@@ -12,6 +12,7 @@ import net.momirealms.sparrow.sync.util.AdventureHelper;
 import net.momirealms.sparrow.sync.util.FileUtils;
 import net.momirealms.sparrow.sync.util.GsonHelper;
 import net.momirealms.sparrow.sync.util.MiscUtils;
+import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.yaml.YamlDocument;
 import net.momirealms.sparrow.yaml.node.SequenceNode;
 import net.momirealms.sparrow.yaml.route.Route;
@@ -155,7 +156,7 @@ public final class TranslationManagerImpl implements TranslationManager {
         if (translation.isEmpty()) {
             translation = id;
         }
-        Bukkit.getServer().getConsoleSender().sendMessage(AdventureHelper.miniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(args).map(Component::text).toList())));
+        PlayerUtils.sendMessage(Bukkit.getServer().getConsoleSender(), AdventureHelper.miniMessage().deserialize(translation, new IndexedArgumentTag(Arrays.stream(args).map(Component::text).toList())));
     }
 
     @Override

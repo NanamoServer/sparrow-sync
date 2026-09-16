@@ -247,7 +247,7 @@ public final class SnapshotListGui {
     // 记录本次菜单操作异常并向查看者发送失败反馈.
     private void failed(Throwable failure) {
         this.plugin.logger().warn("Snapshot GUI operation failed", failure);
-        this.viewer.sendMessage(this.text("feedback", this.text("failed")));
+        PlayerUtils.sendMessage(this.viewer, this.text("feedback", this.text("failed")));
     }
 
     /**

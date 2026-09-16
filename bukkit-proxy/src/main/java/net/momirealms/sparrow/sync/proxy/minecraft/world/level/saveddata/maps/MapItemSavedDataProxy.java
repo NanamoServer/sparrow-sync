@@ -46,8 +46,10 @@ public interface MapItemSavedDataProxy {
     @FieldSetter(name = "frameMarkers")
     void setFrameMarkers(Object target, Map<String, MapFrame> markers);
 
-    @MethodInvoker(name = "type", isStatic = true)
-    Object type(MapId id);
+    @MethodInvoker(name = "type", isStatic = true, activeIf = "min_version=1.21.5")
+    default Object type(MapId id) {
+        throw new UnsupportedOperationException();
+    }
 
     @FieldSetter(name = "trackedDecorationCount")
     void setTrackedDecorationCount(Object target, int count);

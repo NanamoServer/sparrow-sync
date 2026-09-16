@@ -820,7 +820,7 @@ public final class SnapshotDetailGui {
      * @param values 依次填入消息模板的参数
      */
     private void message(String key, Object... values) {
-        this.viewer.sendMessage(this.text("feedback", this.text(key, values)));
+        PlayerUtils.sendMessage(this.viewer, this.text("feedback", this.text(key, values)));
     }
 
     /**

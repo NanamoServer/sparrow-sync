@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.sync.snapshot.codec.ops;
 
+import com.google.gson.JsonElement;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.MinecraftServer;
 import net.momirealms.sparrow.nbt.Tag;
@@ -13,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class MinecraftRegistryOps {
     private static volatile @Nullable RegistryOps<Tag> sparrowNbt;
+    private static volatile @Nullable RegistryOps<JsonElement> json;
 
     private MinecraftRegistryOps() {
     }
@@ -28,13 +32,26 @@ public final class MinecraftRegistryOps {
         synchronized (MinecraftRegistryOps.class) {
             ops = sparrowNbt;
             if (ops == null) {
-                // 仅在服务器就绪后缓存 ops, 初始化失败时允许重试
-                MinecraftServer server = MinecraftServer.getServer();
-                if (server == null) {
-                    throw new IllegalStateException("cannot bind registry ops before the server is ready");
-                }
-                ops = RegistryOps.create(NBTOps.INSTANCE, server.registryAccess());
+                ops = RegistryOps.create(NBTOps.INSTANCE, MinecraftServer.getServer().registryAccess());
                 sparrowNbt = ops;
+            }
+        }
+        return ops;
+    }
+
+    /**
+     * 返回读写 Gson JsonElement 的注册表 ops, 文本组件的 JSON 互转走这里.
+     * @throws IllegalStateException 服务器未就绪时, 就绪后可以重试
+     */
+    @NotNull
+    public static RegistryOps<JsonElement> json() {
+        RegistryOps<JsonElement> ops = json;
+        if (ops != null) return ops;
+        synchronized (MinecraftRegistryOps.class) {
+            ops = json;
+            if (ops == null) {
+                ops = RegistryOps.create(JsonOps.INSTANCE, MinecraftServer.getServer().registryAccess());
+                json = ops;
             }
         }
         return ops;

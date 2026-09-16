@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.session.gate;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
 import net.minecraft.network.Connection;
@@ -18,11 +17,11 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.network.ServerConfigurationPacketListenerImplProxy;
 import net.momirealms.sparrow.sync.proxy.mojang.authlib.GameProfileProxy;
-import net.momirealms.sparrow.sync.proxy.craftbukkit.util.CraftChatMessageProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.operation.SessionPrepareResult;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.network.NMSPacketEvent;
 import net.momirealms.sparrow.ui.network.NMSPacketListener;
@@ -207,7 +206,7 @@ public final class ConfigurationPacketGate implements LoginGate {
     }
 
     private void disconnect(ServerConfigurationPacketListenerImpl listener, Component reason) {
-        String json = GsonComponentSerializer.gson().serialize(reason);
-        this.plugin.scheduler().sync().execute(() -> listener.disconnect((net.minecraft.network.chat.Component) CraftChatMessageProxy.INSTANCE.fromJSON(json)));
+        net.minecraft.network.chat.Component vanillaReason = MinecraftComponents.fromAdventure(reason);
+        this.plugin.scheduler().sync().execute(() -> listener.disconnect(vanillaReason));
     }
 }

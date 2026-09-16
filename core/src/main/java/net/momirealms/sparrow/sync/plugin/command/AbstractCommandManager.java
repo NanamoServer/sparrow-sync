@@ -7,6 +7,7 @@ import net.kyori.adventure.text.renderer.TranslatableComponentRenderer;
 import net.momirealms.sparrow.sync.plugin.configuration.CommandsConfig;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.util.ArrayUtils;
+import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.util.TriConsumer;
 import org.bukkit.command.CommandSender;
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -56,7 +57,7 @@ public abstract class AbstractCommandManager implements CommandManager {
     @Override
     public TriConsumer<CommandSender, String, Component> defaultFeedbackConsumer() {
         return ((sender, node, component) -> {
-            sender.sendMessage(component);
+            PlayerUtils.sendMessage(sender, component);
         });
     }
 
