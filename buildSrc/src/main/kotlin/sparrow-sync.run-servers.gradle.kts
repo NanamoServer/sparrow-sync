@@ -18,10 +18,19 @@ plugins {
 val velocityDirectory = rootProject.layout.projectDirectory.dir("run/proxy/velocity")
 val runTemplatesDirectory = rootProject.layout.projectDirectory.dir("buildSrc/run-templates")
 val javaToolchains = extensions.getByType<JavaToolchainService>()
+val java21 = javaToolchains.launcherFor {
+    vendor = JvmVendorSpec.JETBRAINS
+    languageVersion = JavaLanguageVersion.of(21)
+}
 val java25 = javaToolchains.launcherFor {
     vendor = JvmVendorSpec.JETBRAINS
     languageVersion = JavaLanguageVersion.of(25)
 }
+
+// 按版本挑 JDK
+fun javaLauncherFor(minecraftVersion: String): Provider<JavaLauncher> =
+    if (minecraftVersion.startsWith("26.")) java25 else java21
+
 // 给运行的不同版本的 Paper/Folia 映射 paper-global.yml 的配置版本.
 val paperConfigurationVersions = mapOf(
     "1.21.4" to "29",
@@ -98,7 +107,7 @@ fun RunServer.configureServer(
     minecraftVersion(minecraftVersion)
     runDirectory.set(rootProject.layout.projectDirectory.dir(directory))
     pluginJars.from(projectJar)
-    javaLauncher.set(java25)
+    javaLauncher.set(javaLauncherFor(minecraftVersion))
 
     if (maximumHeap != null) {
         minHeapSize = maximumHeap
