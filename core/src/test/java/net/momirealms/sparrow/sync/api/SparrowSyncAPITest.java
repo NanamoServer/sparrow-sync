@@ -1,7 +1,10 @@
 package net.momirealms.sparrow.sync.api;
 
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.snapshot.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
@@ -15,8 +18,6 @@ import net.momirealms.sparrow.sync.storage.SnapshotQuery;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.test.PluginConfigExtension;
-import org.bukkit.Bukkit;
-import org.bukkit.Server;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,7 @@ class SparrowSyncAPITest {
     private SparrowSync plugin;
     private SparrowSyncAPI api;
     private Object previousInstance;
-    private Server previousServer;
+    private MinecraftServer previousServer;
     private int storageCalls;
     private boolean storageClosed;
     private boolean deletedConcurrently;
@@ -60,7 +61,7 @@ class SparrowSyncAPITest {
         Field instance = SparrowSync.class.getDeclaredField("instance");
         instance.setAccessible(true);
         this.previousInstance = instance.get(null);
-        this.previousServer = Bukkit.getServer();
+        this.previousServer = MinecraftServer.getServer();
         this.plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         this.api = new SparrowSyncAPI(this.plugin);
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "api", this.api);
@@ -116,7 +117,7 @@ class SparrowSyncAPITest {
     @AfterEach
     void cleanup() {
         NmsPlayerFixture.set(SparrowSync.class, null, "instance", this.previousInstance);
-        NmsPlayerFixture.set(Bukkit.class, null, "server", this.previousServer);
+        NmsPlayerFixture.set(MinecraftServer.class, null, "SERVER", this.previousServer);
     }
 
     @Test
@@ -138,10 +139,10 @@ class SparrowSyncAPITest {
     @Test
     void disableRejectsCachedApiBeforeClosingStorage() {
         NmsPlayerFixture.set(SparrowSync.class, this.plugin, "snapshotService", null);
-        NmsPlayerFixture.set(Bukkit.class, null, "server", proxy(Server.class, (receiver, method, args) -> {
-            assertEquals("isStopping", method.getName());
-            return true;
-        }));
+        BukkitProxy.init("1.21.8", List.of("paper"));
+        MinecraftServer server = NmsPlayerFixture.allocate(DedicatedServer.class);
+        NmsPlayerFixture.set(MinecraftServer.class, server, "running", false);
+        NmsPlayerFixture.set(MinecraftServer.class, null, "SERVER", server);
         SparrowSyncAPI cached = SparrowSync.api();
         this.plugin.onPluginDisable();
         assertTrue(this.storageClosed);

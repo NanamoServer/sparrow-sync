@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
@@ -12,6 +14,7 @@ import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -31,8 +34,6 @@ import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.test.NmsPlayerFixture;
 import net.momirealms.sparrow.sync.test.NoopSnapshotCache;
 import net.momirealms.sparrow.sync.test.MemorySnapshotCache;
-import org.bukkit.Bukkit;
-import org.bukkit.Server;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -244,14 +245,13 @@ class SnapshotSaveLifecycleTest {
         Object options = optionsField.get(this.config);
         NmsPlayerFixture.set(options.getClass(), options, "shutdownTimeoutSeconds", 1);
         if (mode != 0) this.accept(true);
-        Field serverField = Bukkit.class.getDeclaredField("server");
+        BukkitProxy.init("1.21.8", List.of("paper"));
+        Field serverField = MinecraftServer.class.getDeclaredField("SERVER");
         serverField.setAccessible(true);
         Object previousServer = serverField.get(null);
-        serverField.set(null, Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[]{Server.class},
-                (proxy, method, args) -> {
-                    if (method.getName().equals("isStopping")) return true;
-                    throw new AssertionError(method.getName());
-                }));
+        MinecraftServer server = NmsPlayerFixture.allocate(DedicatedServer.class);
+        NmsPlayerFixture.set(MinecraftServer.class, server, "running", false);
+        serverField.set(null, server);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch interrupted = new CountDownLatch(1);
         this.executor.submit(PLAYER, () -> {
