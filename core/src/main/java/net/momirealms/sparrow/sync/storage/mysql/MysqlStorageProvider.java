@@ -43,7 +43,7 @@ import java.util.concurrent.Executor;
 @ApiStatus.Internal
 public class MysqlStorageProvider implements StorageProvider {
     private static final int MAX_PAYLOAD_BYTES = 15 * 1024 * 1024; // 编码后的完整 data 帧上限, 等于上限允许写入
-    private static final MysqlServerVersion MINIMUM_SERVER_VERSION = new MysqlServerVersion(8, 4, 0); // Connector/J 26.7 只支持 MySQL Server 8.4 及以上
+    private static final MysqlServerVersion MINIMUM_SERVER_VERSION = new MysqlServerVersion(8, 0, 0); // Connector/J 9.7 支持 MySQL Server 8.0 及以上
     protected static final List<MysqlSchemaMigration> MIGRATIONS = List.of(); // 按目标版本排列的旧库升级链, 覆盖 2..CURRENT_VERSION
     private static final String META_COLUMNS = "`id`, `player`, `ts`, `cause`, `pinned`, `server`, `mc_data`";
     private static final String NEWEST_FIRST = " ORDER BY `ts` DESC, `id` DESC";
