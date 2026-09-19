@@ -20,6 +20,7 @@ import net.momirealms.sparrow.sync.storage.StoredUser;
 import net.momirealms.sparrow.sync.test.SnapshotFileTestLogger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.mariadb.jdbc.Configuration;
 import org.mariadb.jdbc.MariaDbDataSource;
 import org.mariadb.jdbc.export.MaxAllowedPacketException;
@@ -39,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@EnabledIfSystemProperty(named = "sparrow.test.database", matches = "true", disabledReason = "Database integration tests are off by default; run with -Psparrow.test.database=true")
 @EnabledIfEnvironmentVariable(named = "SPARROW_TEST_MARIADB_URL", matches = ".+")
 class MariaDbStorageProviderTest {
     @Test

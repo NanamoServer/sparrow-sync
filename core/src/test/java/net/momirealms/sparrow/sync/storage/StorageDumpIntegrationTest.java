@@ -34,6 +34,7 @@ import net.momirealms.sparrow.sync.storage.postgresql.PostgresStorageProvider;
 import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -53,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@EnabledIfSystemProperty(named = "sparrow.test.database", matches = "true", disabledReason = "Database integration tests are off by default; run with -Psparrow.test.database=true")
 class StorageDumpIntegrationTest {
     @TempDir Path directory;
     private final BinarySnapshotCodec codec = new BinarySnapshotCodec(CompressorRegistry.DEFLATE);

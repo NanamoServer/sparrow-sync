@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Updates.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+@EnabledIfSystemProperty(named = "sparrow.test.database", matches = "true", disabledReason = "Database integration tests are off by default; run with -Psparrow.test.database=true")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MongoMapStorageTest {
     private final SyncLogger logger = new SyncLogger(new JavaPluginLogger(Logger.getAnonymousLogger()));

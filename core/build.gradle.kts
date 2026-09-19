@@ -132,6 +132,7 @@ tasks {
         useJUnitPlatform()
         maxHeapSize = "2g"
         providers.gradleProperty("sparrow.test.redis").orNull?.let { systemProperty("sparrow.test.redis", it) }
+        providers.gradleProperty("sparrow.test.database").orNull?.let { systemProperty("sparrow.test.database", it) }
     }
 }
 

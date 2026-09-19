@@ -48,6 +48,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -80,6 +81,7 @@ import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@EnabledIfSystemProperty(named = "sparrow.test.database", matches = "true", disabledReason = "Database integration tests are off by default; run with -Psparrow.test.database=true")
 @EnabledIfEnvironmentVariable(named = "SPARROW_TEST_MYSQL_URL", matches = ".+")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MysqlStorageProviderTest {

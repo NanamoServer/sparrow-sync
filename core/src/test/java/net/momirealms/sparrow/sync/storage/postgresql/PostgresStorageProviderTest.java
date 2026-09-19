@@ -31,6 +31,7 @@ import org.jdbi.v3.core.statement.StatementContext;
 import org.jdbi.v3.core.statement.UnableToExecuteStatementException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import org.postgresql.ds.PGSimpleDataSource;
 
@@ -56,6 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@EnabledIfSystemProperty(named = "sparrow.test.database", matches = "true", disabledReason = "Database integration tests are off by default; run with -Psparrow.test.database=true")
 @EnabledIfEnvironmentVariable(named = "SPARROW_TEST_POSTGRESQL_URL", matches = ".+")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PostgresStorageProviderTest {
