@@ -81,9 +81,9 @@ final class SnapshotSaver {
                 result.completeExceptionally(failure);
             }
         };
-        if (this.plugin.scheduler().entity().isOwnedByCurrentRegion(player)) {
+        if (this.plugin.scheduler().platform().isOwnedByCurrentRegion(player)) {
             capture.run();
-        } else if (this.plugin.scheduler().entity().run(player, capture, () -> result.complete(SnapshotCaptureResult.OFFLINE)) == null) {
+        } else if (this.plugin.scheduler().platform().runLater(capture, () -> result.complete(SnapshotCaptureResult.OFFLINE), 0, player) == null) {
             result.complete(SnapshotCaptureResult.OFFLINE);
         }
         return result;

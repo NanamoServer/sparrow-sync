@@ -37,7 +37,7 @@ public final class ReloadCommand extends BukkitCommandFeature {
                         handleFeedback(context, MessageConstants.COMMAND_RELOAD_TOO_FAST);
                         return;
                     }
-                    plugin().reloadPlugin(plugin().scheduler().async(), r -> plugin().scheduler().sync().run(r)).thenAcceptAsync(reloadResult -> {
+                    plugin().reloadPlugin(plugin().scheduler().async(), r -> plugin().scheduler().platform().run(r)).thenAcceptAsync(reloadResult -> {
                         if (!reloadResult.success()) {
                             handleFeedback(context, MessageConstants.COMMAND_RELOAD_CONFIG_FAILURE);
                             return;

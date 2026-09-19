@@ -51,7 +51,7 @@ public final class SaveTriggerListener implements Listener {
             if (VersionHelper.isFolia()) {
                 // Folia 的定时世界保存事件在全局线程触发
                 // 切到玩家区域后再接受保存, SessionManager 会检查会话是否仍有效
-                this.plugin.scheduler().entity().run(player, () -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {});
+                this.plugin.scheduler().platform().runLater(() -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {}, 0, player);
             } else {
                 // Paper/Spigot 已在主线程, 立即完成同步类型采集并排队保存
                 this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE);
@@ -67,9 +67,9 @@ public final class SaveTriggerListener implements Listener {
         Player player = event.getPlayer();
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;
-        this.plugin.scheduler().entity().run(player, () -> {
+        this.plugin.scheduler().platform().runLater(() -> {
             if (player.getGameMode() == target) this.sessions.captureNowAndSave(session, player, SaveCause.GAME_MODE_CHANGE);
-        }, () -> {});
+        }, () -> {}, 0, player);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -91,8 +91,8 @@ public final class SaveTriggerListener implements Listener {
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;
-        this.plugin.scheduler().entity().run(player, () -> {
+        this.plugin.scheduler().platform().runLater(() -> {
             if (player.isDead()) this.sessions.captureNowAndSave(session, player, SaveCause.DEATH);
-        }, () -> {});
+        }, () -> {}, 0, player);
     }
 }

@@ -235,7 +235,7 @@ public final class SessionManager {
         if (action == CloseAction.IGNORED) return;
         // 在退出事件中记录所在区域, 下一 tick 等原版退出流程结束后再采集
         Location location = player.getLocation();
-        this.plugin.scheduler().sync().runLater(() -> {
+        this.plugin.scheduler().platform().runLater(() -> {
             if (action == CloseAction.SAVE_ACCEPTED) {
                 this.closeAfterSave(session, this.snapshotService.captureLogoutAndSave(player, SaveCause.DISCONNECT, session.retainedData()));
             } else {

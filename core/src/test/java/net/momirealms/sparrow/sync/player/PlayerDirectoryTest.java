@@ -16,7 +16,7 @@ import io.lettuce.core.protocol.Command;
 import io.lettuce.core.protocol.CommandType;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
-import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.PlatformExecutor;
 import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
@@ -270,13 +270,13 @@ class PlayerDirectoryTest {
         server.directory.presence(steve, "Steve", true);
         SparrowSync plugin = (SparrowSync) field(server.directory, "plugin");
         NmsPlayerFixture.set(SparrowSync.class, plugin, "playerDirectory", server.directory);
-        RegionExecutor<?> region = proxy(RegionExecutor.class, (instance, method, args) -> {
+        PlatformExecutor region = proxy(PlatformExecutor.class, (instance, method, args) -> {
             assertEquals("runLater", method.getName());
             return null;
         });
-        SchedulerAdapter<?> scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> switch (method.getName()) {
+        SchedulerAdapter scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> switch (method.getName()) {
             case "async" -> (Executor) Runnable::run;
-            case "sync" -> region;
+            case "platform" -> region;
             default -> throw new AssertionError(method.getName());
         });
         NmsPlayerFixture.set(SparrowSync.class, plugin, "scheduler", scheduler);
@@ -490,7 +490,7 @@ class PlayerDirectoryTest {
         });
         NmsPlayerFixture.set(SparrowSync.class, plugin, "storageProvider", storage);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", new SyncLogger(proxy(PluginLogger.class, (instance, method, args) -> null)));
-        SchedulerAdapter<?> scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> {
+        SchedulerAdapter scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> {
             assertEquals("async", method.getName());
             return (Executor) Runnable::run;
         });

@@ -88,7 +88,7 @@ public class SparrowSync implements Plugin {
     private final Path dataFolderPath;
     private final ClassPathAppender sharedClassPathAppender;
     private final ClassPathAppender privateClassPathAppender;
-    private final SchedulerAdapter<?> scheduler;
+    private final SchedulerAdapter scheduler;
     private final DependencyManager dependencyManager;
     private final CompatibilityManager compatibilityManager;
     private final ConfigurationManager configurationManager;
@@ -312,7 +312,7 @@ public class SparrowSync implements Plugin {
         this.initASMProxies();
         // 集成插件管理器
         this.compatibilityManager.onEnable();
-        this.scheduler.sync().runDelayed(this::onServerLoaded);
+        this.scheduler.platform().runDelayed(this::onServerLoaded);
     }
 
     public void onServerLoaded() {
@@ -722,10 +722,9 @@ public class SparrowSync implements Plugin {
         return this.privateClassPathAppender;
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <W> SchedulerAdapter<W> scheduler() {
-        return (SchedulerAdapter<W>) this.scheduler;
+    public SchedulerAdapter scheduler() {
+        return this.scheduler;
     }
 
     @Override

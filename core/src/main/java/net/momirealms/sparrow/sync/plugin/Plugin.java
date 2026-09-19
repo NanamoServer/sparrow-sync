@@ -107,7 +107,7 @@ public interface Plugin {
      */
     ClassPathAppender privateClassPathAppender();
 
-    <W> SchedulerAdapter<W> scheduler();
+    SchedulerAdapter scheduler();
 
     DependencyManager dependencyManager();
 

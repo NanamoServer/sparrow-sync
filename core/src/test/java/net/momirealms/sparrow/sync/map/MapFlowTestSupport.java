@@ -21,7 +21,7 @@ import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
-import net.momirealms.sparrow.sync.plugin.scheduler.executor.RegionExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.PlatformExecutor;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.BukkitProxy;
@@ -45,7 +45,7 @@ final class MapFlowTestSupport {
     static final MapIdentity IDENTITY = new MapIdentity(SOURCE, -1);
 
     static void scheduler(Executor worker, Executor nativeThread) {
-        Object sync = Proxy.newProxyInstance(RegionExecutor.class.getClassLoader(), new Class<?>[]{RegionExecutor.class}, (proxy, method, arguments) -> {
+        Object sync = Proxy.newProxyInstance(PlatformExecutor.class.getClassLoader(), new Class<?>[]{PlatformExecutor.class}, (proxy, method, arguments) -> {
             if (!method.getName().equals("execute")) {
                 throw new AssertionError("unexpected region scheduler call: " + method.getName());
             }
@@ -54,7 +54,7 @@ final class MapFlowTestSupport {
         });
         Object scheduler = Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (proxy, method, arguments) -> switch (method.getName()) {
             case "async" -> worker;
-            case "sync" -> sync;
+            case "platform" -> sync;
             default -> throw new AssertionError("unexpected scheduler call: " + method.getName());
         });
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);

@@ -207,6 +207,6 @@ public final class ConfigurationPacketGate implements LoginGate {
 
     private void disconnect(ServerConfigurationPacketListenerImpl listener, Component reason) {
         net.minecraft.network.chat.Component vanillaReason = MinecraftComponents.fromAdventure(reason);
-        this.plugin.scheduler().sync().execute(() -> listener.disconnect(vanillaReason));
+        this.plugin.scheduler().platform().execute(() -> listener.disconnect(vanillaReason));
     }
 }

@@ -189,7 +189,7 @@ public final class MapReceiver {
                     }
                     // 在锁外完成 Future, 避免后续快照处理占用更新锁.
                     flight.result.complete(localId);
-                }, SparrowSync.instance().scheduler().sync())
+                }, SparrowSync.instance().scheduler().platform())
                 .whenComplete((ignored, failure) -> {
                     if (failure == null) return;
                     boolean retry;

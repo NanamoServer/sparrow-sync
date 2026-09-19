@@ -1,10 +1,13 @@
-package net.momirealms.sparrow.sync.plugin.scheduler.task.platform;
-
-import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
+package net.momirealms.sparrow.sync.plugin.scheduler.task;
 
 public final class BukkitTask implements SchedulerTask {
     private final org.bukkit.scheduler.BukkitTask bukkitTask;
 
+    /**
+     * 包装 Bukkit 平台任务.
+     *
+     * @param bukkitTask Bukkit 平台任务
+     */
     public BukkitTask(org.bukkit.scheduler.BukkitTask bukkitTask) {
         this.bukkitTask = bukkitTask;
     }

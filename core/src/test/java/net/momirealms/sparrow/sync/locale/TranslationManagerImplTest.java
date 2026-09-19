@@ -313,7 +313,7 @@ class TranslationManagerImplTest {
         }
 
         @Override
-        public <W> SchedulerAdapter<W> scheduler() {
+        public SchedulerAdapter scheduler() {
             throw new UnsupportedOperationException();
         }
 

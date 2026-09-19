@@ -79,7 +79,7 @@ class SnapshotPreparationTest {
         NmsPlayerFixture.set(SparrowSync.class, plugin, "logger", logger);
         NmsPlayerFixture.set(SparrowSync.class, plugin, "dataRegistry", registry);
         Executor executor = work::add;
-        SchedulerAdapter<?> scheduler = (SchedulerAdapter<?>) Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (instance, method, args) -> {
+        SchedulerAdapter scheduler = (SchedulerAdapter) Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (instance, method, args) -> {
             assertEquals("async", method.getName());
             return executor;
         });

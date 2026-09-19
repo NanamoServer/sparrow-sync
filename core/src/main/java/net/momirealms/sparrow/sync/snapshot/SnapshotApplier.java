@@ -158,7 +158,7 @@ final class SnapshotApplier {
                     completion.complete(SnapshotApplyResult.REJECTED);
                 }
             };
-            if (this.plugin.scheduler().entity().run(player, apply, retired) == null) {
+            if (this.plugin.scheduler().platform().runLater(apply, retired, 0, player) == null) {
                 completion.complete(SnapshotApplyResult.REJECTED);
             }
             return completion;

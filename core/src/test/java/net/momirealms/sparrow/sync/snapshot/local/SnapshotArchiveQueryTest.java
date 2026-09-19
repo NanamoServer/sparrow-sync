@@ -134,7 +134,7 @@ class SnapshotArchiveQueryTest {
 
     private SnapshotService service(SnapshotFiles files, Executor executor) {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
-        SchedulerAdapter<?> scheduler = (SchedulerAdapter<?>) Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (proxy, method, args) -> {
+        SchedulerAdapter scheduler = (SchedulerAdapter) Proxy.newProxyInstance(SchedulerAdapter.class.getClassLoader(), new Class<?>[]{SchedulerAdapter.class}, (proxy, method, args) -> {
             assertEquals("async", method.getName());
             return executor;
         });

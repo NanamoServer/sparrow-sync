@@ -1,11 +1,8 @@
 package net.momirealms.sparrow.sync.plugin.scheduler.task;
 
-import org.jetbrains.annotations.Nullable;
-
 import java.util.concurrent.ScheduledFuture;
 
 public final class LazyAsyncTask implements SchedulerTask {
-    @Nullable
     public ScheduledFuture<?> future;
 
     @Override

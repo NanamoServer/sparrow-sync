@@ -25,7 +25,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.PluginLogger;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.plugin.scheduler.SchedulerAdapter;
-import net.momirealms.sparrow.sync.plugin.scheduler.executor.EntityExecutor;
+import net.momirealms.sparrow.sync.plugin.scheduler.executor.PlatformExecutor;
 import net.momirealms.sparrow.sync.plugin.scheduler.task.DummyTask;
 import net.momirealms.sparrow.sync.session.SessionManager;
 import net.momirealms.sparrow.sync.session.SessionState;
@@ -234,17 +234,17 @@ class SnapshotCommandFlowTest {
         PluginLogger console = proxy(PluginLogger.class, (instance, method, args) -> null);
         SyncLogger logger = new SyncLogger(console);
         this.serial = new PlayerSerialExecutor(console, 1);
-        EntityExecutor entity = proxy(EntityExecutor.class, (instance, method, args) -> switch (method.getName()) {
+        PlatformExecutor entity = proxy(PlatformExecutor.class, (instance, method, args) -> switch (method.getName()) {
             case "isOwnedByCurrentRegion" -> Thread.currentThread() == this.entityThread;
-            case "run" -> {
-                this.entityTasks.add((Runnable) args[1]);
+            case "runLater" -> {
+                this.entityTasks.add((Runnable) args[0]);
                 yield new DummyTask();
             }
             default -> throw new AssertionError(method.getName());
         });
-        SchedulerAdapter<?> scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> switch (method.getName()) {
+        SchedulerAdapter scheduler = proxy(SchedulerAdapter.class, (instance, method, args) -> switch (method.getName()) {
             case "async" -> this.preparation;
-            case "entity" -> entity;
+            case "platform" -> entity;
             default -> throw new AssertionError(method.getName());
         });
         DataRegistry registry = new DataRegistry();
