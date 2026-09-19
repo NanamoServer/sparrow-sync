@@ -335,10 +335,6 @@ public class SparrowSync implements Plugin {
         this.apiReady = true;
     }
 
-    @Override
-    public void onPluginReload() {
-    }
-
     /**
      * 等待最终会话保存, 连续无进展时停止等待; 正常结束后地图发布和队列排空共用固定收尾预算.
      * <p>先停止管理操作, 待 ACTIVE 会话提交 SHUTDOWN 请求后才封闭保存入口.
@@ -643,11 +639,6 @@ public class SparrowSync implements Plugin {
     @Override
     public String pluginVersion() {
         return javaPlugin().getDescription().getVersion();
-    }
-
-    @Override
-    public String serverVersion() {
-        return VersionHelper.MINECRAFT_VERSION.version();
     }
 
     public JavaPlugin javaPlugin() {
