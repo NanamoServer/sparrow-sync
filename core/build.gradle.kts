@@ -67,6 +67,7 @@ buildConfig {
     packageName = "net.momirealms.sparrow.sync.plugin.dependency"
     className = "DependencyVersions"
 
+    buildConfigField("PROJECT_VERSION", libs.versions.project.version.get())
     buildConfigField("COMPILE_TIME", SimpleDateFormat("yyyyMMdd_HHmm").format(Date()))
     buildConfigField("CONFIG_VERSION", libs.versions.config.version.get())
     buildConfigField("COMMANDS_CONFIG_VERSION", libs.versions.commands.config.version.get())

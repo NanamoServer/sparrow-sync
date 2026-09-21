@@ -312,6 +312,8 @@ public final class Dependencies {
             .groupId("io{}lettuce")
             .artifactId("lettuce-core")
             .version(DependencyVersions.LETTUCE)
+            .addRelocation("netty{}handler{}codec{}dns", "io{}netty{}handler{}codec{}dns")
+            .addRelocation("netty{}resolver{}dns", "io{}netty{}resolver{}dns")
             .build();
 
     public static final Dependency JACKSON_CORE = Dependency.builder()
@@ -348,12 +350,14 @@ public final class Dependencies {
             .groupId("io{}netty")
             .artifactId("netty-resolver-dns")
             .version(DependencyVersions.NETTY)
+            .addRelocations(LETTUCE.relocations())
             .build();
 
     public static final Dependency NETTY_CODEC_DNS = Dependency.builder()
             .groupId("io{}netty")
             .artifactId("netty-codec-dns")
             .version(DependencyVersions.NETTY)
+            .addRelocations(LETTUCE.relocations())
             .build();
 
     public static final Dependency REACTOR_CORE = Dependency.builder()

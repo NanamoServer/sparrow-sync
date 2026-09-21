@@ -101,6 +101,8 @@ subprojects {
             relocate("org.mariadb.jdbc", "$libs.mariadb")
             relocate("org.postgresql", "$libs.postgresql")
             relocate("ca.spottedleaf.concurrentutil", "$libs.concurrentutil")
+            relocate("io.netty.resolver.dns", "$libs.netty.resolver.dns")
+            relocate("io.netty.handler.codec.dns", "$libs.netty.handler.codec.dns")
             relocate("io.netty.handler.codec.http", "$libs.netty.handler.codec.http")
             relocate("io.netty.handler.codec.rtsp", "$libs.netty.handler.codec.rtsp")
             relocate("io.netty.handler.codec.spdy", "$libs.netty.handler.codec.spdy")

@@ -11,6 +11,7 @@ import net.momirealms.sparrow.sync.plugin.command.parser.NetworkPlayerParser;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
+import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageType;
@@ -61,7 +62,7 @@ public final class StatusCommand extends BukkitCommandFeature {
     private void showSystem(CommandContext<CommandSender> context) {
         this.handleFeedback(context, MessageConstants.COMMAND_STATUS_SYSTEM,
                 Component.text(this.plugin().pluginVersion()),
-                Component.text(this.plugin().serverVersion()),
+                Component.text(DependencyVersions.PROJECT_VERSION),
                 Component.text(this.serverId),
                 Component.text(switch (this.storageType) {
                     case MONGODB -> "MongoDB";
