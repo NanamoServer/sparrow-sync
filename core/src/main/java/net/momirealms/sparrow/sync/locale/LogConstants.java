@@ -21,6 +21,15 @@ public interface LogConstants {
     String STORAGE_COMPRESSOR_FAILED = "log.storage.compressor_failed";
     String STORAGE_READY = "log.storage.backend_ready";
     String STORAGE_SETUP_FAILED = "log.storage.backend_setup_failed";
+    String STORAGE_CONNECTION_REFUSED = "log.storage.connection_refused";
+    String STORAGE_UNKNOWN_HOST = "log.storage.unknown_host";
+    String STORAGE_NETWORK_TIMEOUT = "log.storage.network_timeout";
+    String STORAGE_LOGIN_DENIED = "log.storage.login_denied";
+    String STORAGE_DATABASE_MISSING = "log.storage.database_missing";
+    String STORAGE_PERMISSION_DENIED = "log.storage.permission_denied";
+    String STORAGE_MONGODB_SELECTION_TIMEOUT = "log.storage.mongodb_selection_timeout";
+    String STORAGE_MONGODB_LOGIN_DENIED = "log.storage.mongodb_login_denied";
+    String STORAGE_MONGODB_PERMISSION_DENIED = "log.storage.mongodb_permission_denied";
     String STORAGE_OUT_OF_ORDER = "log.storage.out_of_order";
     String STORAGE_ORDER_CHECK_FAILED = "log.storage.order_check_failed";
     String STORAGE_ENCODE_FAILED = "log.storage.encode_failed";

@@ -146,6 +146,31 @@ class TranslationManagerImplTest {
     }
 
     @Test
+    void upgradingExistingTranslationsAddsStorageFailureHints() throws Exception {
+        String bundled;
+        try (InputStream input = this.getClass().getResourceAsStream("/translations/en.yml")) {
+            bundled = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        Path folder = this.directory.resolve("translations");
+        Files.createDirectories(folder);
+        Files.writeString(folder.resolve("en.yml"), """
+                lang-version: "50"
+                log.storage.backend_setup_failed: 'custom storage failure'
+                """);
+        TranslationManagerImpl manager = new TranslationManagerImpl(new TestPlugin(this.directory, bundled));
+        manager.reload();
+
+        assertEquals("custom storage failure", manager.miniMessageTranslation(LogConstants.STORAGE_SETUP_FAILED));
+        assertTrue(manager.miniMessageTranslation(LogConstants.STORAGE_CONNECTION_REFUSED).contains("connection was refused"));
+        String written = Files.readString(folder.resolve("en.yml"));
+        assertEquals(DependencyVersions.LANG_VERSION, SparrowYaml.builder().build().load(written).getString(Route.from("lang-version")));
+        assertTrue(written.contains(LogConstants.STORAGE_CONNECTION_REFUSED));
+        assertTrue(written.contains(LogConstants.STORAGE_MONGODB_SELECTION_TIMEOUT));
+        assertTrue(written.contains(LogConstants.STORAGE_MONGODB_LOGIN_DENIED));
+        assertTrue(written.contains(LogConstants.STORAGE_MONGODB_PERMISSION_DENIED));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void shutdownTranslationArgumentsMatchInBothLanguages() throws Exception {
         Map<String, Integer> keys = Map.of(

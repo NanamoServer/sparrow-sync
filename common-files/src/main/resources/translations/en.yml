@@ -351,6 +351,15 @@ log.stash.write_failed: 'Failed to save the local snapshot for <arg:0>; this sna
 # log.storage
 log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'
 log.storage.backend_setup_failed: 'Failed to initialize <arg:0> storage (database: <arg:1>). Cannot load or save player data'
+log.storage.connection_refused: 'The database connection was refused. Check the configured host and port and whether the database is listening; in a container, verify where localhost points'
+log.storage.unknown_host: 'The database hostname could not be resolved. Check the hostname in the storage configuration and DNS settings'
+log.storage.network_timeout: 'The database network operation timed out. Check the database service, network connectivity, and timeout settings'
+log.storage.login_denied: 'The database rejected this account. Check the username, password, and allowed connection hosts'
+log.storage.database_missing: 'The configured database does not exist. Check its name and create the database first'
+log.storage.permission_denied: 'The database account lacks a required privilege. Check permissions on the database and its tables'
+log.storage.mongodb_selection_timeout: 'MongoDB did not find an available server before the timeout. Check the connection address, network, replica set settings, and service status'
+log.storage.mongodb_login_denied: 'MongoDB authentication failed. Check the username, password, and authentication database (authSource)'
+log.storage.mongodb_permission_denied: 'The MongoDB account lacks a privilege required during initialization. Check permissions on the database and collections, including index creation'
 log.storage.compressor_failed: Failed to load the snapshot compressor. Check that all runtime dependencies are present and that the temporary directory allows loading native libraries
 log.storage.constraint_conflict: 'Unique constraint violation while saving a snapshot for <arg:0>; the snapshot was not found in the database'
 log.storage.encode_failed: 'Failed to encode the snapshot for <arg:0>; it cannot be saved to the database'

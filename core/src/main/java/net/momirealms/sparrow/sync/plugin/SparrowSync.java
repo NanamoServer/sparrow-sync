@@ -253,7 +253,10 @@ public class SparrowSync implements Plugin {
             this.storageProvider.initialize();
             this.logger.info(TranslationManager.console(LogConstants.STORAGE_READY, PluginConfig.database$type().name(), database));
         } catch (Throwable throwable) {
-            this.logger.error(TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED, PluginConfig.database$type().name(), database), throwable);
+            String message = TranslationManager.console(LogConstants.STORAGE_SETUP_FAILED, PluginConfig.database$type().name(), database);
+            String hintKey = StorageSetupFailureHint.key(PluginConfig.database$type(), throwable);
+            if (hintKey != null) message += ": " + TranslationManager.console(hintKey);
+            this.logger.error(message, throwable);
             Bukkit.getServer().shutdown();
             return;
         }
