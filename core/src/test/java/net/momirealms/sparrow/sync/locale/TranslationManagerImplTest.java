@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.locale;
 
-import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
 import net.momirealms.sparrow.sync.plugin.configuration.ConfigurationManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -234,11 +233,6 @@ class TranslationManagerImplTest {
         @Override
         public Path dataFolderPath() {
             return this.directory;
-        }
-
-        @Override
-        public void onPluginBootstrap(BootstrapContext context) {
-            throw new UnsupportedOperationException();
         }
 
         @Override

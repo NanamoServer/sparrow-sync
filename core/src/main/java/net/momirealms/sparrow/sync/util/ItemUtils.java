@@ -16,6 +16,10 @@ public final class ItemUtils {
     private ItemUtils() {
     }
 
+    public static boolean isEmpty(@Nullable ItemStack item) {
+        return item == null || item.getAmount() <= 0 || item.getType().isAir();
+    }
+
     /** 将全部物品装入潜影盒, 保留物品组件与数量. */
     @NotNull
     public static List<ItemStack> pack(@NotNull List<ItemStack> items, @NotNull Component name) {
@@ -67,7 +71,7 @@ public final class ItemUtils {
                 }
             }
             for (int slot = 0; slot < result.length && remaining > 0; slot++) {
-                if (result[slot] == null || result[slot].isEmpty()) {
+                if (isEmpty(result[slot])) {
                     ItemStack added = item.clone();
                     added.setAmount(Math.min(remaining, limit));
                     result[slot] = added;

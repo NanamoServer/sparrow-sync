@@ -13,8 +13,6 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue" alt="License: GPLv3"></a>
   <img src="https://img.shields.io/github/languages/code-size/NanamoServer/sparrow-sync" alt="Code Size">
-  <img src="https://img.shields.io/bstats/servers/33952" alt="bStats Servers">
-  <img src="https://img.shields.io/bstats/players/33952" alt="bStats Players">
   <a href="https://nanamoserver.github.io/sparrow-sync-wiki/"><img src="https://img.shields.io/badge/📙-User%20Manual-D2691E" alt="User Manual"></a>
 </p>
 

@@ -24,10 +24,11 @@ import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.network.NMSPacketEvent;
-import net.momirealms.sparrow.ui.network.NMSPacketListener;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.network.NetworkUser;
-import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -41,7 +42,6 @@ public final class ConfigurationPacketGate implements LoginGate {
 
     private SparrowSync plugin;
     private SessionManager sessionManager;
-    private NetworkManager networkManager;
 
     public ConfigurationPacketGate(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -50,13 +50,11 @@ public final class ConfigurationPacketGate implements LoginGate {
     @Override
     public void onDelayedEnable() {
         this.sessionManager = this.plugin.sessionManager();
-        this.networkManager = SparrowUI.getInstance().networkManager();
-        this.networkManager.registerNMSPacketListener(new NMSPacketListener() {
-            @Override
-            public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
-                ConfigurationPacketGate.this.onFinishConfiguration(user, event);
-            }
-        }, ClientboundFinishConfigurationPacket.class, PacketFlow.CLIENTBOUND);
+        NetworkManager networkManager = SparrowUI.getInstance().networkManager();
+        networkManager.listenNMS(
+                new PacketType("minecraft:finish_configuration", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND),
+                (user, event, packet) -> this.onFinishConfiguration(user, event)
+        );
     }
 
     // 运行在连接的 eventLoop 上, 不能阻塞等待
@@ -76,7 +74,7 @@ public final class ConfigurationPacketGate implements LoginGate {
             SessionState state = existing.state();
             // 如果是新连接并且旧连接还未释放, 就在旧连接Channel上注册关闭时进行登录的回调, 然后持续等待.
             if (passed && (state == SessionState.SAVING || state == SessionState.CLOSED)) {
-                event.cancelled(true);
+                event.cancel();
                 ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
                 existing.released().thenRun(() -> channel.eventLoop().execute(() -> {
                     if (channel.isActive()) {
@@ -85,12 +83,12 @@ public final class ConfigurationPacketGate implements LoginGate {
                 }));
                 return;
             }
-            event.cancelled(true);
+            event.cancel();
             this.rejectTooFast(listener, uuid, name, "previous session is still " + state);
             return;
         }
         // 暂缓发送配置结束包, 数据准备期间暂停原版的应答超时计时
-        event.cancelled(true);
+        event.cancel();
         ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, false);
         this.beginLogin(user, listener, connection, uuid, name);
     }
@@ -188,7 +186,7 @@ public final class ConfigurationPacketGate implements LoginGate {
             ServerCommonPacketListenerImplProxy.INSTANCE.setClosedListenerTime(listener, TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
             ServerCommonPacketListenerImplProxy.INSTANCE.setClosed(listener, true);
             this.plugin.logger().file(LogCategory.JOIN, uuid, name, LogConstants.GATE_RELEASED, name);
-            this.networkManager.send(user, ClientboundFinishConfigurationPacket.INSTANCE);
+            user.sendPacketSilently(ClientboundFinishConfigurationPacket.INSTANCE);
         });
     }
 

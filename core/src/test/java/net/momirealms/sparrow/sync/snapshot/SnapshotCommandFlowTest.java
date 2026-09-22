@@ -225,6 +225,7 @@ class SnapshotCommandFlowTest {
             case "getPlayer" -> this.online.get() && this.uuid.equals(args[0]) ? player : null;
             case "getPlayerExact" -> this.online.get() && "Steve".equalsIgnoreCase((String) args[0]) ? player : null;
             case "getPluginManager" -> events;
+            case "isPrimaryThread" -> Thread.currentThread() == this.entityThread;
             case "getWorld" -> proxy(World.class, (world, call, values) -> null);
             default -> throw new AssertionError(method.getName());
         }));

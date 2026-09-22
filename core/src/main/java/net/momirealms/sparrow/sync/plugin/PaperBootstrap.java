@@ -42,7 +42,6 @@ public final class PaperBootstrap implements PluginBootstrap {
                 new BukkitClassPathAppender(),
                 new PaperPluginClassPathAppender(this.getClass().getClassLoader())
         );
-        this.plugin.onPluginBootstrap(context);
     }
 
     @Override

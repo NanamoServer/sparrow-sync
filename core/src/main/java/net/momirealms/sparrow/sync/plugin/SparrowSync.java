@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.sync.plugin;
 
 import com.mysql.cj.conf.ConnectionUrl;
-import io.papermc.paper.plugin.bootstrap.BootstrapContext;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.momirealms.sparrow.sync.api.SparrowSyncAPI;
 import net.momirealms.sparrow.sync.cluster.HandoffManager;
@@ -191,10 +190,6 @@ public class SparrowSync implements Plugin {
 
     void setJavaPlugin(JavaPlugin javaPlugin) {
         this.javaPlugin = javaPlugin;
-    }
-
-    @Override
-    public void onPluginBootstrap(BootstrapContext context) {
     }
 
     @Override

@@ -76,7 +76,7 @@ public final class SaveTriggerListener implements Listener {
     public void onBeforeDeath(PlayerDeathEvent event) {
         PluginConfig.DeathTrigger settings = PluginConfig.synchronization$saveTriggers().deathTrigger();
         if (!settings.saveBeforeDeath()) return;
-        Player player = event.getPlayer();
+        Player player = event.getEntity();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;
@@ -87,7 +87,7 @@ public final class SaveTriggerListener implements Listener {
     public void onAfterDeath(PlayerDeathEvent event) {
         PluginConfig.DeathTrigger settings = PluginConfig.synchronization$saveTriggers().deathTrigger();
         if (!settings.saveAfterDeath()) return;
-        Player player = event.getPlayer();
+        Player player = event.getEntity();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
         if (session == null || session.state() != SessionState.ACTIVE) return;

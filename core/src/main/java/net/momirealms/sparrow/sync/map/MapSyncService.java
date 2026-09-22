@@ -2,12 +2,12 @@ package net.momirealms.sparrow.sync.map;
 
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
 import net.minecraft.server.MinecraftServer;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.map.cache.MapCache;
 import net.momirealms.sparrow.sync.map.cache.RedisMapCache;
-import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapArchiveRecord;
-import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.map.data.MapData;
 import net.momirealms.sparrow.sync.map.data.MapSource;
 import net.momirealms.sparrow.sync.map.data.StoredMap;
 import net.momirealms.sparrow.sync.map.handler.HideMapHandler;
@@ -21,10 +21,9 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.network.NMSPacketEvent;
-import net.momirealms.sparrow.ui.network.NMSPacketListener;
-import net.momirealms.sparrow.ui.network.NetworkUser;
-import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,12 +64,10 @@ public final class MapSyncService {
         this.pipeline = new MapPipeline(this.plugin.dataRegistry(), List.of(new HideMapHandler(), new SyncMapHandler(this.receiver)), this.plugin.logger());
         new MapInteractionListener().register(this.plugin.javaPlugin());
         // 通过原版地图包发现正在使用的地图, 由 receiver 登记负数 ID.
-        SparrowUI.getInstance().networkManager().registerNMSPacketListener(new NMSPacketListener() {
-            @Override
-            public void onPacketSend(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
-                MapSyncService.this.observe(((ClientboundMapItemDataPacket) packet).mapId().id());
-            }
-        }, ClientboundMapItemDataPacket.class, PacketFlow.CLIENTBOUND);
+        SparrowUI.getInstance().networkManager().listenNMS(
+                new PacketType("minecraft:map_item_data", ConnectionState.PLAY, PacketFlow.CLIENTBOUND),
+                (user, event, packet) -> MapSyncService.this.observe(((ClientboundMapItemDataPacket) packet).mapId().id())
+        );
         MapInvalidationMessage.listener(this::invalidate);
     }
 

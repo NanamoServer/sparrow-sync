@@ -669,7 +669,7 @@ public final class SnapshotDetailGui {
         });
     }
 
-    // 按保存的世界名在本服定位, 异步传送保留坐标与朝向.
+    // 按保存的世界名在本服定位, 传送保留坐标与朝向.
     private void teleport(Player recipient, LocationDataType.PlayerLocation location) {
         if (!this.editable()) {
             return;
@@ -679,7 +679,7 @@ public final class SnapshotDetailGui {
             this.message("location.unavailable");
             return;
         }
-        recipient.teleportAsync(new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch())).whenComplete((moved, failure) -> {
+        PlayerUtils.teleport(recipient, new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch())).whenComplete((moved, failure) -> {
             if (failure != null) {
                 this.failed(failure);
             } else {

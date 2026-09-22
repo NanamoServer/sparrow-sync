@@ -24,6 +24,7 @@ import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
 import net.momirealms.sparrow.sync.util.EventUtils;
+import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -151,7 +152,7 @@ final class SnapshotApplier {
             };
             // 死亡玩家可能无法调度实体任务, 由 retired 回调继续处理
             Runnable retired = () -> {
-                if (player.isConnected() && player.isDead()) {
+                if ((VersionHelper.isPaper() ? player.isConnected() : player.isOnline()) && player.isDead()) {
                     apply.run();
                 }
                 else {
@@ -221,7 +222,7 @@ final class SnapshotApplier {
         } else {
             World world = player.getServer().getWorld(location.world());
             if (world == null) return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed("location world is not loaded: " + location.world()));
-            teleport = player.teleportAsync(new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch()));
+            teleport = PlayerUtils.teleport(player, new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch()));
         }
         return teleport.thenApply(moved -> {
             if (!this.canApplyOnline(session, player)) return new SnapshotApplyResult.Failed("player session ended during restore");

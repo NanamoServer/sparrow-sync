@@ -30,7 +30,7 @@ record SnapshotContents(ItemStack[] inventory, ItemStack[] enderChest, boolean i
 
     private static void append(List<ItemStack> target, ItemStack[] source) {
         for (int i = 0; i < source.length; i++) {
-            if (source[i] != null && !source[i].isEmpty()) {
+            if (!ItemUtils.isEmpty(source[i])) {
                 target.add(source[i].clone());
             }
         }

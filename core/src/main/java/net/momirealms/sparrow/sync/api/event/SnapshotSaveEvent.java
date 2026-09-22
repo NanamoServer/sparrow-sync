@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.api.event;
 
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
+import org.bukkit.Bukkit;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
@@ -24,7 +25,8 @@ public final class SnapshotSaveEvent extends Event implements Cancellable {
 
     @ApiStatus.Internal
     public SnapshotSaveEvent(@NotNull String playerName, @NotNull Snapshot snapshot, @NotNull CompletionStage<SnapshotSaveResult> completion) {
-        super(true);
+        // 垃圾 Spigot 停服后也将异步线程判为主线程, 导致本异步事件被判定在主线程派发, 然后爆炸
+        super(!Bukkit.isPrimaryThread());
         this.playerName = playerName;
         this.snapshot = snapshot;
         this.completion = completion;

@@ -61,6 +61,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
@@ -107,6 +108,7 @@ class CaptureSchedulingTest {
     private Object previousConfig;
     private Object previousServerConfig;
     private volatile boolean cancelEvent;
+    private volatile boolean primaryDuringShutdown;
     private java.util.function.Consumer<SnapshotSaveEvent> eventAction = event -> {};
     private Throwable writeFailure;
 
@@ -119,7 +121,9 @@ class CaptureSchedulingTest {
             if (!method.getName().equals("callEvent")) throw new AssertionError(method.getName());
             assertSame(this.worker.get(), Thread.currentThread());
             SnapshotSaveEvent event = (SnapshotSaveEvent) args[0];
-            assertTrue(event.isAsynchronous());
+            if (event.isAsynchronous() == Bukkit.isPrimaryThread()) {
+                throw new IllegalStateException("SnapshotSaveEvent thread flag does not match Bukkit.isPrimaryThread()");
+            }
             event.setCancelled(this.cancelEvent);
             this.events.add(event);
             this.eventAction.accept(event);
@@ -127,6 +131,7 @@ class CaptureSchedulingTest {
         });
         Server server = (Server) Proxy.newProxyInstance(Server.class.getClassLoader(), new Class<?>[]{Server.class}, (proxy, method, args) -> {
             if (method.getName().equals("getPluginManager")) return manager;
+            if (method.getName().equals("isPrimaryThread")) return this.primaryDuringShutdown;
             throw new AssertionError(method.getName());
         });
         this.previousServer = replace(Bukkit.class, "server", server);
@@ -666,8 +671,11 @@ class CaptureSchedulingTest {
         assertTrue(this.written.isEmpty());
     }
 
-    @Test
-    void shutdownSaveIsAcceptedAfterManagementStopsAndBeforeWriterSeals() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"false, false", "true, false", "false, true", "true, true"})
+    void shutdownSaveIsAcceptedAfterManagementStopsAndBeforeWriterSeals(boolean primaryDuringShutdown, boolean cancelled) throws Exception {
+        this.primaryDuringShutdown = primaryDuringShutdown;
+        this.cancelEvent = cancelled;
         this.service.stopOperations();
         CompletableFuture<SnapshotSaveResult> result = this.sessions.captureNowAndSave(this.session, this.player, SaveCause.SHUTDOWN);
         assertNotNull(result);
@@ -679,7 +687,14 @@ class CaptureSchedulingTest {
         this.awaitSubmissions();
         this.finishWrites();
         assertTrue(this.service.sealAndAwaitSaves(2, TimeUnit.SECONDS));
-        assertEquals(SaveCause.SHUTDOWN, this.written.getFirst().meta().cause());
+        assertEquals(1, this.events.size());
+        if (cancelled) {
+            assertSame(SnapshotSaveResult.CANCELLED, result.get(2, TimeUnit.SECONDS));
+            assertTrue(this.written.isEmpty());
+        } else {
+            assertEquals(StorageProvider.SaveResult.SAVED, assertInstanceOf(SnapshotSaveResult.Settled.class, result.get(2, TimeUnit.SECONDS)).result());
+            assertEquals(SaveCause.SHUTDOWN, this.written.getFirst().meta().cause());
+        }
     }
 
     @Test
