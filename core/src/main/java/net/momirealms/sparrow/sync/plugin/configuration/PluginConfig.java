@@ -611,6 +611,11 @@ public final class PluginConfig {
         boolean persistentData = true;
         boolean potionEffects = true;
         boolean statistics = true;
+
+        @Comment("Synchronize TPS, compass and RAM bar toggles. Requires Purpur patches.")
+        @Comment(lang = "zh-CN", value = "同步 TPS、指南针和内存占用条的显示开关, 需要服务端为 Purpur 及其 Fork.")
+        boolean purpurBar = true;
+
         @Comment("Synchronize player balances. Requires Vault and an economy plugin.")
         @Comment(lang = "zh-CN", value = "是否同步玩家余额, 需要安装 Vault 和经济插件.")
         boolean vault = false;
@@ -673,6 +678,10 @@ public final class PluginConfig {
 
         public boolean statistics() {
             return this.statistics;
+        }
+
+        public boolean purpurBar() {
+            return this.purpurBar;
         }
     }
 

@@ -20,4 +20,22 @@ public interface ServerPlayerProxy {
 
     @MethodInvoker(name = "respawn", activeIf = "has_patch=folia")
     void respawn(Object target, Consumer<Object> completed, PlayerRespawnEvent.RespawnReason reason);
+
+    @MethodInvoker(name = "tpsBar", activeIf = "has_patch=purpur")
+    boolean tpsBar(Object player);
+
+    @MethodInvoker(name = "tpsBar", activeIf = "has_patch=purpur")
+    void tpsBar(Object player, boolean value);
+
+    @MethodInvoker(name = "compassBar", activeIf = "has_patch=purpur")
+    boolean compassBar(Object player);
+
+    @MethodInvoker(name = "compassBar", activeIf = "has_patch=purpur")
+    void compassBar(Object player, boolean value);
+
+    @MethodInvoker(name = "ramBar", activeIf = "has_patch=purpur")
+    boolean ramBar(Object player);
+
+    @MethodInvoker(name = "ramBar", activeIf = "has_patch=purpur")
+    void ramBar(Object player, boolean value);
 }

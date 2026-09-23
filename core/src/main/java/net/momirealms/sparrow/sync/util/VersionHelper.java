@@ -20,6 +20,7 @@ public final class VersionHelper {
     private static final boolean mojmap;
     private static final boolean folia;
     private static final boolean paper;
+    private static final boolean purpur;
     private static final boolean leaves;
     private static final boolean canvas;
     private static final boolean v1_20;
@@ -110,6 +111,7 @@ public final class VersionHelper {
             mojmap = checkMojMap() || v26_1;
             folia = checkFolia();
             paper = checkPaper();
+            purpur = checkPurpur();
             leaves = checkLeaves();
             canvas = checkCanvas();
         } catch (Exception e) {
@@ -193,6 +195,10 @@ public final class VersionHelper {
         return exists("org.leavesmc.leaves.bot.BotList");
     }
 
+    private static boolean checkPurpur() {
+        return exists("org.purpurmc.purpur.PurpurConfig");
+    }
+
     private static boolean checkCanvas() {
         return exists("io.canvasmc.canvas.Config");
     }
@@ -203,6 +209,10 @@ public final class VersionHelper {
 
     public static boolean isPaper() {
         return paper;
+    }
+
+    public static boolean isPurpur() {
+        return purpur;
     }
 
     public static boolean isCanvas() {

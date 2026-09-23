@@ -424,6 +424,9 @@ public class SparrowSync implements Plugin {
         if (enabled.location())         this.dataRegistry.register(new LocationDataType());
         if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
         if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
+        if (enabled.purpurBar() && VersionHelper.isPurpur()) {
+            this.dataRegistry.register(new PurpurBarDataType());
+        }
     }
 
     /**
@@ -597,6 +600,9 @@ public class SparrowSync implements Plugin {
         }
         if (VersionHelper.isCanvas()) {
             patches.add("canvas");
+        }
+        if (VersionHelper.isPurpur()) {
+            patches.add("purpur");
         }
         return patches;
     }
