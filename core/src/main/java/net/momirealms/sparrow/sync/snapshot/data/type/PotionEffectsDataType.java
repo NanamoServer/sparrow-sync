@@ -2,15 +2,25 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Dynamic;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.util.datafix.fixes.References;
+import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
+import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
@@ -20,10 +30,13 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class PotionEffectsDataType implements NativePlayerDataType<List<MobEffectInstance>> {
     public static final DataKey POTION_EFFECTS = DataKey.sparrow("potion_effects");
@@ -102,7 +115,9 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull List<MobEffectInstance> value) {
         Tag effects = value.isEmpty()
                 ? NBT.createList()
-                : CODEC.encodeStart(MinecraftRegistryOps.sparrowNbt(), value).getOrThrow(message -> new IllegalStateException("failed to encode " + POTION_EFFECTS + ": " + message));;
+                : CODEC.encodeStart(MinecraftRegistryOps.sparrowNbt(), value).getOrThrow(message -> new IllegalStateException("failed to encode " + POTION_EFFECTS + ": " + message));
+        Tag attributes = mergeNativeAttributes(playerData.get("attributes"), value);
+        playerData.put("attributes", attributes);
         playerData.put(EFFECTS_KEY, effects);
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
@@ -123,5 +138,58 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
                 instance.showIcon(),
                 hidden == null ? null : copyOf(hidden)
         );
+    }
+
+    /** 复制玩家属性, 清理旧药水加成并按当前效果及等级重建. */
+    @NotNull
+    public static ListTag mergeNativeAttributes(@Nullable Tag current, @NotNull List<MobEffectInstance> effects) {
+        ListTag attributes = current instanceof ListTag list ? list.deepClone() : NBT.createList();
+        Set<String> effectModifiers = new HashSet<>();
+        // 根据注册表识别药水属性, 已经没有对应效果的残留加成也会被清理
+        for (MobEffect effect : BuiltInRegistries.MOB_EFFECT) {
+            effect.createModifiers(0, (attribute, modifier) -> effectModifiers.add(encodeModifier(modifier).getString("id")));
+        }
+        for (int i = 0; i < attributes.size(); i++) {
+            CompoundTag attribute = attributes.getCompound(i);
+            ListTag modifiers = attribute.getList("modifiers", null);
+            if (modifiers == null) continue;
+            for (int j = modifiers.size() - 1; j >= 0; j--) {
+                if (effectModifiers.contains(modifiers.getCompound(j).getString("id"))) modifiers.remove(j);
+            }
+        }
+        // 原版从存档加载效果时不会补建属性, 此处写入与效果等级一致的数值
+        AttributeSupplier defaults = DefaultAttributes.getSupplier(EntityType.PLAYER);
+        for (int i = 0; i < effects.size(); i++) {
+            MobEffectInstance effect = effects.get(i);
+            effect.getEffect().value().createModifiers(effect.getAmplifier(), (attribute, modifier) -> {
+                if (!defaults.hasAttribute(attribute)) return;
+                CompoundTag target = findOrCreateAttribute(attributes, attribute, defaults);
+                ListTag modifiers = target.getList("modifiers", null);
+                if (modifiers == null) {
+                    modifiers = NBT.createList();
+                    target.put("modifiers", modifiers);
+                }
+                modifiers.add(encodeModifier(modifier));
+            });
+        }
+        return attributes;
+    }
+
+    private static CompoundTag findOrCreateAttribute(ListTag attributes, Holder<Attribute> attribute, AttributeSupplier defaults) {
+        String id = RegistryProxy.INSTANCE.getKey(BuiltInRegistries.ATTRIBUTE, attribute.value()).toString();
+        for (int i = 0; i < attributes.size(); i++) {
+            CompoundTag entry = attributes.getCompound(i);
+            if (id.equals(entry.getString("id"))) return entry;
+        }
+        CompoundTag entry = NBT.createCompound();
+        entry.putString("id", id);
+        entry.putDouble("base", defaults.getBaseValue(attribute));
+        attributes.add(entry);
+        return entry;
+    }
+
+    private static CompoundTag encodeModifier(AttributeModifier modifier) {
+        return (CompoundTag) AttributeModifier.CODEC.encodeStart(NBTOps.INSTANCE, modifier)
+                .getOrThrow(message -> new IllegalStateException("failed to encode potion attribute modifier: " + message));
     }
 }
