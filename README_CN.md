@@ -31,6 +31,28 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 - **🗺️ 地图同步**：在服务器之间共享地图数据，支持配置同步模式和交互限制。
 - **🔧 数据恢复工具**：查看本地异常档案，通过快照导入、导出和批量归档命令管理数据。
 
+## 🎬 功能演示
+
+### ✨ 无冻结进服与 🗺️ 跨服地图
+
+<p align="center">
+  <img src="./assets/readme/seamless-sync.gif" alt="玩家进入服务器后无需冻结等待数据同步" width="48%">
+  <img src="./assets/readme/map-sync.gif" alt="玩家切换服务器后仍能查看地图内容" width="48%">
+</p>
+
+### 🖥️ GUI 与文字快照管理
+
+<p align="center">
+  <img src="./assets/readme/snapshot-gui.gif" alt="在游戏内 GUI 中浏览快照" width="48%">
+  <img src="./assets/readme/snapshot-text-panel.gif" alt="通过文字面板浏览快照" width="48%">
+</p>
+
+### 🧾 独立完整日志
+
+<p align="center">
+  <img src="./assets/readme/detailed-logs.gif" alt="Sparrow Sync 的独立详细日志" width="48%">
+</p>
+
 ## 🔧 构建项目
 
 ### 💻 命令行

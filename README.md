@@ -31,6 +31,28 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 - **🗺️ Map Synchronization**: Share map data between servers, with configurable synchronization modes and interaction controls.
 - **🔧 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
 
+## 🎬 See It in Action
+
+### ✨ Seamless transfers and 🗺️ cross-server maps
+
+<p align="center">
+  <img src="./assets/readme/seamless-sync.gif" alt="Player joining without a post-join freeze" width="48%">
+  <img src="./assets/readme/map-sync.gif" alt="Map content visible after switching servers" width="48%">
+</p>
+
+### 🖥️ Snapshot management in the GUI and chat
+
+<p align="center">
+  <img src="./assets/readme/snapshot-gui.gif" alt="Browsing snapshots in the in-game GUI" width="48%">
+  <img src="./assets/readme/snapshot-text-panel.gif" alt="Browsing snapshots through the text panel" width="48%">
+</p>
+
+### 🧾 Detailed logs
+
+<p align="center">
+  <img src="./assets/readme/detailed-logs.gif" alt="Sparrow Sync's separate detailed log" width="48%">
+</p>
+
 ## 🔧 Building the Project
 
 ### 💻 Command Line
