@@ -1,3 +1,4 @@
+import com.github.jengelman.gradle.plugins.shadow.transformers.DontIncludeResourceTransformer
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 
@@ -74,6 +75,12 @@ subprojects {
         }
 
         shadowJar {
+            exclude("META-INF/**")
+            includeEmptyDirs = false
+            transform<DontIncludeResourceTransformer> {
+                resource = "META-INF/MANIFEST.MF"
+            }
+
             // Relocate
             val libs = "net.momirealms.sparrow.sync.libraries"
             relocate("net.kyori", libs)

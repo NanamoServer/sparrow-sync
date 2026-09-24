@@ -120,10 +120,6 @@ buildConfig {
 // Tasks
 tasks {
     shadowJar {
-        mergeServiceFiles()
-        manifest {
-            attributes["paperweight-mappings-namespace"] = "mojang"
-        }
         from(project(":bukkit-proxy").tasks.shadowJar.flatMap { it.archiveFile })
         archiveFileName = "SparrowSync-${libs.versions.project.version.get()}.jar"
         destinationDirectory.set(file("$rootDir/target"))
