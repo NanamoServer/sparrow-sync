@@ -10,6 +10,7 @@ import net.minecraft.util.datafix.fixes.References;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -21,6 +22,7 @@ import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.proxy.minecraft.core.RegistryProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.ops.MinecraftRegistryOps;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
@@ -42,6 +44,7 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
     public static final DataKey POTION_EFFECTS = DataKey.sparrow("potion_effects");
     private static final Codec<List<MobEffectInstance>> CODEC = MobEffectInstance.CODEC.listOf();
     private static final String EFFECTS_KEY = "active_effects";
+    private static final Object PLAYER_ID = IdentifierProxy.INSTANCE.newInstance("minecraft", "player");
 
     @Override
     @NotNull
@@ -158,7 +161,9 @@ public final class PotionEffectsDataType implements NativePlayerDataType<List<Mo
             }
         }
         // 原版从存档加载效果时不会补建属性, 此处写入与效果等级一致的数值
-        AttributeSupplier defaults = DefaultAttributes.getSupplier(EntityType.PLAYER);
+        @SuppressWarnings("unchecked")
+        EntityType<? extends LivingEntity> playerType = (EntityType<? extends LivingEntity>) RegistryProxy.INSTANCE.getValue(BuiltInRegistries.ENTITY_TYPE, PLAYER_ID);
+        AttributeSupplier defaults = DefaultAttributes.getSupplier(playerType);
         for (int i = 0; i < effects.size(); i++) {
             MobEffectInstance effect = effects.get(i);
             effect.getEffect().value().createModifiers(effect.getAmplifier(), (attribute, modifier) -> {
