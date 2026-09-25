@@ -404,13 +404,13 @@ log.sync.save_started: 'Captured the snapshot <arg:2> of <arg:0> (<arg:1>), writ
 log.sync.saved: 'Saved a snapshot for <arg:0> (<arg:1>, <arg:2>, capture <arg:3> ms, async database write <arg:4> ms)'
 log.sync.shutdown_player_saved: 'Saved shutdown data for <arg:0> (synchronous capture <arg:1> ms, async database write <arg:2> ms)'
 log.sync.shutdown_saved: 'Shutdown save: storing snapshots of <arg:0> online player(s)'
-log.sync.shutdown_progress: 'Shutdown save: processed <arg:0>/<arg:1>'
-log.sync.shutdown_stalled: 'Shutdown save: processed <arg:0>/<arg:1>, no progress for <arg:2> s, <arg:3> s remaining'
-log.sync.shutdown_timeout: 'Shutdown save wait timed out: processed <arg:0>/<arg:1>; stopping the wait and starting cleanup'
+log.sync.shutdown_progress: 'Shutdown save progress: processed <arg:0> of <arg:1> save tasks'
+log.sync.shutdown_stalled: 'Shutdown save progress: processed <arg:0> of <arg:1> save tasks; no progress for <arg:2> s, <arg:3> s remaining'
+log.sync.shutdown_timeout: 'Shutdown save wait timed out: processed <arg:0> of <arg:1> save tasks; stopping the wait and starting cleanup'
 log.sync.shutdown_interrupted: 'Shutdown save wait was interrupted; stopping the wait and starting cleanup'
 log.sync.shutdown_summary: 'Shutdown save processing ended: stored <arg:0>, cancelled <arg:1>, failed <arg:2>, unfinished <arg:3>'
-log.sync.shutdown_maps: 'Shutdown cleanup: waiting for map publication'
-log.sync.shutdown_executor: 'Shutdown cleanup: draining the player executor'
+log.sync.shutdown_maps: 'Shutdown cleanup: publishing map data'
+log.sync.shutdown_executor: 'Shutdown cleanup: draining player executor tasks'
 log.sync.user_failed: 'Failed to refresh the name mapping of <arg:0>'
 
 # Exception type overview

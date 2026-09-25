@@ -139,7 +139,7 @@ class TranslationManagerImplTest {
         TranslationManagerImpl manager = new TranslationManagerImpl(new TestPlugin(this.directory, bundled));
         manager.reload();
         assertEquals("custom shutdown text", manager.miniMessageTranslation(LogConstants.SYNC_SHUTDOWN_SAVED));
-        assertTrue(manager.miniMessageTranslation(LogConstants.SYNC_SHUTDOWN_STALLED).contains("<arg:0>/<arg:1>"));
+        assertTrue(manager.miniMessageTranslation(LogConstants.SYNC_SHUTDOWN_STALLED).contains("<arg:0> of <arg:1> save tasks"));
         String written = Files.readString(folder.resolve("en.yml"));
         assertEquals(DependencyVersions.LANG_VERSION, SparrowYaml.builder().build().load(written).getString(Route.from("lang-version")));
         assertTrue(written.contains(LogConstants.SYNC_SHUTDOWN_SUMMARY));

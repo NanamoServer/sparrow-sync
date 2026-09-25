@@ -404,13 +404,13 @@ log.sync.save_started: '已采集 <arg:0> 的快照 <arg:2>（<arg:1>），正�
 log.sync.saved: '已保存 <arg:0> 的快照（<arg:1>，<arg:2>，数据采集 <arg:3> 毫秒，异步落库 <arg:4> 毫秒）'
 log.sync.shutdown_player_saved: '关服时已保存 <arg:0> 的数据（同步采集 <arg:1> 毫秒，异步落库 <arg:2> 毫秒）'
 log.sync.shutdown_saved: '关服保存：正在落库 <arg:0> 名在线玩家的快照'
-log.sync.shutdown_progress: '关服保存：已处理 <arg:0>/<arg:1>'
-log.sync.shutdown_stalled: '关服保存：已处理 <arg:0>/<arg:1>，连续 <arg:2> 秒无进展，剩余等待 <arg:3> 秒'
-log.sync.shutdown_timeout: '关服保存等待超时：已处理 <arg:0>/<arg:1>，停止等待并进入收尾'
+log.sync.shutdown_progress: '关服保存进度：已处理 <arg:0> 项，共需处理 <arg:1> 项'
+log.sync.shutdown_stalled: '关服保存进度：已处理 <arg:0> 项，共需处理 <arg:1> 项；连续 <arg:2> 秒无进展，剩余等待 <arg:3> 秒'
+log.sync.shutdown_timeout: '关服保存等待超时：已处理 <arg:0> 项，共需处理 <arg:1> 项；停止等待并进入收尾'
 log.sync.shutdown_interrupted: '关服保存等待被线程中断，停止等待并进入收尾'
 log.sync.shutdown_summary: '关服保存处理结束：落库成功 <arg:0>，取消 <arg:1>，失败 <arg:2>，未完成 <arg:3>'
-log.sync.shutdown_maps: '关服收尾：等待地图发布完成'
-log.sync.shutdown_executor: '关服收尾：等待玩家执行器排空'
+log.sync.shutdown_maps: '关服收尾：正在发布地图数据'
+log.sync.shutdown_executor: '关服收尾：正在清空玩家执行器中的任务'
 log.sync.user_failed: '刷新 <arg:0> 的名称映射失败'
 
 # Exception type overview
