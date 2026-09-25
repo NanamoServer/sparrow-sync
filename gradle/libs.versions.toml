@@ -46,6 +46,7 @@ reactive-streams = "1.0.4"
 reactor = "3.8.5"
 zstd = "1.5.7-15"
 vaultapi = "1.7.1"
+plan = "5.8.3638"
 
 [plugins]
 shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
@@ -72,6 +73,7 @@ zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 
 husksync = { module = "net.william278.husksync:husksync-bukkit", version = "4.0.0+1.21.10" }
 vaultapi = { module = "com.github.MilkBowl:VaultAPI", version.ref = "vaultapi" }
+plan = { module = "com.github.plan-player-analytics:Plan", version.ref = "plan" }
 
 bstats-base = { module = "org.bstats:bstats-base", version.ref = "bstats" }
 bstats-bukkit = { module = "org.bstats:bstats-bukkit", version.ref = "bstats" }
