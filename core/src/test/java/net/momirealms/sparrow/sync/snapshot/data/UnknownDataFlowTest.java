@@ -160,7 +160,7 @@ class UnknownDataFlowTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         Snapshot source = this.snapshot(first, Map.of(BOOK, NBT.createInt(1)));
-        try (FileLogWriter writer = new FileLogWriter(directory, "HH:mm:ss", "'drops'", this.logger.console)) {
+        try (FileLogWriter writer = new FileLogWriter(directory, "HH:mm:ss", "'drops'", 0, this.logger.console)) {
             this.logger.attachFile(writer);
             ready(pipeline, source);
             ready(pipeline, source);

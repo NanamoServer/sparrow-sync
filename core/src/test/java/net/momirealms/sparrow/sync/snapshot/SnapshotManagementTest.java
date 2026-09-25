@@ -9,9 +9,12 @@ import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.codec.block.BlockCodec;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
-import net.momirealms.sparrow.sync.snapshot.local.SnapshotFilesTest;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotImportResult;
@@ -106,7 +109,7 @@ class SnapshotManagementTest {
 
     @Test
     void pinAndUnpinAreIdempotentAndPinnedSnapshotsCanBeDeleted() {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         UUID player = snapshot.meta().player();
         UUID id = snapshot.meta().id();
         this.stored.put(id, snapshot);
@@ -125,7 +128,7 @@ class SnapshotManagementTest {
         assertSame(SnapshotUnpinResult.NOT_FOUND, this.service.unpin(id).join());
         assertSame(SnapshotDeleteResult.NOT_FOUND, this.service.delete(id).join());
         assertSame(SnapshotExportResult.NOT_FOUND, this.service.export(id, SnapshotFiles.Format.BINARY).join());
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         this.stored.put(snapshot.meta().id(), snapshot);
         SnapshotExportResult.Exported exported = assertInstanceOf(SnapshotExportResult.Exported.class, this.service.export(snapshot.meta().id(), SnapshotFiles.Format.BINARY).join());
         assertEquals(snapshot.meta().id(), exported.snapshotId());
@@ -134,7 +137,7 @@ class SnapshotManagementTest {
 
     @Test
     void importPreservesIdentityDoesNotRotateAndOverwritesExistingContent() throws Exception {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         String output = this.service.files().export(snapshot, SnapshotFiles.Format.BINARY);
         String relative = output.substring("snapshot/output/".length());
         assertInstanceOf(SnapshotImportResult.Imported.class, this.service.importFile(relative).join());
@@ -151,7 +154,7 @@ class SnapshotManagementTest {
     @ParameterizedTest
     @CsvSource({"inventory,crc", "external,crc", "inventory,nbt", "external,nbt", "inventory,compression", "external,compression", "inventory,length", "external,length"})
     void damagedBlockImportKeepsExistingRecordAndCache(String type, String damage) throws Exception {
-        Snapshot original = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot original = snapshot(UUID.randomUUID());
         Tag value = original.data(DataKey.of("unknown", "payload"));
         DataKey inventory = DataKey.sparrow("inventory");
         DataKey external = DataKey.of("external", "payload");
@@ -195,7 +198,7 @@ class SnapshotManagementTest {
 
     @Test
     void deletionInvalidatesCachedBodyBeforeReportingSuccess() {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         this.stored.put(snapshot.meta().id(), snapshot);
         this.cache.publish(snapshot, 15).join();
         this.cache.invalidation = new CompletableFuture<>();
@@ -211,7 +214,7 @@ class SnapshotManagementTest {
 
     @Test
     void missingDeletionLeavesExistingCacheIntact() {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         this.cache.publish(snapshot, 15).join();
         assertSame(SnapshotDeleteResult.NOT_FOUND, this.service.delete(UUID.randomUUID()).join());
         assertTrue(this.cache.invalidations.isEmpty());
@@ -220,7 +223,7 @@ class SnapshotManagementTest {
 
     @Test
     void importInvalidatesPreviousBodyBeforeReportingSuccess() throws Exception {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         Snapshot old = new Snapshot(snapshot.meta(), Map.of());
         this.stored.put(old.meta().id(), old);
         this.cache.publish(old, 15).join();
@@ -237,7 +240,7 @@ class SnapshotManagementTest {
 
     @Test
     void rejectedImportKeepsExistingCache() throws Exception {
-        Snapshot snapshot = SnapshotFilesTest.snapshot(UUID.randomUUID());
+        Snapshot snapshot = snapshot(UUID.randomUUID());
         this.stored.put(snapshot.meta().id(), snapshot);
         this.cache.publish(snapshot, 15).join();
         this.importResult = StorageProvider.SaveResult.REJECTED_OVERSIZED;
@@ -250,5 +253,12 @@ class SnapshotManagementTest {
     @SuppressWarnings("unchecked")
     private static <T> T proxy(Class<T> type, InvocationHandler handler) {
         return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, handler);
+    }
+
+    private static Snapshot snapshot(UUID player) {
+        CompoundTag data = NBT.createCompound();
+        data.putString("value", "kept");
+        return new Snapshot(new SnapshotMeta(UUID.randomUUID(), player, 1234, SaveCause.COMMAND, true, "source", 0),
+                Map.of(DataKey.of("unknown", "payload"), data));
     }
 }

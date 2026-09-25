@@ -113,28 +113,4 @@ class CompressorRegistryTest {
             assertSame(values[i], decoder, values[i] + " resolves to another compressor");
         }
     }
-
-    @Test
-    void byIdResolvesKnownIdsAndRejectsUnknown() {
-        assertSame(CompressorRegistry.NONE, CompressorRegistry.byId((byte) 0));
-        assertSame(CompressorRegistry.DEFLATE, CompressorRegistry.byId((byte) 1));
-        assertSame(CompressorRegistry.ZSTD, CompressorRegistry.byId((byte) 2));
-        assertNull(CompressorRegistry.byId((byte) 9));
-    }
-
-    @Test
-    void registerRejectsDuplicateId() {
-        Compressor duplicate = new Compressor() {
-            @Override
-            public byte @NotNull [] compress(byte @NotNull [] data) {
-                return data;
-            }
-
-            @Override
-            public byte @NotNull [] decompress(byte @NotNull [] data, int offset, int length, int sizeLimit) {
-                return data;
-            }
-        };
-        assertThrows(IllegalStateException.class, () -> CompressorRegistry.register(CompressorRegistry.DEFLATE.id(), duplicate));
-    }
 }

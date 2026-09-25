@@ -12,6 +12,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.sync.map.cache.MapCache;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.map.data.MapData;
@@ -72,7 +74,7 @@ final class MapFlowTestSupport {
     }
 
     static StoredMap map(int pixel) {
-        return new StoredMap(IDENTITY, new MapData(4440, MapDataTest.content(pixel)));
+        return new StoredMap(IDENTITY, new MapData(4440, content(pixel)));
     }
 
     static String dimension(MapItemSavedData data) {
@@ -117,7 +119,7 @@ final class MapFlowTestSupport {
             NmsPlayerFixture.set(ServerChunkCache.class, chunks, "dataStorage", this.storage);
             NmsPlayerFixture.set(ServerLevel.class, this.level, "chunkSource", chunks);
             try {
-                this.replica = this.adapter.prepareReplica(identity, new MapData(4440, MapDataTest.content(0)));
+                this.replica = this.adapter.prepareReplica(identity, new MapData(4440, content(0)));
             } catch (java.io.IOException exception) {
                 throw new AssertionError(exception);
             }
@@ -137,7 +139,7 @@ final class MapFlowTestSupport {
                 byte before = this.replica.colors[0];
                 task.run();
                 if (before != this.replica.colors[0]) {
-                    this.updates.add(new StoredMap(this.identity, new MapData(4440, MapDataTest.content(this.replica.colors[0] & 255))));
+                    this.updates.add(new StoredMap(this.identity, new MapData(4440, content(this.replica.colors[0] & 255))));
                 }
             });
             MapReceiver receiver = new MapReceiver(storage, shared, this.adapter, this.server, ownerId, logger);
@@ -243,5 +245,17 @@ final class MapFlowTestSupport {
             this.touches++;
             return CompletableFuture.completedFuture(this.contents.containsKey(globalId));
         }
+    }
+
+    static CompoundTag content(int pixel) {
+        CompoundTag tag = NBT.createCompound();
+        tag.putString("dimension", "minecraft:overworld");
+        tag.putInt("xCenter", 64);
+        tag.putInt("zCenter", -128);
+        tag.putByte("scale", (byte) 2);
+        byte[] colors = new byte[MapData.PIXEL_COUNT];
+        colors[0] = (byte) pixel;
+        tag.putByteArray("colors", colors);
+        return tag;
     }
 }

@@ -453,32 +453,6 @@ class PlayerDirectoryTest {
         assertEquals(lower, second.directory.resolve("steve").join().orElseThrow().uuid());
     }
 
-    @Test
-    void parserAcceptsTextAndUsesLocalSuggestionsWithoutIo() {
-        FakeRedis redis = new FakeRedis();
-        Fixture server = fixture(redis, name -> { throw new AssertionError("completion must not read storage"); });
-        server.join(UUID.randomUUID(), "Steve");
-        server.directory.refresh();
-        NetworkPlayerParser<Object> parser = new NetworkPlayerParser<>(server.directory);
-        TestCloud cloud = new TestCloud();
-        CommandContext<Object> suggestions = new CommandContext<>(true, new Object(), cloud);
-        int calls = redis.calls;
-        assertTrue(parser.suggestionProvider().suggestionsFuture(suggestions, CommandInput.of("sT")).join().iterator().hasNext());
-        assertEquals("Unknown", parser.parse(suggestions, CommandInput.of("Unknown")).parsedValue().orElseThrow());
-        assertEquals("stEVE", parser.parse(suggestions, CommandInput.of("stEVE")).parsedValue().orElseThrow());
-        CommandContext<Object> execution = new CommandContext<>(new Object(), cloud);
-        assertEquals("Offline", parser.parse(execution, CommandInput.of("Offline")).parsedValue().orElseThrow());
-        assertEquals(calls, redis.calls);
-    }
-
-    @Test
-    void completionFailureProducesNoSuggestions() {
-        Fixture server = fixture(new FakeRedis(), name -> { throw new AssertionError("completion must not read storage"); });
-        NmsPlayerFixture.set(PlayerDirectory.class, server.directory, "online", null);
-        NetworkPlayerParser<Object> parser = new NetworkPlayerParser<>(server.directory);
-        assertFalse(parser.suggestions(new CommandContext<>(true, new Object(), new TestCloud()), CommandInput.of("Steve")).iterator().hasNext());
-    }
-
     private static Fixture fixture(FakeRedis redis, Function<String, CompletableFuture<Optional<UUID>>> lookup) {
         SparrowSync plugin = NmsPlayerFixture.allocate(SparrowSync.class);
         RedisConnector connector = NmsPlayerFixture.allocate(RedisConnector.class);

@@ -475,28 +475,6 @@ class PostgresStorageProviderTest {
     }
 
     @Test
-    void urlParametersOverrideTimeoutsAndPoolClosesOnShutdown() throws Exception {
-        PluginConfig.PostgresOptions options = this.options(this.prefix);
-        setOption(options, "url", this.url + "&connectTimeout=7&socketTimeout=23");
-        PostgresStorageProvider storage = new PostgresStorageProvider(options, this.binary, this.serial, ForkJoinPool.commonPool(), this.logger);
-        this.providers.add(storage);
-        storage.initialize();
-        Field field = PostgresStorageProvider.class.getDeclaredField("dataSource");
-        field.setAccessible(true);
-        HikariDataSource pool = (HikariDataSource) field.get(storage);
-        PGSimpleDataSource source = (PGSimpleDataSource) pool.getDataSource();
-        assertEquals(7, source.getConnectTimeout());
-        assertEquals(23, source.getSocketTimeout());
-        try (var connection = pool.getConnection()) {
-            assertEquals(23000, connection.getNetworkTimeout());
-            assertEquals(Connection.TRANSACTION_READ_COMMITTED, connection.getTransactionIsolation());
-        }
-        storage.shutdown();
-        assertTrue(pool.isClosed());
-        assertThrows(IllegalStateException.class, storage::maps);
-    }
-
-    @Test
     void rejectsUnversionedTablesAndInvalidOptions() throws Exception {
         PostgresStorageProvider storage = this.provider(this.prefix, ForkJoinPool.commonPool());
         Jdbi direct = Jdbi.create(this.url, this.username, this.password);

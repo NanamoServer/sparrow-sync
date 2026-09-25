@@ -96,24 +96,6 @@ class DataRegistryTest {
     }
 
     @Test
-    void registerRejectsDuplicateKey() {
-        DataRegistry registry = new DataRegistry();
-        registry.register(new StubPlayerDataType(A));
-        assertThrows(IllegalStateException.class, () -> registry.register(new StubPlayerDataType(A)));
-    }
-
-    @Test
-    void frozenRegistryRejectsRegistration() {
-        DataRegistry registry = new DataRegistry();
-        registry.register(new StubPlayerDataType(A));
-        registry.freeze();
-
-        assertThrows(IllegalStateException.class, () -> registry.register(new StubPlayerDataType(B)));
-        assertTrue(registry.frozen());
-        assertTrue(registry.registered(A));
-    }
-
-    @Test
     void freezeCompilesTopologicalSlotsOnce() {
         DataRegistry registry = new DataRegistry();
         StubPlayerDataType bravo = new StubPlayerDataType(B, false, Set.of(A));

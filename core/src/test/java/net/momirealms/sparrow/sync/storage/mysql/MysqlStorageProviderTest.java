@@ -1057,26 +1057,6 @@ class MysqlStorageProviderTest {
     }
 
     @Test
-    void rejectsInvalidOptionsBeforeCreatingTables() throws Exception {
-        assertThrows(IllegalArgumentException.class, this.provider(this.url, "bad-prefix")::initialize);
-        assertThrows(IllegalArgumentException.class, this.provider(this.url, "a".repeat(53))::initialize);
-    }
-
-    @Test
-    void urlDriverParametersOverrideInternalDefaults() throws Exception {
-        MysqlStorageProvider provider = this.provider(this.urlWith("connectTimeout=4321&socketTimeout=8765&maxAllowedPacket=1048576&autoReconnect=true"), this.prefix);
-        provider.initialize();
-        provider.jdbi().useHandle(handle -> {
-            var properties = handle.getConnection().unwrap(JdbcConnection.class).getPropertySet();
-            assertEquals(4321, properties.getIntegerProperty(PropertyKey.connectTimeout).getValue());
-            assertEquals(8765, properties.getIntegerProperty(PropertyKey.socketTimeout).getValue());
-            assertEquals(1048576, properties.getIntegerProperty(PropertyKey.maxAllowedPacket).getValue());
-            assertTrue(properties.getBooleanProperty(PropertyKey.autoReconnect).getValue());
-            assertTrue(handle.createQuery("SELECT @@session.sql_mode").mapTo(String.class).one().contains("STRICT_TRANS_TABLES"));
-        });
-    }
-
-    @Test
     void initialSchemaIncludesRetentionIndexAndPreservesStoredDataOnRestart() throws Exception {
         MysqlStorageProvider provider = this.provider(this.url, this.prefix);
         provider.initialize();

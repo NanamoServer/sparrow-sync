@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 
@@ -53,7 +52,6 @@ public final class FileLogWriter implements AutoCloseable {
     private final DateTimeFormatter timeFormat;
     private final DateTimeFormatter dayFormat;
     private final int retentionDays;
-    private final Function<Path, BufferedWriter> writerFactory;
     private final ZoneId zone = ZoneId.systemDefault();
     private final PluginLogger fallback; // 磁盘写不进去时的告警出口, 必须是纯控制台的实现
     private final LinkedBlockingQueue<Entry> queue = new LinkedBlockingQueue<>();
@@ -65,25 +63,12 @@ public final class FileLogWriter implements AutoCloseable {
     private Path writerFile;
     private boolean failureReported;
 
-    public FileLogWriter(@NotNull Path directory, @NotNull PluginLogger fallback) {
-        this(directory, DEFAULT_TIME_PATTERN, DEFAULT_DAY_PATTERN, fallback);
-    }
-
-    public FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, @NotNull PluginLogger fallback) {
-        this(directory, timePattern, fileDatePattern, 0, fallback);
-    }
-
     public FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, int retentionDays, @NotNull PluginLogger fallback) {
-        this(directory, timePattern, fileDatePattern, retentionDays, fallback, FileLogWriter::openWriter);
-    }
-
-    FileLogWriter(@NotNull Path directory, @NotNull String timePattern, @NotNull String fileDatePattern, int retentionDays, @NotNull PluginLogger fallback, @NotNull Function<Path, BufferedWriter> writerFactory) {
         this.directory = directory;
         this.fallback = fallback;
         this.timeFormat = pattern(timePattern, DEFAULT_TIME_PATTERN, fallback);
         this.dayFormat = pattern(fileDatePattern, DEFAULT_DAY_PATTERN, fallback);
         this.retentionDays = retentionDays;
-        this.writerFactory = writerFactory;
         this.worker = new Thread(this::drainLoop, "sparrow-sync-file-log");
         this.worker.setDaemon(true);
         this.worker.start();
@@ -101,23 +86,9 @@ public final class FileLogWriter implements AutoCloseable {
 
     public void submit(@NotNull LogCategory category, @Nullable UUID player, @Nullable String playerName,
                        @NotNull String text, @Nullable String[] args, @Nullable Throwable cause) {
-        this.submit(System.currentTimeMillis(), category, player, playerName, text, args, cause);
-    }
-
-    // 时间由参数给出, 供测试驱动跨天滚动
-    boolean submit(
-            long epochMillis,
-            @NotNull LogCategory category,
-            @Nullable UUID player,
-            @Nullable String playerName,
-            @NotNull String text,
-            @Nullable String[] args,
-            @Nullable Throwable cause
-    ) {
         synchronized (this) {
-            if (this.closed) return false;
-            this.queue.offer(new Entry(epochMillis, category, player, playerName, text, args, cause));
-            return true;
+            if (this.closed) return;
+            this.queue.offer(new Entry(System.currentTimeMillis(), category, player, playerName, text, args, cause));
         }
     }
 
@@ -192,7 +163,7 @@ public final class FileLogWriter implements AutoCloseable {
         }
         Files.createDirectories(this.directory);
         try {
-            this.writer = this.writerFactory.apply(file);
+            this.writer = openWriter(file);
         } catch (UncheckedIOException exception) {
             throw exception.getCause();
         }

@@ -541,7 +541,7 @@ class MapPipelineTest {
     void failedMapsPassThroughWhileOtherMapsContinueAndBothLogsReceiveWarnings() throws Exception {
         RecordingLogger console = new RecordingLogger();
         SyncLogger logger = new SyncLogger(console);
-        logger.attachFile(new FileLogWriter(this.directory, console));
+        logger.attachFile(new FileLogWriter(this.directory, "HH:mm:ss.SSS", "yyyy-MM-dd", 0, console));
         MapHandler failing = new MapHandler() {
             @Override
             @NotNull

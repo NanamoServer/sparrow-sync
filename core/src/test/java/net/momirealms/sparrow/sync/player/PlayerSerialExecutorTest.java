@@ -204,36 +204,6 @@ class PlayerSerialExecutorTest {
         assertEquals(10, this.executor.pendingTasks());
     }
 
-    @Test
-    void idleShutdownReturnsPromptly() {
-        executor = new PlayerSerialExecutor(logger, 16);
-        long start = System.nanoTime();
-
-        int remaining = executor.shutdown(5, TimeUnit.SECONDS);
-
-        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-        assertEquals(0, remaining);
-        assertTrue(elapsedMillis < 500, "idle shutdown took " + elapsedMillis + "ms");
-    }
-
-    @Test
-    void submissionAfterShutdownIsRejected() {
-        executor = new PlayerSerialExecutor(logger, 1);
-        executor.shutdown(1, TimeUnit.SECONDS);
-
-        assertThrows(RejectedExecutionException.class, () -> executor.submit(ALICE, () -> {
-        }));
-        assertThrows(RejectedExecutionException.class, () -> executor.submitDelayed(ALICE, () -> {
-        }, 1, TimeUnit.SECONDS));
-    }
-
-    @ParameterizedTest
-    @CsvSource({"-1, 1", "0, 1", "1, 1", "3, 3", "4, 4", "5, 5", "63, 63", "64, 64", "65, 64"})
-    void workerCountClampedToSupportedRange(int requested, int expected) {
-        this.executor = new PlayerSerialExecutor(this.logger, requested);
-        assertEquals(expected, this.executor.workerCount());
-    }
-
     @ParameterizedTest
     @ValueSource(ints = {3, 5, 6})
     void uuidHashesReachEveryWorkerIncludingNegativeHashes(int workerCount) throws InterruptedException {

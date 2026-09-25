@@ -210,7 +210,7 @@ class NativeMapAdapterTest {
         MapItemSavedData source = MapItemSavedData.createFresh(0, 0, (byte) 0, true, false, Level.OVERWORLD);
         source.colors[0] = 90;
         this.level.setMapData(new MapId(1), source);
-        StoredMap old = new StoredMap(MapFlowTestSupport.IDENTITY, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(10)));
+        StoredMap old = new StoredMap(MapFlowTestSupport.IDENTITY, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(10)));
         assertEquals(1, this.receive("A-world", old).join());
         assertSame(source, this.level.getMapData(new MapId(1)));
         assertEquals(90, source.colors[0]);
@@ -230,7 +230,7 @@ class NativeMapAdapterTest {
     @ParameterizedTest
     @ValueSource(strings = {"legacy", "different-source", "vanilla"})
     void observedReplicaUsesSharedIdentityAndPreservesNativeObject(String localIdentity) throws Exception {
-        MapData oldContent = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(10));
+        MapData oldContent = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(10));
         MapItemSavedData old = this.adapter.prepareReplica(this.identity, oldContent);
         String dimension = switch (localIdentity) {
             case "legacy" -> this.identity.replicaDimension().replace("sparrow-sync:map/", "sparrow-sync:map/6d61696e/");
@@ -243,7 +243,7 @@ class NativeMapAdapterTest {
         Object view = old.mapView;
         byte[] colors = old.colors;
         MapFlowTestSupport.Storage database = new MapFlowTestSupport.Storage();
-        database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
+        database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(20)));
         MapReceiver receiver = new MapReceiver(database, new MapFlowTestSupport.Shared(), this.adapter, this.level.getServer(), "B-world", MapFlowTestSupport.logger(new ArrayList<>()));
         MapFlowTestSupport.scheduler(Runnable::run, Runnable::run);
         receiver.observe(-1);
@@ -257,7 +257,7 @@ class NativeMapAdapterTest {
         assertEquals(-1, receiver.receive(this.identity).join());
         MapItemSavedData current = this.level.getMapData(new MapId(-1));
         current.setDirty(false);
-        database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(30)));
+        database.current = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(30)));
         receiver.refresh(-1);
         assertEquals(30, current.colors[0]);
         assertTrue(current.isDirty());
@@ -512,7 +512,7 @@ class NativeMapAdapterTest {
 
     @Test
     void nativeStoragePersistsNegativeIdAndReloadsWithoutAdapterUpdates() throws Exception {
-        MapData content = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(17));
+        MapData content = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(17));
         MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, content);
         assertSame(prepared, this.adapter.updateReplica(this.level, this.identity, prepared));
         this.storage.saveAndJoin();
@@ -530,7 +530,7 @@ class NativeMapAdapterTest {
 
     @Test
     void nativeMapPacketsRefreshMultipleViewersAndRemainReadableAfterReload() throws Exception {
-        MapItemSavedData replica = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11)));
+        MapItemSavedData replica = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11)));
         this.adapter.updateReplica(this.level, this.identity, replica);
         CraftPlayer handheldViewer = NmsPlayerFixture.create();
         CraftPlayer frameViewer = NmsPlayerFixture.create();
@@ -544,7 +544,7 @@ class NativeMapAdapterTest {
         first.applyToMap(client);
         assertEquals(11, client.colors[0]);
         Object view = replica.mapView;
-        MapItemSavedData updated = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(29)));
+        MapItemSavedData updated = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(29)));
         this.adapter.updateReplica(this.level, this.identity, updated);
         for (CraftPlayer viewer : List.of(handheldViewer, frameViewer)) {
             ClientboundMapItemDataPacket packet = (ClientboundMapItemDataPacket) replica.getUpdatePacket(new MapId(-1), viewer.getHandle());
@@ -576,7 +576,7 @@ class NativeMapAdapterTest {
 
     @Test
     void unchangedReplicaDoesNotDirtyTheFileOrResendPixels() throws Exception {
-        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11));
         MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
         CraftPlayer viewer = this.viewer(replica, 1);
         Object view = replica.mapView;
@@ -594,7 +594,7 @@ class NativeMapAdapterTest {
     @ParameterizedTest
     @ValueSource(strings = {"single", "rectangle", "last-pixel", "full"})
     void pixelUpdatesUseTheSmallestBoundingRectangleForEachViewer(String shape) throws Exception {
-        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11));
         MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
         CraftPlayer first = this.viewer(replica, 1);
         CraftPlayer second = this.viewer(replica, 2);
@@ -626,7 +626,7 @@ class NativeMapAdapterTest {
 
     @Test
     void pixelRectangleIncludesChangesStillWaitingToBeSent() throws Exception {
-        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11));
         MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
         CraftPlayer viewer = this.viewer(replica, 1);
         replica.setColor(1, 2, (byte) 17);
@@ -644,7 +644,7 @@ class NativeMapAdapterTest {
 
     @Test
     void metadataOnlyUpdatesPersistAndSendHeadersWithoutPixelPatches() throws Exception {
-        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11));
         MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
         CraftPlayer viewer = this.viewer(replica, 1);
         replica.setDirty(false);
@@ -675,7 +675,7 @@ class NativeMapAdapterTest {
 
     @Test
     void bannerOnlyUpdatesPreserveLocalDecorationsAndRepairBannerIcons() throws Exception {
-        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(11));
+        MapData data = new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(11));
         MapItemSavedData replica = this.adapter.updateReplica(this.level, this.identity, this.adapter.prepareReplica(this.identity, data));
         CraftPlayer viewer = this.viewer(replica, 1);
         MapDecoration frame = new MapDecoration(MapDecorationTypes.FRAME, (byte) 1, (byte) 2, (byte) 0, Optional.empty());
@@ -730,14 +730,14 @@ class NativeMapAdapterTest {
 
     @Test
     void updatePreservesViewPixelsAndLocalDecorations() throws Exception {
-        MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(4)));
+        MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(4)));
         MapItemSavedData installed = this.adapter.updateReplica(this.level, this.identity, prepared);
         Object view = installed.mapView;
         byte[] pixels = installed.colors;
         MapDecoration frame = new MapDecoration(MapDecorationTypes.FRAME, (byte) 1, (byte) 2, (byte) 0, Optional.empty());
         installed.decorations.put("frame-42", frame);
         installed.setDirty(false);
-        MapItemSavedData next = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(5)));
+        MapItemSavedData next = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(5)));
         assertSame(installed, this.adapter.updateReplica(this.level, this.identity, next));
         assertSame(view, installed.mapView);
         assertSame(pixels, installed.colors);
@@ -748,7 +748,7 @@ class NativeMapAdapterTest {
 
     @Test
     void upgradesLegacyBannerNamesUsingTheSavedDataEnvelope() throws Exception {
-        CompoundTag tag = MapDataTest.content(12);
+        CompoundTag tag = MapFlowTestSupport.content(12);
         ListTag banners = NBT.createList();
         CompoundTag banner = NBT.createCompound();
         banner.putIntArray("pos", new int[]{64, 64, -128});
@@ -766,12 +766,12 @@ class NativeMapAdapterTest {
     void replacesLocalReplicaIdentityButRejectsFutureData() throws Exception {
         MapItemSavedData original = MapItemSavedData.createFresh(0, 0, (byte) 0, false, false, Level.OVERWORLD);
         this.level.setMapData(new MapId(-1), original);
-        MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(6)));
+        MapItemSavedData prepared = this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(6)));
         assertSame(original, this.adapter.updateReplica(this.level, this.identity, prepared));
         assertSame(original, this.level.getMapData(new MapId(-1)));
         assertEquals(this.identity.replicaDimension(), MapFlowTestSupport.dimension(this.level.getMapData(new MapId(-1))));
         assertEquals(6, original.colors[0]);
-        assertThrows(IOException.class, () -> this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION + 1, MapDataTest.content(6))));
+        assertThrows(IOException.class, () -> this.adapter.prepareReplica(this.identity, new MapData(VersionHelper.WORLD_VERSION + 1, MapFlowTestSupport.content(6))));
     }
 
     @Test
@@ -782,7 +782,7 @@ class NativeMapAdapterTest {
         MapItemSavedData replica = MapItemSavedData.createForClient((byte) 0, false, Level.OVERWORLD);
         replica.colors[0] = 10;
         this.level.setMapData(new MapId(-1), replica);
-        StoredMap published = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapDataTest.content(20)));
+        StoredMap published = new StoredMap(this.identity, new MapData(VersionHelper.WORLD_VERSION, MapFlowTestSupport.content(20)));
         assertEquals(1, this.receive(this.identity.source().ownerId(), published).join());
         assertSame(source, this.level.getMapData(new MapId(1)));
         assertEquals(90, source.colors[0]);
