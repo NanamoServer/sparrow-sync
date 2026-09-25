@@ -110,6 +110,11 @@ public final class PDCDataType implements NativePlayerDataType<net.minecraft.nbt
                 ? (net.minecraft.nbt.CompoundTag) NBTOps.INSTANCE.convertTo(NbtOps.INSTANCE, compound)
                 : new net.minecraft.nbt.CompoundTag();
         mergeCompound(merged, value, PluginConfig.synchronization$pdcMergeNamespaces());
+        if (merged.isEmpty()) {
+            if (current == null) return NativeApplyResult.NOT_APPLIED;
+            playerData.remove("BukkitValues");
+            return NativeApplyResult.APPLIED_PLAYER_DATA;
+        }
         // 子树合并成功后再替换根节点, 合并失败时保留原本地数据
         playerData.put("BukkitValues", NbtOps.INSTANCE.convertTo(NBTOps.INSTANCE, merged));
         return NativeApplyResult.APPLIED_PLAYER_DATA;

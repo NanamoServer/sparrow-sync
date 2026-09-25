@@ -47,6 +47,28 @@ class NativeDataTypeTest {
     private final PlayerSession session = new SessionManager(null).tryOpen(PLAYER, "Steve", ConnectionFixture.create());
 
     @Test
+    void emptyNativePdcDoesNotLeaveEmptyBukkitValues() throws Exception {
+        Field configField = PluginConfig.class.getDeclaredField("config");
+        configField.setAccessible(true);
+        Object previous = configField.get(null);
+        configField.set(null, new PluginConfig.ConfigDefinition());
+        try {
+            PDCDataType type = new PDCDataType();
+            CompoundTag playerData = NBT.createCompound();
+            net.minecraft.nbt.CompoundTag remote = new net.minecraft.nbt.CompoundTag();
+
+            assertEquals(NativeApplyResult.NOT_APPLIED, type.applyNative(this.session, playerData, remote));
+            assertNull(playerData.get("BukkitValues"));
+
+            playerData.put("BukkitValues", NBT.createCompound());
+            assertEquals(NativeApplyResult.APPLIED_PLAYER_DATA, type.applyNative(this.session, playerData, remote));
+            assertNull(playerData.get("BukkitValues"));
+        } finally {
+            configField.set(null, previous);
+        }
+    }
+
+    @Test
     void nativePdcMergesIntoSparrowTagWithoutChangingSourceTrees() throws Exception {
         CompoundTag local = NBT.createCompound();
         local.putString("local", "kept");
