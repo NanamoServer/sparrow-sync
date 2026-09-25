@@ -41,6 +41,7 @@ dependencies {
     compileOnly(libs.zstd.jni)
     compileOnly(libs.husksync)
     compileOnly(libs.vaultapi)
+    compileOnly(libs.plan)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -56,6 +57,7 @@ dependencies {
     testImplementation(libs.caffeine)
     testImplementation(libs.husksync)
     testImplementation(libs.vaultapi)
+    testCompileOnly(libs.plan)
     testImplementation(libs.datafixerupper)
     testImplementation(libs.zstd.jni)
     testImplementation(project(":bukkit-proxy"))
@@ -140,7 +142,7 @@ bukkit {
     name = "SparrowSync"
     main = "net.momirealms.sparrow.sync.plugin.SpigotJavaPlugin"
     apiVersion = "26.2"
-    softDepend = listOf("InvSync", "HuskSync", "Vault")
+    softDepend = listOf("InvSync", "HuskSync", "Vault", "Plan")
 }
 
 // paper-plugin.yml
@@ -162,6 +164,11 @@ paper {
             joinClasspath = true
         }
         register("Vault") {
+            load = RelativeLoadOrder.BEFORE
+            required = false
+            joinClasspath = true
+        }
+        register("Plan") {
             load = RelativeLoadOrder.BEFORE
             required = false
             joinClasspath = true

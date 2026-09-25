@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.compatibility.migration.MigrationSource;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV3;
 import net.momirealms.sparrow.sync.compatibility.migration.husksync.HuskSyncSourceV4;
 import net.momirealms.sparrow.sync.compatibility.migration.invsync.InvSyncSource;
+import net.momirealms.sparrow.sync.compatibility.plan.PlanHook;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -50,6 +51,9 @@ public final class CompatibilityManager {
                 this.vaultEconomy = new VaultEconomyService(this.plugin, Bukkit.getServicesManager(), this.plugin.dataRegistry());
                 this.vaultEconomy.onDelayedEnable();
             }, "Vault");
+        }
+        if (this.isPluginEnabled("Plan")) {
+            this.runCatchingHook(() -> new PlanHook(this.plugin).hookIntoPlan(), "Plan");
         }
     }
 
