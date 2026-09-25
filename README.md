@@ -30,6 +30,7 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 - **🖥️ Snapshot Management GUI**: Browse saved snapshots, inspect their contents, restore earlier data, pin records, and export snapshots through an in-game menu.
 - **🗺️ Map Synchronization**: Share map data between servers, with configurable synchronization modes and interaction controls.
 - **🔧 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
+- **⭐ Works great with Plan**: Stay in touch with your community through HuskSync analytics on your Plan web panel.
 
 ## 🎬 See It in Action
 
