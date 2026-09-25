@@ -19,10 +19,8 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class BukkitProxy {
-    private static final int MIN_PLAYER_DATA_STORAGE_VERSION = MinecraftPredicate.parseVersionToInteger("1.21.4");
     private static final int PLAYER_DATA_STORAGE_VERSION_1_21_6 = MinecraftPredicate.parseVersionToInteger("1.21.6");
     private static final int PLAYER_DATA_STORAGE_VERSION_1_21_9 = MinecraftPredicate.parseVersionToInteger("1.21.9");
-    private static final int MAX_PLAYER_DATA_STORAGE_VERSION = MinecraftPredicate.parseVersionToInteger("26.2");
     private static boolean init;
 
     private BukkitProxy() {}
@@ -69,9 +67,6 @@ public final class BukkitProxy {
             Map<UUID, ? extends PlayerDataEntry> sessions
     ) {
         int version = MinecraftPredicate.parseVersionToInteger(versionString);
-        if (version < MIN_PLAYER_DATA_STORAGE_VERSION || version > MAX_PLAYER_DATA_STORAGE_VERSION) {
-            throw new IllegalArgumentException("Unsupported PlayerDataStorage version: " + versionString);
-        }
         if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_9) return new PlayerDataStoragePatch1_21_9(levelAccess, fixerUpper, original, sessions);
         if (version >= PLAYER_DATA_STORAGE_VERSION_1_21_6) return new PlayerDataStoragePatch1_21_6(levelAccess, fixerUpper, original, sessions);
         return new PlayerDataStoragePatch1_21_4(levelAccess, fixerUpper, original, sessions);

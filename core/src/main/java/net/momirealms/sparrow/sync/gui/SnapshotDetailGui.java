@@ -5,6 +5,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
 import net.momirealms.sparrow.sync.compatibility.economy.VaultDataType;
+import net.momirealms.sparrow.sync.proxy.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
@@ -44,7 +45,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -349,7 +349,7 @@ public final class SnapshotDetailGui {
         item.set(DataComponents.CUSTOM_NAME, MinecraftComponents.fromAdventure(name));
         item.set(DataComponents.LORE, new ItemLore(lore.stream().map(MinecraftComponents::fromAdventure).toList()));
         item.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, glint);
-        return CraftItemStack.asCraftMirror(item);
+        return CraftItemStackProxy.INSTANCE.asCraftMirror(item);
     }
 
     // 将快照元信息格式化为 ID、完整时间、原因、来源服和固定状态.

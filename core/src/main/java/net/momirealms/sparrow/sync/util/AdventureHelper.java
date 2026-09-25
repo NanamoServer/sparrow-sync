@@ -9,7 +9,6 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
 import net.kyori.adventure.text.serializer.json.JSONOptions;
-import net.kyori.adventure.text.serializer.json.legacyimpl.NBTLegacyHoverEventSerializer;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import java.util.*;
@@ -45,7 +44,6 @@ public final class AdventureHelper {
      * 私有构造方法, 初始化所有序列化器实例.
      * 根据当前 Minecraft 版本自动配置 GsonComponentSerializer 和 NBTComponentSerializer 的兼容选项:
      * <ul>
-     *     <li>低于 1.20.5: 启用旧版悬浮事件序列化器, 禁用实体 ID 整数数组格式, 禁用 DataComponent 发布模式</li>
      *     <li>低于 1.21.5: 使用驼峰命名的点击/悬浮事件类型, 实体键使用 type 字段且 UUID 使用 id 字段</li>
      * </ul>
      */
@@ -54,11 +52,7 @@ public final class AdventureHelper {
         this.miniMessageStrict = MiniMessage.builder().strict(true).build();
         this.miniMessageCustom = MiniMessage.builder().tags(TagResolver.empty()).build();
         GsonComponentSerializer.Builder gsonBuilder = GsonComponentSerializer.builder();
-        if (!VersionHelper.isOrAbove1_20_5()) {
-            gsonBuilder.legacyHoverEventSerializer(NBTLegacyHoverEventSerializer.get());
-            gsonBuilder.editOptions((b) -> b.value(JSONOptions.EMIT_HOVER_SHOW_ENTITY_ID_AS_INT_ARRAY, false));
-        }
-        if (!VersionHelper.isOrAbove1_21_5()) {
+        if (!VersionHelper.isOrAbove1_21_5) {
             gsonBuilder.editOptions((b) -> {
                 b.value(JSONOptions.EMIT_CLICK_EVENT_TYPE, JSONOptions.ClickEventValueMode.CAMEL_CASE);
                 b.value(JSONOptions.EMIT_HOVER_EVENT_TYPE, JSONOptions.HoverEventValueMode.CAMEL_CASE);

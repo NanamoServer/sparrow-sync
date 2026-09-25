@@ -46,7 +46,7 @@ public final class LocationDataType extends CodecDataType<LocationDataType.Playe
             throw new IllegalStateException("location world is not loaded: " + value.world());
         }
         Location target = new Location(world, value.x(), value.y(), value.z(), value.yaw(), value.pitch());
-        if (VersionHelper.isFolia()) {
+        if (VersionHelper.hasFoliaPatch) {
             player.teleportAsync(target);
             return;
         }

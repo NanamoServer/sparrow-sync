@@ -161,9 +161,9 @@ class NativeDataTypeTest {
     @Test
     void inventoryOnlyUsesNativeLayoutWhenCapacityMatchesThisVersion() {
         InventoryDataType type = allocateWithoutConstructor(InventoryDataType.class);
-        int nativeSize = VersionHelper.isOrAbove1_21_5() ? 43 : 41;
+        int nativeSize = VersionHelper.isOrAbove1_21_5 ? 43 : 41;
         CompoundTag playerData = NBT.createCompound();
-        if (VersionHelper.isOrAbove1_21_5()) {
+        if (VersionHelper.isOrAbove1_21_5) {
             CompoundTag equipment = NBT.createCompound();
             equipment.putString("mainhand", "local-mainhand");
             equipment.putString("feet", "local-feet");
@@ -176,7 +176,7 @@ class NativeDataTypeTest {
         CompoundTag stored = playerData;
         assertEquals(0, stored.getList("Inventory").size());
         assertEquals(6, stored.getInt("SelectedItemSlot"));
-        if (VersionHelper.isOrAbove1_21_5()) {
+        if (VersionHelper.isOrAbove1_21_5) {
             CompoundTag equipment = stored.getCompound("equipment");
             assertNull(equipment.get("mainhand"));
             assertNull(equipment.get("feet"));
@@ -203,7 +203,7 @@ class NativeDataTypeTest {
     @Test
     void invalidHeldSlotBecomesZeroBeforeEncodingDecodingAndNativeApply() throws IOException {
         InventoryDataType type = allocateWithoutConstructor(InventoryDataType.class);
-        int nativeSize = VersionHelper.isOrAbove1_21_5() ? 43 : 41;
+        int nativeSize = VersionHelper.isOrAbove1_21_5 ? 43 : 41;
         for (int heldSlot : new int[]{Integer.MIN_VALUE, -1, 0, 1, 8, 9, Integer.MAX_VALUE}) {
             int expected = heldSlot >= 0 && heldSlot <= 8 ? heldSlot : 0;
             Inventory value = new Inventory(new ItemStack[nativeSize], heldSlot, 0);

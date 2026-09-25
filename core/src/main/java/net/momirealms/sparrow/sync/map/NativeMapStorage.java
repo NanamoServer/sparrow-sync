@@ -27,7 +27,7 @@ public final class NativeMapStorage {
 
     // 替换原版地图缓存, 允许异步采集时遍历.
     public NativeMapStorage(@NotNull MinecraftServer server, int dataVersion) {
-        this.storage = VersionHelper.isOrAbove26_1()
+        this.storage = VersionHelper.isOrAbove26_1
                 ? MinecraftServerProxy.INSTANCE.getDataStorage(server)
                 : ServerLevelProxy.INSTANCE.getDataStorage(server.overworld());
         SavedDataStorageProxy proxy = SavedDataStorageProxy.INSTANCE;
@@ -40,7 +40,7 @@ public final class NativeMapStorage {
     public MapItemSavedData cached(int mapId) {
         MapId id = new MapId(mapId);
         // 1.21.5 起缓存按 SavedDataType 建索引, 更早的版本用存档文件名
-        Object key = VersionHelper.isOrAbove1_21_5() ? MapItemSavedDataProxy.INSTANCE.type(id) : id.key();
+        Object key = VersionHelper.isOrAbove1_21_5 ? MapItemSavedDataProxy.INSTANCE.type(id) : id.key();
         Optional<?> value = this.cache.get(key);
         return value != null && value.orElse(null) instanceof MapItemSavedData data ? data : null;
     }
@@ -51,7 +51,7 @@ public final class NativeMapStorage {
         SavedDataStorageProxy proxy = SavedDataStorageProxy.INSTANCE;
         String name = new MapId(mapId).key();
         try {
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 Object id = IdentifierProxy.INSTANCE.newInstance("minecraft", name);
                 Path path = proxy.getDataFile(this.storage, id);
                 return proxy.readTagFromDisk$1(this.storage, path, DataFixTypes.SAVED_DATA_MAP_DATA, this.dataVersion);

@@ -37,7 +37,7 @@ import java.util.function.Consumer;
 public final class AdvancementsDataType implements NativePlayerDataType<AdvancementsDataType.Advancements> {
     public static final DataKey ADVANCEMENTS = DataKey.sparrow("advancements");
 
-    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7(); // Paper 在此版本起支持延后构造玩家
+    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.hasPaperPatch && VersionHelper.isOrAbove1_21_7; // Paper 在此版本起支持延后构造玩家
     private static final String IDS_KEY = "ids";
     private static final String CRITERIA_KEY = "criteria";
     private static final String COUNTS_KEY = "counts";
@@ -284,7 +284,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
         if (!changed) return;
 
         // 全部条件更新完后统一 flush
-        if (VersionHelper.isOrAbove1_21_5()) {
+        if (VersionHelper.isOrAbove1_21_5) {
             proxy.flushDirty$0(playerAdvancements, handle, false);
         } else {
             proxy.flushDirty(playerAdvancements, handle);
@@ -504,7 +504,7 @@ public final class AdvancementsDataType implements NativePlayerDataType<Advancem
 
     private static void setTriggerActive(PlayerAdvancements playerAdvancements, AdvancementHolder advancement, String criterionName, Object criterion, boolean active) {
         Object trigger = CriterionProxy.INSTANCE.trigger(criterion);
-        if (VersionHelper.isOrAbove26_2()) {
+        if (VersionHelper.isOrAbove26_2) {
             setCurrentTriggerActive(playerAdvancements, advancement, criterionName, criterion, trigger, active);
         } else if (CriterionProxy.SIMPLE_TRIGGER.isInstance(trigger)) {
             setLegacyTriggerActive(playerAdvancements, advancement, criterionName, criterion, trigger, active);

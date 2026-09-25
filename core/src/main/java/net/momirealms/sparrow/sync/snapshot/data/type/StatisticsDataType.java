@@ -45,7 +45,7 @@ import java.util.Set;
 public final class StatisticsDataType implements NativePlayerDataType<StatisticsDataType.Statistics> {
     public static final DataKey STATISTICS = DataKey.sparrow("statistics");
 
-    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7(); // Paper 在此版本起支持延后构造玩家
+    private static final boolean NATIVE_APPLY_SUPPORTED = VersionHelper.hasPaperPatch && VersionHelper.isOrAbove1_21_7; // Paper 在此版本起支持延后构造玩家
     private static final String TYPES_KEY = "types";
     private static final String VALUES_KEY = "values";
     private static final String AMOUNTS_KEY = "amounts";

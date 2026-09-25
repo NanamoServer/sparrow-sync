@@ -152,7 +152,7 @@ final class SnapshotApplier {
             };
             // 死亡玩家可能无法调度实体任务, 由 retired 回调继续处理
             Runnable retired = () -> {
-                if ((VersionHelper.isPaper() ? player.isConnected() : player.isOnline()) && player.isDead()) {
+                if ((VersionHelper.hasPaperPatch ? player.isConnected() : player.isOnline()) && player.isDead()) {
                     apply.run();
                 }
                 else {
@@ -191,7 +191,7 @@ final class SnapshotApplier {
     /** 调用原版重生流程, Folia 完成后回到玩家所在区域. */
     @NotNull
     private CompletableFuture<Void> respawn(@NotNull Player player) {
-        if (!VersionHelper.isFolia()) {
+        if (!VersionHelper.hasFoliaPatch) {
             player.spigot().respawn();
             return CompletableFuture.completedFuture(null);
         }

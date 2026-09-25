@@ -34,7 +34,7 @@ public final class MapInteractionListener implements Listener {
     // 地图总开关启动时读取, 交互开关每次事件读取.
     public void register(@NotNull Plugin plugin) {
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        if (VersionHelper.isPaper()) {
+        if (VersionHelper.hasPaperPatch) {
             Bukkit.getPluginManager().registerEvents(new PaperPreview(), plugin);
         }
     }

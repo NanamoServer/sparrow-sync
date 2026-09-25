@@ -57,6 +57,6 @@ class PurpurBarDataTypeTest {
     @Test
     void paperDoesNotReportPurpurEvenWithOptionEnabled() {
         assertTrue(PluginConfig.synchronization$dataTypes().purpurBar());
-        assertFalse(VersionHelper.isPurpur());
+        assertFalse(VersionHelper.hasPurpurPatch);
     }
 }

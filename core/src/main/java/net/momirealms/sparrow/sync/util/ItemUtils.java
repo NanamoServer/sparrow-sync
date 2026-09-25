@@ -4,6 +4,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemContainerContents;
+import net.momirealms.sparrow.sync.proxy.craftbukkit.inventory.CraftItemStackProxy;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -48,7 +49,7 @@ public final class ItemUtils {
         var item = new net.minecraft.world.item.ItemStack(Items.SHULKER_BOX);
         item.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(items));
         item.set(DataComponents.CUSTOM_NAME, name);
-        return CraftItemStack.asCraftMirror(item);
+        return CraftItemStackProxy.INSTANCE.asCraftMirror(item);
     }
 
     /** 计算整批物品放入后的背包副本, 空间不足时返回 null. */
@@ -91,7 +92,7 @@ public final class ItemUtils {
         ItemStack[] result = new ItemStack[items.length];
         for (int i = 0; i < items.length; i++) {
             if (items[i] != null && !items[i].isEmpty()) {
-                result[i] = CraftItemStack.asBukkitCopy(items[i]);
+                result[i] = CraftItemStackProxy.INSTANCE.asCraftMirror(items[i].copy());
             }
         }
         return result;

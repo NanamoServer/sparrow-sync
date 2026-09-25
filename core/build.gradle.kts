@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.bukkit.plugin.yml)
     alias(libs.plugins.buildconfig)
     id("sparrow-sync.run-servers")
+    id("sparrow-sync.run-spigot")
+    id("sparrow-sync.run-velocity")
 }
 
 // Dependency

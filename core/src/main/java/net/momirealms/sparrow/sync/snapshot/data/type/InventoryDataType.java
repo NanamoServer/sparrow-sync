@@ -132,7 +132,7 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
     @Override
     @NotNull
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Inventory value) {
-        boolean equipmentFormat = VersionHelper.isOrAbove1_21_5();
+        boolean equipmentFormat = VersionHelper.isOrAbove1_21_5;
         int expectedSize = equipmentFormat ? EQUIPMENT_SIZE : LEGACY_SIZE;
         if (value.contents().length != expectedSize || value.dropped() != 0) return NativeApplyResult.NOT_APPLIED;
 

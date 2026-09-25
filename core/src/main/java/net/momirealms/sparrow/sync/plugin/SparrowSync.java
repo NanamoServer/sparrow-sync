@@ -175,7 +175,7 @@ public class SparrowSync implements Plugin {
         this.sessionManager = new SessionManager(this);
         this.playerDirectory = new PlayerDirectory(this);
         this.handoffManager = new HandoffManager(this);
-        this.loginGate = VersionHelper.isPaper() && VersionHelper.isOrAbove1_21_7() ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
+        this.loginGate = VersionHelper.hasPaperPatch && VersionHelper.isOrAbove1_21_7 ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
     }
 
     public static SparrowSync instance() {
@@ -369,7 +369,7 @@ public class SparrowSync implements Plugin {
             this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.PLUGIN_STOPPED);
             this.logger.close();
         }
-        if (VersionHelper.isPaper() && ServerUtils.isRunning()) {
+        if (VersionHelper.hasPaperPatch && ServerUtils.isRunning()) {
             logger().error(" ");
             logger().error(" ");
             logger().error(" ");
@@ -424,7 +424,7 @@ public class SparrowSync implements Plugin {
         if (enabled.location())         this.dataRegistry.register(new LocationDataType());
         if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
         if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
-        if (enabled.purpurBar() && VersionHelper.isPurpur()) {
+        if (enabled.purpurBar() && VersionHelper.hasPurpurPatch) {
             this.dataRegistry.register(new PurpurBarDataType());
         }
     }
@@ -589,19 +589,19 @@ public class SparrowSync implements Plugin {
      */
     private List<String> getPatches() {
         List<String> patches = new ObjectArrayList<>();
-        if (VersionHelper.isPaper()) {
+        if (VersionHelper.hasPaperPatch) {
             patches.add("paper");
         }
-        if (VersionHelper.isFolia()) {
+        if (VersionHelper.hasFoliaPatch) {
             patches.add("folia");
         }
-        if (VersionHelper.isLeaves()) {
+        if (VersionHelper.hasLeavesPatch) {
             patches.add("leaves");
         }
-        if (VersionHelper.isCanvas()) {
+        if (VersionHelper.hasCanvasPatch) {
             patches.add("canvas");
         }
-        if (VersionHelper.isPurpur()) {
+        if (VersionHelper.hasPurpurPatch) {
             patches.add("purpur");
         }
         return patches;

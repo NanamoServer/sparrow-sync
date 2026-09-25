@@ -18,7 +18,7 @@ public final class PlayerUtils {
 
     @NotNull
     public static CompletableFuture<Boolean> teleport(@NotNull Player player, @NotNull Location location) {
-        if (VersionHelper.isPaper()) {
+        if (VersionHelper.hasPaperPatch) {
             return player.teleportAsync(location);
         }
         return CompletableFuture.completedFuture(player.teleport(location));

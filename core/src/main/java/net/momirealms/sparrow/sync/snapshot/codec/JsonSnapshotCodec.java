@@ -32,7 +32,7 @@ import java.util.UUID;
 public final class JsonSnapshotCodec implements SnapshotCodec<String> {
     static final String FIELD_FORMAT = "format";    // JSON 的格式版本保存在顶层字段
 
-    private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5() ? TagParserProxy.INSTANCE.create(NBTOps.INSTANCE) : null;
+    private static final Object SNBT_PARSER = VersionHelper.isOrAbove1_21_5 ? TagParserProxy.INSTANCE.create(NBTOps.INSTANCE) : null;
     private static final JsonWriterSettings JSON_WRITER = JsonWriterSettings.builder().indent(true).build();
 
     @Override

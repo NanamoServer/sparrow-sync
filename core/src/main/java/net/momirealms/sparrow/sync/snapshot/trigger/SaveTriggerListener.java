@@ -48,7 +48,7 @@ public final class SaveTriggerListener implements Listener {
             Player player = players.get(i);
             PlayerSession session = this.sessions.find(player.getUniqueId());
             if (session == null) continue;
-            if (VersionHelper.isFolia()) {
+            if (VersionHelper.hasFoliaPatch) {
                 // Folia 的定时世界保存事件在全局线程触发
                 // 切到玩家区域后再接受保存, SessionManager 会检查会话是否仍有效
                 this.plugin.scheduler().platform().runLater(() -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {}, 0, player);
