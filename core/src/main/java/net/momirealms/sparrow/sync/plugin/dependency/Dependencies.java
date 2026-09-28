@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.plugin.dependency;
 
+import net.momirealms.sparrow.sync.util.VersionHelper;
+
 public final class Dependencies {
     private Dependencies() {}
 
@@ -311,7 +313,7 @@ public final class Dependencies {
     public static final Dependency LETTUCE = Dependency.builder()
             .groupId("io{}lettuce")
             .artifactId("lettuce-core")
-            .version(DependencyVersions.LETTUCE)
+            .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.LETTUCE : DependencyVersions.LETTUCE_LEGACY)
             .addRelocation("netty{}handler{}codec{}dns", "io{}netty{}handler{}codec{}dns")
             .addRelocation("netty{}resolver{}dns", "io{}netty{}resolver{}dns")
             .build();
@@ -343,20 +345,20 @@ public final class Dependencies {
     public static final Dependency NETTY_RESOLVER = Dependency.builder()
             .groupId("io{}netty")
             .artifactId("netty-resolver")
-            .version(DependencyVersions.NETTY)
+            .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.NETTY : DependencyVersions.NETTY_LEGACY)
             .build();
 
     public static final Dependency NETTY_RESOLVER_DNS = Dependency.builder()
             .groupId("io{}netty")
             .artifactId("netty-resolver-dns")
-            .version(DependencyVersions.NETTY)
+            .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.NETTY : DependencyVersions.NETTY_LEGACY)
             .addRelocations(LETTUCE.relocations())
             .build();
 
     public static final Dependency NETTY_CODEC_DNS = Dependency.builder()
             .groupId("io{}netty")
             .artifactId("netty-codec-dns")
-            .version(DependencyVersions.NETTY)
+            .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.NETTY : DependencyVersions.NETTY_LEGACY)
             .addRelocations(LETTUCE.relocations())
             .build();
 

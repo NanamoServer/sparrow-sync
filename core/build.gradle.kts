@@ -101,11 +101,13 @@ buildConfig {
     buildConfigField("POSTGRESQL_DRIVER", libs.versions.postgresql.driver.get())
     buildConfigField("CHECKER_QUAL", libs.versions.checker.qual.get())
     // LETTUCE
-    buildConfigField("LETTUCE", libs.versions.lettuce.get())
+    buildConfigField("LETTUCE", libs.versions.lettuce.asProvider().get())
+    buildConfigField("LETTUCE_LEGACY", libs.versions.lettuce.legacy.get())
     buildConfigField("JACKSON", libs.versions.jackson.core.get())
     buildConfigField("JACKSON_ANNOTATIONS", libs.versions.jackson.annotations.get())
     buildConfigField("JACKSON_DATATYPE", libs.versions.jackson.datatype.get())
-    buildConfigField("NETTY", libs.versions.netty.get())
+    buildConfigField("NETTY", libs.versions.netty.asProvider().get())
+    buildConfigField("NETTY_LEGACY", libs.versions.netty.legacy.get())
     buildConfigField("REACTOR", libs.versions.reactor.get())
     // CLOUD
     buildConfigField("GEANTYREF", libs.versions.geantyref.get())
