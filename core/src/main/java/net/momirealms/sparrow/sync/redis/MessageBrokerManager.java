@@ -32,13 +32,6 @@ public final class MessageBrokerManager {
         this.plugin = plugin;
     }
 
-    public MessageBrokerManager(@NotNull RedisConnector connector, @NotNull String serverId, @NotNull SyncLogger logger) {
-        this.plugin = null;
-        this.connector = connector;
-        this.serverId = serverId;
-        this.logger = logger;
-    }
-
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.serverId = ServerConfig.serverId();

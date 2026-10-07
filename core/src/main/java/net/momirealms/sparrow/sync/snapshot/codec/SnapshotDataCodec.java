@@ -38,15 +38,6 @@ public final class SnapshotDataCodec {
         this.compressThreshold = DEFAULT_COMPRESS_THRESHOLD;
     }
 
-    public SnapshotDataCodec(@NotNull CompressorRegistry compressor) {
-        this(compressor, DEFAULT_COMPRESS_THRESHOLD);
-    }
-
-    public SnapshotDataCodec(@NotNull CompressorRegistry compressor, int compressThreshold) {
-        this.compressor = compressor;
-        this.compressThreshold = compressThreshold;
-    }
-
     public void onLoad() throws IOException {
         CompressorRegistry compressor = PluginConfig.synchronization$compression();
         byte[] probe = compressor.compress(new byte[64]);
@@ -183,5 +174,4 @@ public final class SnapshotDataCodec {
             throw failure;
         }
     }
-
 }

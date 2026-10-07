@@ -189,19 +189,6 @@ public final class PluginConfig {
         String authSource = "admin";
         String collectionPrefix = "sparrow_sync_";
 
-        // 配置映射走无参构造加字段注入, 全参构造供程序化装配和测试使用
-        public MongoOptions() {
-        }
-
-        public MongoOptions(String url, String database, String username, String password, String authSource, String collectionPrefix) {
-            this.url = url;
-            this.database = database;
-            this.username = username;
-            this.password = password;
-            this.authSource = authSource;
-            this.collectionPrefix = collectionPrefix;
-        }
-
         public String url() {
             return this.url;
         }

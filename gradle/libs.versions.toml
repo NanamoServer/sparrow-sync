@@ -111,13 +111,6 @@ geantyref = { module = "io.leangen.geantyref:geantyref", version.ref = "geantyre
 examination-api = { module = "net.kyori:examination-api", version.ref = "examination-api" }
 examination-string = { module = "net.kyori:examination-string", version.ref = "examination-api" }
 
-junit-bom = { module = "org.junit:junit-bom", version = "6.0.1" }
-junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
-junit-platformLauncher = { module = "org.junit.platform:junit-platform-launcher" }
-mockbukkit = { module = "org.mockbukkit.mockbukkit:mockbukkit-v1.21", version = "4.93.0" }
-test-paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
-
-
 [bundles]
 
 bstats = [

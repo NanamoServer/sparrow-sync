@@ -97,9 +97,4 @@ public final class LazySnapshotData implements SnapshotData {
         }
         return Collections.unmodifiableMap(values);
     }
-
-    // 已解码并缓存的类型数量
-    int decodedBlockCount() {
-        return this.cache.size();
-    }
 }

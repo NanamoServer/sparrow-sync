@@ -7,7 +7,6 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
-import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveResult;
@@ -28,12 +27,6 @@ public final class SnapshotStash {
 
     public SnapshotStash(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-    }
-
-    public SnapshotStash(@NotNull Path dataFolder, @NotNull BinarySnapshotCodec codec, @NotNull SyncLogger logger, @NotNull SnapshotCache cache) {
-        this.files = new SnapshotFiles(dataFolder, codec, logger);
-        this.logger = logger;
-        this.cache = cache;
     }
 
     public void onLoad(@NotNull SnapshotFiles files) {

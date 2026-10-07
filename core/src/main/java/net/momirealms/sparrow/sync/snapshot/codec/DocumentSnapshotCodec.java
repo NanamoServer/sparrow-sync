@@ -37,10 +37,6 @@ public final class DocumentSnapshotCodec implements SnapshotCodec<Document> {
         this.plugin = plugin;
     }
 
-    public DocumentSnapshotCodec(@NotNull SnapshotDataCodec dataCodec) {
-        this.dataCodec = dataCodec;
-    }
-
     public void onLoad() {
         this.dataCodec = this.plugin.dataCodec();
     }

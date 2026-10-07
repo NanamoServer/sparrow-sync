@@ -37,34 +37,6 @@ public final class HandoffManager {
         this.deadSilenceMillis = DEAD_SILENCE_MILLIS;
     }
 
-    public HandoffManager(
-            @NotNull MessageBroker<ByteBuf> broker,
-            @NotNull SessionLock lock,
-            @NotNull Predicate<UUID> hasSession,
-            @NotNull ProbeScheduler scheduler
-    ) {
-        this(broker, lock, hasSession, scheduler, PROBE_INTERVAL_MILLIS, PROBE_TIMEOUT_MILLIS, DEAD_SILENCE_MILLIS);
-    }
-
-    HandoffManager(
-            @NotNull MessageBroker<ByteBuf> broker,
-            @NotNull SessionLock lock,
-            @NotNull Predicate<UUID> hasSession,
-            @NotNull ProbeScheduler scheduler,
-            long probeIntervalMillis,
-            long probeTimeoutMillis,
-            long deadSilenceMillis
-    ) {
-        this.broker = broker;
-        this.lock = lock;
-        this.hasSession = hasSession;
-        this.scheduler = scheduler;
-        this.probeIntervalMillis = probeIntervalMillis;
-        this.probeTimeoutMillis = probeTimeoutMillis;
-        this.deadSilenceMillis = deadSilenceMillis;
-        HandoffRequestMessage.service(this);
-    }
-
     public void onLoad() {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();

@@ -31,11 +31,6 @@ public final class SessionLock {
         this.plugin = plugin;
     }
 
-    public SessionLock(@NotNull RedisConnector connector, @NotNull String serverId) {
-        this.connector = connector;
-        this.serverId = serverId;
-    }
-
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.serverId = ServerConfig.serverId();

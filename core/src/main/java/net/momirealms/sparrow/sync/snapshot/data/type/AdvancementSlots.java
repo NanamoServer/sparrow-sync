@@ -13,16 +13,8 @@ import java.util.function.Supplier;
  * 删除的 ID 仍保留槽位, holder 为 null; 完整布局通过 volatile 一次发布.
  */
 final class AdvancementSlots {
-    private final Supplier<Map<?, ?>> advancements; // 延迟获取服务端当前成就 Map
+    private final Supplier<Map<?, ?>> advancements = () -> MinecraftServer.getServer().getAdvancements().advancements; // 延迟获取服务端当前成就 Map
     private volatile Layout layout = new Layout(null, new Object[0], Map.of()); // 当前布局, source 为 null 时尚未构建
-
-    AdvancementSlots() {
-        this(() -> MinecraftServer.getServer().getAdvancements().advancements);
-    }
-
-    AdvancementSlots(Supplier<Map<?, ?>> advancements) {
-        this.advancements = advancements;
-    }
 
     /** 返回当前成就 Map 对应的布局, 必要时重建; Map 连续变化时返回 null. */
     @Nullable

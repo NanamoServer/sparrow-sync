@@ -51,42 +51,6 @@ public final class ServerHeartBeats {
         this.probeWaitMillis = PROBE_WAIT_MILLIS;
     }
 
-    public ServerHeartBeats(
-            @NotNull RedisConnector connector,
-            @NotNull MessageBroker<ByteBuf> broker,
-            @NotNull SessionLock lock,
-            @NotNull String serverId,
-            @NotNull SyncLogger logger,
-            @NotNull HeartbeatScheduler scheduler
-    ) {
-        this(connector, broker, lock, serverId, logger, scheduler, HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TTL_MILLIS, PROBE_WAIT_MILLIS);
-    }
-
-    ServerHeartBeats(
-            @NotNull RedisConnector connector,
-            @NotNull MessageBroker<ByteBuf> broker,
-            @NotNull SessionLock lock,
-            @NotNull String serverId,
-            @NotNull SyncLogger logger,
-            @NotNull HeartbeatScheduler scheduler,
-            long heartbeatIntervalMillis,
-            long heartbeatTtlMillis,
-            long probeWaitMillis
-    ) {
-        this.connector = connector;
-        this.broker = broker;
-        this.lock = lock;
-        this.logger = logger;
-        this.serverId = serverId;
-        this.token = UUID.randomUUID().toString();
-        this.key = ("sparrow-sync:server:" + serverId).getBytes(StandardCharsets.UTF_8);
-        this.scheduler = scheduler;
-        this.heartbeatIntervalMillis = heartbeatIntervalMillis;
-        this.heartbeatTtlMillis = heartbeatTtlMillis;
-        this.probeWaitMillis = probeWaitMillis;
-        ServerProbeMessage.registry(this);
-    }
-
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.broker = this.plugin.messageBrokerManager().broker();

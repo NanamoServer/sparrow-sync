@@ -35,11 +35,6 @@ public final class RedisConnector {
         this.plugin = plugin;
     }
 
-    public RedisConnector(@NotNull PluginConfig.RedisOptions options, @NotNull SyncLogger logger) {
-        this.options = options;
-        this.logger = logger;
-    }
-
     public void onLoad() {
         this.options = PluginConfig.redis();
         this.logger = this.plugin.logger();

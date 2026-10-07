@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.snapshot.codec;
 
-import net.momirealms.sparrow.sync.snapshot.codec.compressor.CompressorRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException.InvalidReason;
@@ -31,14 +30,6 @@ public final class BinarySnapshotCodec implements SnapshotCodec<byte[]> {
 
     public BinarySnapshotCodec(@NotNull SnapshotDataCodec dataCodec) {
         this.dataCodec = dataCodec;
-    }
-
-    public BinarySnapshotCodec(@NotNull CompressorRegistry compressor) {
-        this(new SnapshotDataCodec(compressor));
-    }
-
-    public BinarySnapshotCodec(@NotNull CompressorRegistry compressor, int compressThreshold) {
-        this(new SnapshotDataCodec(compressor, compressThreshold));
     }
 
     @NotNull

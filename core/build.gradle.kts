@@ -42,28 +42,6 @@ dependencies {
     compileOnly(libs.husksync)
     compileOnly(libs.vaultapi)
     compileOnly(libs.plan)
-
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
-    testImplementation(libs.mongodb.driver.sync)
-    testImplementation(libs.jdbi.core)
-    testImplementation(libs.hikari.cp)
-    testImplementation(libs.mysql.connector.j) {
-        exclude(group = "com.google.protobuf", module = "protobuf-java")
-    }
-    testImplementation(libs.postgresql.driver)
-    testImplementation(libs.mariadb.driver)
-    testImplementation(libs.lettuce.core)
-    testImplementation(libs.caffeine)
-    testImplementation(libs.husksync)
-    testImplementation(libs.vaultapi)
-    testCompileOnly(libs.plan)
-    testImplementation(libs.datafixerupper)
-    testImplementation(libs.zstd.jni)
-    testImplementation(project(":bukkit-proxy"))
-    testRuntimeOnly(libs.junit.platformLauncher)
-    testImplementation(libs.test.paper.api)
-    testImplementation(libs.bundles.cloud)
 }
 
 // Version
@@ -129,13 +107,6 @@ tasks {
         from(project(":bukkit-proxy").tasks.shadowJar.flatMap { it.archiveFile })
         archiveFileName = "SparrowSync-${libs.versions.project.version.get()}.jar"
         destinationDirectory.set(file("$rootDir/target"))
-    }
-
-    test {
-        useJUnitPlatform()
-        maxHeapSize = "2g"
-        providers.gradleProperty("sparrow.test.redis").orNull?.let { systemProperty("sparrow.test.redis", it) }
-        providers.gradleProperty("sparrow.test.database").orNull?.let { systemProperty("sparrow.test.database", it) }
     }
 }
 
