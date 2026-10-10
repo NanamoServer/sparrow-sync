@@ -4,6 +4,7 @@ import net.minecraft.stats.Stat;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
 import net.momirealms.sparrow.nbt.Tag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
@@ -107,26 +108,32 @@ final class InvSyncConverter {
             Object parser = TagParserProxy.INSTANCE.create(NBTOps.INSTANCE);
             result.put(DataKey.sparrow("persistent_data"), (CompoundTag) TagParserProxy.INSTANCE.parseFully(parser, snbt));
         }
-        // otherData / pluginData 属于来源插件扩展, 缺少 Sparrow DataKey 契约时不生成对应类型.
+        byte[] pluginData = this.bytes(data, "pluginData");
+        if (pluginData != null) {
+            Integer seed = this.access.decodeEnchantmentSeed(pluginData);
+            if (seed != null) {
+                this.put(result, "enchantment_seed", seed);
+            }
+        }
         return result;
     }
 
     // 从一份源 PlayerData 取出已初始化的二进制字段。
     private byte @Nullable [] bytes(Object data, String field) throws Exception {
-        if (!(boolean) call(data, field + "IsInit")) return null;
+        if (!(boolean) call(data, field.equals("pluginData") ? "pluginDataInit" : field + "IsInit")) return null;
         byte[] bytes = (byte[]) call(data, "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1));
         // 零长数组没有可读取的字段正文.
         return bytes.length == 0 ? null : bytes;
     }
 
-    // 源组件负责解压和读取 SNBT; 只添加 Sparrow 的容器结构与槽位.
     private CompoundTag items(byte[] bytes, int size) throws Exception {
-        var items = NBT.createList();
-        Object parser = TagParserProxy.INSTANCE.create(NBTOps.INSTANCE);
-        for (Map<String, Object> entry : this.access.decodeItems(bytes)) {
+        ListTag items = NBT.createList();
+        List<Map<String, Object>> entries = this.access.decodeItems(bytes);
+        int length = entries.size();
+        for (int i = 0; i < length; i++) {
+            Map<String, Object> entry = entries.get(i);
             int slot = ((Number) entry.get("slot")).intValue();
-            String snbt = this.access.decodeNbt((String) entry.get("item"));
-            CompoundTag item = (CompoundTag) TagParserProxy.INSTANCE.parseFully(parser, snbt);
+            CompoundTag item = this.access.decodeItem((String) entry.get("item"));
             item.putInt("slot", slot);
             items.add(item);
             size = Math.max(size, slot + 1);

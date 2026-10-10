@@ -1,9 +1,18 @@
 package net.momirealms.sparrow.sync.compatibility.migration.invsync;
 
+import net.momirealms.sparrow.nbt.CompoundTag;
+import net.momirealms.sparrow.nbt.NBT;
+import net.momirealms.sparrow.nbt.codec.NBTOps;
+import net.momirealms.sparrow.sync.proxy.minecraft.nbt.TagParserProxy;
 import net.momirealms.sparrow.sync.util.ReflectionUtils;
+import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.invoke.MethodHandle;
@@ -11,12 +20,18 @@ import java.lang.invoke.MethodType;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 final class InvSyncAccess {
     private final Plugin plugin;
 
     InvSyncAccess(@NotNull Plugin plugin) {
         this.plugin = plugin;
+        String version = plugin.getDescription().getVersion();
+        int number = VersionHelper.parseVersionToInteger(version.split("-", 2)[0]);
+        if (number < 20513) {
+            throw new UnsupportedOperationException("InvSync migration requires 2.5.13 or newer; upgrade InvSync before migrating. Installed version: " + version);
+        }
     }
 
     // 从 InvSync 的类加载器加载其内部或重定位后的类。
@@ -62,6 +77,40 @@ final class InvSyncAccess {
         String json = (String) call(compression, "ungzipString", byte[].class, bytes);
         Object gson = call(this.plugin, "getGson");
         return (List<Map<String, Object>>) invoke(method(gson.getClass(), "fromJson", String.class, Class.class), gson, json, List.class);
+    }
+
+    @NotNull
+    CompoundTag decodeItem(@NotNull String value) throws Exception {
+        if (value.startsWith("invsync-item-bin-v")) {
+            Object format = this.singleton("bukkit.serializer.item.ItemNbtFormat");
+            byte[] bytes = (byte[]) call(format, "decodeBinary", String.class, value);
+            // 二进制 NBT 保留空键、数组类型和自定义组件, 根节点带有空名称.
+            return NBT.readCompressed(bytes, true);
+        }
+        Object parser = TagParserProxy.INSTANCE.create(NBTOps.INSTANCE);
+        return (CompoundTag) TagParserProxy.INSTANCE.parseFully(parser, this.decodeNbt(value));
+    }
+
+    @Nullable
+    Integer decodeEnchantmentSeed(byte @NotNull [] bytes) throws IOException {
+        // pluginData 按条目保存 UTF 键、正文长度和字节, 附魔种子的正文为大端 int.
+        try (DataInputStream input = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(bytes)))) {
+            int count = input.readInt();
+            if (count < 0) throw new IOException("Invalid InvSync plugin data entry count: " + count);
+            Integer seed = null;
+            for (int i = 0; i < count; i++) {
+                String key = input.readUTF();
+                int length = input.readInt();
+                if (length < 0) throw new IOException("Invalid InvSync plugin data length: " + length);
+                if (key.equalsIgnoreCase("enchantmentSeed")) {
+                    if (length != Integer.BYTES) throw new IOException("Invalid InvSync enchantment seed length: " + length);
+                    seed = input.readInt();
+                } else {
+                    input.skipNBytes(length);
+                }
+            }
+            return seed;
+        }
     }
 
     // 调用成就序列化器中只读取字节数组的重载。

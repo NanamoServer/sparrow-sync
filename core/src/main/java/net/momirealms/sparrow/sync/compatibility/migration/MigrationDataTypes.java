@@ -4,6 +4,7 @@ import net.momirealms.sparrow.sync.snapshot.data.DataRegistry;
 import net.momirealms.sparrow.sync.snapshot.data.type.AdvancementsDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.AttributesDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.FlightStatusDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
@@ -26,6 +27,7 @@ public final class MigrationDataTypes {
         registry.register(new InventoryDataType());
         registry.register(new EnderChestDataType());
         registry.register(new ExperienceDataType());
+        registry.register(new EnchantmentSeedDataType());
         registry.register(new HealthScaleDataType());
         registry.register(new HealthDataType());
         registry.register(new HungerDataType());
