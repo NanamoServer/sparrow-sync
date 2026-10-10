@@ -26,6 +26,7 @@ public final class PlayerSession implements PlayerDataEntry {
     private LoginDataState loginDataState = LoginDataState.PRELOADING;
     private SnapshotData retainedData = EagerSnapshotData.EMPTY; // 本服未注册的数据, 保存时原样写回
     private String lockToken; // 获取锁时的完整锁值, 释放时原样传回
+    private CompletableFuture<Void> lockAcquisition = CompletableFuture.completedFuture(null);
 
     PlayerSession(@NotNull UUID uuid, @NotNull String playerName, @NotNull Connection connection) {
         this.uuid = uuid;
@@ -137,5 +138,14 @@ public final class PlayerSession implements PlayerDataEntry {
     @Nullable
     synchronized String lockToken() {
         return this.lockToken;
+    }
+
+    @NotNull
+    synchronized CompletableFuture<Void> lockAcquisition() {
+        return this.lockAcquisition;
+    }
+
+    synchronized void lockAcquisition(@NotNull CompletableFuture<Void> lockAcquisition) {
+        this.lockAcquisition = lockAcquisition;
     }
 }

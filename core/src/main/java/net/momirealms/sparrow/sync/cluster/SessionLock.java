@@ -26,6 +26,7 @@ public final class SessionLock {
     private SparrowSync plugin;
     private RedisConnector connector;
     private String serverId;
+    private String instanceId;
 
     public SessionLock(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -34,6 +35,7 @@ public final class SessionLock {
     public void onLoad() {
         this.connector = this.plugin.redisConnector();
         this.serverId = ServerConfig.serverId();
+        this.instanceId = this.plugin.serverRegistry().instanceId();
     }
 
     /**
@@ -102,8 +104,15 @@ public final class SessionLock {
             for (byte[] key : cursor.getKeys()) {
                 byte[] observed = commands.get(key);
                 if (observed == null) continue;
-                LockValue holder = LockValue.parse(text(observed));
-                if (holder == null || !holder.serverId().equals(this.serverId)) continue;
+                String value = text(observed);
+                LockValue holder = LockValue.parse(value);
+                if (holder != null) {
+                    if (!holder.serverId().equals(this.serverId) || holder.instanceId().equals(this.instanceId)) continue;
+                } else {
+                    // 协调升级后, 清理本逻辑服的旧格式残锁.
+                    int separator = value.lastIndexOf(':');
+                    if (separator <= 0 || !value.substring(0, separator).equals(this.serverId)) continue;
+                }
                 // 只删除锁值未变的条目, 保留扫描期间已被接管的锁
                 Long deleted = commands.eval(RELEASE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{key}, observed);
                 if (deleted != 0L) swept++;
@@ -119,7 +128,7 @@ public final class SessionLock {
     }
 
     private String newValue() {
-        return this.serverId + ':' + UUID.randomUUID();
+        return new LockValue(this.serverId, this.instanceId, UUID.randomUUID().toString()).format();
     }
 
     private byte[] key(UUID player) {

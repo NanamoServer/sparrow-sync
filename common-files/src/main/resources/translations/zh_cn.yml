@@ -308,7 +308,7 @@ log.locale.missing_file: 'translations/<arg:0>.yml 不存在，回退到 <arg:1>
 log.lock.acquired: '已取得 <arg:0> 的会话锁'
 log.lock.handoff: '<arg:0> 的会话锁交接完成（<arg:1>，等待 <arg:2> 毫秒）'
 log.lock.released: '已释放 <arg:0> 的会话锁（<arg:1>）'
-log.lock.self_conflict: '<arg:0> 的会话锁被相同 server-id 的服务器持有（<arg:1>），已拒绝登录。请检查集群各服的 server.yml，确认 server-id 没有重复'
+log.lock.self_conflict: '<arg:0> 的会话锁仍被本服务器实例持有（<arg:1>），已拒绝登录'
 log.lock.swept: '启动清理：已清除 <arg:0> 个上次运行残留的会话锁'
 log.lock.waiting: '<arg:0> 的会话锁被 <arg:1> 持有，开始交接探测'
 
@@ -332,6 +332,10 @@ log.redis.version_unsupported: 'Redis 版本为 <arg:0>，要求 Redis <arg:1> �
 log.server.id_duplicate: 'server-id <arg:0> 已被集群中的其他在线服务器占用，正在关闭服务器。请修改本服 server.yml，为共用数据库的每台服务器设置不同的 server-id'
 log.server.id_missing: 'server.yml 中的 server-id 为空，正在关闭服务器。请为共用数据库的每台服务器填写不同的 server-id'
 log.server.id_seized: '上次运行的服务器身份未正常注销（token <arg:0>），已接管'
+log.server.id_lost: '服务器 <arg:0> 已失去心跳身份（实例 <arg:1>），正在关闭服务器'
+log.server.heartbeat_failed: '服务器 <arg:0> 的心跳续期失败（实例 <arg:1>），正在关闭服务器'
+log.server.unregister_failed: '关闭 Redis 前未能完成服务器身份注销'
+log.sync.shutdown_lock_timeout: '停服等待会话解锁超时，仍有 <arg:0> 个玩家会话尚未完成释放'
 
 # log.session
 log.session.join: '进入服务器'

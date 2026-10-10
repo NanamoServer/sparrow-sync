@@ -308,7 +308,7 @@ log.locale.missing_file: 'translations/<arg:0>.yml does not exist, falling back 
 log.lock.acquired: 'Acquired session lock for <arg:0>'
 log.lock.handoff: 'Session lock handoff completed for <arg:0> (<arg:1>, waited <arg:2> ms)'
 log.lock.released: 'Released session lock for <arg:0> (<arg:1>)'
-log.lock.self_conflict: 'Session lock for <arg:0> is held by a server with the same server-id (<arg:1>); login refused. Check server.yml on each server for duplicate server-id values'
+log.lock.self_conflict: 'Session lock for <arg:0> is still held by this server instance (<arg:1>); login refused'
 log.lock.swept: 'Startup sweep: removed <arg:0> session lock(s) left over from the previous run'
 log.lock.waiting: 'Session lock for <arg:0> is held by <arg:1>; probing for handoff'
 
@@ -332,6 +332,10 @@ log.redis.version_unsupported: 'Redis version <arg:0> is unsupported; requires R
 log.server.id_duplicate: 'server-id <arg:0> is already in use by another online server; shutting down this server. Set a different server-id in server.yml for each server sharing the database'
 log.server.id_missing: server-id is empty in server.yml; shutting down the server. Set a different server-id for each server sharing the database
 log.server.id_seized: 'The previous server identity was not unregistered (token <arg:0>); ownership taken over'
+log.server.id_lost: 'Server <arg:0> no longer owns its heartbeat (instance <arg:1>); shutting down'
+log.server.heartbeat_failed: 'Failed to renew the heartbeat for server <arg:0> (instance <arg:1>); shutting down'
+log.server.unregister_failed: 'Failed to finish unregistering the server identity before closing Redis'
+log.sync.shutdown_lock_timeout: 'Shutdown timed out waiting for <arg:0> player sessions to finish releasing their locks'
 
 # log.session
 log.session.join: Logged in

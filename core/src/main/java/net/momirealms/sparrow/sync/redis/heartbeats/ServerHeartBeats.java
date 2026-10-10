@@ -19,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
@@ -28,6 +29,7 @@ public final class ServerHeartBeats {
     private static final long PROBE_WAIT_MILLIS = 3000;                              // 启动冲突探测的应答等待
     private static final String SEIZE_SCRIPT = "local current = redis.call('GET', KEYS[1]); if not current or current == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
     private static final String DELETE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+    private static final String RENEW_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end";
 
     private SparrowSync plugin;
     private RedisConnector connector;
@@ -35,17 +37,18 @@ public final class ServerHeartBeats {
     private SessionLock lock;
     private SyncLogger logger;
     private String serverId;
-    private final String token;  // 本次启动的身份凭据, 心跳键的值
+    private final String instanceId;  // 本次启动的身份凭据, 心跳键的值
     private byte[] key;
     private HeartbeatScheduler scheduler;
     private final long heartbeatIntervalMillis;
     private final long heartbeatTtlMillis;
     private final long probeWaitMillis;
     private volatile SchedulerTask heartbeatTask;
+    private boolean closing;
 
     public ServerHeartBeats(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
-        this.token = UUID.randomUUID().toString();
+        this.instanceId = UUID.randomUUID().toString();
         this.heartbeatIntervalMillis = HEARTBEAT_INTERVAL_MILLIS;
         this.heartbeatTtlMillis = HEARTBEAT_TTL_MILLIS;
         this.probeWaitMillis = PROBE_WAIT_MILLIS;
@@ -76,11 +79,11 @@ public final class ServerHeartBeats {
 
     public boolean initialize() {
         RedisCommands<byte[], byte[]> commands = this.connector.connection().sync();
-        byte[] existing = commands.setGet(this.key, this.token.getBytes(StandardCharsets.UTF_8), SetArgs.Builder.nx().px(this.heartbeatTtlMillis));
+        byte[] existing = commands.setGet(this.key, this.instanceId.getBytes(StandardCharsets.UTF_8), SetArgs.Builder.nx().px(this.heartbeatTtlMillis));
         if (existing != null && !this.claimStaleIdentity(commands, existing)) return false;
+        this.heartbeatTask = this.scheduler.repeating(this::heartbeat, this.heartbeatIntervalMillis);
         int swept = this.lock.sweepStaleLocks(); // 清理上次崩溃残留的玩家锁
         if (swept > 0) this.logger.file(LogCategory.LOCK, null, null, LogConstants.LOCK_SWEPT, String.valueOf(swept));
-        this.heartbeatTask = this.scheduler.repeating(this::heartbeat, this.heartbeatIntervalMillis);
         return true;
     }
 
@@ -93,7 +96,7 @@ public final class ServerHeartBeats {
                 ScriptOutputType.INTEGER,
                 new byte[][]{this.key},
                 observed,
-                this.token.getBytes(StandardCharsets.UTF_8),
+                this.instanceId.getBytes(StandardCharsets.UTF_8),
                 Long.toString(this.heartbeatTtlMillis).getBytes(StandardCharsets.UTF_8)
         );
         if (swapped == 0L) return false;
@@ -104,7 +107,7 @@ public final class ServerHeartBeats {
     // 定向探测持有同 id 的服务器, 等出应答即在线.
     private boolean probeHolder() {
         try {
-            this.broker.publishTwoWay(new ServerProbeMessage(this.token), this.serverId)
+            this.broker.publishTwoWay(new ServerProbeMessage(this.instanceId), this.serverId)
                     .orTimeout(this.probeWaitMillis, TimeUnit.MILLISECONDS)
                     .join();
             return true;
@@ -116,19 +119,46 @@ public final class ServerHeartBeats {
     // 回答一次身份探测.
     @Nullable
     ServerProbeResponseMessage answerProbe(@NotNull String requesterToken) {
-        return this.token.equals(requesterToken) ? null : new ServerProbeResponseMessage(this.token);
+        return this.instanceId.equals(requesterToken) ? null : new ServerProbeResponseMessage(this.instanceId);
     }
 
     // 心跳续期
-    private void heartbeat() {
-        this.connector.connection().async().set(this.key, this.token.getBytes(StandardCharsets.UTF_8), SetArgs.Builder.px(this.heartbeatTtlMillis));
+    private synchronized void heartbeat() {
+        if (this.closing) return;
+        this.connector.connection().async()
+                .<Long>eval(RENEW_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.instanceId.getBytes(StandardCharsets.UTF_8), Long.toString(this.heartbeatTtlMillis).getBytes(StandardCharsets.UTF_8))
+                .whenComplete((renewed, failure) -> {
+                    if (failure == null && renewed != 0L) return;
+                    synchronized (this) {
+                        if (this.closing) return;
+                        this.closing = true;
+                        this.heartbeatTask.cancel();
+                    }
+                    if (failure == null) {
+                        this.logger.error(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_LOST, this.serverId, this.instanceId);
+                    } else {
+                        this.logger.error(LogCategory.LIFECYCLE, null, null, failure, LogConstants.SERVER_HEARTBEAT_FAILED, this.serverId, this.instanceId);
+                    }
+                    Bukkit.getServer().shutdown();
+                });
     }
 
-    public void shutdown() {
-        if (this.connector == null) return;
+    @NotNull
+    public synchronized CompletableFuture<Void> shutdown() {
+        this.closing = true;
         SchedulerTask task = this.heartbeatTask;
         if (task != null) task.cancel();
-        this.connector.connection().async().eval(DELETE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.token.getBytes(StandardCharsets.UTF_8));
+        if (this.connector == null) return CompletableFuture.completedFuture(null);
+        // 与续期共用连接, 注销排在已提交的续期之后.
+        return this.connector.connection().async()
+                .<Long>eval(DELETE_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.instanceId.getBytes(StandardCharsets.UTF_8))
+                .thenApply(deleted -> (Void) null)
+                .toCompletableFuture();
+    }
+
+    @NotNull
+    public String instanceId() {
+        return this.instanceId;
     }
 
     public interface HeartbeatScheduler {

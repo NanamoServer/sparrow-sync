@@ -8,6 +8,7 @@ import net.momirealms.sparrow.sync.cluster.message.HandoffRequestMessage;
 import net.momirealms.sparrow.sync.cluster.message.HandoffResponseMessage;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -23,6 +24,7 @@ public final class HandoffManager {
     private SparrowSync plugin;
     private MessageBroker<ByteBuf> broker;
     private SessionLock lock;
+    private String instanceId;
     private Predicate<UUID> hasSession;
     private ProbeScheduler scheduler;
     private final long probeIntervalMillis;
@@ -40,16 +42,19 @@ public final class HandoffManager {
     public void onLoad() {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();
+        this.instanceId = this.plugin.serverRegistry().instanceId();
         this.hasSession = uuid -> this.plugin.sessionManager().find(uuid) != null || this.plugin.snapshotService().restoringOffline(uuid);
         this.scheduler = (task, delayMillis) -> this.plugin.scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
         HandoffRequestMessage.service(this);
     }
 
     /**
-     * 根据本服内存中的会话和保存记录回答探测, <strong>不得等待保存或执行阻塞 I/O</strong>.
+     * 根据本实例的会话和保存记录回答探测, 目标实例不匹配时返回 null.
+     * <strong>不得等待保存或执行阻塞 I/O</strong>.
      */
-    @NotNull
-    public HandoffResponseMessage answer(@NotNull UUID player) {
+    @Nullable
+    public HandoffResponseMessage answer(@NotNull UUID player, @NotNull String targetInstanceId) {
+        if (!this.instanceId.equals(targetInstanceId)) return null;
         // 已关闭但尚未移除的会话, 以及离线恢复任务, 都需要继续等待
         if (this.hasSession.test(player)) return HandoffResponseMessage.saving();
         if (this.settled.getIfPresent(player) != null) return HandoffResponseMessage.done();
@@ -85,12 +90,11 @@ public final class HandoffManager {
             probe.future.completeExceptionally(new TimeoutException("session lock handoff not settled within the login budget"));
             return;
         }
-        // 锁值无法解析时无法联系持有者, 直接尝试接管
         if (probe.holder == null) {
-            this.seize(probe);
+            probe.future.completeExceptionally(new IllegalStateException("session lock has an unsupported format: " + probe.observed));
             return;
         }
-        this.broker.publishTwoWay(new HandoffRequestMessage(probe.player), probe.holder.serverId())
+        this.broker.publishTwoWay(new HandoffRequestMessage(probe.player, probe.holder.instanceId()), probe.holder.serverId())
                 .orTimeout(this.probeTimeoutMillis, TimeUnit.MILLISECONDS)
                 .whenComplete((response, throwable) -> {
                     // 连续探测失败达到阈值后尝试接管锁

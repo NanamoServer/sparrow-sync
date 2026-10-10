@@ -73,7 +73,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -358,10 +360,20 @@ public class SparrowSync implements Plugin {
             this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         }
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
+        if (this.sessionManager != null)        this.sessionManager.awaitReleases(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.messageBrokerManager != null)  this.messageBrokerManager.shutdown();
+        if (this.serverHeartBeats != null) {
+            try {
+                this.serverHeartBeats.shutdown().get(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                this.logger.warn(LogCategory.LIFECYCLE, null, null, exception, LogConstants.SERVER_UNREGISTER_FAILED);
+            } catch (ExecutionException | TimeoutException exception) {
+                this.logger.warn(LogCategory.LIFECYCLE, null, null, exception, LogConstants.SERVER_UNREGISTER_FAILED);
+            }
+        }
         if (this.scheduler != null)             this.scheduler.shutdownScheduler();
         if (this.scheduler != null)             this.scheduler.shutdownExecutor();
-        if (this.serverHeartBeats != null)      this.serverHeartBeats.shutdown(); // 注销集群身份, 心跳键删除或随 TTL 消失
-        if (this.messageBrokerManager != null)  this.messageBrokerManager.shutdown();
         if (this.redisConnector != null)        this.redisConnector.shutdown();
         if (this.storageProvider != null)       this.storageProvider.shutdown();
         if (this.dependencyManager != null)     this.dependencyManager.shutdown();

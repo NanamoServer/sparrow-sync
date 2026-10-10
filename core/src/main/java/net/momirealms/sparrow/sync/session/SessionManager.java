@@ -33,7 +33,11 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 public final class SessionManager {
@@ -138,12 +142,24 @@ public final class SessionManager {
         }, this.plugin.playerExecutor().executor(session.uuid()));
     }
 
-    /** 将取得的锁交给会话, 会话已失效或关闭时立即释放. */
+    @NotNull
+    public CompletableFuture<Void> acquireLock(@NotNull PlayerSession session, @NotNull Supplier<CompletableFuture<Void>> acquisition) {
+        synchronized (session) {
+            if (!this.accepting || !this.owns(session) || session.state() != SessionState.PREPARING) {
+                return CompletableFuture.failedFuture(new IllegalStateException("player session no longer accepts a lock"));
+            }
+            CompletableFuture<Void> pending = acquisition.get();
+            session.lockAcquisition(pending);
+            return pending;
+        }
+    }
+
+    /** 将取得的锁交给会话, 关闭中的会话等获取流程结束后释放. */
     public void lockAcquired(@NotNull PlayerSession session, @NotNull String lockToken) {
         this.handoffs.clearSettled(session.uuid());
         boolean release;
         synchronized (session) {
-            release = !this.owns(session) || session.state() == SessionState.CLOSED;
+            release = !this.owns(session);
             if (!release) session.lockToken(lockToken);
         }
         if (release) this.sessionLock.release(session.uuid(), lockToken);
@@ -289,21 +305,24 @@ public final class SessionManager {
 
     // 等待 Redis 解锁尝试结束, 再移除会话并通知等待方
     private void releaseSession(PlayerSession session) {
-        String lockToken = session.lockToken();
-        if (lockToken != null) {
-            this.sessionLock
-                    .release(session.uuid(), lockToken)
-                    .whenComplete((deleted, throwable) -> {
-                        this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted));
-                        // 先移除旧会话, 再允许等待方创建新会话
-                        this.sessions.remove(session.uuid(), session);
-                        session.released().complete(null);
-                    });
-            return;
-        }
-        // 先移除旧会话, 再允许等待方创建新会话
-        this.sessions.remove(session.uuid(), session);
-        session.released().complete(null);
+        // 登录取消后, 已发出的抢锁仍可能成功, 收尾覆盖这次迟到的锁.
+        session.lockAcquisition().whenComplete((ignored, failure) -> {
+            String lockToken = session.lockToken();
+            if (lockToken != null) {
+                this.sessionLock
+                        .release(session.uuid(), lockToken)
+                        .whenComplete((deleted, throwable) -> {
+                            this.logger.file(LogCategory.LOCK, session.uuid(), session.playerName(), LogConstants.LOCK_RELEASED, session.playerName(), throwable != null ? "failed" : String.valueOf(deleted));
+                            // 先移除旧会话, 再允许等待方创建新会话
+                            this.sessions.remove(session.uuid(), session);
+                            session.released().complete(null);
+                        });
+                return;
+            }
+            // 先移除旧会话, 再允许等待方创建新会话
+            this.sessions.remove(session.uuid(), session);
+            session.released().complete(null);
+        });
     }
 
     @Nullable
@@ -344,6 +363,22 @@ public final class SessionManager {
         }
         if (accepted > 0) {
             this.logger.info(LogCategory.SAVE, LogConstants.SYNC_SHUTDOWN_SAVED, String.valueOf(accepted));
+        }
+    }
+
+    public boolean awaitReleases(long timeout, @NotNull TimeUnit unit) {
+        CompletableFuture<?>[] releases = this.sessions.values().stream().map(PlayerSession::released).toArray(CompletableFuture[]::new);
+        try {
+            CompletableFuture.allOf(releases).get(Math.max(0, timeout), unit);
+            return true;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (TimeoutException exception) {
+            this.logger.warn(LogCategory.LIFECYCLE, LogConstants.SYNC_SHUTDOWN_LOCK_TIMEOUT, String.valueOf(this.sessions.size()));
+            return false;
+        } catch (ExecutionException exception) {
+            throw new CompletionException(exception.getCause());
         }
     }
 

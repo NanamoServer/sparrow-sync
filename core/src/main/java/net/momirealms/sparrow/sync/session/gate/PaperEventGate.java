@@ -7,7 +7,6 @@ import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConf
 import net.minecraft.network.Connection;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.cluster.LockValue;
@@ -98,7 +97,7 @@ public final class PaperEventGate implements LoginGate, Listener {
         });
         int budget = Math.max(1, PluginConfig.synchronization$loginTimeoutSeconds());
         long lockStart = System.nanoTime();
-        SessionPrepareResult outcome = this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart)
+        SessionPrepareResult outcome = this.sessionManager.acquireLock(session, () -> this.acquireLock(session, uuid, name, lockStart + TimeUnit.SECONDS.toNanos(budget), lockStart))
                 // 取得会话锁后再读取快照, 正常交接时旧会话已完成保存
                 .thenCompose(ignored -> this.sessionManager.prepare(session))
                 .thenCombine(userReady, (prepared, ignored) -> prepared)
@@ -128,15 +127,15 @@ public final class PaperEventGate implements LoginGate, Listener {
             }
             // 被别的服持有, 走交接探测
             case SessionLock.AcquireOutcome.Held(String value) -> {
-                // 本服离线恢复也会持锁, 其余同 server-id 的锁按身份冲突处理
+                // 本实例的离线恢复也会持锁.
                 LockValue holder = LockValue.parse(value);
-                if (holder != null && holder.serverId().equals(ServerConfig.serverId())) {
+                if (holder != null && holder.instanceId().equals(this.plugin.serverRegistry().instanceId())) {
                     // 离线恢复尚未完成, 玩家需稍后重新连接
                     if (this.plugin.snapshotService().restoringOffline(uuid)) {
                         yield CompletableFuture.failedFuture(new IllegalStateException("offline snapshot restore is still saving"));
                     }
                     this.plugin.logger().error(LogCategory.LOCK, uuid, name, LogConstants.LOCK_SELF_CONFLICT, name, value);
-                    yield CompletableFuture.failedFuture(new IllegalStateException("session lock is held by a server with the same server-id"));
+                    yield CompletableFuture.failedFuture(new IllegalStateException("session lock is held by this server instance"));
                 }
                 this.plugin.logger().file(LogCategory.LOCK, uuid, name, LogConstants.LOCK_WAITING, name, value);
                 yield this.plugin.handoffManager()
