@@ -107,7 +107,7 @@ public final class SessionLock {
                 String value = text(observed);
                 LockValue holder = LockValue.parse(value);
                 if (holder != null) {
-                    if (!holder.serverId().equals(this.serverId) || holder.instanceId().equals(this.instanceId)) continue;
+                    if (!holder.serverId().equals(this.serverId)) continue;
                 } else {
                     // 协调升级后, 清理本逻辑服的旧格式残锁.
                     int separator = value.lastIndexOf(':');

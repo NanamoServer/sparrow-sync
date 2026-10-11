@@ -1,9 +1,9 @@
 [versions]
-project-version = "26.10"
+project-version = "26.10.1"
 config-version = "7"
 commands-config-version = "2"
 server-config-version = "1"
-lang-version = "52"
+lang-version = "54"
 mongodb-index-version = "2"
 mysql-schema-version = "1"
 postgresql-schema-version = "1"

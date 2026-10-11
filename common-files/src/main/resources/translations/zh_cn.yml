@@ -333,7 +333,9 @@ log.server.id_duplicate: 'server-id <arg:0> 已被集群中的其他在线服务
 log.server.id_missing: 'server.yml 中的 server-id 为空，正在关闭服务器。请为共用数据库的每台服务器填写不同的 server-id'
 log.server.id_seized: '上次运行的服务器身份未正常注销（token <arg:0>），已接管'
 log.server.id_lost: '服务器 <arg:0> 已失去心跳身份（实例 <arg:1>），正在关闭服务器'
-log.server.heartbeat_failed: '服务器 <arg:0> 的心跳续期失败（实例 <arg:1>），正在关闭服务器'
+log.server.id_reregistered: '服务器 <arg:0> 的心跳身份在 Redis 中已不存在（实例 <arg:1>），期间没有其他实例接管，已重新登记'
+log.server.heartbeat_retrying: '服务器 <arg:0> 的心跳续期出错（实例 <arg:1>）：<arg:2>。服务器继续运行，将在下一次心跳重试'
+log.server.heartbeat_recovered: '服务器 <arg:0> 的心跳续期已恢复（实例 <arg:1>）'
 log.server.unregister_failed: '关闭 Redis 前未能完成服务器身份注销'
 log.sync.shutdown_lock_timeout: '停服等待会话解锁超时，仍有 <arg:0> 个玩家会话尚未完成释放'
 

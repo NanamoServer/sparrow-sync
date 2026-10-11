@@ -29,7 +29,9 @@ public final class ServerHeartBeats {
     private static final long PROBE_WAIT_MILLIS = 3000;                              // 启动冲突探测的应答等待
     private static final String SEIZE_SCRIPT = "local current = redis.call('GET', KEYS[1]); if not current or current == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
     private static final String DELETE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
-    private static final String RENEW_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end";
+    private static final String RENEW_SCRIPT = "local current = redis.call('GET', KEYS[1]); if current == ARGV[1] then redis.call('PEXPIRE', KEYS[1], ARGV[2]) return 1 elseif not current then redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2]) return 2 else return 0 end";
+    private static final long RENEW_KEPT = 1;          // 续期脚本返回值, 键仍属于本实例
+    private static final long RENEW_REREGISTERED = 2;  // 续期脚本返回值, 键已不存在并由本实例重新登记
 
     private SparrowSync plugin;
     private RedisConnector connector;
@@ -45,6 +47,7 @@ public final class ServerHeartBeats {
     private final long probeWaitMillis;
     private volatile SchedulerTask heartbeatTask;
     private boolean closing;
+    private boolean renewFailing;  // 续期命令正在连续报错, 与 closing 共用锁
 
     public ServerHeartBeats(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -128,19 +131,47 @@ public final class ServerHeartBeats {
         this.connector.connection().async()
                 .<Long>eval(RENEW_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.instanceId.getBytes(StandardCharsets.UTF_8), Long.toString(this.heartbeatTtlMillis).getBytes(StandardCharsets.UTF_8))
                 .whenComplete((renewed, failure) -> {
-                    if (failure == null && renewed != 0L) return;
+                    // 续期报错时不判定身份, 留给下一次心跳重试
+                    if (failure != null) {
+                        if (this.renewStateChanged(true)) {
+                            this.logger.warnWithFileCause(
+                                    LogCategory.LIFECYCLE,
+                                    null,
+                                    null,
+                                    failure,
+                                    LogConstants.SERVER_HEARTBEAT_RETRYING,
+                                    this.serverId,
+                                    this.instanceId,
+                                    String.valueOf(failure)
+                            );
+                        }
+                        return;
+                    }
+                    if (renewed == RENEW_KEPT || renewed == RENEW_REREGISTERED) {
+                        if (this.renewStateChanged(false)) {
+                            this.logger.info(LogCategory.LIFECYCLE, LogConstants.SERVER_HEARTBEAT_RECOVERED, this.serverId, this.instanceId);
+                        }
+                        if (renewed == RENEW_REREGISTERED) {
+                            this.logger.warn(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_REREGISTERED, this.serverId, this.instanceId);
+                        }
+                        return;
+                    }
+                    // 键已属于其他实例, 本实例停止服务
                     synchronized (this) {
                         if (this.closing) return;
                         this.closing = true;
                         this.heartbeatTask.cancel();
                     }
-                    if (failure == null) {
-                        this.logger.error(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_LOST, this.serverId, this.instanceId);
-                    } else {
-                        this.logger.error(LogCategory.LIFECYCLE, null, null, failure, LogConstants.SERVER_HEARTBEAT_FAILED, this.serverId, this.instanceId);
-                    }
+                    this.logger.error(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_LOST, this.serverId, this.instanceId);
                     Bukkit.getServer().shutdown();
                 });
+    }
+
+    // 记录续期是否处于报错状态, 状态发生变化且未在关闭时返回 true
+    private synchronized boolean renewStateChanged(boolean failing) {
+        if (this.closing || this.renewFailing == failing) return false;
+        this.renewFailing = failing;
+        return true;
     }
 
     @NotNull

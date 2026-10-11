@@ -333,7 +333,9 @@ log.server.id_duplicate: 'server-id <arg:0> is already in use by another online 
 log.server.id_missing: server-id is empty in server.yml; shutting down the server. Set a different server-id for each server sharing the database
 log.server.id_seized: 'The previous server identity was not unregistered (token <arg:0>); ownership taken over'
 log.server.id_lost: 'Server <arg:0> no longer owns its heartbeat (instance <arg:1>); shutting down'
-log.server.heartbeat_failed: 'Failed to renew the heartbeat for server <arg:0> (instance <arg:1>); shutting down'
+log.server.id_reregistered: 'The heartbeat of server <arg:0> was missing from Redis (instance <arg:1>); no other instance had claimed it, so it was registered again'
+log.server.heartbeat_retrying: 'Failed to renew the heartbeat for server <arg:0> (instance <arg:1>): <arg:2>. The server keeps running and will retry on the next heartbeat'
+log.server.heartbeat_recovered: 'Heartbeat renewal for server <arg:0> has recovered (instance <arg:1>)'
 log.server.unregister_failed: 'Failed to finish unregistering the server identity before closing Redis'
 log.sync.shutdown_lock_timeout: 'Shutdown timed out waiting for <arg:0> player sessions to finish releasing their locks'
 

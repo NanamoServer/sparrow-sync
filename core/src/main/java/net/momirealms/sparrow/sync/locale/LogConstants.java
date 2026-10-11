@@ -18,7 +18,9 @@ public interface LogConstants {
     String SERVER_ID_DUPLICATE = "log.server.id_duplicate";
     String SERVER_ID_SEIZED = "log.server.id_seized";
     String SERVER_ID_LOST = "log.server.id_lost";
-    String SERVER_HEARTBEAT_FAILED = "log.server.heartbeat_failed";
+    String SERVER_ID_REREGISTERED = "log.server.id_reregistered";
+    String SERVER_HEARTBEAT_RETRYING = "log.server.heartbeat_retrying";
+    String SERVER_HEARTBEAT_RECOVERED = "log.server.heartbeat_recovered";
     String SERVER_UNREGISTER_FAILED = "log.server.unregister_failed";
     String SYNC_SHUTDOWN_LOCK_TIMEOUT = "log.sync.shutdown_lock_timeout";
 

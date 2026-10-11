@@ -19,7 +19,7 @@ import java.util.function.Predicate;
 public final class HandoffManager {
     private static final long PROBE_INTERVAL_MILLIS = 500;   // 两次探测的间隔
     private static final long PROBE_TIMEOUT_MILLIS = 500;    // 单次探测的最长等待时间
-    private static final long DEAD_SILENCE_MILLIS = 3000;    // 连续探测失败多久后尝试接管锁
+    private static final long DEAD_SILENCE_MILLIS = 5000;    // 连续探测失败多久后尝试接管锁
 
     private SparrowSync plugin;
     private MessageBroker<ByteBuf> broker;
