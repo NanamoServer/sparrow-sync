@@ -335,7 +335,7 @@ log.server.id_seized: 'The previous server identity was not unregistered (token 
 log.server.id_lost: 'Server <arg:0> no longer owns its heartbeat (instance <arg:1>); shutting down'
 log.server.id_reregistered: 'The heartbeat of server <arg:0> was missing from Redis (instance <arg:1>); no other instance had claimed it, so it was registered again'
 log.server.heartbeat_retrying: 'Failed to renew the heartbeat for server <arg:0> (instance <arg:1>): <arg:2>. The server keeps running and will retry on the next heartbeat'
-log.server.heartbeat_recovered: 'Heartbeat renewal for server <arg:0> has recovered (instance <arg:1>)'
+log.server.heartbeat_history: "Heartbeat history for server <arg:0> (instance <arg:1>) over the last minute:\n<arg:2>"
 log.server.unregister_failed: 'Failed to finish unregistering the server identity before closing Redis'
 log.sync.shutdown_lock_timeout: 'Shutdown timed out waiting for <arg:0> player sessions to finish releasing their locks'
 

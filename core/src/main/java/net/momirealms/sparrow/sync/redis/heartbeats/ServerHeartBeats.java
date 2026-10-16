@@ -17,7 +17,12 @@ import net.momirealms.sparrow.sync.cluster.SessionLock;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -26,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 public final class ServerHeartBeats {
     private static final long HEARTBEAT_INTERVAL_MILLIS = 3000;                      // 心跳续期周期
     private static final long HEARTBEAT_TTL_MILLIS = HEARTBEAT_INTERVAL_MILLIS * 3;  // 心跳键存活期, 停跳超过它身份即消失
+    private static final long HEARTBEAT_HISTORY_NANOS = TimeUnit.MINUTES.toNanos(1);
     private static final long PROBE_WAIT_MILLIS = 3000;                              // 启动冲突探测的应答等待
     private static final String SEIZE_SCRIPT = "local current = redis.call('GET', KEYS[1]); if not current or current == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]) return 1 else return 0 end";
     private static final String DELETE_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
@@ -45,9 +51,10 @@ public final class ServerHeartBeats {
     private final long heartbeatIntervalMillis;
     private final long heartbeatTtlMillis;
     private final long probeWaitMillis;
+    private final Deque<HeartbeatRecord> heartbeatHistory = new ArrayDeque<>();
+    private long lastHeartbeatNanos;
     private volatile SchedulerTask heartbeatTask;
     private boolean closing;
-    private boolean renewFailing;  // 续期命令正在连续报错, 与 closing 共用锁
 
     public ServerHeartBeats(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -128,50 +135,75 @@ public final class ServerHeartBeats {
     // 心跳续期
     private synchronized void heartbeat() {
         if (this.closing) return;
+        long now = System.nanoTime();
+        long intervalMillis = this.lastHeartbeatNanos == 0 ? 0 : TimeUnit.NANOSECONDS.toMillis(now - this.lastHeartbeatNanos);
+        this.lastHeartbeatNanos = now;
+        HeartbeatRecord record = new HeartbeatRecord(now, intervalMillis);
+        this.heartbeatHistory.addLast(record);
+        this.trimHeartbeatHistory(now);
         this.connector.connection().async()
                 .<Long>eval(RENEW_SCRIPT, ScriptOutputType.INTEGER, new byte[][]{this.key}, this.instanceId.getBytes(StandardCharsets.UTF_8), Long.toString(this.heartbeatTtlMillis).getBytes(StandardCharsets.UTF_8))
-                .whenComplete((renewed, failure) -> {
-                    // 续期报错时不判定身份, 留给下一次心跳重试
-                    if (failure != null) {
-                        if (this.renewStateChanged(true)) {
-                            this.logger.warnWithFileCause(
-                                    LogCategory.LIFECYCLE,
-                                    null,
-                                    null,
-                                    failure,
-                                    LogConstants.SERVER_HEARTBEAT_RETRYING,
-                                    this.serverId,
-                                    this.instanceId,
-                                    String.valueOf(failure)
-                            );
-                        }
-                        return;
-                    }
-                    if (renewed == RENEW_KEPT || renewed == RENEW_REREGISTERED) {
-                        if (this.renewStateChanged(false)) {
-                            this.logger.info(LogCategory.LIFECYCLE, LogConstants.SERVER_HEARTBEAT_RECOVERED, this.serverId, this.instanceId);
-                        }
-                        if (renewed == RENEW_REREGISTERED) {
-                            this.logger.warn(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_REREGISTERED, this.serverId, this.instanceId);
-                        }
-                        return;
-                    }
-                    // 键已属于其他实例, 本实例停止服务
-                    synchronized (this) {
-                        if (this.closing) return;
-                        this.closing = true;
-                        this.heartbeatTask.cancel();
-                    }
-                    this.logger.error(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_LOST, this.serverId, this.instanceId);
-                    Bukkit.getServer().shutdown();
-                });
+                .whenComplete((renewed, failure) -> this.handleRenewal(record, renewed, failure));
     }
 
-    // 记录续期是否处于报错状态, 状态发生变化且未在关闭时返回 true
-    private synchronized boolean renewStateChanged(boolean failing) {
-        if (this.closing || this.renewFailing == failing) return false;
-        this.renewFailing = failing;
-        return true;
+    private void handleRenewal(HeartbeatRecord record, @Nullable Long renewed, @Nullable Throwable failure) {
+        synchronized (this) {
+            if (this.closing) return;
+            long now = System.nanoTime();
+            record.completedAt = Instant.now();
+            record.elapsedMillis = TimeUnit.NANOSECONDS.toMillis(now - record.startedNanos);
+            record.failure = failure;
+            this.trimHeartbeatHistory(now);
+            if (failure != null) {
+                record.result = "failed";
+                this.logger.warn(
+                        LogCategory.LIFECYCLE,
+                        null,
+                        null,
+                        failure,
+                        LogConstants.SERVER_HEARTBEAT_RETRYING,
+                        this.serverId,
+                        this.instanceId,
+                        String.valueOf(failure)
+                );
+                return;
+            }
+            record.result = renewed == RENEW_KEPT ? "renewed" : renewed == RENEW_REREGISTERED ? "reregistered" : "identity-lost";
+            if (renewed == RENEW_KEPT) return;
+            if (renewed == RENEW_REREGISTERED) {
+                this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.SERVER_ID_REREGISTERED, this.serverId, this.instanceId);
+                this.logger.file(LogCategory.LIFECYCLE, null, null, LogConstants.SERVER_HEARTBEAT_HISTORY, this.serverId, this.instanceId, this.formatHeartbeatHistory(now));
+                return;
+            }
+            this.closing = true;
+            this.heartbeatTask.cancel();
+        }
+        this.logger.error(LogCategory.LIFECYCLE, LogConstants.SERVER_ID_LOST, this.serverId, this.instanceId);
+        Bukkit.getServer().shutdown();
+    }
+
+    private void trimHeartbeatHistory(long now) {
+        while (!this.heartbeatHistory.isEmpty() && now - this.heartbeatHistory.getFirst().startedNanos > HEARTBEAT_HISTORY_NANOS) {
+            this.heartbeatHistory.removeFirst();
+        }
+    }
+
+    private String formatHeartbeatHistory(long now) {
+        StringWriter history = new StringWriter();
+        PrintWriter output = new PrintWriter(history);
+        for (HeartbeatRecord record : this.heartbeatHistory) {
+            long elapsedMillis = record.completedAt == null ? TimeUnit.NANOSECONDS.toMillis(now - record.startedNanos) : record.elapsedMillis;
+            output.printf(
+                    "started=%s, interval=%d ms, completed=%s, elapsed=%d ms, result=%s%n",
+                    record.startedAt,
+                    record.intervalMillis,
+                    record.completedAt == null ? "pending" : record.completedAt,
+                    elapsedMillis,
+                    record.result
+            );
+            if (record.failure != null) record.failure.printStackTrace(output);
+        }
+        return history.toString();
     }
 
     @NotNull
@@ -195,5 +227,22 @@ public final class ServerHeartBeats {
     public interface HeartbeatScheduler {
         @NotNull
         SchedulerTask repeating(@NotNull Runnable task, long intervalMillis);
+    }
+
+    private static final class HeartbeatRecord {
+        private final Instant startedAt = Instant.now();
+        private final long startedNanos;
+        private final long intervalMillis;
+        @Nullable
+        private Instant completedAt;
+        private long elapsedMillis;
+        private String result = "pending";
+        @Nullable
+        private Throwable failure;
+
+        private HeartbeatRecord(long startedNanos, long intervalMillis) {
+            this.startedNanos = startedNanos;
+            this.intervalMillis = intervalMillis;
+        }
     }
 }
