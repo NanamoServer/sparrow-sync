@@ -599,6 +599,16 @@ public final class PluginConfig {
         boolean potionEffects = true;
         boolean statistics = true;
 
+        @Comment({
+                "Synchronize the last death dimension and block position for specialized setups. Disabled by default.",
+                "Application requires synchronization.native-async-apply.player-data and takes place before login.",
+        })
+        @Comment(lang = "zh-CN", value = {
+                "同步最后死亡的维度和方块坐标, 用于特殊场景, 默认关闭.",
+                "应用需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
+        })
+        boolean lastDeathLocation = false;
+
         @Comment("Synchronize TPS, compass and RAM bar toggles. Requires Purpur patches.")
         @Comment(lang = "zh-CN", value = "同步 TPS、指南针和内存占用条的显示开关, 需要服务端为 Purpur 及其 Fork.")
         boolean purpurBar = true;
@@ -649,6 +659,10 @@ public final class PluginConfig {
 
         public boolean inventory() {
             return this.inventory;
+        }
+
+        public boolean lastDeathLocation() {
+            return this.lastDeathLocation;
         }
 
         public boolean location() {
