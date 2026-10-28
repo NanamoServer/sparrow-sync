@@ -283,11 +283,14 @@ public final class SnapshotDetailGui {
     }
 
     private Item buildClaimButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.SHULKER_BOX, "claim")).addClickHandler(click -> {
-            if (click.clickType() == ClickType.LEFT) {
-                this.pack(click.player());
-            }
-        }).build();
+        return Item.builder()
+                .setItemProviderConstant(this.icon(Material.SHULKER_BOX, "claim", this.text("claim_description")))
+                .addClickHandler(click -> {
+                    if (click.clickType() == ClickType.LEFT) {
+                        this.pack(click.player());
+                    }
+                })
+                .build();
     }
 
     private Item buildRetryButton() {
@@ -688,7 +691,7 @@ public final class SnapshotDetailGui {
         });
     }
 
-    /** 在 UI 点击回调中装箱并发放给点击玩家, 权限与容量在本次操作中检查. */
+    /** 在 UI 点击回调中准备领取物品并整批发放, 权限与容量在本次操作中检查. */
     private void pack(Player recipient) {
         if (!this.editable()) {
             return;
@@ -709,7 +712,7 @@ public final class SnapshotDetailGui {
             return;
         }
         inventory.setStorageContents(storage);
-        this.message("packed", items.size());
+        this.message("claimed");
     }
 
     /**

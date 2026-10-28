@@ -21,13 +21,17 @@ public final class ItemUtils {
         return item == null || item.getAmount() <= 0 || item.getType().isAir();
     }
 
-    /** 将全部物品装入潜影盒, 保留物品组件与数量. */
+    /** 将可装箱物品分装为潜影盒, 其余物品保留为独立物品堆. */
     @NotNull
     public static List<ItemStack> pack(@NotNull List<ItemStack> items, @NotNull Component name) {
         List<ItemStack> result = new ArrayList<>();
         List<net.minecraft.world.item.ItemStack> box = new ArrayList<>(27);
         for (int i = 0; i < items.size(); i++) {
-            var item = CraftItemStack.asNMSCopy(items.get(i));
+            net.minecraft.world.item.ItemStack item = CraftItemStack.asNMSCopy(items.get(i));
+            if (!item.getItem().canFitInsideContainerItems()) {
+                result.add(CraftItemStackProxy.INSTANCE.asCraftMirror(item));
+                continue;
+            }
             int remaining = item.getCount();
             while (remaining > 0) {
                 int amount = Math.min(remaining, item.getMaxStackSize());
