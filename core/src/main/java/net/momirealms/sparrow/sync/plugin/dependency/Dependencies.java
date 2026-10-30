@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.plugin.dependency;
 
+import net.momirealms.sparrow.sync.plugin.dependency.transform.LettuceTransformer;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 
 public final class Dependencies {
@@ -23,7 +24,6 @@ public final class Dependencies {
             .groupId("org.ow2.asm")
             .artifactId("asm")
             .version(DependencyVersions.ASM)
-            .autoLoad(false)
             .build();
 
     public static final Dependency ASM_COMMONS = Dependency.builder()
@@ -310,13 +310,7 @@ public final class Dependencies {
     /**
      * Lettuce
      */
-    public static final Dependency LETTUCE = Dependency.builder()
-            .groupId("io{}lettuce")
-            .artifactId("lettuce-core")
-            .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.LETTUCE : DependencyVersions.LETTUCE_LEGACY)
-            .addRelocation("netty{}handler{}codec{}dns", "io{}netty{}handler{}codec{}dns")
-            .addRelocation("netty{}resolver{}dns", "io{}netty{}resolver{}dns")
-            .build();
+    public static final Dependency LETTUCE = createLettuce();
 
     public static final Dependency JACKSON_CORE = Dependency.builder()
             .groupId("tools{}jackson{}core")
@@ -367,4 +361,17 @@ public final class Dependencies {
             .artifactId("reactor-core")
             .version(DependencyVersions.REACTOR)
             .build();
+
+    private static Dependency createLettuce() {
+        Dependency.Builder builder = Dependency.builder()
+                .groupId("io{}lettuce")
+                .artifactId("lettuce-core")
+                .version(VersionHelper.isOrAbove1_21_11 ? DependencyVersions.LETTUCE : DependencyVersions.LETTUCE_LEGACY)
+                .addRelocation("netty{}handler{}codec{}dns", "io{}netty{}handler{}codec{}dns")
+                .addRelocation("netty{}resolver{}dns", "io{}netty{}resolver{}dns");
+        if (VersionHelper.isOrAbove1_21_11) {
+            builder.transformer(new LettuceTransformer());
+        }
+        return builder.build();
+    }
 }

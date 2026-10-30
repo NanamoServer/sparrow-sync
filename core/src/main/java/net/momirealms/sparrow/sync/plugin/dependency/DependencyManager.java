@@ -4,6 +4,8 @@ import net.momirealms.sparrow.sync.plugin.dependency.classloader.IsolatedClassLo
 import net.momirealms.sparrow.sync.plugin.dependency.exception.DependencyDownloadException;
 import net.momirealms.sparrow.sync.plugin.dependency.relocation.Relocation;
 import net.momirealms.sparrow.sync.plugin.dependency.relocation.RelocationHandler;
+import net.momirealms.sparrow.sync.plugin.dependency.transform.DependencyTransformer;
+import net.momirealms.sparrow.sync.plugin.dependency.transform.TransformationHandler;
 import net.momirealms.sparrow.sync.plugin.Plugin;
 import net.momirealms.sparrow.sync.plugin.classpath.ClassPathAppender;
 import net.momirealms.sparrow.sync.util.FileUtils;
@@ -130,10 +132,11 @@ public class DependencyManager  {
         if (this.loaded.containsKey(dependency)) return;
 
         // 调用 downloadDependency 获取或下载依赖项的原始 jar 文件.
-        Path downloadDependency = downloadDependency(dependency);
+        Path downloadDependency = this.downloadDependency(dependency);
 
-        // 调用 remapDependency 对原始 jar 文件进行类名重定位, 然后存入 loaded 缓存中.
-        Path file = remapDependency(dependency, downloadDependency);
+        // 字节码变换针对原始类名执行, 完成后再重定位并加入类路径.
+        Path file = this.transformDependency(dependency, downloadDependency);
+        file = this.remapDependency(dependency, file);
         this.loaded.put(dependency, file);
 
         // 如果该依赖项被标记为自动加载 (autoLoad), 则根据 shared 属性将其追加到共享或私有类路径中.
@@ -220,12 +223,22 @@ public class DependencyManager  {
         }
     }
 
+    private Path transformDependency(Dependency dependency, Path normalFile) throws IOException {
+        DependencyTransformer transformer = dependency.transformer();
+        if (transformer == null) return normalFile;
+        Path transformedFile = normalFile.resolveSibling(dependency.fileName("transformed-" + transformer.cacheKey()));
+        if (Files.exists(transformedFile)) return transformedFile;
+        this.plugin.logger().info("Transforming " + dependency.fileName(null));
+        TransformationHandler.transform(normalFile, transformedFile, transformer);
+        return transformedFile;
+    }
+
     /**
-     * 对已下载的依赖项进行类名 Relocate 处理.
+     * 对依赖项进行类名 Relocate 处理.
      *
      * @param dependency 依赖项对象, 包含重定位规则.
-     * @param normalFile 原始下载的 jar 文件路径.
-     * @return 重映射后的 jar 文件路径. 如果没有重定位规则, 则直接返回原始文件路径.
+     * @param normalFile 完成字节码变换后的 jar 文件路径.
+     * @return 重定位后的 jar 文件路径, 没有重定位规则时返回传入路径.
      * @throws Exception 如果在使用 jar-relocator 进行重映射时发生异常.
      */
     private Path remapDependency(Dependency dependency, Path normalFile) throws Exception {
@@ -235,16 +248,20 @@ public class DependencyManager  {
             return normalFile;
         }
 
-        // 构造重映射后的目标文件路径
-        Path remappedFile = this.cacheDirectory.resolve(dependency.toLocalPath()).resolve(dependency.fileName("remapped"));
+        // 重定位缓存同时区分规则和补丁版本, 补丁更新后会重新生成.
+        String suffix = "remapped-" + Integer.toHexString(rules.hashCode());
+        if (dependency.transformer() != null) {
+            suffix += "-" + dependency.transformer().cacheKey();
+        }
+        Path remappedFile = this.cacheDirectory.resolve(dependency.toLocalPath()).resolve(dependency.fileName(suffix));
         if (Files.exists(remappedFile)) {
             return remappedFile;
         }
 
         // 重映射依赖文件.
-        plugin.logger().info("Remapping " + dependency.fileName(null));
-        relocationHandler.remap(normalFile, remappedFile, rules);
-        plugin.logger().info("Successfully remapped " + dependency.fileName(null));
+        this.plugin.logger().info("Remapping " + dependency.fileName(null));
+        this.relocationHandler.remap(normalFile, remappedFile, rules);
+        this.plugin.logger().info("Successfully remapped " + dependency.fileName(null));
         return remappedFile;
     }
 

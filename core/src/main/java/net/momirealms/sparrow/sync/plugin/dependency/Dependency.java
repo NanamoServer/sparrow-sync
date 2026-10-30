@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.sync.plugin.dependency;
 
 import net.momirealms.sparrow.sync.plugin.dependency.relocation.Relocation;
+import net.momirealms.sparrow.sync.plugin.dependency.transform.DependencyTransformer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -12,6 +14,7 @@ public class Dependency {
     private final String artifactId;
     private final String classifier;
     private final Set<Relocation> relocations;
+    private final DependencyTransformer transformer;
     private final Visibility visibility;
     private final Source source;
     private final boolean autoLoad;
@@ -22,6 +25,7 @@ public class Dependency {
      * @param groupId         组 ID
      * @param artifactId      构件 ID
      * @param relocations     重定位规则列表
+     * @param transformer     重定位前执行的字节码变换, 可为 null.
      * @param source          插件来源
      * @param visibility      依赖可见度设置
      * @param autoLoad        是否自动加载
@@ -31,6 +35,7 @@ public class Dependency {
             @NotNull String artifactId,
             @NotNull String classifier,
             @NotNull Set<Relocation> relocations,
+            @Nullable DependencyTransformer transformer,
             @NotNull Source source,
             @NotNull Visibility visibility,
             boolean autoLoad
@@ -39,6 +44,7 @@ public class Dependency {
         this.artifactId = artifactId;
         this.classifier = classifier;
         this.relocations = relocations;
+        this.transformer = transformer;
         this.visibility = visibility;
         this.source = source;
         this.autoLoad = autoLoad;
@@ -55,6 +61,11 @@ public class Dependency {
 
     public Set<Relocation> relocations() {
         return this.relocations;
+    }
+
+    @Nullable
+    public DependencyTransformer transformer() {
+        return this.transformer;
     }
 
     public Source source() {
@@ -166,6 +177,7 @@ public class Dependency {
         private String artifactId;
         private String classifier = "";
         private Set<Relocation> relocations = Set.of();
+        private DependencyTransformer transformer;
         private Source source;
         private Visibility visibility = Visibility.INTERNAL;
         private boolean autoLoad = true;
@@ -192,6 +204,12 @@ public class Dependency {
 
         public Builder autoLoad(boolean autoLoad) {
             this.autoLoad = autoLoad;
+            return this;
+        }
+
+        @NotNull
+        public Builder transformer(@NotNull DependencyTransformer transformer) {
+            this.transformer = transformer;
             return this;
         }
 
@@ -246,7 +264,7 @@ public class Dependency {
             Objects.requireNonNull(this.groupId, "groupId is null");
             Objects.requireNonNull(this.artifactId, "artifactId is null");
             Objects.requireNonNull(this.source, "Either 'version' or 'jarInJar path' must be specified.");
-            return new Dependency(this.groupId, this.artifactId, this.classifier, this.relocations, this.source, this.visibility, this.autoLoad);
+            return new Dependency(this.groupId, this.artifactId, this.classifier, this.relocations, this.transformer, this.source, this.visibility, this.autoLoad);
         }
     }
 
