@@ -6,6 +6,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.proxy.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.ResolvableProfileProxy;
 import net.momirealms.sparrow.sync.util.MinecraftComponents;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
@@ -22,14 +23,18 @@ import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -68,37 +73,33 @@ public final class SnapshotListGui {
     public Window build() {
         this.pages = KeyedSignal.async(new LoadedPage(null, 0, 1, List.of(), List.of(), "loading"), this.plugin.scheduler().async(), this::loadPage);
         this.current = Signals.switching(this.pages, this.request);
-        this.pane.fill(Item.simple(this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank")));
+        ItemStack background = this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank");
+        net.minecraft.world.item.ItemStack backgroundHandle = CraftItemStackProxy.INSTANCE.getHandle(background);
+        ItemUtils.hideTooltips(backgroundHandle);
+        // hideTooltips 同时隐藏物品模型, 此处恢复玻璃板的默认模型.
+        backgroundHandle.set(DataComponents.ITEM_MODEL, backgroundHandle.getItem().components().get(DataComponents.ITEM_MODEL));
+        this.pane.fill(Item.simple(background));
         this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 45), this.current.map(this::pageElements), this.plugin.scheduler().async());
-        this.pane.setItem(1, this.buildPlayerInfo());
-        this.pane.setItem(2, Item.builder()
+        this.pane.setItem(4, this.buildPlayerInfo());
+        this.pane.setItem(0, Item.builder()
                 .dependsOn(this.request)
                 .setItemProvider(context -> this.icon(Material.CHEST, this.text("button.snapshots"), !this.request.get().exceptions(), List.of()))
                 .addClickHandler(click -> this.request.set(new PageRequest(false, 0)))
                 .build());
-        this.pane.setItem(3, Item.builder()
+        this.pane.setItem(1, Item.builder()
                 .dependsOn(this.request)
                 .setItemProvider(context -> this.icon(Material.REPEATER, this.text("button.exceptions"), this.request.get().exceptions(), List.of()))
                 .addClickHandler(click -> this.request.set(new PageRequest(true, 0)))
                 .build());
-        this.pane.setItem(8, Item.simple(this.icon(Material.CLOCK, "info.order")));
         this.pane.setItem(45, Item.builder()
-                .setItemProviderConstant(this.icon(Material.ARROW, "button.previous"))
-                .addClickHandler(click -> this.turn(-1))
-                .build());
-        this.pane.setItem(48, this.buildPageInfo());
-        this.pane.setItem(49, Item.builder()
                 .setItemProviderConstant(this.icon(Material.COMPASS, "button.refresh"))
                 .addClickHandler(click -> this.pages.dirty(this.request.get()))
                 .build());
-        this.pane.setItem(53, Item.builder()
-                .setItemProviderConstant(this.icon(Material.ARROW, "button.next"))
-                .addClickHandler(click -> this.turn(1))
-                .build());
+        this.pane.setItem(52, this.buildPageButton("button.previous", -1));
+        this.pane.setItem(53, this.buildPageButton("button.next", 1));
         this.window = NormalWindow.builder()
                 .setUpperPane(this.pane)
                 .setTitle(this.text("title.list", this.playerName))
-                .addOpenHandler(opened -> this.pane.setItem(0, this.buildNavigationButton()))
                 .build(this.viewer);
         return this.window;
     }
@@ -142,24 +143,38 @@ public final class SnapshotListGui {
         return page.entries().stream().map(entry -> (Element) Element.item(this.buildSnapshotButton(entry))).toList();
     }
 
-    private Item buildNavigationButton() {
-        boolean back = this.window.session().hasBack();
-        return Item.builder().setItemProviderConstant(this.icon(back ? Material.ARROW : Material.OAK_DOOR, back ? "button.back" : "button.close")).addClickHandler(click -> this.window.backOrClose()).build();
-    }
-
+    @NotNull
     private Item buildPlayerInfo() {
-        return Item.builder().dependsOn(this.current).setItemProvider(context -> {
-            PlayerIdentity player = this.current.get().player();
-            return this.icon(Material.PLAYER_HEAD, this.text("info.player", player == null ? this.playerName : player.name()), false,
-                    player == null ? List.of() : List.of(this.text("label.player_id", player.uuid())));
-        }).build();
+        return Item.builder()
+                .dependsOn(this.current)
+                .setItemProvider(context -> {
+                    PlayerIdentity player = this.current.get().player();
+                    ItemStack head = this.icon(
+                            Material.PLAYER_HEAD,
+                            this.text("info.player", player == null ? this.playerName : player.name()),
+                            false,
+                            player == null ? List.of() : List.of(this.text("label.player_id", player.uuid()))
+                    );
+                    Player online = player == null ? null : Bukkit.getPlayer(player.uuid());
+                    if (online != null) {
+                        CraftItemStackProxy.INSTANCE.getHandle(head)
+                                .set(DataComponents.PROFILE, ResolvableProfileProxy.INSTANCE.createResolved(((CraftPlayer) online).getProfile()));
+                    }
+                    return head;
+                })
+                .build();
     }
 
-    private Item buildPageInfo() {
-        return Item.builder().dependsOn(this.current).setItemProvider(context -> {
-            LoadedPage page = this.current.get();
-            return this.icon(Material.PAPER, this.text("info.page", page.index() + 1, page.count()), false, List.of());
-        }).build();
+    @NotNull
+    private Item buildPageButton(@NotNull String key, int step) {
+        return Item.builder()
+                .dependsOn(this.current)
+                .setItemProvider(context -> {
+                    LoadedPage page = this.current.get();
+                    return this.icon(Material.ARROW, key, this.text("info.page", page.index() + 1, page.count()));
+                })
+                .addClickHandler(click -> this.turn(step))
+                .build();
     }
 
     private Item buildSnapshotButton(SnapshotMeta meta) {
