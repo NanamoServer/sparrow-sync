@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.util;
 
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Items;
@@ -19,6 +20,18 @@ public final class ItemUtils {
 
     public static boolean isEmpty(@Nullable ItemStack item) {
         return item == null || item.getAmount() <= 0 || item.getType().isAir();
+    }
+
+    /** 隐藏原生物品的提示, 并显示物品类型的默认模型. */
+    public static void hideTooltips(@NotNull net.minecraft.world.item.ItemStack item) {
+        hideTooltips(item, DataComponents.ITEM_MODEL);
+    }
+
+    private static <T> void hideTooltips(@NotNull net.minecraft.world.item.ItemStack item, @NotNull DataComponentType<T> modelType) {
+        // 保留泛型擦除后的模型类型, 兼容不同版本的资源标识类名.
+        T model = item.getItem().components().get(modelType);
+        net.momirealms.sparrow.ui.util.ItemUtils.hideTooltips(item);
+        item.set(modelType, model);
     }
 
     /** 将可装箱物品分装为潜影盒, 其余物品保留为独立物品堆. */

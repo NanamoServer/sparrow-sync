@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
+import net.kyori.adventure.text.Component;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
@@ -16,6 +17,7 @@ import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
@@ -27,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * 同步背包全部槽位和选中的快捷栏位置, 包括盔甲、副手及 body/saddle.
@@ -48,6 +51,12 @@ public final class InventoryDataType implements NativePlayerDataType<InventoryDa
 
     public InventoryDataType() {
         this.logger = SparrowSync.instance().logger();
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<Inventory> display() {
+        return value -> List.of(Component.translatable("gui.additional.held_slot").arguments(Component.text(value.heldSlot() + 1)));
     }
 
     @Override

@@ -3,6 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data;
 import net.momirealms.sparrow.nbt.Tag;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Set;
@@ -16,6 +17,15 @@ public interface PlayerDataType<T> {
 
     @NotNull
     DataKey key();
+
+    /**
+     * 数据在快照内容预览GUI中如何进行内容展示.
+     * @return
+     */
+    @Nullable
+    default DataDisplay<T> display() {
+        return null;
+    }
 
     /**
      * 是否视为关键数据, 关键数据在采集、解码或应用阶段失败都会中止当前同步流程.

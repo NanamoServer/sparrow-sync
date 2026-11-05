@@ -1,23 +1,32 @@
 package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
 
 public final class EnchantmentSeedDataType extends CodecDataType<Integer> implements NativePlayerDataType<Integer> {
     public static final DataKey ENCHANTMENT_SEED = DataKey.sparrow("enchantment_seed");
 
     public EnchantmentSeedDataType() {
         super(ENCHANTMENT_SEED, Codec.INT);
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<Integer> display() {
+        return value -> List.of(Component.translatable("gui.additional.enchantment_seed").arguments(Component.text(value)));
     }
 
     @Override

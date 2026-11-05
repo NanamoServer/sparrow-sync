@@ -8,6 +8,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.proxy.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.item.component.ResolvableProfileProxy;
 import net.momirealms.sparrow.sync.util.MinecraftComponents;
+import net.momirealms.sparrow.sync.util.ItemUtils;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -23,7 +24,6 @@ import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
-import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.Bukkit;
@@ -76,8 +76,6 @@ public final class SnapshotListGui {
         ItemStack background = this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank");
         net.minecraft.world.item.ItemStack backgroundHandle = CraftItemStackProxy.INSTANCE.getHandle(background);
         ItemUtils.hideTooltips(backgroundHandle);
-        // hideTooltips 同时隐藏物品模型, 此处恢复玻璃板的默认模型.
-        backgroundHandle.set(DataComponents.ITEM_MODEL, backgroundHandle.getItem().components().get(DataComponents.ITEM_MODEL));
         this.pane.fill(Item.simple(background));
         this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 45), this.current.map(this::pageElements), this.plugin.scheduler().async());
         this.pane.setItem(4, this.buildPlayerInfo());

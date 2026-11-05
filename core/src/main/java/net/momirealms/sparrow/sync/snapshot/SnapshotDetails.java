@@ -1,16 +1,10 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.compatibility.economy.VaultDataType;
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.snapshot.data.*;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
@@ -26,6 +20,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -137,20 +132,29 @@ public final class SnapshotDetails {
                 continue;
             }
             Throwable failure = decoded.failure(key);
-            previews.put(key, failure == null
-                    ? new Preview.Ready(decoded.value(key))
-                    : new Preview.Failed(String.valueOf(failure.getMessage())));
+            if (failure != null) {
+                previews.put(key, new Preview.Failed(String.valueOf(failure.getMessage())));
+                continue;
+            }
+            Object value = decoded.value(key);
+            try {
+                previews.put(key, new Preview.Ready(value, this.describe(type, value)));
+            } catch (RuntimeException exception) {
+                previews.put(key, new Preview.Failed(String.valueOf(exception.getMessage())));
+            }
         }
         return new SnapshotDetailResult.Ready(snapshot, Collections.unmodifiableMap(previews));
     }
 
     // 判断详情页是否支持此数据类型
     private static boolean supportsPreview(@Nullable PlayerDataType<?> type) {
-        return type instanceof InventoryDataType || type instanceof EnderChestDataType
-                || type instanceof ExperienceDataType || type instanceof HealthDataType
-                || type instanceof HungerDataType || type instanceof GameModeDataType
-                || type instanceof EnchantmentSeedDataType || type instanceof LocationDataType
-                || type instanceof VaultDataType;
+        return type != null && (type instanceof InventoryDataType || type instanceof EnderChestDataType || type.display() != null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> List<Component> describe(PlayerDataType<T> type, Object value) {
+        DataDisplay<T> display = type.display();
+        return display == null ? List.of() : List.copyOf(display.describe((T) value));
     }
 
     // 将读取异常转换为详情页错误状态, 保留格式错误的原因

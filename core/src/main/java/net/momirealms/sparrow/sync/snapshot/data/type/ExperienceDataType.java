@@ -2,10 +2,12 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
@@ -15,6 +17,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.List;
 
 public final class ExperienceDataType extends CodecDataType<ExperienceDataType.Experience> implements NativePlayerDataType<ExperienceDataType.Experience> {
     public static final DataKey EXPERIENCE = DataKey.sparrow("experience");
@@ -22,6 +25,12 @@ public final class ExperienceDataType extends CodecDataType<ExperienceDataType.E
 
     public ExperienceDataType() {
         super(EXPERIENCE, Experience.CODEC);
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<Experience> display() {
+        return value -> List.of(Component.translatable("gui.additional.experience").arguments(Component.text(value.level()), Component.text(value.total()), Component.text(value.progress())));
     }
 
     @Override

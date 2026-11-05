@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.ListTag;
 import net.momirealms.sparrow.nbt.NBT;
@@ -9,6 +10,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import net.momirealms.sparrow.sync.util.VersionHelper;
@@ -18,12 +20,22 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.List;
 
 public final class LocationDataType extends CodecDataType<LocationDataType.PlayerLocation> implements NativePlayerDataType<LocationDataType.PlayerLocation> {
     public static final DataKey LOCATION = DataKey.sparrow("location");
 
     public LocationDataType() {
         super(LOCATION, PlayerLocation.CODEC);
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<PlayerLocation> display() {
+        return value -> List.of(
+                Component.translatable("gui.location.world").arguments(Component.text(value.world())),
+                Component.translatable("gui.location.coordinates").arguments(Component.text(value.x()), Component.text(value.y()), Component.text(value.z()))
+        );
     }
 
     @Override

@@ -4,10 +4,12 @@ import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.exception.FormatException;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
+import java.util.List;
 
 @ApiStatus.Internal
 public sealed interface SnapshotDetailResult {
@@ -36,7 +38,7 @@ public sealed interface SnapshotDetailResult {
         record Unloaded(int rawLength) implements Preview {
         }
 
-        record Ready(@NotNull Object value) implements Preview {
+        record Ready(@NotNull Object value, @NotNull List<Component> description) implements Preview {
         }
 
         record Unsupported(boolean registered, int rawLength, boolean discardUnknown) implements Preview {

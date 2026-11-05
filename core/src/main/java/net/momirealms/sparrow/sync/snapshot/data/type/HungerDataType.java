@@ -2,6 +2,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.kyori.adventure.text.Component;
 import net.minecraft.world.food.FoodData;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
@@ -9,6 +10,7 @@ import net.momirealms.sparrow.sync.proxy.minecraft.world.food.FoodDataProxy;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -16,6 +18,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
+import java.util.List;
 
 public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> implements NativePlayerDataType<HungerDataType.Hunger> {
     public static final DataKey HUNGER = DataKey.sparrow("hunger");
@@ -23,6 +26,12 @@ public final class HungerDataType extends CodecDataType<HungerDataType.Hunger> i
 
     public HungerDataType() {
         super(HUNGER, Hunger.CODEC);
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<Hunger> display() {
+        return value -> List.of(Component.translatable("gui.additional.hunger").arguments(Component.text(value.food()), Component.text(value.saturation()), Component.text(value.exhaustion())));
     }
 
     @Override

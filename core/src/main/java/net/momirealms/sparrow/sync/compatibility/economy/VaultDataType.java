@@ -2,13 +2,19 @@ package net.momirealms.sparrow.sync.compatibility.economy;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.kyori.adventure.text.Component;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
 
 public final class VaultDataType extends CodecDataType<VaultDataType.Money> {
     public static final DataKey VAULT = DataKey.sparrow("vault");
@@ -19,6 +25,12 @@ public final class VaultDataType extends CodecDataType<VaultDataType.Money> {
     public VaultDataType(@NotNull VaultEconomyService economy) {
         super(VAULT, Money.CODEC);
         this.economy = economy;
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<Money> display() {
+        return value -> List.of(Component.translatable("gui.additional.vault").arguments(Component.text(BigDecimal.valueOf(value.amount()).setScale(4, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString())));
     }
 
     @Override

@@ -1,29 +1,23 @@
 package net.momirealms.sparrow.sync.gui;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.ItemLore;
-import net.momirealms.sparrow.sync.compatibility.economy.VaultDataType;
 import net.momirealms.sparrow.sync.proxy.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnchantmentSeedDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.ExperienceDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.GameModeDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HealthDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.HungerDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.LocationDataType;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDetailResult;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataType;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotPinResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
@@ -42,8 +36,6 @@ import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.entity.Player;
@@ -54,8 +46,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -88,6 +78,7 @@ public final class SnapshotDetailGui {
     private final Pane inventoryPane = Pane.empty(9, 5);
     private final Pane enderPane = Pane.empty(9, 5);
     private int enderPage;
+    private int summaryPage;
     private int archivePage; // 异常类型清单的当前页, 每页显示 36 个类型
     private final Tab<Boolean> tabs = Tab.of(Map.of(false, this.inventoryPane, true, this.enderPane), false); // false 为背包, true 为末影箱
     private final Pane statusPane = Pane.empty(9, 5); // 加载与失败状态的内容区
@@ -99,6 +90,7 @@ public final class SnapshotDetailGui {
     private SnapshotFiles.ExceptionEntry archive;      // 异常快照头文件信息及路径, 异常快照数据损坏时仍可展示
     private VirtualInventory inventory;
     private VirtualInventory enderChest;
+    private Item background;
 
     public SnapshotDetailGui(SparrowSync plugin, Player viewer, String playerName, @Nullable UUID snapshotId, @Nullable String archivePath, @Nullable Runnable refreshParent) {
         this.plugin = plugin;
@@ -110,12 +102,16 @@ public final class SnapshotDetailGui {
     }
 
     public Window build() {
-        this.pane.fill(Item.simple(this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank")));
+        ItemStack backgroundStack = this.icon(Material.GRAY_STAINED_GLASS_PANE, "blank");
+        net.minecraft.world.item.ItemStack backgroundHandle = CraftItemStackProxy.INSTANCE.getHandle(backgroundStack);
+        ItemUtils.hideTooltips(backgroundHandle);
+        this.background = Item.simple(backgroundStack);
+        this.pane.fill(this.background);
         // 内容区绑定所选 Pane, Tab 切换由投影更新显示路径, 两个容器保持原有实例.
         Signal<Pane> body = Signals.combine(this.showingContents, this.tabs.pane(), (showing, selected) -> showing ? selected : this.statusPane);
-        this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 51), body.map(selected -> {
+        this.pane.projectElements(SlotSequence.range(this.pane.size(), 9, 50), body.map(selected -> {
             List<Element> elements = new ArrayList<>();
-            for (int slot = 0; slot < 42; slot++) {
+            for (int slot = 0; slot < 41; slot++) {
                 elements.add(Element.pane(selected, slot));
             }
             return elements;
@@ -124,30 +120,23 @@ public final class SnapshotDetailGui {
                 .setUpperPane(this.pane)
                 .setTitle(this.text(this.archivePath == null ? "title.snapshot" : "title.archive", this.playerName))
                 .addOpenHandler(opened -> {
-                    this.pane.setItem(0, this.buildNavigationButton());
+                    this.pane.setItem(8, this.buildNavigationButton());
                     this.load();
                 }).build(this.viewer);
         return this.window;
     }
 
     private void controls() {
-        this.pane.setItem(1, this.buildPlayerInfo());
-        this.pane.setItem(2, this.buildInventoryTabButton());
-        this.pane.setItem(3, this.buildEnderChestTabButton());
-        this.pane.setItem(4, this.buildSummaryInfo());
-        this.pane.setItem(51, this.buildLocationButton());
+        this.pane.setItem(0, this.buildPlayerInfo());
+        this.pane.setItem(1, this.buildContainerButton());
+        this.pane.setItem(2, this.buildSummaryInfo());
         if (!this.viewer.hasPermission(EDIT)) {
             return;
         }
-        this.pane.setItem(8, this.buildDeleteButton());
+        this.pane.setItem(7, this.buildDeleteButton());
+        this.pane.setItem(4, this.buildClaimButton());
         if (this.archivePath == null) {
-            this.pane.setItem(5, this.buildPinButton());
-            this.pane.setItem(6, this.buildJsonExportButton());
-            this.pane.setItem(7, this.buildBinaryExportButton());
-        }
-        this.pane.setItem(52, this.buildClaimButton());
-        if (this.archivePath == null) {
-            this.pane.setItem(53, this.buildRestoreButton());
+            this.pane.setItem(5, this.buildRestoreButton());
         }
     }
 
@@ -172,21 +161,6 @@ public final class SnapshotDetailGui {
                 }
             }
         }
-        if (ender) {
-            body.setItem(36, this.buildCapacityInfo());
-            int pages = Math.max(1, (inventory.size() + 35) / 36);
-            if (pages > 1) {
-                body.setItem(37, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.previous")).addClickHandler(click -> {
-                    this.enderPage = Math.max(0, this.enderPage - 1);
-                    this.buildContent(this.enderChest, true);
-                }).build());
-                body.setItem(38, Item.simple(this.icon(Material.PAPER, this.text("info.page", this.enderPage + 1, pages), false, List.of())));
-                body.setItem(39, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.next")).addClickHandler(click -> {
-                    this.enderPage = Math.min(pages - 1, this.enderPage + 1);
-                    this.buildContent(this.enderChest, true);
-                }).build());
-            }
-        }
     }
 
     private Item buildNavigationButton() {
@@ -204,74 +178,59 @@ public final class SnapshotDetailGui {
                 lore.add(Component.empty());
                 lore.add(this.text("label.archive", this.archivePath));
                 lore.add(this.text("label.category", this.archive.category()));
+                lore.add(this.text("archive.types_hint"));
+            } else if (this.viewer.hasPermission(EDIT)) {
+                lore.add(this.text(meta.pinned() ? "hint.unpin" : "hint.pin"));
             }
             return this.icon(Material.PLAYER_HEAD, this.text("info.player", this.player.name()), false, lore);
+        }).addClickHandler(click -> {
+            if (this.archivePath != null && click.clickType() == ClickType.LEFT) {
+                this.showArchiveIndex();
+            } else if (this.archivePath == null && click.clickType() == ClickType.RIGHT) {
+                this.pin();
+            }
         }).build();
     }
 
-    private Item buildInventoryTabButton() {
+    private Item buildContainerButton() {
         return Item.builder().dependsOn(this.tabs.selected())
-                .setItemProvider(context -> this.icon(Material.CHEST, this.text("button.inventory"), !this.tabs.selected().get(), List.of()))
+                .setItemProvider(context -> {
+                    boolean ender = this.tabs.selected().get();
+                    List<Component> lore = new ArrayList<>();
+                    if (ender) lore.add(this.text("slots", this.enderChest.size()));
+                    lore.add(this.text(ender ? "hint.switch_inventory" : "hint.switch_ender"));
+                    return this.icon(ender ? Material.ENDER_CHEST : Material.CHEST, this.text(ender ? "button.ender_chest" : "button.inventory"), false, lore);
+                })
                 .addClickHandler(click -> {
+                    boolean ender = !this.tabs.selected().get();
                     if (this.archivePath == null) {
-                        this.tabs.select(false);
+                        this.tabs.select(ender);
+                        this.updateEnderPages();
                     } else {
-                        this.loadArchivePreview(InventoryDataType.INVENTORY);
-                    }
-                }).build();
-    }
-
-    private Item buildEnderChestTabButton() {
-        return Item.builder().dependsOn(this.tabs.selected())
-                .setItemProvider(context -> this.icon(Material.ENDER_CHEST, this.text("button.ender_chest"), this.tabs.selected().get(), List.of()))
-                .addClickHandler(click -> {
-                    if (this.archivePath == null) {
-                        this.tabs.select(true);
-                    } else {
-                        this.loadArchivePreview(EnderChestDataType.ENDER_CHEST);
+                        this.loadArchivePreview(ender ? EnderChestDataType.ENDER_CHEST : InventoryDataType.INVENTORY);
                     }
                 }).build();
     }
 
     private Item buildSummaryInfo() {
-        return Item.simple(this.icon(Material.EXPERIENCE_BOTTLE, this.text("additional.title"), false, this.summary()));
-    }
-
-    private Item buildPinButton() {
-        return Item.builder().dependsOn(this.meta).setItemProvider(context -> {
-            boolean pinned = this.meta.get().pinned();
-            return this.icon(Material.NETHER_STAR, this.text(pinned ? "button.unpin" : "button.pin"), pinned, List.of());
-        }).addClickHandler(click -> this.pin()).build();
-    }
-
-    private Item buildJsonExportButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.PAPER, "button.export_json")).addClickHandler(click -> this.export(SnapshotFiles.Format.JSON)).build();
-    }
-
-    private Item buildBinaryExportButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.WRITABLE_BOOK, "button.export_binary")).addClickHandler(click -> this.export(SnapshotFiles.Format.BINARY)).build();
+        List<Component> lines = this.summary();
+        int pages = Math.max(1, (lines.size() + 7) / 8);
+        this.summaryPage = Math.clamp(this.summaryPage, 0, pages - 1);
+        int start = this.summaryPage * 8;
+        List<Component> lore = new ArrayList<>(lines.subList(start, Math.min(start + 8, lines.size())));
+        lore.add(this.text("info.page", this.summaryPage + 1, pages));
+        if (pages > 1) lore.add(this.text("hint.summary_pages"));
+        return Item.builder()
+                .setItemProviderConstant(this.icon(Material.EXPERIENCE_BOTTLE, this.text("additional.title"), false, lore))
+                .addClickHandler(click -> {
+                    if (click.clickType() == ClickType.LEFT) this.summaryPage = (this.summaryPage + 1) % pages;
+                    if (click.clickType() == ClickType.RIGHT) this.summaryPage = (this.summaryPage + pages - 1) % pages;
+                    this.pane.setItem(2, this.buildSummaryInfo());
+                }).build();
     }
 
     private Item buildDeleteButton() {
         return Item.builder().setItemProviderConstant(this.icon(Material.BARRIER, "button.delete")).addClickHandler(click -> this.delete()).build();
-    }
-
-    private Item buildLocationButton() {
-        if (!(this.ready.previews().get(LocationDataType.LOCATION) instanceof SnapshotDetailResult.Preview.Ready(var value)
-                && value instanceof LocationDataType.PlayerLocation location)) {
-            return Item.simple(this.icon(Material.COMPASS, "location.title", this.text("location.missing")));
-        }
-        List<Component> lore = new ArrayList<>();
-        lore.add(this.text("location.world", location.world()));
-        lore.add(this.text("location.coordinates", location.x(), location.y(), location.z()));
-        if (Bukkit.getWorld(location.world()) == null) {
-            lore.add(this.text("location.unavailable"));
-        }
-        return Item.builder().setItemProviderConstant(this.icon(Material.COMPASS, this.text("location.title"), false, lore)).addClickHandler(click -> {
-            if (click.clickType() == ClickType.LEFT) {
-                this.teleport(click.player(), location);
-            }
-        }).build();
     }
 
     private Item buildRestoreButton() {
@@ -299,10 +258,6 @@ public final class SnapshotDetailGui {
 
     private Item buildContentUnavailableInfo() {
         return Item.simple(this.icon(Material.BARRIER, "container_unavailable"));
-    }
-
-    private Item buildCapacityInfo() {
-        return Item.simple(this.icon(Material.ENDER_CHEST, "info.capacity", this.text("slots", this.enderChest.size())));
     }
 
     private Item buildArchiveInfo() {
@@ -444,13 +399,13 @@ public final class SnapshotDetailGui {
                         this.tabs.select(false);
                         this.controls();
                         this.showingContents.set(true);
+                        this.updateEnderPages();
                         if (this.archivePath != null) {
-                            this.pane.setItem(1, Item.builder().setItemProviderConstant(this.icon(Material.BOOK, "archive.types"))
-                                    .addClickHandler(click -> this.showArchiveIndex()).build());
                             if (key == null) {
                                 this.showArchiveIndex();
                             } else if (key.equals(EnderChestDataType.ENDER_CHEST)) {
                                 this.tabs.select(true);
+                                this.updateEnderPages();
                             } else if (!key.equals(InventoryDataType.INVENTORY)) {
                                 this.statusPane.fill(Item.empty());
                                 this.statusPane.setItem(13, this.buildSummaryInfo());
@@ -470,18 +425,20 @@ public final class SnapshotDetailGui {
     private void showArchiveIndex() {
         this.showingContents.set(false);
         this.statusPane.fill(Item.empty());
-        for (int slot = 2; slot <= 8; slot++) {
-            this.pane.setItem(slot, Item.empty());
+        for (int slot = 0; slot < 8; slot++) {
+            this.pane.setItem(slot, this.background);
         }
-        for (int slot = 51; slot < 54; slot++) {
-            this.pane.setItem(slot, Item.empty());
-        }
-        this.pane.setItem(1, this.buildArchiveInfo());
+        this.clearPages();
+        this.pane.setItem(0, this.buildArchiveInfo());
         if (this.viewer.hasPermission(EDIT)) {
-            this.pane.setItem(8, this.buildDeleteButton());
+            this.pane.setItem(7, this.buildDeleteButton());
         }
         List<DataKey> keys = this.ready != null ? new ArrayList<>(this.ready.snapshot().keys())
                 : this.archive.summary() == null ? List.of() : new ArrayList<>(this.archive.summary().keySet());
+        keys = keys.stream().filter(key -> {
+            PlayerDataType<?> type = this.plugin.dataRegistry().type(key);
+            return type != null && (type.display() != null || key.equals(InventoryDataType.INVENTORY) || key.equals(EnderChestDataType.ENDER_CHEST));
+        }).toList();
         if (keys.isEmpty()) {
             String state = this.archive.summary() != null || this.ready != null ? "empty"
                     : this.archive.bodyPresent() ? "archive.index_unavailable" : "archive.source_only";
@@ -504,9 +461,6 @@ public final class SnapshotDetailGui {
             }
             List<Component> lore = new ArrayList<>();
             lore.add(this.text(rawLength < 0 ? "archive.size_unknown" : "archive.type_size", rawLength));
-            if (this.plugin.dataRegistry().type(key) == null) {
-                lore.add(this.text(this.plugin.dataRegistry().shouldDropUnknown(key) ? "additional.unknown_drop" : "additional.unknown_keep", key.asString()));
-            }
             lore.add(this.text(this.archive.bodyPresent() ? "archive.preview" : "archive.source_only"));
             this.statusPane.setItem(i % 36, Item.builder().setItemProviderConstant(this.icon(Material.PAPER, Component.text(key.asString()), false, lore))
                     .addClickHandler(click -> {
@@ -516,12 +470,36 @@ public final class SnapshotDetailGui {
                     }).build());
         }
         if (pages > 1) {
-            this.statusPane.setItem(36, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.previous"))
-                    .addClickHandler(click -> { this.archivePage--; this.showArchiveIndex(); }).build());
-            this.statusPane.setItem(37, Item.simple(this.icon(Material.PAPER, this.text("info.page", this.archivePage + 1, pages), false, List.of())));
-            this.statusPane.setItem(38, Item.builder().setItemProviderConstant(this.icon(Material.ARROW, "button.next"))
-                    .addClickHandler(click -> { this.archivePage++; this.showArchiveIndex(); }).build());
+            this.pane.setItem(52, this.buildPageButton("button.previous", this.archivePage, pages, () -> { this.archivePage--; this.showArchiveIndex(); }));
+            this.pane.setItem(53, this.buildPageButton("button.next", this.archivePage, pages, () -> { this.archivePage++; this.showArchiveIndex(); }));
         }
+    }
+
+    private void updateEnderPages() {
+        this.clearPages();
+        if (!this.tabs.selected().get()) return;
+        int pages = Math.max(1, (this.enderChest.size() + 35) / 36);
+        if (pages <= 1) return;
+        this.pane.setItem(52, this.buildPageButton("button.previous", this.enderPage, pages, () -> this.turnEnderPage(-1, pages)));
+        this.pane.setItem(53, this.buildPageButton("button.next", this.enderPage, pages, () -> this.turnEnderPage(1, pages)));
+    }
+
+    private void turnEnderPage(int step, int pages) {
+        this.enderPage = Math.clamp(this.enderPage + step, 0, pages - 1);
+        this.buildContent(this.enderChest, true);
+        this.updateEnderPages();
+    }
+
+    private void clearPages() {
+        this.pane.setItem(52, this.background);
+        this.pane.setItem(53, this.background);
+    }
+
+    private Item buildPageButton(String key, int page, int pages, Runnable action) {
+        return Item.builder()
+                .setItemProviderConstant(this.icon(Material.ARROW, key, this.text("info.page", page + 1, pages)))
+                .addClickHandler(click -> action.run())
+                .build();
     }
 
     /**
@@ -559,49 +537,21 @@ public final class SnapshotDetailGui {
         return inventory;
     }
 
-    /**
-     * 生成详情页摘要图标的说明文字, 包括已读取的经验, 生命值等玩家状态.
-     * 末尾列出无法预览的类型; 已知 NBT 字节数时一并显示, 长度未知时只显示类型名.
-     *
-     * @return 按显示顺序排列的物品说明行
-     */
     private List<Component> summary() {
         List<Component> lines = new ArrayList<>();
-        var previews = this.ready.previews();
-        if (previews.get(InventoryDataType.INVENTORY) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof InventoryDataType.Inventory inventory) {
-            lines.add(this.text("additional.held_slot", inventory.heldSlot() + 1));
-        }
-        if (previews.get(HungerDataType.HUNGER) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof HungerDataType.Hunger hunger) {
-            lines.add(this.text("additional.hunger", hunger.food(), hunger.saturation(), hunger.exhaustion()));
-        }
-        if (previews.get(GameModeDataType.GAME_MODE) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof GameMode gameMode) {
-            lines.add(this.text("additional.game_mode", gameMode.name()));
-        }
-        if (previews.get(ExperienceDataType.EXPERIENCE) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof ExperienceDataType.Experience experience) {
-            lines.add(this.text("additional.experience", experience.level(), experience.total(), experience.progress()));
-        }
-        if (previews.get(HealthDataType.HEALTH) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof HealthDataType.Health health) {
-            lines.add(this.text("additional.health", health.health()));
-        }
-        if (previews.get(EnchantmentSeedDataType.ENCHANTMENT_SEED) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof Integer seed) {
-            lines.add(this.text("additional.enchantment_seed", seed));
-        }
-        if (previews.get(VaultDataType.VAULT) instanceof SnapshotDetailResult.Preview.Ready(var value) && value instanceof VaultDataType.Money money) {
-            lines.add(this.text("additional.vault", BigDecimal.valueOf(money.amount()).setScale(4, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()));
-        }
-        // 预览状态中保存已读取的块头大小, 待加载类型与读取失败的类型分别展示.
-        for (var entry : previews.entrySet()) {
-            if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unloaded unloaded) {
-                lines.add(this.text(unloaded.rawLength() < 0 ? "archive.type_unloaded_unknown" : "archive.type_unloaded", entry.getKey().asString(), unloaded.rawLength()));
+        for (Map.Entry<DataKey, SnapshotDetailResult.Preview> entry : this.ready.previews().entrySet()) {
+            if (entry.getValue() instanceof SnapshotDetailResult.Preview.Ready preview) {
+                for (Component component : preview.description()) {
+                    Component rendered = component instanceof TranslatableComponent translatable
+                            ? TranslationManager.instance().render(translatable, PlayerUtils.locale(this.viewer))
+                            : component;
+                    lines.add(rendered.decoration(TextDecoration.ITALIC, false));
+                }
             } else if (entry.getValue() instanceof SnapshotDetailResult.Preview.Failed failed) {
-                lines.add(this.text("archive.type_failed", entry.getKey().asString(), failed.detail()));
-            } else if (entry.getValue() instanceof SnapshotDetailResult.Preview.Unsupported unsupported) {
-                String state = unsupported.registered()
-                        ? "additional.unsupported"
-                        : unsupported.discardUnknown() ? "additional.unknown_drop" : "additional.unknown_keep";
-                lines.add(unsupported.rawLength() < 0
-                        ? this.text(state, entry.getKey().asString())
-                        : this.text(state + "_size", entry.getKey().asString(), unsupported.rawLength()));
+                PlayerDataType<?> type = this.plugin.dataRegistry().type(entry.getKey());
+                if (type != null && type.display() != null) {
+                    lines.add(this.text("archive.type_failed", entry.getKey().asString(), failed.detail()));
+                }
             }
         }
         return lines;
@@ -625,21 +575,6 @@ public final class SnapshotDetailGui {
                     this.meta.set(this.meta.get().withPinned(pin));
                     this.message(pin ? "pinned_feedback" : "unpinned_feedback");
                 });
-    }
-
-    /**
-     * 按指定格式导出原快照, 沿用服务的覆盖规则.
-     * 临时展示 Inventory 的拿取和放入不会改变导出内容.
-     *
-     * @param format JSON 或二进制输出格式
-     */
-    private void export(SnapshotFiles.Format format) {
-        this.operation(() -> this.plugin.snapshotService().export(this.meta.get().id(), format), result -> {
-            switch (result) {
-                case SnapshotExportResult.Exported exported -> this.message("exported", exported.path());
-                case SnapshotExportResult.NotFound ignored -> this.removed();
-            }
-        });
     }
 
     /**
@@ -669,25 +604,6 @@ public final class SnapshotDetailGui {
                 case SnapshotRestoreResult.Failed ignored -> "failed";
             };
             this.message(key);
-        });
-    }
-
-    // 按保存的世界名在本服定位, 传送保留坐标与朝向.
-    private void teleport(Player recipient, LocationDataType.PlayerLocation location) {
-        if (!this.editable()) {
-            return;
-        }
-        var world = recipient.getServer().getWorld(location.world());
-        if (world == null) {
-            this.message("location.unavailable");
-            return;
-        }
-        PlayerUtils.teleport(recipient, new Location(world, location.x(), location.y(), location.z(), location.yaw(), location.pitch())).whenComplete((moved, failure) -> {
-            if (failure != null) {
-                this.failed(failure);
-            } else {
-                this.message(moved ? "location.teleported" : "location.rejected");
-            }
         });
     }
 
@@ -771,9 +687,9 @@ public final class SnapshotDetailGui {
             default -> this.status("not_found");
         }
         if (this.archive != null) {
-            this.pane.setItem(1, this.buildArchiveInfo());
+            this.pane.setItem(0, this.buildArchiveInfo());
             if (this.viewer.hasPermission(EDIT)) {
-                this.pane.setItem(8, this.buildDeleteButton());
+                this.pane.setItem(7, this.buildDeleteButton());
             }
         }
     }

@@ -2,17 +2,20 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
+import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
 
 public final class GameModeDataType extends CodecDataType<GameMode> implements NativePlayerDataType<GameMode> {
     public static final DataKey GAME_MODE = DataKey.sparrow("game_mode");
@@ -20,6 +23,12 @@ public final class GameModeDataType extends CodecDataType<GameMode> implements N
 
     public GameModeDataType() {
         super(GAME_MODE, CODEC);
+    }
+
+    @NotNull
+    @Override
+    public DataDisplay<GameMode> display() {
+        return value -> List.of(Component.translatable("gui.additional.game_mode").arguments(Component.text(value.name())));
     }
 
     @Override
