@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.redis;
 
+import net.momirealms.sparrow.sync.cluster.message.SnapshotApplyContainersResponseMessage;
+import net.momirealms.sparrow.sync.cluster.message.SnapshotApplyContainersRequestMessage;
 import io.netty.buffer.ByteBuf;
 import net.momirealms.sparrow.redis.messagebroker.Logger;
 import net.momirealms.sparrow.redis.messagebroker.MessageBroker;
@@ -56,6 +58,8 @@ public final class MessageBrokerManager {
         broker.registry().register(SnapshotCaptureRequestMessage.ID, SnapshotCaptureRequestMessage.CODEC);
         broker.registry().register(SnapshotCaptureResponseMessage.ID, SnapshotCaptureResponseMessage.CODEC);
         broker.registry().register(SnapshotRestoreRequestMessage.ID, SnapshotRestoreRequestMessage.CODEC);
+        broker.registry().register(SnapshotApplyContainersRequestMessage.ID, SnapshotApplyContainersRequestMessage.CODEC);
+        broker.registry().register(SnapshotApplyContainersResponseMessage.ID, SnapshotApplyContainersResponseMessage.CODEC);
         broker.registry().register(SnapshotRestoreResponseMessage.ID, SnapshotRestoreResponseMessage.CODEC);
         broker.subscribe();
         this.broker = broker;

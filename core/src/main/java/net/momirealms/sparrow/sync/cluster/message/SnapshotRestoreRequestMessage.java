@@ -6,6 +6,7 @@ import net.momirealms.sparrow.redis.messagebroker.RedisMessage;
 import net.momirealms.sparrow.redis.messagebroker.codec.MessageCodec;
 import net.momirealms.sparrow.redis.messagebroker.message.TwoWayRequestMessage;
 import net.momirealms.sparrow.sync.cluster.RemoteSnapshotManager;
+import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -17,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 public final class SnapshotRestoreRequestMessage extends TwoWayRequestMessage<ByteBuf, SnapshotRestoreResponseMessage> {
     public static final MessageIdentifier ID = MessageIdentifier.of("sparrow_sync", "snapshot_restore_request");
     public static final MessageCodec<ByteBuf, SnapshotRestoreRequestMessage> CODEC = RedisMessage.codec(SnapshotRestoreRequestMessage::write, SnapshotRestoreRequestMessage::new);
-    private static volatile @Nullable RemoteSnapshotManager receiver;
+    private final @Nullable RemoteSnapshotManager receiver = SparrowSync.instance().remoteSnapshotManager();
     private final UUID playerId;
     private final UUID snapshotId;
 
@@ -41,10 +42,6 @@ public final class SnapshotRestoreRequestMessage extends TwoWayRequestMessage<By
         buffer.writeLong(this.snapshotId.getLeastSignificantBits());
     }
 
-    public static void receiver(@Nullable RemoteSnapshotManager receiver) {
-        SnapshotRestoreRequestMessage.receiver = receiver;
-    }
-
     @Override
     @NotNull
     public MessageIdentifier identifier() {
@@ -55,8 +52,7 @@ public final class SnapshotRestoreRequestMessage extends TwoWayRequestMessage<By
     @NotNull
     @ApiStatus.Internal
     public CompletableFuture<SnapshotRestoreResponseMessage> handleRequest() {
-        RemoteSnapshotManager current = receiver;
-        if (current == null) return CompletableFuture.completedFuture(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
-        return current.receiveRestore(this.playerId, this.snapshotId).thenApply(SnapshotRestoreResponseMessage::new);
+        if (this.receiver == null) return CompletableFuture.completedFuture(new SnapshotRestoreResponseMessage(SnapshotRestoreResult.OFFLINE));
+        return this.receiver.receiveRestore(this.playerId, this.snapshotId).thenApply(SnapshotRestoreResponseMessage::new);
     }
 }

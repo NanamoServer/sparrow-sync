@@ -1,5 +1,11 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.operation.ContainerApplyResult;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.util.ItemCodec;
+import net.momirealms.sparrow.sync.session.SessionState;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
@@ -124,6 +130,38 @@ public final class SnapshotService {
     /** 本服是否正在恢复该玩家的离线快照. */
     public boolean restoringOffline(@NotNull UUID player) {
         return this.restorer.restoringOffline(player);
+    }
+
+    @NotNull
+    @ApiStatus.Internal
+    public CompletableFuture<SnapshotSaveResult> saveEdited(@NotNull Snapshot source,
+                                                            @NotNull String playerName,
+                                                            @Nullable InventoryDataType.Inventory inventory,
+                                                            @Nullable ItemCodec.LoadedItems enderChest
+    ) {
+        return CompletableFuture.supplyAsync(() -> {
+            SnapshotData data = source.content();
+            if (inventory != null) data = data.with(InventoryDataType.INVENTORY, new InventoryDataType().encode(inventory));
+            if (enderChest != null) data = data.with(EnderChestDataType.ENDER_CHEST, new EnderChestDataType().encode(enderChest));
+            return new Snapshot(source.meta(), data);
+        }, this.plugin.scheduler().async()).thenCompose(edited -> this.saver.saveEdited(edited, playerName));
+    }
+
+    @NotNull
+    @ApiStatus.Internal
+    public CompletableFuture<ContainerApplyResult> applyContainers(@NotNull Player player, @NotNull UUID snapshotId) {
+        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
+        if (session == null || session.state() != SessionState.ACTIVE) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
+        return this.storage.snapshot(snapshotId).thenCompose(found -> {
+            if (found.isEmpty()) return CompletableFuture.completedFuture(ContainerApplyResult.FAILED);
+            Snapshot source = found.get();
+            if (!source.meta().player().equals(session.uuid())) return CompletableFuture.completedFuture(ContainerApplyResult.FAILED);
+            return this.applier.applyContainers(session, player, source).thenApply(result -> switch (result) {
+                case SnapshotApplyResult.Applied success -> success.skipped().isEmpty() ? ContainerApplyResult.APPLIED : ContainerApplyResult.FAILED;
+                case SnapshotApplyResult.Rejected ignored -> ContainerApplyResult.OFFLINE;
+                case SnapshotApplyResult.Failed failed -> ContainerApplyResult.FAILED;
+            });
+        });
     }
 
     /** 导出数据库中的快照, 返回快照 ID 和文件路径. */

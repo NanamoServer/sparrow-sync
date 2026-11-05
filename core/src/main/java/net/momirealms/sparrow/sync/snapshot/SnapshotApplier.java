@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.api.event.PreApplyEvent;
 import net.momirealms.sparrow.sync.api.event.SyncCompleteEvent;
@@ -164,6 +166,64 @@ final class SnapshotApplier {
             }
             return completion;
         }).exceptionally(failure -> new SnapshotApplyResult.Failed(failure.toString(), false, failure, List.of()));
+    }
+
+    // 从快照中准备两个容器, 在目标玩家线程执行即时应用
+    @NotNull
+    CompletableFuture<SnapshotApplyResult> applyContainers(@NotNull PlayerSession session, @NotNull Player player, @NotNull Snapshot snapshot) {
+        if (this.operationsClosed || this.plugin.sessionManager().find(session.uuid()) != session || session.state() != SessionState.ACTIVE) {
+            return CompletableFuture.completedFuture(SnapshotApplyResult.REJECTED);
+        }
+        Snapshot selected = new Snapshot(snapshot.meta(), snapshot.content().select(key -> key.equals(InventoryDataType.INVENTORY) || key.equals(EnderChestDataType.ENDER_CHEST)));
+        return this.prepareSnapshot(selected, session.playerName()).thenCompose(loaded -> {
+            if (!(loaded instanceof SnapshotLoadResult.Ready ready)) {
+                String detail = loaded instanceof SnapshotLoadResult.Failed failed ? failed.detail() : "container preparation failed";
+                return CompletableFuture.completedFuture(new SnapshotApplyResult.Failed(detail, false, null, List.of()));
+            }
+            CompletableFuture<SnapshotApplyResult> completion = new CompletableFuture<>();
+            Runnable apply = () -> {
+                try {
+                    completion.complete(this.applyContainersNow(session, player, ready));
+                } catch (Throwable failure) {
+                    completion.complete(new SnapshotApplyResult.Failed(failure.toString(), true, failure, ready.context().skipped()));
+                }
+            };
+            // 死亡玩家仍可接收容器内容, 由 retired 回调处理其实体调度结束的情况
+            Runnable retired = () -> {
+                if ((VersionHelper.hasPaperPatch ? player.isConnected() : player.isOnline()) && player.isDead()) {
+                    apply.run();
+                } else {
+                    completion.complete(SnapshotApplyResult.REJECTED);
+                }
+            };
+            if (this.plugin.scheduler().platform().runLater(apply, retired, 0, player) == null) {
+                completion.complete(SnapshotApplyResult.REJECTED);
+            }
+            return completion;
+        }).exceptionally(failure -> new SnapshotApplyResult.Failed(failure.toString(), false, failure, List.of()));
+    }
+
+    // 应用事件确认后的容器数据, 完成后通知监听器
+    @NotNull
+    private SnapshotApplyResult applyContainersNow(@NotNull PlayerSession session, @NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
+        if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
+        SnapshotApplyContext context = loaded.context();
+        PreApplyEvent event = new PreApplyEvent(player, loaded.snapshot(), context.pendingValues());
+        EventUtils.fireAndForget(event);
+        if (!this.canApplyOnline(session, player)) return SnapshotApplyResult.REJECTED;
+        // 事件可调整容器值, 可应用的类型限定为背包和末影箱
+        event.decoded().keySet().removeIf(key -> !key.equals(InventoryDataType.INVENTORY) && !key.equals(EnderChestDataType.ENDER_CHEST));
+        context.acceptEventValues(event.decoded());
+        SnapshotApplyResult result = this.applyData(player, loaded);
+        if (result instanceof SnapshotApplyResult.Failed failed) {
+            return new SnapshotApplyResult.Failed(failed.detail(), true, failed.cause(), context.skipped());
+        }
+        if (!this.canApplyOnline(session, player)) {
+            return new SnapshotApplyResult.Failed("player session ended during container application", true, null, context.skipped());
+        }
+        SnapshotApplyResult.Applied applied = (SnapshotApplyResult.Applied) result;
+        EventUtils.fireAndForget(new SyncCompleteEvent(player, loaded.snapshot(), applied.applied(), applied.skipped()));
+        return applied;
     }
 
     /** 在玩家线程发送预应用事件, 再处理重生、数据应用和传送. */

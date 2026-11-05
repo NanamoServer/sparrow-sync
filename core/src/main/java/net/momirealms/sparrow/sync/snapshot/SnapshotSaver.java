@@ -218,21 +218,44 @@ final class SnapshotSaver {
     // 保留历史数据内容, 分配新的 ID 和时间, 通过保存事件后写入 RESTORE 快照
     @NotNull
     CompletableFuture<SnapshotSaveResult> saveRestored(@NotNull Snapshot source, @NotNull String playerName) {
+        return this.saveCopy(source, playerName, SaveCause.RESTORE);
+    }
+
+    @NotNull
+    CompletableFuture<SnapshotSaveResult> saveEdited(@NotNull Snapshot source, @NotNull String playerName) {
+        if (this.operationsClosed) return CompletableFuture.failedFuture(new RejectedExecutionException("snapshot operations closed"));
+        return this.saveCopy(source, playerName, SaveCause.EDIT);
+    }
+
+    @NotNull
+    private CompletableFuture<SnapshotSaveResult> saveCopy(@NotNull Snapshot source, @NotNull String playerName, @NotNull SaveCause cause) {
         UUID player = source.meta().player();
         long now = Math.max(System.currentTimeMillis(), source.meta().timestamp() + 1);
         long timestamp = this.lastTimestampByPlayer.merge(player, now, (last, current) -> Math.max(current, last + 1));
         SnapshotMeta meta = SnapshotMeta.builder()
                 .player(player)
                 .timestamp(timestamp)
-                .cause(SaveCause.RESTORE)
+                .cause(cause)
                 .server(ServerConfig.serverId())
                 .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
         Snapshot restored = new Snapshot(meta, source.content());
-        SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, null);
+        SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, cause == SaveCause.EDIT ? this.playerDataPipeline.mapMode() : null);
         request.updateSnapshot(restored);
         this.writer.register(request);
-        this.submitSerial(request, () -> this.writePrepared(request, restored));
+        this.submitSerial(request, () -> {
+            if (request.mapType() != null) {
+                this.playerDataPipeline.prepareForStorage(restored, request.mapType(), playerName).whenComplete((prepared, failure) -> {
+                    if (failure != null) {
+                        request.fail(failure);
+                    } else if (request.updateSnapshot(prepared)) {
+                        this.submitSerial(request, () -> this.writePrepared(request, prepared));
+                    }
+                });
+            } else {
+                this.writePrepared(request, restored);
+            }
+        });
         return request.completion();
     }
 

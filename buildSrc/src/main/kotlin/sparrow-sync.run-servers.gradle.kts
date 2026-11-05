@@ -60,28 +60,26 @@ for (minecraftVersion in minecraftVersions) {
         dependsOn(prepareProxyPaper)
     }
 
-    if (minecraftVersion != "26.3") {
-        val foliaProxyDirectory = rootProject.layout.projectDirectory.dir("run/proxy/folia/$minecraftVersion")
-        val prepareProxyFolia = tasks.register<InitializeRunDirectory>("prepareProxyFolia_$minecraftVersion") {
-            templateDirectories.from(
-                commonBackendTemplates,
-                versionBackendTemplates,
-                runTemplatesDirectory.dir("backend/folia")
-            )
-            targetDirectory.set(foliaProxyDirectory)
-        }
+    val foliaProxyDirectory = rootProject.layout.projectDirectory.dir("run/proxy/folia/$minecraftVersion")
+    val prepareProxyFolia = tasks.register<InitializeRunDirectory>("prepareProxyFolia_$minecraftVersion") {
+        templateDirectories.from(
+            commonBackendTemplates,
+            versionBackendTemplates,
+            runTemplatesDirectory.dir("backend/folia")
+        )
+        targetDirectory.set(foliaProxyDirectory)
+    }
 
-        tasks.register<RunServer>("runProxyFolia_$minecraftVersion") {
-            configureBackendServer(
-                "Proxy Folia $minecraftVersion",
-                minecraftVersion,
-                "run/proxy/folia/$minecraftVersion",
-                "1536M"
-            )
-            description = "Run the Folia $minecraftVersion proxy backend on port 25567."
-            pluginJars.from(extraPluginJars)
-            downloadsApiService.set(DownloadsAPIService.folia(project))
-            dependsOn(prepareProxyFolia)
-        }
+    tasks.register<RunServer>("runProxyFolia_$minecraftVersion") {
+        configureBackendServer(
+            "Proxy Folia $minecraftVersion",
+            minecraftVersion,
+            "run/proxy/folia/$minecraftVersion",
+            "1536M"
+        )
+        description = "Run the Folia $minecraftVersion proxy backend on port 25567."
+        pluginJars.from(extraPluginJars)
+        downloadsApiService.set(DownloadsAPIService.folia(project))
+        dependsOn(prepareProxyFolia)
     }
 }

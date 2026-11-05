@@ -1,5 +1,9 @@
 package net.momirealms.sparrow.sync.gui;
 
+import net.momirealms.sparrow.sync.snapshot.operation.ContainerApplyResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
+import net.momirealms.sparrow.sync.util.ItemCodec;
+import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -72,7 +76,8 @@ public final class SnapshotDetailGui {
     private Window window;
 
     private final String playerName;
-    private final @Nullable UUID snapshotId;
+    private @Nullable UUID snapshotId;
+    private volatile boolean saving;
     private final @Nullable String archivePath;   // 本服异常快照相对路径, 数据库来源为 null
     private final @Nullable Runnable refreshParent; // 管理完成后的上级刷新动作, 根窗口为 null
     private final Pane inventoryPane = Pane.empty(9, 5);
@@ -121,7 +126,7 @@ public final class SnapshotDetailGui {
                 .setTitle(this.text(this.archivePath == null ? "title.snapshot" : "title.archive", this.playerName))
                 .addOpenHandler(opened -> {
                     this.pane.setItem(8, this.buildNavigationButton());
-                    this.load();
+                    if (!this.saving) this.load();
                 }).build(this.viewer);
         return this.window;
     }
@@ -136,7 +141,8 @@ public final class SnapshotDetailGui {
         this.pane.setItem(7, this.buildDeleteButton());
         this.pane.setItem(4, this.buildClaimButton());
         if (this.archivePath == null) {
-            this.pane.setItem(5, this.buildRestoreButton());
+            this.pane.setItem(5, this.buildApplyButton());
+            this.pane.setItem(6, this.buildSaveButton());
         }
     }
 
@@ -233,12 +239,84 @@ public final class SnapshotDetailGui {
         return Item.builder().setItemProviderConstant(this.icon(Material.BARRIER, "button.delete")).addClickHandler(click -> this.delete()).build();
     }
 
-    private Item buildRestoreButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.restore", this.text("restore_target", this.player.name()))).addClickHandler(click -> {
-            if (click.clickType() == ClickType.LEFT) {
-                this.restore();
-            }
-        }).build();
+    private Item buildApplyButton() {
+        return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.apply",
+                        this.text("restore_target", this.player.name()), this.text("apply.left"), this.text("apply.right"),
+                        this.text("apply.scope"), this.text("apply.saved")))
+                .addClickHandler(click -> {
+                    if (click.clickType() == ClickType.LEFT) {
+                        this.restore();
+                    } else if (click.clickType() == ClickType.RIGHT) {
+                        this.operation(() -> this.applyContainers(this.meta.get().id()), result -> this.message(switch (result) {
+                            case APPLIED -> "apply.success";
+                            case OFFLINE -> "apply.offline";
+                            case FAILED -> "apply.failed";
+                            case UNAVAILABLE -> "apply.unavailable";
+                        }));
+                    }
+                }).build();
+    }
+
+    private Item buildSaveButton() {
+        return Item.builder().setItemProviderConstant(this.icon(Material.WRITABLE_BOOK, "button.save",
+                        this.text("save.left"), this.text("save.login"), this.text("save.original")))
+                .addClickHandler(click -> {
+                    if (click.clickType() == ClickType.LEFT) {
+                        this.save();
+                    }
+                }).build();
+    }
+
+    private void save() {
+        if (!this.editable() || this.archivePath != null || this.ready == null) return;
+        if (!this.contents.complete() || (!this.contents.inventoryAvailable() && !this.contents.enderAvailable())) {
+            this.message("incomplete");
+            return;
+        }
+        InventoryDataType.Inventory inventoryValue = null;
+        if (this.contents.inventoryAvailable()) {
+            InventoryDataType.Inventory original = (InventoryDataType.Inventory) ((SnapshotDetailResult.Preview.Ready)
+                    this.ready.previews().get(InventoryDataType.INVENTORY)).value();
+            inventoryValue = new InventoryDataType.Inventory(this.editedItems(this.inventory, this.contents.inventory()), original.heldSlot(), 0);
+        }
+        ItemCodec.LoadedItems enderValue = this.contents.enderAvailable()
+                ? new ItemCodec.LoadedItems(this.editedItems(this.enderChest, this.contents.enderChest()), 0) : null;
+        this.saving = true;
+        this.message("save.pending");
+        this.plugin.snapshotService().saveEdited(this.ready.snapshot(), this.player.name(), inventoryValue, enderValue)
+                .whenComplete((saved, failure) -> {
+                    if (failure != null) {
+                        this.saving = false;
+                        this.failed(failure);
+                    } else if (saved instanceof SnapshotSaveResult.Settled settled && settled.result().stored()) {
+                        this.invalidateParent();
+                        this.message("save.success", settled.id());
+                        this.plugin.scheduler().platform().runLater(() -> {
+                            this.snapshotId = settled.id();
+                            if (this.window.isOpen()) this.load();
+                            else this.saving = false;
+                        }, () -> this.saving = false, 0, this.viewer);
+                    } else {
+                        this.saving = false;
+                        this.message(saved instanceof SnapshotSaveResult.Cancelled ? "cancelled" : "failed");
+                    }
+                });
+    }
+
+    private CompletableFuture<ContainerApplyResult> applyContainers(UUID id) {
+        Player local = Bukkit.getPlayer(this.player.uuid());
+        if (local != null) return this.plugin.snapshotService().applyContainers(local, id);
+        return this.plugin.playerDirectory().server(this.player.name())
+                .map(server -> this.plugin.remoteSnapshotManager().applyContainers(server, this.player.uuid(), id))
+                .orElseGet(() -> CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE));
+    }
+
+    private net.minecraft.world.item.ItemStack[] editedItems(VirtualInventory edited, ItemStack[] original) {
+        net.minecraft.world.item.ItemStack[] items = new net.minecraft.world.item.ItemStack[original.length];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = CraftItemStack.asNMSCopy(i < edited.size() ? edited.itemAt(i) : original[i]);
+        }
+        return items;
     }
 
     private Item buildClaimButton() {
@@ -400,6 +478,7 @@ public final class SnapshotDetailGui {
                         this.controls();
                         this.showingContents.set(true);
                         this.updateEnderPages();
+                        this.saving = false;
                         if (this.archivePath != null) {
                             if (key == null) {
                                 this.showArchiveIndex();
@@ -524,13 +603,13 @@ public final class SnapshotDetailGui {
         VirtualInventory inventory = new VirtualInventory(items);
         // 创造克隆在点击阶段拦截, 拖拽与跨容器移动在事务提交前检查.
         inventory.subscribeClick(event -> {
-            if (!event.player().hasPermission(EDIT)) {
+            if (this.saving || !event.player().hasPermission(EDIT)) {
                 event.cancel();
             }
         });
         inventory.subscribePreUpdate(event -> {
             if (event.reason() instanceof PlayerUpdateReason reason
-                    && !reason.player().hasPermission(EDIT)) {
+                    && (this.saving || !reason.player().hasPermission(EDIT))) {
                 event.setCancelled(true);
             }
         });
@@ -667,6 +746,7 @@ public final class SnapshotDetailGui {
      * @param failure 详情加载或预览准备期间的异常
      */
     private void failedContent(Throwable failure) {
+        this.saving = false;
         this.status("failed");
         this.statusPane.setItem(13, this.buildRetryButton());
         this.failed(failure);
@@ -707,6 +787,10 @@ public final class SnapshotDetailGui {
      * @return 查看者拥有编辑权限时为 true
      */
     private boolean editable() {
+        if (this.saving) {
+            this.message("save.pending");
+            return false;
+        }
         if (this.viewer.hasPermission(EDIT)) {
             return true;
         }
