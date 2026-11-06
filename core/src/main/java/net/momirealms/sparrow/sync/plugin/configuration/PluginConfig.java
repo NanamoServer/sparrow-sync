@@ -354,6 +354,7 @@ public final class PluginConfig {
         })
         List<DataKey> discardUnknownData = List.of(
                 DataKey.sparrow("attributes"),
+                DataKey.sparrow("death_settlement"),
                 DataKey.sparrow("enchantment_seed"),
                 DataKey.sparrow("experience"),
                 DataKey.sparrow("flight_status"),
@@ -609,6 +610,16 @@ public final class PluginConfig {
         })
         boolean lastDeathLocation = false;
 
+        @Comment({
+                "Synchronize the experience settlement of players who leave while dead, so respawning on another server keeps the death result.",
+                "Application requires synchronization.native-async-apply.player-data and takes place before login.",
+        })
+        @Comment(lang = "zh-CN", value = {
+                "同步以死亡状态离开的玩家的经验结算, 在其他服复活时保持死亡时的结算结果.",
+                "应用需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
+        })
+        boolean deathSettlement = true;
+
         @Comment("Synchronize TPS, compass and RAM bar toggles. Requires Purpur patches.")
         @Comment(lang = "zh-CN", value = "同步 TPS、指南针和内存占用条的显示开关, 需要服务端为 Purpur 及其 Fork.")
         boolean purpurBar = true;
@@ -659,6 +670,10 @@ public final class PluginConfig {
 
         public boolean inventory() {
             return this.inventory;
+        }
+
+        public boolean deathSettlement() {
+            return this.deathSettlement;
         }
 
         public boolean lastDeathLocation() {
