@@ -1,6 +1,6 @@
 [versions]
-project-version = "26.11"
-config-version = "8"
+project-version = "26.11.1"
+config-version = "9"
 commands-config-version = "2"
 server-config-version = "1"
 lang-version = "59"

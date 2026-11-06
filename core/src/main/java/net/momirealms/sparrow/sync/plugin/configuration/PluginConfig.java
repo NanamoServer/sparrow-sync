@@ -601,24 +601,22 @@ public final class PluginConfig {
         boolean statistics = true;
 
         @Comment({
+                "Synchronize the experience settlement of players who leave while dead, so respawning on another server keeps the death result.",
+        })
+        @Comment(lang = "zh-CN", value = {
+                "同步以死亡状态离开的玩家的经验结算, 在其他服复活时保持死亡时的结算结果.",
+        })
+        boolean deathSettlement = true;
+
+        @Comment({
                 "Synchronize the last death dimension and block position for specialized setups. Disabled by default.",
                 "Application requires synchronization.native-async-apply.player-data and takes place before login.",
         })
         @Comment(lang = "zh-CN", value = {
                 "同步最后死亡的维度和方块坐标, 用于特殊场景, 默认关闭.",
-                "应用需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
+                "使用本项必须需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
         })
         boolean lastDeathLocation = false;
-
-        @Comment({
-                "Synchronize the experience settlement of players who leave while dead, so respawning on another server keeps the death result.",
-                "Application requires synchronization.native-async-apply.player-data and takes place before login.",
-        })
-        @Comment(lang = "zh-CN", value = {
-                "同步以死亡状态离开的玩家的经验结算, 在其他服复活时保持死亡时的结算结果.",
-                "应用需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
-        })
-        boolean deathSettlement = true;
 
         @Comment("Synchronize TPS, compass and RAM bar toggles. Requires Purpur patches.")
         @Comment(lang = "zh-CN", value = "同步 TPS、指南针和内存占用条的显示开关, 需要服务端为 Purpur 及其 Fork.")
