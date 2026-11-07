@@ -32,6 +32,28 @@ Sparrow Sync 是一款用于**跨服务器同步玩家数据**的 **Paper / Foli
 - **🔧 数据恢复工具**：查看本地异常档案，通过快照导入、导出和批量归档命令管理数据。
 - **⭐ 兼容 Plan 面板**: 通过 Plan 网页面板中的 SparrowSync 分析数据，与你的社区保持联系。
 
+## 在线背包管理
+
+| 命令 | 同功能子命令 | 默认权限 |
+|---|---|---|
+| `/inv-see <player>` | `/sparrow-sync inv-see <player>` | `sparrow_sync.command.invsee` |
+| `/ender-see <player>` | `/sparrow-sync ender-see <player>` | `sparrow_sync.command.endersee` |
+
+命令只允许玩家执行, 目标必须本服在线且数据就绪, 不能查看自己. 离线、位于其他服务器或数据尚未就绪的目标统一提示不在线. 使用 Cloud 的在线玩家解析和补全, 支持名字前缀匹配.
+
+`inv-see` 可编辑目标的 36 格背包、4 格装备和副手, 不包含目标光标及合成格, 装备栏不额外限制物品类型. `ender-see` 可编辑目标末影箱. 两个菜单下方都是操作者自己的背包, 允许多人同时编辑同一目标.
+
+目标退出或死亡时关闭相关菜单; 死亡时通知查看者, 重生后不自动重新打开. 直接操作真实容器, 不额外触发快照、保存或回滚. 物品拿到操作者光标上就已从目标容器取出, 关窗不会撤销操作. 此功能不处理 Folia 跨玩家区域的并发访问.
+
+在 `commands.yml` 的 `inv_see`、`ender_see` 中设置开关、命令路径和权限, 修改后重启服务器. 主配置 `config.yml` 可设置标题:
+
+```yaml
+inv-see-title: '<gold><arg:user_name> · <lang:container.inventory></gold>'
+ender-see-title: '<gold><arg:user_name> · <lang:container.enderchest></gold>'
+```
+
+`<arg:user_name>` 是目标玩家名字; 支持 MiniMessage, 默认翻译键跟随客户端语言. 留空显示空标题. 执行 `/sparrow-sync reload` 后, 新打开的菜单使用新配置.
+
 ## 🎬 功能演示
 
 ### ✨ 无冻结进服与 🗺️ 跨服地图

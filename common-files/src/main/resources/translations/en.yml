@@ -112,6 +112,10 @@ command.disconnected: '<color:#FFB6CB>Disconnected</color>'
 command.pinned: '<color:#FFE08A>※ Pinned</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Player not found: </color><color:#F2F4FF><arg:0></color>'
 command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>No data was found for this player. They may never have joined this server.</color>'
+command.inventory_see.player_offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>The target player is not online.</color>'
+command.inventory_see.target_died: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>The target player died. The inventory menu has been closed.</color>'
+command.inventory_see.self: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>You cannot inspect your own inventory.</color>'
+command.inventory_see.open_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>Could not open the inventory menu. Check the console for details.</color>'
 command.migrate.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> Migration complete. Read <arg:1> snapshots and saved <arg:3> in <arg:5> ms. Check the data before allowing players onto the target server.'
 command.migrate.console_only: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> Run data migration from the console.'
 command.migrate.generating: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> Reading data from <arg:0>. <arg:3> snapshots read, <arg:4> skipped.'
@@ -275,6 +279,7 @@ plugin.economy_ready: 'Player balance synchronization enabled using <arg:0>'
 # log.command
 log.command.player_lookup_failed: 'Failed to resolve player identity: <arg:0>'
 log.command.snapshot_failed: 'Snapshot operation failed: <arg:0>'
+log.command.inventory_see_failed: 'Failed to open <arg:0> menu'
 log.command.status_query_failed: 'Failed to query player status: <arg:0>'
 
 # log.data

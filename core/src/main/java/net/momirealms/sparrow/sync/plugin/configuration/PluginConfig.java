@@ -115,6 +115,27 @@ public final class PluginConfig {
         String forcedLocale = "";
 
         @BlankLineBefore
+        @Comment({
+                "Title of the /inv-see menu. Supports MiniMessage and <arg:user_name> for the target player's name.",
+                "The default translation key follows the client language. Leave blank for an empty title. Example: <gold><arg:user_name> - Inventory</gold>",
+        })
+        @Comment(lang = "zh-CN", value = {
+                "/inv-see 菜单标题, 支持 MiniMessage 和目标玩家名字占位符 <arg:user_name>.",
+                "默认翻译键跟随客户端语言, 留空显示空标题. 示例 <gold><arg:user_name> 的背包</gold>"
+        })
+        String invSeeTitle = "<dark_gray><arg:user_name> · <lang:container.inventory>";
+        @Comment({
+                "Title of the /ender-see menu. Supports MiniMessage and <arg:user_name> for the target player's name.",
+                "The default translation key follows the client language. Leave blank for an empty title. Example: <gold><arg:user_name> - Ender Chest</gold>",
+                "Changes apply to newly opened menus after reloading the configuration."
+        })
+        @Comment(lang = "zh-CN", value = {
+                "/ender-see 菜单标题, 支持 MiniMessage 和目标玩家名字占位符 <arg:user_name>.",
+                "默认翻译键跟随客户端语言, 留空显示空标题. 示例 <gold><arg:user_name> 的末影箱</gold>",
+        })
+        String enderSeeTitle = "<dark_gray><arg:user_name> · <lang:container.enderchest>";
+
+        @BlankLineBefore
         @Comment("Redis connection settings for data synchronization between servers.")
         @Comment(lang = "zh-CN", value = "Redis 连接设置, 用于服务器之间的数据同步.")
         RedisOptions redis = new RedisOptions();
@@ -1167,6 +1188,16 @@ public final class PluginConfig {
 
     // 读取一律经这里穿透到当前那份配置, 方法名以 $ 还原配置文件里的层级.
     // 同一次触发要读取的相关选项组合成一个不可变值, 调用方每次重新取得当前快照
+
+    @NotNull
+    public static String invSeeTitle() {
+        return config.invSeeTitle;
+    }
+
+    @NotNull
+    public static String enderSeeTitle() {
+        return config.enderSeeTitle;
+    }
 
     public static boolean checkUpdate() {
         return config.updateChecker;

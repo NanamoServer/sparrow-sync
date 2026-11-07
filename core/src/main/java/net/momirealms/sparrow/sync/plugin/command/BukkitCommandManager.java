@@ -3,6 +3,8 @@ package net.momirealms.sparrow.sync.plugin.command;
 import net.kyori.adventure.util.Index;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.sync.plugin.command.feature.StatusCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.InvseeCommand;
+import net.momirealms.sparrow.sync.plugin.command.feature.EnderseeCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.ReloadCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotCaptureCommand;
 import net.momirealms.sparrow.sync.plugin.command.feature.SnapshotRestoreCommand;
@@ -61,6 +63,8 @@ public final class BukkitCommandManager extends AbstractCommandManager {
                 new ExceptionDeleteCommand(this, plugin),
                 new SnapshotListCommand(this, plugin),
                 new GuiCommand(this, plugin),
+                new InvseeCommand(this, plugin),
+                new EnderseeCommand(this, plugin),
                 new SnapshotViewCommand(this, plugin),
                 new ExceptionListCommand(this, plugin),
                 new ExceptionViewCommand(this, plugin)

@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.cluster.cache.RedisSnapshotCache;
 import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.compatibility.CompatibilityManager;
+import net.momirealms.sparrow.sync.gui.InventorySeeManager;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.locale.TranslationManagerImpl;
@@ -95,6 +96,7 @@ public class SparrowSync implements Plugin {
     private final ConfigurationManager configurationManager;
     private TranslationManager translationManager;
     private CommandManager commandManager;
+    private InventorySeeManager inventorySeeManager;
     private RemoteSnapshotManager remoteSnapshotManager;
 
     private JavaPlugin javaPlugin;
@@ -307,6 +309,7 @@ public class SparrowSync implements Plugin {
         // 安装 SparrowUI
         SparrowUI.getInstance().setUp(this.javaPlugin);
         SparrowUI.getInstance().setExceptionHandler(this.logger::warn);
+        this.inventorySeeManager = new InventorySeeManager();
         // 延迟初始化事件
         this.isInitializing = true;
         this.initASMProxies();
@@ -342,6 +345,7 @@ public class SparrowSync implements Plugin {
     @Override
     public void onPluginDisable() {
         this.apiReady = false;
+        if (this.inventorySeeManager != null)   this.inventorySeeManager.close();
         if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
         if (this.snapshotService != null)       this.snapshotService.stopOperations();
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
@@ -748,6 +752,10 @@ public class SparrowSync implements Plugin {
     @Override
     public ConfigurationManager configurationManager() {
         return this.configurationManager;
+    }
+
+    public InventorySeeManager inventorySeeManager() {
+        return this.inventorySeeManager;
     }
 
     @Override

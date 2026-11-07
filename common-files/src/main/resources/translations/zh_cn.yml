@@ -112,6 +112,10 @@ command.disconnected: '<color:#FFB6CB>未连接</color>'
 command.pinned: '<color:#FFE08A>※ 已固定</color>'
 command.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>未找到玩家 </color><color:#F2F4FF><arg:0></color>'
 command.gui.player_not_found: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>没有找到该玩家的数据，可能还没有在本服登录过。</color>'
+command.inventory_see.player_offline: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>目标玩家不在线。</color>'
+command.inventory_see.target_died: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>目标玩家已死亡，容器菜单已关闭。</color>'
+command.inventory_see.self: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>不能查看自己的容器。</color>'
+command.inventory_see.open_failed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> <color:#FFB6CB>无法打开容器菜单，请查看控制台日志。</color>'
 command.migrate.completed: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 迁移完成，读取 <arg:1> 份快照、写入 <arg:3> 份快照，用时 <arg:5> 毫秒。请确认数据无误后，再允许玩家进入目标服务器。'
 command.migrate.console_only: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 请在控制台执行数据迁移。'
 command.migrate.generating: '<color:#C8E4E9>>></color> <color:#FFE08A><b>SparrowSync</b></color> <color:#C8E4E9>·</color> 正在从 <arg:0> 读取数据，已读取 <arg:3> 份快照，跳过 <arg:4> 份快照。'
@@ -275,6 +279,7 @@ plugin.economy_ready: '已启用玩家余额同步，经济插件为 <arg:0>'
 # log.command
 log.command.player_lookup_failed: '解析玩家身份失败：<arg:0>'
 log.command.snapshot_failed: '执行快照操作失败：<arg:0>'
+log.command.inventory_see_failed: '打开 <arg:0> 菜单失败'
 log.command.status_query_failed: '查询玩家状态失败：<arg:0>'
 
 # log.data

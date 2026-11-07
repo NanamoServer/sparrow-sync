@@ -4,6 +4,10 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TranslatableComponent;
 
 public interface MessageConstants {
+    TranslatableComponent.Builder COMMAND_INVENTORY_SEE_TARGET_DIED = Component.translatable().key("command.inventory_see.target_died");
+    TranslatableComponent.Builder COMMAND_INVENTORY_SEE_PLAYER_OFFLINE = Component.translatable().key("command.inventory_see.player_offline");
+    TranslatableComponent.Builder COMMAND_INVENTORY_SEE_SELF = Component.translatable().key("command.inventory_see.self");
+    TranslatableComponent.Builder COMMAND_INVENTORY_SEE_OPEN_FAILED = Component.translatable().key("command.inventory_see.open_failed");
     TranslatableComponent.Builder COMMAND_QUERY_FAILED = Component.translatable().key("command.query_failed");
     TranslatableComponent.Builder COMMAND_PLAYER_NOT_FOUND = Component.translatable().key("command.player_not_found");
     TranslatableComponent.Builder COMMAND_GUI_PLAYER_NOT_FOUND = Component.translatable().key("command.gui.player_not_found");

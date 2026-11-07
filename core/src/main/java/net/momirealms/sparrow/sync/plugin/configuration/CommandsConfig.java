@@ -75,6 +75,12 @@ public final class CommandsConfig {
         CommandConfig status = new CommandConfig(true, List.of("/sparrow-sync status"), "sparrow_sync.command.status");
 
         @BlankLineBefore
+        CommandConfig invSee = new CommandConfig(true, List.of("/inv-see", "/sparrow-sync inv-see"), "sparrow_sync.command.invsee");
+
+        @BlankLineBefore
+        CommandConfig enderSee = new CommandConfig(true, List.of("/ender-see", "/sparrow-sync ender-see"), "sparrow_sync.command.endersee");
+
+        @BlankLineBefore
         CommandConfig gui = new CommandConfig(true, List.of("/sparrow-sync gui"), "sparrow_sync.command.view");
 
         @BlankLineBefore
@@ -135,6 +141,8 @@ public final class CommandsConfig {
                 case "reload" -> this.reload;
                 case "status" -> this.status;
                 case "gui" -> this.gui;
+                case "inv_see" -> this.invSee;
+                case "ender_see" -> this.enderSee;
                 case "snapshot_view" -> this.snapshotView;
                 case "snapshot_list" -> this.snapshotList;
                 case "exception_list" -> this.exceptionList;

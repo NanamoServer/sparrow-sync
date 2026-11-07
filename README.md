@@ -32,6 +32,28 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 - **🔧 Recovery Tools**: Inspect local exception archives and use snapshot import, export, and bulk archive commands for data management.
 - **⭐ Works great with Plan**: Stay in touch with your community through SparrowSync analytics on your Plan web panel.
 
+## Online Inventory Management
+
+| Command | Equivalent subcommand | Default permission |
+|---|---|---|
+| `/inv-see <player>` | `/sparrow-sync inv-see <player>` | `sparrow_sync.command.invsee` |
+| `/ender-see <player>` | `/sparrow-sync ender-see <player>` | `sparrow_sync.command.endersee` |
+
+Only players can run these commands. The target must be online on the same server with player data ready, and cannot be the viewer. Offline, remote-server, and not-yet-ready targets all receive the same offline feedback. Cloud supplies online player parsing and completion, including name prefix matching.
+
+`inv-see` edits the target's 36 inventory slots, four armor slots, and offhand. The target's cursor and crafting slots are excluded; no additional item-type restrictions are imposed on armor slots. `ender-see` edits the target's ender chest. Both menus show the viewer's own inventory below and allow multiple viewers to edit the same target.
+
+Menus close when the target disconnects or dies. Viewers are notified of the death; respawning does not reopen menus. Edits directly modify the live container without triggering additional snapshots, saves, or rollback. An item picked up onto the viewer's cursor has already left the target container; closing the menu does not undo that action. This feature does not coordinate concurrent access across player regions on Folia.
+
+Configure command enablement, paths, and permissions under `inv_see` and `ender_see` in `commands.yml`, then restart the server. Set menu titles in the main `config.yml`:
+
+```yaml
+inv-see-title: '<gold><arg:user_name> · <lang:container.inventory></gold>'
+ender-see-title: '<gold><arg:user_name> · <lang:container.enderchest></gold>'
+```
+
+`<arg:user_name>` inserts the target player's name. Titles support MiniMessage; the default translation keys follow the client's language. An empty value produces an empty title. After `/sparrow-sync reload`, newly opened menus use the updated configuration.
+
 ## 🎬 See It in Action
 
 ### ✨ Seamless transfers and 🗺️ cross-server maps
