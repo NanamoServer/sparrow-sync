@@ -1,5 +1,5 @@
 [versions]
-project-version = "26.11.1"
+project-version = "26.11.2"
 config-version = "10"
 commands-config-version = "3"
 server-config-version = "1"
