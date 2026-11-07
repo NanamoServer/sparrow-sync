@@ -41,7 +41,7 @@ Sparrow Sync is a **Paper and Folia plugin** for synchronizing **player data acr
 
 Only players can run these commands. The target must be online on the same server with player data ready, and cannot be the viewer. Offline, remote-server, and not-yet-ready targets all receive the same offline feedback. Cloud supplies online player parsing and completion, including name prefix matching.
 
-`inv-see` edits the target's 36 inventory slots, four armor slots, and offhand. The target's cursor and crafting slots are excluded; no additional item-type restrictions are imposed on armor slots. `ender-see` edits the target's ender chest. Both menus show the viewer's own inventory below and allow multiple viewers to edit the same target.
+`inv-see` edits the target's 36 inventory slots, four armor slots, and offhand. The target's cursor and crafting slots are excluded; no additional item-type restrictions are imposed on armor slots. `ender-see` edits the target's ender chest using its actual size: up to 54 slots are shown directly; larger containers use 45 slots per page, with seven gray glass panes with hidden tooltips followed by Previous and Next buttons on the bottom row. Both menus show the viewer's own inventory below and allow multiple viewers to edit the same target.
 
 Menus close when the target disconnects or dies. Viewers are notified of the death; respawning does not reopen menus. Edits directly modify the live container without triggering additional snapshots, saves, or rollback. An item picked up onto the viewer's cursor has already left the target container; closing the menu does not undo that action. This feature does not coordinate concurrent access across player regions on Folia.
 
