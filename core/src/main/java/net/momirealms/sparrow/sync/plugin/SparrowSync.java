@@ -428,6 +428,7 @@ public class SparrowSync implements Plugin {
         if (enabled.air())              this.dataRegistry.register(new AirDataType());
         if (enabled.freezeTicks())      this.dataRegistry.register(new FreezeTicksDataType());
         if (enabled.recipeBook())       this.dataRegistry.register(new RecipeBookDataType());
+        if (enabled.itemCooldowns())    this.dataRegistry.register(new ItemCooldownsDataType());
         if (enabled.inventory())        this.dataRegistry.register(new InventoryDataType());
         if (enabled.enderChest())       this.dataRegistry.register(new EnderChestDataType());
         if (enabled.persistentData())   this.dataRegistry.register(new PDCDataType());

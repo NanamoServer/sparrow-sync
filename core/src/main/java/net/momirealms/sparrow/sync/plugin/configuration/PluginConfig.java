@@ -698,6 +698,10 @@ public final class PluginConfig {
         @Comment(lang = "zh-CN", value = "同步玩家当前是否处于鞘翅滑翔状态.")
         boolean gliding = false;
 
+        @Comment("Synchronize all item cooldown groups, replacing existing cooldowns; offline time does not consume cooldowns.")
+        @Comment(lang = "zh-CN", value = "同步全部物品冷却组并替换本服原有冷却, 离线期间不扣减剩余时间.")
+        boolean itemCooldowns = false;
+
         @Comment("Synchronize the last death dimension and block position before login; requires synchronization.native-async-apply.player-data.")
         @Comment(lang = "zh-CN", value = "同步最后死亡的维度和方块坐标, 在登录前生效, 需要开启 synchronization.native-async-apply.player-data.")
         boolean lastDeathLocation = false;
@@ -776,6 +780,10 @@ public final class PluginConfig {
 
         public boolean gliding() {
             return this.gliding;
+        }
+
+        public boolean itemCooldowns() {
+            return this.itemCooldowns;
         }
 
         public boolean fallDistance() {
