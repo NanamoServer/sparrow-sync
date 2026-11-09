@@ -94,7 +94,6 @@ public final class PDCDataType implements NativePlayerDataType<CompoundTag> {
         return PluginConfig.synchronization$nativeAsyncApply().playerData();
     }
 
-    @Override
     @NotNull
     @Override
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull net.momirealms.sparrow.nbt.CompoundTag playerData, @NotNull CompoundTag value) {

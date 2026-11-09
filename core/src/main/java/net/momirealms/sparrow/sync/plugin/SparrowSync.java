@@ -424,6 +424,10 @@ public class SparrowSync implements Plugin {
     /** 注册内置的数据类型. */
     private void setUpInternalDataTypes() {
         PluginConfig.DataTypes enabled = PluginConfig.synchronization$dataTypes();
+        if (enabled.fireTicks())        this.dataRegistry.register(new FireTicksDataType());
+        if (enabled.air())              this.dataRegistry.register(new AirDataType());
+        if (enabled.freezeTicks())      this.dataRegistry.register(new FreezeTicksDataType());
+        if (enabled.recipeBook())       this.dataRegistry.register(new RecipeBookDataType());
         if (enabled.inventory())        this.dataRegistry.register(new InventoryDataType());
         if (enabled.enderChest())       this.dataRegistry.register(new EnderChestDataType());
         if (enabled.persistentData())   this.dataRegistry.register(new PDCDataType());

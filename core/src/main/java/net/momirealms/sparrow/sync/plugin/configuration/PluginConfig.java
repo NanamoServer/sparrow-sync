@@ -606,6 +606,10 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DataTypes {
+        boolean fireTicks = true;
+        boolean air = true;
+        boolean freezeTicks = true;
+        boolean recipeBook = true;
         boolean advancements = true;
         boolean attributes = true;
         boolean enchantmentSeed = true;
@@ -649,6 +653,22 @@ public final class PluginConfig {
 
         public boolean advancements() {
             return this.advancements;
+        }
+
+        public boolean fireTicks() {
+            return this.fireTicks;
+        }
+
+        public boolean air() {
+            return this.air;
+        }
+
+        public boolean freezeTicks() {
+            return this.freezeTicks;
+        }
+
+        public boolean recipeBook() {
+            return this.recipeBook;
         }
 
         public boolean attributes() {
