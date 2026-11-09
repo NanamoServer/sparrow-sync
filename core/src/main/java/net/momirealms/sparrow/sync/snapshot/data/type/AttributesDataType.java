@@ -198,6 +198,15 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     public NativeApplyResult applyNative(@NotNull PlayerSession session, @NotNull CompoundTag playerData, @NotNull Attributes attributes) {
         Tag merged = mergeNative(playerData.get("attributes"), attributes, PluginConfig.synchronization$attributes());
         playerData.put("attributes", merged);
+        // todo 可以优化一下
+        String movementKey = Attribute.MOVEMENT_SPEED.getKey().toString();
+        if (PluginConfig.synchronization$attributes().attributeAllowed(movementKey)) {
+            for (AttributeValue value : attributes.values()) {
+                if (!value.key().toString().equals(movementKey)) continue;
+                // 原版读取 abilities 后会覆盖移动属性基础值, Join 时恢复快照值.
+                return NativeApplyResult.APPLIED_PLAYER_DATA.withHandoff(player -> player.getAttribute(Attribute.MOVEMENT_SPEED).setBaseValue(value.base()));
+            }
+        }
         return NativeApplyResult.APPLIED_PLAYER_DATA;
     }
 
