@@ -618,6 +618,9 @@ public final class PluginConfig {
         boolean flightStatus = true;
         boolean walkSpeed = true;
         boolean flySpeed = true;
+        boolean gliding = false;
+        boolean fallDistance = false;
+        boolean velocity = false;
         boolean gameMode = true;
         boolean health = true;
         boolean hunger = true;
@@ -703,6 +706,18 @@ public final class PluginConfig {
 
         public boolean flySpeed() {
             return this.flySpeed;
+        }
+
+        public boolean gliding() {
+            return this.gliding;
+        }
+
+        public boolean fallDistance() {
+            return this.fallDistance;
+        }
+
+        public boolean velocity() {
+            return this.velocity;
         }
 
         public boolean gameMode() {

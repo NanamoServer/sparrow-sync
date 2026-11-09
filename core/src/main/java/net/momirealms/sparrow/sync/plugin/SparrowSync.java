@@ -446,6 +446,9 @@ public class SparrowSync implements Plugin {
         if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
         if (enabled.walkSpeed())        this.dataRegistry.register(new WalkSpeedDataType());
         if (enabled.flySpeed())         this.dataRegistry.register(new FlySpeedDataType());
+        if (enabled.gliding())          this.dataRegistry.register(new GlidingDataType());
+        if (enabled.fallDistance())     this.dataRegistry.register(new FallDistanceDataType());
+        if (enabled.velocity())         this.dataRegistry.register(new VelocityDataType());
         if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
         if (enabled.purpurBar() && VersionHelper.hasPurpurPatch) {
             this.dataRegistry.register(new PurpurBarDataType());
