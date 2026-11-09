@@ -616,6 +616,8 @@ public final class PluginConfig {
         boolean enderChest = true;
         boolean experience = true;
         boolean flightStatus = true;
+        boolean walkSpeed = true;
+        boolean flySpeed = true;
         boolean gameMode = true;
         boolean health = true;
         boolean hunger = true;
@@ -693,6 +695,14 @@ public final class PluginConfig {
 
         public boolean flightStatus() {
             return this.flightStatus;
+        }
+
+        public boolean walkSpeed() {
+            return this.walkSpeed;
+        }
+
+        public boolean flySpeed() {
+            return this.flySpeed;
         }
 
         public boolean gameMode() {

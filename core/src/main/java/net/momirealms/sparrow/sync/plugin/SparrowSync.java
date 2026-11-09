@@ -444,6 +444,8 @@ public class SparrowSync implements Plugin {
         if (enabled.lastDeathLocation())this.dataRegistry.register(new LastDeathLocationDataType());
         if (enabled.deathSettlement())  this.dataRegistry.register(new DeathSettlementDataType());
         if (enabled.flightStatus())     this.dataRegistry.register(new FlightStatusDataType());
+        if (enabled.walkSpeed())        this.dataRegistry.register(new WalkSpeedDataType());
+        if (enabled.flySpeed())         this.dataRegistry.register(new FlySpeedDataType());
         if (enabled.enchantmentSeed())  this.dataRegistry.register(new EnchantmentSeedDataType());
         if (enabled.purpurBar() && VersionHelper.hasPurpurPatch) {
             this.dataRegistry.register(new PurpurBarDataType());
