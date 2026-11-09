@@ -606,55 +606,121 @@ public final class PluginConfig {
 
     @Configuration(naming = Configuration.Naming.KEBAB_CASE)
     public static class DataTypes {
-        boolean fireTicks = true;
-        boolean air = true;
-        boolean freezeTicks = true;
-        boolean recipeBook = true;
+        @Comment("Synchronize advancement completion and criterion progress.")
+        @Comment(lang = "zh-CN", value = "同步进度完成状态及各项条件的完成进度.")
         boolean advancements = true;
-        boolean attributes = true;
-        boolean enchantmentSeed = true;
-        boolean enderChest = true;
-        boolean experience = true;
-        boolean flightStatus = true;
-        boolean walkSpeed = true;
-        boolean flySpeed = true;
-        boolean gliding = false;
-        boolean fallDistance = false;
-        boolean velocity = false;
-        boolean gameMode = true;
-        boolean health = true;
-        boolean hunger = true;
-        boolean inventory = true;
-        boolean location = false;
-        boolean persistentData = true;
-        boolean potionEffects = true;
-        boolean statistics = true;
 
-        @Comment({
-                "Synchronize the experience settlement of players who leave while dead, so respawning on another server keeps the death result.",
-        })
-        @Comment(lang = "zh-CN", value = {
-                "同步以死亡状态离开的玩家的经验结算, 在其他服复活时保持死亡时的结算结果.",
-        })
+        @Comment("Synchronize remaining air ticks for underwater breathing.")
+        @Comment(lang = "zh-CN", value = "同步剩余氧气值, 单位为游戏刻.")
+        boolean air = true;
+
+        @Comment("Synchronize player attribute base values and modifiers according to the attribute filters.")
+        @Comment(lang = "zh-CN", value = "按属性筛选配置同步玩家属性的基础值和修饰符.")
+        boolean attributes = true;
+
+        @Comment("Synchronize pending experience settlement when a player leaves while dead and respawns on another server.")
+        @Comment(lang = "zh-CN", value = "同步死亡离线后尚待复活的经验结算, 在其他服复活时保持结算结果.")
         boolean deathSettlement = true;
 
-        @Comment({
-                "Synchronize the last death dimension and block position for specialized setups. Disabled by default.",
-                "Application requires synchronization.native-async-apply.player-data and takes place before login.",
-        })
-        @Comment(lang = "zh-CN", value = {
-                "同步最后死亡的维度和方块坐标, 用于特殊场景, 默认关闭.",
-                "使用本项必须需要开启 synchronization.native-async-apply.player-data, 在原版登录加载前生效.",
-        })
-        boolean lastDeathLocation = false;
+        @Comment("Synchronize the enchantment seed used to generate enchanting table offers.")
+        @Comment(lang = "zh-CN", value = "同步附魔种子, 保持附魔台候选结果一致.")
+        boolean enchantmentSeed = true;
 
-        @Comment("Synchronize TPS, compass and RAM bar toggles. Requires Purpur patches.")
-        @Comment(lang = "zh-CN", value = "同步 TPS、指南针和内存占用条的显示开关, 需要服务端为 Purpur 及其 Fork.")
+        @Comment("Synchronize all items and their slots in the ender chest.")
+        @Comment(lang = "zh-CN", value = "同步末影箱内的物品及槽位.")
+        boolean enderChest = true;
+
+        @Comment("Synchronize experience level, progress within the level and total experience.")
+        @Comment(lang = "zh-CN", value = "同步经验等级, 当前等级进度和总经验值.")
+        boolean experience = true;
+
+        @Comment("Synchronize remaining burning time in game ticks.")
+        @Comment(lang = "zh-CN", value = "同步剩余燃烧时间, 单位为游戏刻.")
+        boolean fireTicks = true;
+
+        @Comment("Synchronize permission to fly and whether the player is currently flying.")
+        @Comment(lang = "zh-CN", value = "同步允许飞行和当前飞行状态.")
+        boolean flightStatus = true;
+
+        @Comment("Synchronize the abilities flying speed used for creative-style flight.")
+        @Comment(lang = "zh-CN", value = "同步 abilities 中用于创造式飞行的速度设置.")
+        boolean flySpeed = true;
+
+        @Comment("Synchronize accumulated freezing time in game ticks.")
+        @Comment(lang = "zh-CN", value = "同步累计冰冻时间, 单位为游戏刻.")
+        boolean freezeTicks = true;
+
+        @Comment("Synchronize the current survival, creative, adventure or spectator game mode.")
+        @Comment(lang = "zh-CN", value = "同步当前的生存, 创造, 冒险或旁观游戏模式.")
+        boolean gameMode = true;
+
+        @Comment("Synchronize current health and absorption hearts.")
+        @Comment(lang = "zh-CN", value = "同步当前生命值和黄色的吸收生命值.")
+        boolean health = true;
+
+        @Comment("Synchronize food level, saturation, exhaustion and the food tick timer.")
+        @Comment(lang = "zh-CN", value = "同步饥饿值, 饱和度, 消耗度及饥饿系统计时.")
+        boolean hunger = true;
+
+        @Comment("Synchronize inventory items, armor, offhand items and the selected hotbar slot.")
+        @Comment(lang = "zh-CN", value = "同步背包, 盔甲, 副手物品及当前选中的快捷栏槽位.")
+        boolean inventory = true;
+
+        @Comment("Synchronize player persistent data additions, updates and removals according to the configured blacklist.")
+        @Comment(lang = "zh-CN", value = "按黑名单配置同步玩家持久化数据的新增, 修改和删除.")
+        boolean persistentData = true;
+
+        @Comment("Synchronize active potion effects, including duration, amplifier and display settings.")
+        @Comment(lang = "zh-CN", value = "同步当前药水效果的持续时间, 等级和显示设置.")
+        boolean potionEffects = true;
+
+        @Comment("Synchronize TPS, compass and RAM bar toggles on servers with Purpur patches.")
+        @Comment(lang = "zh-CN", value = "同步 TPS, 指南针和内存占用条的显示开关, 需要 Purpur 或兼容分支.")
         boolean purpurBar = true;
 
-        @Comment("Synchronize player balances. Requires Vault and an economy plugin.")
-        @Comment(lang = "zh-CN", value = "是否同步玩家余额, 需要安装 Vault 和经济插件.")
+        @Comment("Synchronize unlocked recipes, new recipe highlights and recipe book open/filter settings.")
+        @Comment(lang = "zh-CN", value = "同步已解锁配方, 新配方提示及配方书的打开和筛选设置.")
+        boolean recipeBook = true;
+
+        @Comment("Synchronize player statistics such as play time, mined blocks and killed entities.")
+        @Comment(lang = "zh-CN", value = "同步游戏时长, 方块挖掘和实体击杀等玩家统计数据.")
+        boolean statistics = true;
+
+        @Comment("Synchronize the abilities walking speed while preserving movement_speed when that attribute is also synchronized.")
+        @Comment(lang = "zh-CN", value = "同步 abilities 中的行走速度设置, 同时同步 movement_speed 时保留该属性的独立值.")
+        boolean walkSpeed = true;
+
+        @Comment("Synchronize accumulated fall distance used to calculate fall damage.")
+        @Comment(lang = "zh-CN", value = "同步用于计算摔落伤害的累计下落距离.")
+        boolean fallDistance = false;
+
+        @Comment("Synchronize whether the player is gliding with an elytra.")
+        @Comment(lang = "zh-CN", value = "同步玩家当前是否处于鞘翅滑翔状态.")
+        boolean gliding = false;
+
+        @Comment("Synchronize the last death dimension and block position before login; requires synchronization.native-async-apply.player-data.")
+        @Comment(lang = "zh-CN", value = "同步最后死亡的维度和方块坐标, 在登录前生效, 需要开启 synchronization.native-async-apply.player-data.")
+        boolean lastDeathLocation = false;
+
+        @Comment("Synchronize the player world, coordinates, yaw and pitch.")
+        @Comment(lang = "zh-CN", value = "同步玩家所在世界, 坐标和水平及垂直朝向.")
+        boolean location = false;
+
+        @Comment("Synchronize respawn dimension, position, orientation and forced flag, preserving unavailable dimensions; cross-server routing is handled externally.")
+        @Comment(lang = "zh-CN", value = "同步复活维度, 坐标, 朝向和强制标记, 保留本服不存在的维度记录, 跨服复活由路由插件处理.")
+        boolean respawnPoint = false;
+
+        @Comment("Synchronize complete entity data for both shoulders; empty shoulders clear existing records.")
+        @Comment(lang = "zh-CN", value = "同步左右肩实体的完整数据, 空肩会清除本服原有记录.")
+        boolean shoulderEntities = false;
+
+        @Comment("Synchronize player balances through Vault and an economy plugin.")
+        @Comment(lang = "zh-CN", value = "通过 Vault 和经济插件同步玩家余额.")
         boolean vault = false;
+
+        @Comment("Synchronize the player velocity vector, including direction and magnitude.")
+        @Comment(lang = "zh-CN", value = "同步玩家当前的速度向量, 包括运动方向和大小.")
+        boolean velocity = false;
 
         public boolean advancements() {
             return this.advancements;
@@ -718,6 +784,14 @@ public final class PluginConfig {
 
         public boolean velocity() {
             return this.velocity;
+        }
+
+        public boolean respawnPoint() {
+            return this.respawnPoint;
+        }
+
+        public boolean shoulderEntities() {
+            return this.shoulderEntities;
         }
 
         public boolean gameMode() {
