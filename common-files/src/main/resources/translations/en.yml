@@ -364,7 +364,7 @@ log.stash.restore_failed: 'Failed to process the local snapshot <arg:0>'
 log.stash.restore_found: 'Found <arg:0> local snapshots pending retry; reinserting them into the database'
 log.stash.restore_rejected: 'The local snapshot <arg:0> was rejected by the database (<arg:1>) and moved to the exception directory'
 log.stash.restore_unavailable: 'Database still unavailable; <arg:0> local snapshots will be retried on the next startup'
-log.stash.write_failed: 'Failed to save the local snapshot for <arg:0>; this snapshot data is lost'
+log.stash.write_failed: 'Failed to save local snapshot <arg:1> for <arg:0> to directory <arg:2>; this snapshot data is lost'
 
 # log.storage
 log.storage.backend_ready: 'Connected to <arg:0> (database: <arg:1>)'

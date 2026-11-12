@@ -168,11 +168,16 @@ final class SnapshotSaver {
                 Thread.currentThread().interrupt();
                 return;
             } catch (ExecutionException exception) {
-                if (request.beginFinish()) {
-                    this.logger.error(LogCategory.SAVE, request.meta().player(), request.playerName(), exception.getCause(), LogConstants.SYNC_SAVE_FAILED, request.playerName());
-                    request.completion().completeExceptionally(exception.getCause());
-                }
-                return;
+                this.logger.warnWithFileCause(
+                        LogCategory.DATA,
+                        request.meta().player(),
+                        request.playerName(),
+                        exception.getCause(),
+                        LogConstants.DATA_MAP_COMPILE_FAILED,
+                        request.playerName(),
+                        request.meta().id().toString(),
+                        String.valueOf(exception.getCause().getMessage())
+                );
             }
             if (!request.updateSnapshot(snapshot)) return;
         }
@@ -246,9 +251,20 @@ final class SnapshotSaver {
             if (request.mapType() != null) {
                 this.playerDataPipeline.prepareForStorage(restored, request.mapType(), playerName).whenComplete((prepared, failure) -> {
                     if (failure != null) {
-                        request.fail(failure);
-                    } else if (request.updateSnapshot(prepared)) {
-                        this.submitSerial(request, () -> this.writePrepared(request, prepared));
+                        this.logger.warnWithFileCause(
+                                LogCategory.DATA,
+                                request.meta().player(),
+                                request.playerName(),
+                                failure,
+                                LogConstants.DATA_MAP_COMPILE_FAILED,
+                                request.playerName(),
+                                request.meta().id().toString(),
+                                String.valueOf(failure.getMessage())
+                        );
+                    }
+                    Snapshot snapshot = failure == null ? prepared : restored;
+                    if (request.updateSnapshot(snapshot)) {
+                        this.submitSerial(request, () -> this.writePrepared(request, snapshot));
                     }
                 });
             } else {

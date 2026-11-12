@@ -50,7 +50,16 @@ public final class SnapshotStash {
             this.logger.warn(LogCategory.STASH, snapshot.meta().player(), playerName, key, playerName, file.toString());
         } catch (Throwable throwable) {
             // 最后的防线也失败, 这份数据已经没有去处, 如实报出
-            this.logger.error(LogCategory.STASH, snapshot.meta().player(), playerName, throwable, LogConstants.STASH_WRITE_FAILED, playerName);
+            this.logger.error(
+                    LogCategory.STASH,
+                    snapshot.meta().player(),
+                    playerName,
+                    throwable,
+                    LogConstants.STASH_WRITE_FAILED,
+                    playerName,
+                    snapshot.meta().id().toString(),
+                    (pending ? this.files.pending() : this.files.exceptions().resolve(directoryOf(reason))).toString()
+            );
         }
     }
 
