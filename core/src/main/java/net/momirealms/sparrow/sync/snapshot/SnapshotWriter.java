@@ -86,14 +86,8 @@ final class SnapshotWriter {
         }
         save.whenComplete((outcome, throwable) -> {
             if (request.finishing()) return;
-            if (throwable != null) {
-                if (request.beginFinish()) {
-                    this.logger.error(LogCategory.SAVE, attempt.player(), request.playerName(), throwable, LogConstants.SYNC_SAVE_FAILED, request.playerName());
-                    request.completion().completeExceptionally(throwable);
-                }
-                return;
-            }
-            SaveResult result = outcome.result();
+            SaveResult result = throwable == null ? outcome.result() : SaveResult.RETRY_LATER;
+            Throwable failure = throwable == null ? outcome.failure() : throwable;
             if (result.stored()) {
                 if (!request.beginFinish()) return;
                 this.logSaved(attempt, result, System.nanoTime() - submittedAt);
@@ -104,13 +98,13 @@ final class SnapshotWriter {
                 return;
             }
             if (result.retriable()) {
-                logRetry(this.logger, attempt, outcome.failure());
+                logRetry(this.logger, attempt, failure);
                 if (attempt.canRetry()) {
                     this.retryLater(attempt.next());
                     return;
                 }
             }
-            this.stashFailed(attempt, result, outcome.failure());
+            this.stashFailed(attempt, result, failure);
         });
     }
 
