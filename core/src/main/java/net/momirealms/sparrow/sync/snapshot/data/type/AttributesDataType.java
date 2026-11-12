@@ -23,9 +23,10 @@ import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier.Operation;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.craftbukkit.attribute.CraftAttribute;
+import org.bukkit.craftbukkit.attribute.CraftAttributeInstance;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -126,7 +127,7 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
     @NotNull
     private static AttributeValue captureAttribute(net.minecraft.world.entity.ai.attributes.AttributeInstance instance, NamespacedKey attributeKey, AttributeOptions options) {
-        Map<Object, net.minecraft.world.entity.ai.attributes.AttributeModifier> currentModifiers = AttributeInstanceProxy.INSTANCE.getModifierById(instance);
+        Map<Object, net.minecraft.world.entity.ai.attributes.AttributeModifier> currentModifiers = AttributeInstanceProxy.INSTANCE.getPermanentModifiers(instance);
         ModifierValue[] modifiers = currentModifiers.isEmpty() ? NO_MODIFIERS : new ModifierValue[currentModifiers.size()];
         boolean filterModifiers = !options.modifierBlacklist().isEmpty();
         int count = 0;
@@ -165,25 +166,26 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
     protected void applyValue(@NotNull Player player, @NotNull Attributes attributes) {
         AttributeOptions options = PluginConfig.synchronization$attributes();
         AttributeValue[] values = attributes.values();
-        for (int i = 0; i < values.length; i++) {
-            AttributeValue value = values[i];
+        for (AttributeValue value : values) {
             if (!options.attributeAllowed(value.key().toString())) continue;
             Attribute attribute = Registry.ATTRIBUTE.get(value.key());
             if (attribute == null) continue;
-            AttributeInstance instance = player.getAttribute(attribute);
+            net.minecraft.world.entity.ai.attributes.AttributeInstance instance = ((CraftPlayer) player).getHandle().getAttribute(CraftAttribute.bukkitToMinecraftHolder(attribute));
             if (instance == null) continue;
-
-            for (AttributeModifier modifier : instance.getModifiers()) {
-                if (!options.modifierBlacklisted(modifier.getKey().toString())) {
+            // 应用属性, 删除过程中会修改 permanent 集合, 使用 NMS 提供的副本遍历
+            for (net.minecraft.world.entity.ai.attributes.AttributeModifier modifier : instance.getPermanentModifiers()) {
+                if (!options.modifierBlacklisted(CraftAttributeInstance.convert(modifier).getKey().toString())) {
                     instance.removeModifier(modifier);
                 }
             }
             instance.setBaseValue(value.base());
-            ModifierValue[] modifiers = value.modifiers();
-            for (int modifierIndex = 0; modifierIndex < modifiers.length; modifierIndex++) {
-                ModifierValue modifier = modifiers[modifierIndex];
+            Map<Object, net.minecraft.world.entity.ai.attributes.AttributeModifier> currentModifiers = AttributeInstanceProxy.INSTANCE.getModifierById(instance);
+            for (ModifierValue modifier : value.modifiers()) {
                 if (options.modifierBlacklisted(modifier.key().toString())) continue;
-                instance.addModifier(new AttributeModifier(modifier.key(), modifier.amount(), modifier.operation(), modifier.slotGroup()));
+                Object id = IdentifierProxy.INSTANCE.newInstance(modifier.key().getNamespace(), modifier.key().getKey());
+                // 同 key 的本服 transient 继续由原拥有者管理
+                if (currentModifiers.containsKey(id)) continue;
+                instance.addPermanentModifier(CraftAttributeInstance.convert(new AttributeModifier(modifier.key(), modifier.amount(), modifier.operation(), modifier.slotGroup())));
             }
         }
     }
@@ -348,10 +350,13 @@ public final class AttributesDataType extends CodecDataType<AttributesDataType.A
 
         @Override
         public void accept(net.minecraft.world.entity.ai.attributes.AttributeInstance instance) {
-            // 调用原回调前清空缓存, 重入采集或回调异常时也不会复用旧值
-            // NMS 可能在回调返回后继续修改, 此处只清空缓存, 留到采集时再读取
             this.value = null;
-            this.delegate.accept(instance);
+            try {
+                this.delegate.accept(instance);
+            } finally {
+                // permanent 的添加发生在回调返回后, 回调中重入采集产生的缓存也要失效
+                this.value = null;
+            }
         }
 
         @NotNull

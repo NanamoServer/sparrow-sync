@@ -18,6 +18,9 @@ public interface AttributeInstanceProxy {
     @FieldGetter(name = "modifierById")
     Map<Object, AttributeModifier> getModifierById(Object target);
 
+    @FieldGetter(name = "permanentModifiers")
+    Map<Object, AttributeModifier> getPermanentModifiers(Object target);
+
     @Nullable
     @FieldGetter(name = "onDirty", optional = true)
     default Consumer<AttributeInstance> getOnDirty(Object target) {
