@@ -4,8 +4,7 @@ import net.kyori.adventure.text.TranslatableComponent;
 import net.momirealms.sparrow.sync.locale.MessageConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.util.PlayerUtils;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.Bukkit;
@@ -49,8 +48,8 @@ public final class InventorySeeManager implements Listener, AutoCloseable {
             view.window.close();
             return;
         }
-        PlayerSession session = SparrowSync.instance().sessionManager().find(view.target.getUniqueId());
-        if (!view.target.isOnline() || session == null || session.state() != SessionState.ACTIVE) {
+        PlayerSession session = SparrowSync.instance().playerManager().find(view.target.getUniqueId());
+        if (!view.target.isOnline() || session == null || !session.isActive()) {
             this.close(view, MessageConstants.COMMAND_INVENTORY_SEE_PLAYER_OFFLINE);
         } else if (view.target.isDead()) {
             this.close(view, MessageConstants.COMMAND_INVENTORY_SEE_TARGET_DIED);

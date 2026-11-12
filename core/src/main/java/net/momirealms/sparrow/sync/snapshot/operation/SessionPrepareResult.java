@@ -9,6 +9,10 @@ public sealed interface SessionPrepareResult {
     record Failed(@NotNull String detail) implements SessionPrepareResult {
     }
 
+    /** 同一玩家的上一次会话仍在本服进行, 本次登录不能开始. */
+    record Busy(@NotNull String detail) implements SessionPrepareResult {
+    }
+
     /** 数据准备完成, 会话可以进入应用阶段. */
     Ready READY = new Ready();
     record Ready() implements SessionPrepareResult {

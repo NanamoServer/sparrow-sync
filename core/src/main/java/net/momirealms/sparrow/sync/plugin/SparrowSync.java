@@ -36,10 +36,10 @@ import net.momirealms.sparrow.sync.proxy.BukkitProxy;
 import net.momirealms.sparrow.sync.redis.MessageBrokerManager;
 import net.momirealms.sparrow.sync.redis.RedisConnector;
 import net.momirealms.sparrow.sync.redis.heartbeats.ServerHeartBeats;
-import net.momirealms.sparrow.sync.session.SessionManager;
-import net.momirealms.sparrow.sync.session.gate.ConfigurationPacketGate;
-import net.momirealms.sparrow.sync.session.gate.LoginGate;
-import net.momirealms.sparrow.sync.session.gate.PaperEventGate;
+import net.momirealms.sparrow.sync.player.PlayerManager;
+import net.momirealms.sparrow.sync.player.gate.ConfigurationPacketGate;
+import net.momirealms.sparrow.sync.player.gate.LoginGate;
+import net.momirealms.sparrow.sync.player.gate.PaperEventGate;
 import net.momirealms.sparrow.sync.snapshot.SnapshotService;
 import net.momirealms.sparrow.sync.snapshot.codec.BinarySnapshotCodec;
 import net.momirealms.sparrow.sync.snapshot.codec.DocumentSnapshotCodec;
@@ -121,7 +121,7 @@ public class SparrowSync implements Plugin {
     private final ServerHeartBeats serverHeartBeats;
     private final SnapshotCache snapshotCache;
     private final HandoffManager handoffManager;
-    private final SessionManager sessionManager;
+    private final PlayerManager playerManager;
     private final PlayerDirectory playerDirectory;
     private final LoginGate loginGate;
 
@@ -176,7 +176,7 @@ public class SparrowSync implements Plugin {
         this.messageBrokerManager = new MessageBrokerManager(this);
         this.serverHeartBeats = new ServerHeartBeats(this);
         this.snapshotCache = new RedisSnapshotCache(this);
-        this.sessionManager = new SessionManager(this);
+        this.playerManager = new PlayerManager();
         this.playerDirectory = new PlayerDirectory(this);
         this.handoffManager = new HandoffManager(this);
         this.loginGate = VersionHelper.hasPaperPatch && VersionHelper.isOrAbove1_21_7 ? new PaperEventGate(this) : new ConfigurationPacketGate(this);
@@ -218,7 +218,7 @@ public class SparrowSync implements Plugin {
         this.setUpInternalDataTypes();
         this.playerDataPipeline.onLoad();
         this.snapshotService.onLoad();
-        this.sessionManager.onLoad();
+        this.playerManager.onLoad();
         // 链接 Redis
         try {
             this.redisConnector.onLoad();
@@ -324,7 +324,7 @@ public class SparrowSync implements Plugin {
         // 冻结数据类型后启动地图同步, 随后开启会话与登录入口.
         this.playerDataPipeline.onDelayedEnable();
         this.mapSyncService.onDelayedEnable();
-        this.sessionManager.onDelayedEnable();
+        this.playerManager.onDelayedEnable();
         this.snapshotService.onDelayedEnable();
         this.playerDirectory.onDelayedEnable();
         // 注入读取器
@@ -351,7 +351,7 @@ public class SparrowSync implements Plugin {
         if (this.playerDirectory != null)       this.playerDirectory.shutdown();
         long shutdownTimeout = TimeUnit.SECONDS.toNanos(Math.max(0, PluginConfig.synchronization$shutdownTimeoutSeconds()));
         if (this.mapSyncService != null)        this.mapSyncService.stopReceiving();
-        if (this.sessionManager != null)        this.sessionManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
+        if (this.playerManager != null)         this.playerManager.shutdown(); // 停止接受外部保存请求并为 ACTIVE 会话投递 SHUTDOWN 保存
         boolean savesFinished = this.snapshotService == null || this.snapshotService.sealAndAwaitSaves(shutdownTimeout, TimeUnit.NANOSECONDS);
         long shutdownDeadline = System.nanoTime() + (savesFinished && !Thread.currentThread().isInterrupted() ? shutdownTimeout : 0);
         if (this.mapSyncService != null) {
@@ -363,7 +363,7 @@ public class SparrowSync implements Plugin {
             this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         }
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
-        if (this.sessionManager != null)        this.sessionManager.awaitReleases(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.playerManager != null)        this.playerManager.awaitReleases(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.messageBrokerManager != null)  this.messageBrokerManager.shutdown();
         if (this.serverHeartBeats != null) {
             try {
@@ -414,7 +414,7 @@ public class SparrowSync implements Plugin {
     // 注入玩家存储代理, 接管原版登录读取路径.
     public void injectPlayerDataStorage() {
         try {
-            this.sessionManager.injectPlayerDataStorage(VersionHelper.MINECRAFT_VERSION.version());
+            this.playerManager.injectPlayerDataStorage(VersionHelper.MINECRAFT_VERSION.version());
         } catch (Throwable throwable) {
             this.logger.error(LogCategory.LIFECYCLE, null, null, throwable, LogConstants.PLAYER_DATA_STORAGE_INJECT_FAILED);
             Bukkit.getServer().shutdown();
@@ -813,8 +813,8 @@ public class SparrowSync implements Plugin {
         return this.remoteSnapshotManager;
     }
 
-    public SessionManager sessionManager() {
-        return this.sessionManager;
+    public PlayerManager playerManager() {
+        return this.playerManager;
     }
 
     public PlayerDirectory playerDirectory() {

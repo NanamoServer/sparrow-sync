@@ -6,8 +6,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.incendo.cloud.Command;
@@ -40,8 +39,8 @@ public final class InvseeCommand extends BukkitCommandFeature {
                         this.handleFeedback(context, MessageConstants.COMMAND_INVENTORY_SEE_PLAYER_OFFLINE);
                         return;
                     }
-                    PlayerSession session = this.plugin().sessionManager().find(target.getUniqueId());
-                    if (session == null || session.state() != SessionState.ACTIVE) {
+                    PlayerSession session = this.plugin().playerManager().find(target.getUniqueId());
+                    if (session == null || !session.isActive()) {
                         this.handleFeedback(context, MessageConstants.COMMAND_INVENTORY_SEE_PLAYER_OFFLINE);
                         return;
                     }

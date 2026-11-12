@@ -43,7 +43,7 @@ public final class HandoffManager {
         this.broker = this.plugin.messageBrokerManager().broker();
         this.lock = this.plugin.sessionLock();
         this.instanceId = this.plugin.serverRegistry().instanceId();
-        this.hasSession = uuid -> this.plugin.sessionManager().find(uuid) != null || this.plugin.snapshotService().restoringOffline(uuid);
+        this.hasSession = uuid -> this.plugin.playerManager().find(uuid) != null || this.plugin.snapshotService().restoringOffline(uuid);
         this.scheduler = (task, delayMillis) -> this.plugin.scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
         HandoffRequestMessage.service(this);
     }

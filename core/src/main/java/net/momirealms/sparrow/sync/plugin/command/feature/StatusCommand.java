@@ -12,7 +12,7 @@ import net.momirealms.sparrow.sync.plugin.command.CommandManager;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.dependency.DependencyVersions;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.storage.StorageType;
 import org.bukkit.command.CommandSender;
@@ -73,7 +73,7 @@ public final class StatusCommand extends BukkitCommandFeature {
                 this.plugin().redisConnector().available() ? MessageConstants.COMMAND_CONNECTED.asComponent() : MessageConstants.COMMAND_DISCONNECTED.asComponent(),
                 Component.text(this.plugin().playerExecutor().workerCount()),
                 Component.text(this.plugin().playerExecutor().pendingTasks()),
-                Component.text(this.plugin().sessionManager().size()),
+                Component.text(this.plugin().playerManager().size()),
                 Component.text(this.plugin().playerExecutor().failureCount()));
     }
 
@@ -97,8 +97,8 @@ public final class StatusCommand extends BukkitCommandFeature {
                 },
                 "snapshot " + player);
         holder.thenCombine(latest, (lock, snapshot) -> {
-            PlayerSession local = this.plugin().sessionManager().find(player);
-            Component state = local == null ? MessageConstants.COMMAND_STATUS_NO_SESSION.asComponent() : Component.text(local.state().name());
+            PlayerSession local = this.plugin().playerManager().find(player);
+            Component state = local == null ? MessageConstants.COMMAND_STATUS_NO_SESSION.asComponent() : Component.text(local.getPhase());
             this.handleFeedback(context, MessageConstants.COMMAND_STATUS_PLAYER,
                     Component.text(local == null ? input : local.playerName())
                             .hoverEvent(Component.text(player.toString()))

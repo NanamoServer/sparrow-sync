@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot.data;
 
 import net.momirealms.sparrow.nbt.CompoundTag;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

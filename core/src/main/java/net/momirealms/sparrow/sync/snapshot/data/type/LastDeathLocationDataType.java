@@ -4,7 +4,7 @@ import net.minecraft.core.GlobalPos;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.nbt.codec.NBTOps;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.CodecDataType;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;

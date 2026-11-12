@@ -12,7 +12,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;

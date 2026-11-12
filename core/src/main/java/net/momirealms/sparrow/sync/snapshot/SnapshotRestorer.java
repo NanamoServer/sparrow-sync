@@ -3,8 +3,7 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.cluster.SessionLock;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotRestoreResult;
@@ -39,8 +38,8 @@ final class SnapshotRestorer {
     @NotNull
     public CompletableFuture<SnapshotRestoreResult> restore(@NotNull Player player, @NotNull UUID snapshotId) {
         // 读取前记录会话, 后续只操作这次登录的玩家
-        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
-        if (this.operationsClosed || session == null || session.state() != SessionState.ACTIVE) {
+        PlayerSession session = this.plugin.playerManager().find(player.getUniqueId());
+        if (this.operationsClosed || session == null || !session.isActive()) {
             return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
         }
         return this.storage.snapshot(snapshotId)

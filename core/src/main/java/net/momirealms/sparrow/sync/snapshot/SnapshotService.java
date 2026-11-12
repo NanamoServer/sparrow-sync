@@ -1,19 +1,13 @@
 package net.momirealms.sparrow.sync.snapshot;
 
-import net.momirealms.sparrow.sync.snapshot.operation.ContainerApplyResult;
-import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
-import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
-import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
-import net.momirealms.sparrow.sync.util.ItemCodec;
-import net.momirealms.sparrow.sync.session.SessionState;
-import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.player.PlayerIdentity;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.snapshot.data.type.EnderChestDataType;
+import net.momirealms.sparrow.sync.snapshot.data.type.InventoryDataType;
 import net.momirealms.sparrow.sync.snapshot.local.SnapshotFiles;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
+import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
-import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotCaptureResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotDeleteResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotExportResult;
@@ -25,6 +19,7 @@ import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotUnpinResult;
 import net.momirealms.sparrow.sync.snapshot.trigger.SaveTriggerListener;
 import net.momirealms.sparrow.sync.storage.StorageProvider;
+import net.momirealms.sparrow.sync.util.ItemCodec;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
@@ -32,7 +27,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -43,6 +37,7 @@ public final class SnapshotService {
     private StorageProvider storage;
     private SnapshotSaver saver;
     private SnapshotApplier applier;
+    private SnapshotLoader loader;
     private SnapshotRestorer restorer;
     private SnapshotTransfer transfer;
     private SnapshotFiles files;
@@ -57,34 +52,21 @@ public final class SnapshotService {
         this.files = new SnapshotFiles(this.plugin.dataFolderPath(), this.plugin.binaryCodec(), this.plugin.logger());
         this.details = new SnapshotDetails(this.storage, this.files, this.plugin.dataRegistry(), this.plugin.scheduler().async());
         this.saver = new SnapshotSaver(this.plugin);
-        this.applier = new SnapshotApplier(this.plugin);
+        this.loader = new SnapshotLoader(this.plugin);
+        this.applier = new SnapshotApplier(this.plugin, this.loader);
         this.restorer = new SnapshotRestorer(this.plugin, this.saver, this.applier);
         this.transfer = new SnapshotTransfer(this.storage, this.files, this.plugin.scheduler().async(), this.plugin.snapshotCache());
     }
 
     public void onDelayedEnable() {
-        Bukkit.getPluginManager().registerEvents(new SaveTriggerListener(this.plugin, this.plugin.sessionManager()), this.plugin.javaPlugin());
+        Bukkit.getPluginManager().registerEvents(new SaveTriggerListener(this.plugin, this.plugin.playerManager()), this.plugin.javaPlugin());
     }
 
     /** 读取最新快照并准备地图和类型数据, 没有历史快照时返回 Empty. */
     @NotNull
     @ApiStatus.Internal
     public CompletableFuture<SnapshotLoadResult> loadLatest(@NotNull UUID player, @NotNull String playerName) {
-        return this.applier.loadLatest(player, playerName);
-    }
-
-    /** 在登录拦截阶段准备原版要加载的数据, 本地数据为空时保留新玩家语义. */
-    @NotNull
-    @ApiStatus.Internal
-    public Optional<CompoundTag> applyNative(@NotNull PlayerSession session, @NotNull Optional<CompoundTag> localData, @NotNull SnapshotLoadResult.Ready loaded) {
-        return this.applier.applyNative(session, localData, loaded);
-    }
-
-    /** 在玩家线程应用登录前尚未处理的数据, 并执行交接回调. */
-    @NotNull
-    @ApiStatus.Internal
-    public SnapshotApplyResult applyOnJoin(@NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
-        return this.applier.applyOnJoin(player, loaded);
+        return this.loader.loadLatest(player, playerName);
     }
 
     /** 采集 ACTIVE 玩家的快照, 等待保存结果后返回. */
@@ -145,23 +127,6 @@ public final class SnapshotService {
             if (enderChest != null) data = data.with(EnderChestDataType.ENDER_CHEST, new EnderChestDataType().encode(enderChest));
             return new Snapshot(source.meta(), data);
         }, this.plugin.scheduler().async()).thenCompose(edited -> this.saver.saveEdited(edited, playerName));
-    }
-
-    @NotNull
-    @ApiStatus.Internal
-    public CompletableFuture<ContainerApplyResult> applyContainers(@NotNull Player player, @NotNull UUID snapshotId) {
-        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
-        if (session == null || session.state() != SessionState.ACTIVE) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
-        return this.storage.snapshot(snapshotId).thenCompose(found -> {
-            if (found.isEmpty()) return CompletableFuture.completedFuture(ContainerApplyResult.FAILED);
-            Snapshot source = found.get();
-            if (!source.meta().player().equals(session.uuid())) return CompletableFuture.completedFuture(ContainerApplyResult.FAILED);
-            return this.applier.applyContainers(session, player, source).thenApply(result -> switch (result) {
-                case SnapshotApplyResult.Applied success -> success.skipped().isEmpty() ? ContainerApplyResult.APPLIED : ContainerApplyResult.FAILED;
-                case SnapshotApplyResult.Rejected ignored -> ContainerApplyResult.OFFLINE;
-                case SnapshotApplyResult.Failed failed -> ContainerApplyResult.FAILED;
-            });
-        });
     }
 
     /** 导出数据库中的快照, 返回快照 ID 和文件路径. */

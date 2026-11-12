@@ -2,9 +2,8 @@ package net.momirealms.sparrow.sync.snapshot.trigger;
 
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionManager;
-import net.momirealms.sparrow.sync.session.SessionState;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
+import net.momirealms.sparrow.sync.player.PlayerManager;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.GameMode;
@@ -22,9 +21,9 @@ import java.util.List;
 
 public final class SaveTriggerListener implements Listener {
     private final SparrowSync plugin;
-    private final SessionManager sessions;
+    private final PlayerManager sessions;
 
-    public SaveTriggerListener(@NotNull SparrowSync plugin, @NotNull SessionManager sessions) {
+    public SaveTriggerListener(@NotNull SparrowSync plugin, @NotNull PlayerManager sessions) {
         this.plugin = plugin;
         this.sessions = sessions;
     }
@@ -50,7 +49,7 @@ public final class SaveTriggerListener implements Listener {
             if (session == null) continue;
             if (VersionHelper.hasFoliaPatch) {
                 // Folia 的定时世界保存事件在全局线程触发
-                // 切到玩家区域后再接受保存, SessionManager 会检查会话是否仍有效
+                // 切到玩家区域后再接受保存, PlayerManager 会检查会话是否仍有效
                 this.plugin.scheduler().platform().runLater(() -> this.sessions.captureLaterAndSave(session, player, SaveCause.WORLD_SAVE), () -> {}, 0, player);
             } else {
                 // Paper/Spigot 已在主线程, 立即完成同步类型采集并排队保存
@@ -66,7 +65,7 @@ public final class SaveTriggerListener implements Listener {
         if (!settings.enabled() || settings.ignoredTargetModes().contains(target)) return;
         Player player = event.getPlayer();
         PlayerSession session = this.sessions.find(player.getUniqueId());
-        if (session == null || session.state() != SessionState.ACTIVE) return;
+        if (session == null || !session.isActive()) return;
         this.plugin.scheduler().platform().runLater(() -> {
             if (player.getGameMode() == target) this.sessions.captureNowAndSave(session, player, SaveCause.GAME_MODE_CHANGE);
         }, () -> {}, 0, player);
@@ -79,7 +78,7 @@ public final class SaveTriggerListener implements Listener {
         Player player = event.getEntity();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
-        if (session == null || session.state() != SessionState.ACTIVE) return;
+        if (session == null || !session.isActive()) return;
         this.sessions.captureNowAndSave(session, player, SaveCause.PRE_DEATH);
     }
 
@@ -90,7 +89,7 @@ public final class SaveTriggerListener implements Listener {
         Player player = event.getEntity();
         if (settings.ignoredWorlds().contains(player.getWorld().getName())) return;
         PlayerSession session = this.sessions.find(player.getUniqueId());
-        if (session == null || session.state() != SessionState.ACTIVE) return;
+        if (session == null || !session.isActive()) return;
         this.plugin.scheduler().platform().runLater(() -> {
             if (player.isDead()) this.sessions.captureNowAndSave(session, player, SaveCause.DEATH);
         }, () -> {}, 0, player);

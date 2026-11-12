@@ -75,7 +75,7 @@ public final class PlayerDirectory {
                 if (this.closed) return;
                 RedisCommands<byte[], byte[]> commands = this.plugin.redisConnector().connection().sync();
                 Map<byte[], byte[]> fields = new HashMap<>();
-                this.plugin.sessionManager().onlinePlayers().forEach((uuid, name) -> fields.put(name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid)));
+                this.plugin.playerManager().onlinePlayers().forEach((uuid, name) -> fields.put(name.getBytes(StandardCharsets.UTF_8), UUIDUtils.toBytes(uuid)));
                 commands.del(this.rosterKey);
                 if (!fields.isEmpty()) {
                     commands.hset(this.rosterKey, fields);

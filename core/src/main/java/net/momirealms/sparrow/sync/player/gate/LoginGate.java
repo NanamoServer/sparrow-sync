@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.session.gate;
+package net.momirealms.sparrow.sync.player.gate;
 
 public interface LoginGate {
 

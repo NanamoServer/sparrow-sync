@@ -3,7 +3,7 @@ package net.momirealms.sparrow.sync.snapshot.data.type;
 import com.mojang.serialization.Codec;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;

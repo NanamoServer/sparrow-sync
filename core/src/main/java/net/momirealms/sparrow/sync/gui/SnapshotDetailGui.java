@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.sync.gui;
 
-import net.momirealms.sparrow.sync.snapshot.operation.ContainerApplyResult;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotSaveResult;
 import net.momirealms.sparrow.sync.util.ItemCodec;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
@@ -240,21 +239,11 @@ public final class SnapshotDetailGui {
     }
 
     private Item buildApplyButton() {
-        return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.apply",
-                        this.text("restore_target", this.player.name()), this.text("apply.left"), this.text("apply.right"),
-                        this.text("apply.scope"), this.text("apply.saved")))
+        return Item.builder().setItemProviderConstant(this.icon(Material.CLOCK, "button.apply", this.text("restore_target", this.player.name()), this.text("apply.left"), this.text("apply.saved")))
                 .addClickHandler(click -> {
-                    if (click.clickType() == ClickType.LEFT) {
-                        this.restore();
-                    } else if (click.clickType() == ClickType.RIGHT) {
-                        this.operation(() -> this.applyContainers(this.meta.get().id()), result -> this.message(switch (result) {
-                            case APPLIED -> "apply.success";
-                            case OFFLINE -> "apply.offline";
-                            case FAILED -> "apply.failed";
-                            case UNAVAILABLE -> "apply.unavailable";
-                        }));
-                    }
-                }).build();
+                    if (click.clickType() == ClickType.LEFT) this.restore();
+                })
+                .build();
     }
 
     private Item buildSaveButton() {
@@ -301,14 +290,6 @@ public final class SnapshotDetailGui {
                         this.message(saved instanceof SnapshotSaveResult.Cancelled ? "cancelled" : "failed");
                     }
                 });
-    }
-
-    private CompletableFuture<ContainerApplyResult> applyContainers(UUID id) {
-        Player local = Bukkit.getPlayer(this.player.uuid());
-        if (local != null) return this.plugin.snapshotService().applyContainers(local, id);
-        return this.plugin.playerDirectory().server(this.player.name())
-                .map(server -> this.plugin.remoteSnapshotManager().applyContainers(server, this.player.uuid(), id))
-                .orElseGet(() -> CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE));
     }
 
     private net.minecraft.world.item.ItemStack[] editedItems(VirtualInventory edited, ItemStack[] original) {

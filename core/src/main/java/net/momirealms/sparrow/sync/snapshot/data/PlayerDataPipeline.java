@@ -9,13 +9,15 @@ import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.map.MapSyncService;
 import net.momirealms.sparrow.sync.map.handler.MapType;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.session.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.codec.SnapshotDataCodec;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotData;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotApplyResult;
+import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
 import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
@@ -28,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
@@ -42,7 +45,7 @@ public final class PlayerDataPipeline {
     private DataRegistry dataRegistry;
     private MapSyncService mapSync;
     private SnapshotDecoder decoder;
-    private SnapshotDataCodec dataCodec; // 复制未注册类型的块, 会话不再引用完整来源
+    private SnapshotDataCodec dataCodec; // 复制未注册类型的块, 供会话独立保留
 
     public PlayerDataPipeline(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -78,8 +81,12 @@ public final class PlayerDataPipeline {
 
     /**
      * 开始采集, 为本次请求分配独立的值数组.
-     * SYNC 在玩家线程读取全部类型; ASYNC 先在玩家线程读取同步类型, 其余交给 captureAsync.
+     * SYNC 在玩家线程读取全部类型;
+     * ASYNC 先在玩家线程读取同步类型, 其余交给 captureAsync.
      * OFFLINE 在退出后下一区域 tick 提交的串行任务中读取全部类型.
+     *
+     * @param player 本次采集的玩家
+     * @param mode 本阶段的采集方式
      * @return Ready 可编码, Pending 须继续 captureAsync, Failed 表示采集失败
      */
     @NotNull
@@ -87,7 +94,7 @@ public final class PlayerDataPipeline {
         CaptureBuffer buffer = new CaptureBuffer(player, this.dataRegistry.size());
         // null 槽位表表示全部类型, 分阶段采集使用注册表预先分好的槽位
         int[] slots = mode == CaptureMode.ASYNC ? this.dataRegistry.syncCaptureSlots() : null;
-        // 此组始终在玩家线程采集, 返回值须可跨线程使用
+        // OFFLINE 由退出后的串行任务读取, 其余同步阶段运行在玩家线程
         CaptureResult.Failed failure = this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
         if (failure != null) return failure;
         if (mode == CaptureMode.ASYNC) return new CaptureResult.Pending(buffer);
@@ -109,7 +116,10 @@ public final class PlayerDataPipeline {
 
     /**
      * 按槽位采集数据, 非关键失败留空并继续, 关键失败立即停止.
+     * @param player 本次采集的玩家
+     * @param mode 本阶段的采集方式
      * @param slots 要采集的槽位, null 表示全部
+     * @param buffer 本次请求独占的采集结果
      * @return 关键失败信息, 无关键失败时返回 null
      */
     @Nullable
@@ -293,6 +303,32 @@ public final class PlayerDataPipeline {
         }
         // 最终结果按注册表槽位顺序排列
         return new ApplyResult.Success(context.applied(), context.skipped(), context.failures());
+    }
+
+    // 按依赖顺序应用待处理数据并记录耗时
+    @NotNull
+    public SnapshotApplyResult applySnapshot(@NotNull Player player, @NotNull SnapshotLoadResult.Ready loaded) {
+        long applyStart = System.nanoTime();
+        this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(), LogConstants.SYNC_APPLY_STARTED, player.getName());
+        SnapshotApplyContext context = loaded.context();
+        return switch (this.apply(player, context)) {
+            case PlayerDataPipeline.ApplyResult.Success success -> {
+                this.logger.file(LogCategory.APPLY, player.getUniqueId(), player.getName(),
+                        LogConstants.SYNC_APPLIED,
+                        player.getName(),
+                        String.valueOf(success.applied().size()),
+                        String.valueOf(success.skipped().size()),
+                        millis(0, loaded.loadNanos()),
+                        millis(applyStart, System.nanoTime())
+                );
+                yield new SnapshotApplyResult.Applied(success.applied(), success.skipped(), success.failures());
+            }
+            case PlayerDataPipeline.ApplyResult.Failure failure -> new SnapshotApplyResult.Failed(failure.failedKey().asString() + ": " + failure.detail());
+        };
+    }
+
+    private static String millis(long fromNanos, long toNanos) {
+        return String.format(Locale.ROOT, "%.1f", (toNanos - fromNanos) / 1_000_000.0);
     }
 
     // type 和 value 来自同一槽位, 此处恢复对应泛型

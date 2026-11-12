@@ -3,12 +3,11 @@ package net.momirealms.sparrow.sync.snapshot;
 import net.momirealms.sparrow.sync.api.event.SnapshotSaveEvent;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
-import net.momirealms.sparrow.sync.session.PlayerSession;
-import net.momirealms.sparrow.sync.session.SessionState;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
@@ -33,9 +32,9 @@ import java.util.concurrent.TimeUnit;
 final class SnapshotSaver {
     private final SparrowSync plugin;
     private final SyncLogger logger;
-    private final PlayerDataPipeline playerDataPipeline; // 采集、编码和地图处理
+    private final PlayerDataPipeline playerDataPipeline; // 采集, 编码和地图处理
     private final PlayerSerialExecutor serialExecutor;   // 同一玩家的任务按序执行
-    private final SnapshotWriter writer; // 登记保存请求并负责写入、重试和停服暂存
+    private final SnapshotWriter writer; // 登记保存请求并负责写入, 重试和停服暂存
     private volatile boolean operationsClosed; // 停止主动采集请求, 仍接受关服保存
     private final ConcurrentHashMap<UUID, Long> lastTimestampByPlayer = new ConcurrentHashMap<>(); // 本次运行中各玩家最后分配的毫秒时间戳
 
@@ -51,16 +50,16 @@ final class SnapshotSaver {
     @NotNull
     CompletableFuture<SnapshotCaptureResult> capture(@NotNull Player player, @NotNull SaveCause cause) {
         if (this.operationsClosed) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
-        PlayerSession session = this.plugin.sessionManager().find(player.getUniqueId());
-        if (session == null || session.state() != SessionState.ACTIVE) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
+        PlayerSession session = this.plugin.playerManager().find(player.getUniqueId());
+        if (session == null || !session.isActive()) return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
         CompletableFuture<SnapshotCaptureResult> result = new CompletableFuture<>();
         Runnable capture = () -> {
             try {
-                if (this.operationsClosed || !player.isOnline() || this.plugin.sessionManager().find(session.uuid()) != session || session.state() != SessionState.ACTIVE) {
+                if (this.operationsClosed || !player.isOnline() || this.plugin.playerManager().find(session.uuid()) != session || !session.isActive()) {
                     result.complete(SnapshotCaptureResult.OFFLINE);
                     return;
                 }
-                CompletableFuture<SnapshotSaveResult> saved = this.plugin.sessionManager().captureNowAndSave(session, player, cause);
+                CompletableFuture<SnapshotSaveResult> saved = this.plugin.playerManager().captureNowAndSave(session, player, cause);
                 if (saved == null) {
                     result.complete(SnapshotCaptureResult.OFFLINE);
                     return;
@@ -89,7 +88,7 @@ final class SnapshotSaver {
         return result;
     }
 
-    // 在玩家线程采集全部类型, 再由串行线程编码、处理地图并保存
+    // 在玩家线程采集全部类型, 再由串行线程编码, 处理地图并保存
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureNowAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);
@@ -131,7 +130,7 @@ final class SnapshotSaver {
         return request.completion();
     }
 
-    // 在异步线程采集已退出的玩家并保存
+    // 在串行线程采集已退出的玩家并保存
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);

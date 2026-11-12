@@ -6,7 +6,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.DataDisplay;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;

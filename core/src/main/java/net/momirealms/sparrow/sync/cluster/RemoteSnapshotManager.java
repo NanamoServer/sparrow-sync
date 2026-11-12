@@ -1,8 +1,5 @@
 package net.momirealms.sparrow.sync.cluster;
 
-import net.momirealms.sparrow.sync.cluster.message.SnapshotApplyContainersResponseMessage;
-import net.momirealms.sparrow.sync.snapshot.operation.ContainerApplyResult;
-import net.momirealms.sparrow.sync.cluster.message.SnapshotApplyContainersRequestMessage;
 import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureRequestMessage;
 import net.momirealms.sparrow.sync.cluster.message.SnapshotCaptureResponseMessage;
 import net.momirealms.sparrow.sync.cluster.message.SnapshotRestoreRequestMessage;
@@ -77,31 +74,6 @@ public final class RemoteSnapshotManager {
         return this.plugin.snapshotService().restore(player, snapshotId).exceptionally(failure -> {
             this.plugin.logger().warn(TranslationManager.console("log.command.snapshot_failed", "restore"), failure);
             return new SnapshotRestoreResult.Failed(SnapshotRestoreResult.Stage.PREPARE, failure.toString(), failure, List.of());
-        });
-    }
-
-    /** 请求目标服应用已保存快照中的背包和末影箱, 通信失败或超时返回 UNAVAILABLE. */
-    @NotNull
-    public CompletableFuture<ContainerApplyResult> applyContainers(@NotNull String serverId, @NotNull UUID playerId, @NotNull UUID snapshotId) {
-        if (this.closed) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
-        byte[] heartbeat = ("sparrow-sync:server:" + serverId).getBytes(StandardCharsets.UTF_8);
-        return this.plugin.redisConnector().connection().async().get(heartbeat).toCompletableFuture().thenCompose(value -> {
-            if (this.closed || value == null) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
-            return this.plugin.messageBrokerManager().broker()
-                    .publishTwoWay(new SnapshotApplyContainersRequestMessage(playerId, snapshotId), serverId)
-                    .thenApply(SnapshotApplyContainersResponseMessage::result);
-        }).orTimeout(30, TimeUnit.SECONDS).exceptionally(failure -> ContainerApplyResult.UNAVAILABLE);
-    }
-
-    /** 在本服处理容器应用请求, 玩家离线或服务停止时返回 OFFLINE. */
-    @NotNull
-    public CompletableFuture<ContainerApplyResult> receiveApplyContainers(@NotNull UUID playerId, @NotNull UUID snapshotId) {
-        if (this.closed) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
-        Player player = Bukkit.getPlayer(playerId);
-        if (player == null) return CompletableFuture.completedFuture(ContainerApplyResult.OFFLINE);
-        return this.plugin.snapshotService().applyContainers(player, snapshotId).exceptionally(failure -> {
-            this.plugin.logger().warn(TranslationManager.console("log.command.snapshot_failed", "restore"), failure);
-            return ContainerApplyResult.FAILED;
         });
     }
 

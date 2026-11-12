@@ -14,7 +14,7 @@ import net.momirealms.sparrow.sync.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.server.PlayerAdvancementsProxy;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonFile;
 import net.momirealms.sparrow.sync.proxy.minecraft.world.level.storage.PlayerJsonStorage;
-import net.momirealms.sparrow.sync.session.PlayerSession;
+import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
 import net.momirealms.sparrow.sync.snapshot.data.NativePlayerDataType;

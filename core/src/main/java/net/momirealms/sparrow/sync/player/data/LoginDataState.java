@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.sync.session;
+package net.momirealms.sparrow.sync.player.data;
 
 import net.minecraft.nbt.CompoundTag;
 import net.momirealms.sparrow.sync.snapshot.operation.SnapshotLoadResult;
@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
 
-sealed interface LoginDataState {
+public sealed interface LoginDataState {
 
     Preloading PRELOADING = new Preloading();
 

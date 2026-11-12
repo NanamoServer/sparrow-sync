@@ -43,7 +43,7 @@ public final class SparrowSyncAPI {
         if (!this.plugin.apiReady()) return CompletableFuture.failedFuture(new IllegalStateException("SparrowSync API is not ready"));
         Player player = Bukkit.getPlayer(playerId);
         if (player != null) return this.plugin.snapshotService().capture(player, SaveCause.API);
-        if (this.plugin.sessionManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
+        if (this.plugin.playerManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
             return CompletableFuture.completedFuture(SnapshotCaptureResult.OFFLINE);
         }
         return this.server(playerId).thenCompose(server -> {
@@ -67,7 +67,7 @@ public final class SparrowSyncAPI {
         if (!this.plugin.apiReady()) return CompletableFuture.failedFuture(new IllegalStateException("SparrowSync API is not ready"));
         Player player = Bukkit.getPlayer(playerId);
         if (player != null) return this.plugin.snapshotService().restore(player, snapshotId);
-        if (this.plugin.sessionManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
+        if (this.plugin.playerManager().find(playerId) != null || this.plugin.snapshotService().restoringOffline(playerId)) {
             return CompletableFuture.completedFuture(SnapshotRestoreResult.OFFLINE);
         }
         return this.server(playerId).thenCompose(server -> {
