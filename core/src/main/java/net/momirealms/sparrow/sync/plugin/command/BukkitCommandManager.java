@@ -69,14 +69,11 @@ public final class BukkitCommandManager extends AbstractCommandManager {
                 new ExceptionListCommand(this, plugin),
                 new ExceptionViewCommand(this, plugin)
         ));
-        final LegacyPaperCommandManager<CommandSender> manager = (LegacyPaperCommandManager<CommandSender>) getCommandManager();
+        final LegacyPaperCommandManager<CommandSender> manager = (LegacyPaperCommandManager<CommandSender>) this.getCommandManager();
         // 开启 ALLOW_UNSAFE_REGISTRATION, 以允许在部分运行环境中完成命令注册.
         manager.settings().set(ManagerSetting.ALLOW_UNSAFE_REGISTRATION, true);
-        // 能力注册 brigadier 或异步补全.
-        if (manager.hasCapability(CloudBukkitCapabilities.NATIVE_BRIGADIER)) {
-            manager.registerBrigadier();
-            manager.brigadierManager().setNativeNumberSuggestions(true);
-        } else if (manager.hasCapability(CloudBukkitCapabilities.ASYNCHRONOUS_COMPLETION)) {
+        // Bukkit 命令包装接收中文输入, 参数解析与补全由 Cloud 处理.
+        if (manager.hasCapability(CloudBukkitCapabilities.ASYNCHRONOUS_COMPLETION)) {
             manager.registerAsynchronousCompletions();
         }
     }

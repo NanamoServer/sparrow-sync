@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.locale.TranslationManager;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.command.BukkitCommandFeature;
 import net.momirealms.sparrow.sync.plugin.command.CommandManager;
+import net.momirealms.sparrow.sync.plugin.command.parser.LocalPlayerParser;
 import net.momirealms.sparrow.sync.player.component.PlayerSession;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -16,7 +17,7 @@ import org.incendo.cloud.parser.ParserDescriptor;
 import org.jetbrains.annotations.NotNull;
 
 public final class EnderseeCommand extends BukkitCommandFeature {
-    private final ParserDescriptor<CommandSender, Player> playerParser = PlayerParser.playerParser();
+    private final ParserDescriptor<CommandSender, Player> playerParser = LocalPlayerParser.playerParser();
 
     public EnderseeCommand(@NotNull CommandManager manager, @NotNull SparrowSync plugin) {
         super(manager, plugin);
