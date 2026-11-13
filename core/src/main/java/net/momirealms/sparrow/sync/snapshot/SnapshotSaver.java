@@ -9,6 +9,7 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
@@ -22,6 +23,8 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,10 +97,7 @@ final class SnapshotSaver {
         SaveRequest request = this.newRequest(player, cause, retainedData);
         try {
             if (request.finishing()) return request.completion();
-            if (!(this.playerDataPipeline.capture(player, CaptureMode.SYNC) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
-                request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be captured"));
-                return request.completion();
-            }
+            PlayerDataPipeline.CaptureResult captured = this.playerDataPipeline.capture(player, CaptureMode.SYNC);
             this.submitSerial(request, () -> this.encodeAndSubmit(request, captured));
         } catch (RuntimeException | Error failure) {
             request.fail(failure);
@@ -112,17 +112,8 @@ final class SnapshotSaver {
         SaveRequest request = this.newRequest(player, cause, retainedData);
         try {
             if (request.finishing()) return request.completion();
-            if (!(this.playerDataPipeline.capture(player, CaptureMode.ASYNC) instanceof PlayerDataPipeline.CaptureResult.Pending pending)) {
-                request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be captured"));
-                return request.completion();
-            }
-            this.submitSerial(request, () -> {
-                if (!(this.playerDataPipeline.captureAsync(player, pending) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
-                    request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be captured"));
-                    return;
-                }
-                this.encodeAndSubmit(request, captured);
-            });
+            PlayerDataPipeline.CaptureResult.Pending pending = (PlayerDataPipeline.CaptureResult.Pending) this.playerDataPipeline.capture(player, CaptureMode.ASYNC);
+            this.submitSerial(request, () -> this.encodeAndSubmit(request, this.playerDataPipeline.captureAsync(player, pending)));
         } catch (RuntimeException | Error failure) {
             request.fail(failure);
             throw failure;
@@ -134,28 +125,43 @@ final class SnapshotSaver {
     @NotNull
     CompletableFuture<SnapshotSaveResult> captureLogoutAndSave(@NotNull Player player, @NotNull SaveCause cause, @NotNull SnapshotData retainedData) {
         SaveRequest request = this.newRequest(player, cause, retainedData);
-        this.submitSerial(request, () -> {
-            if (!(this.playerDataPipeline.capture(player, CaptureMode.OFFLINE) instanceof PlayerDataPipeline.CaptureResult.Ready captured)) {
-                request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be captured"));
-                return;
-            }
-            this.encodeAndSubmit(request, captured);
-        });
+        this.submitSerial(request, () -> this.encodeAndSubmit(request, this.playerDataPipeline.capture(player, CaptureMode.OFFLINE)));
         return request.completion();
     }
 
     // 在玩家串行线程编码并等待地图处理, 随后发送事件并保存
-    private void encodeAndSubmit(@NotNull SaveRequest request, @NotNull PlayerDataPipeline.CaptureResult.Ready captured) {
+    private void encodeAndSubmit(@NotNull SaveRequest request, @NotNull PlayerDataPipeline.CaptureResult captureResult) {
         if (request.finishing()) return;
+        List<DataKey> failedKeys = new ArrayList<>();
+        PlayerDataPipeline.CaptureResult.Ready captured = switch (captureResult) {
+            case PlayerDataPipeline.CaptureResult.Ready ready -> ready;
+            case PlayerDataPipeline.CaptureResult.Failed failed -> {
+                failedKeys.addAll(failed.failedKeys());
+                yield failed.partial();
+            }
+            case PlayerDataPipeline.CaptureResult.Pending ignored -> throw new IllegalStateException("capture is not finished");
+        };
         long encodeStarted = System.nanoTime();
         PlayerDataPipeline.EncodeResult result = this.playerDataPipeline.encode(captured);
         request.encodeNanos(System.nanoTime() - encodeStarted);
-        if (!(result instanceof PlayerDataPipeline.EncodeResult.Ready encoded)) {
-            request.fail(new IllegalStateException("critical data of " + request.playerName() + " could not be encoded"));
-            return;
-        }
+        PlayerDataPipeline.EncodeResult.Ready encoded = switch (result) {
+            case PlayerDataPipeline.EncodeResult.Ready ready -> ready;
+            case PlayerDataPipeline.EncodeResult.Failed failed -> {
+                failedKeys.addAll(failed.failedKeys());
+                yield failed.partial();
+            }
+        };
         Snapshot snapshot = new Snapshot(request.meta(), request.retainedData().with(encoded.data()));
         request.captureNanos(captured.captureNanos());
+        if (!failedKeys.isEmpty()) {
+            // 残缺数据不登记为完整快照, 结束请求前完成本地留存
+            if (!request.beginFinish()) return;
+            if (request.meta().cause() == SaveCause.DISCONNECT || request.meta().cause() == SaveCause.SHUTDOWN) {
+                this.plugin.snapshotStash().stashIncomplete(snapshot, request.playerName(), failedKeys);
+            }
+            request.completion().completeExceptionally(new IllegalStateException("critical data of " + request.playerName() + " could not be captured or encoded: " + failedKeys));
+            return;
+        }
         // 等待地图前先保存完整快照引用, 停服时可将这份数据暂存到本地
         if (!request.updateSnapshot(snapshot)) return;
         if (request.mapType() != null) {

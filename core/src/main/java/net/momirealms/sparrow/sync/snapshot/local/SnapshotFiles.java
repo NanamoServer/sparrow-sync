@@ -121,6 +121,28 @@ public final class SnapshotFiles {
     }
 
     /**
+     * 将残缺快照及快照头写入 incomplete 异常目录, 并在同名 .error.txt 中记录关键失败类型.
+     *
+     * @param snapshot 采集和编码成功的数据, 包含保留的未注册类型
+     * @param playerName 采集时的玩家名
+     * @param failedKeys 采集或编码失败的关键类型
+     * @return 写入完成的快照数据文件路径
+     * @throws IOException 编码或文件写入失败
+     */
+    @NotNull
+    public Path writeIncomplete(@NotNull Snapshot snapshot, @NotNull String playerName, @NotNull List<DataKey> failedKeys) throws IOException {
+        Path body = this.write(snapshot, playerName, "incomplete");
+        StringJoiner keys = new StringJoiner(", ");
+        for (int i = 0; i < failedKeys.size(); i++) {
+            keys.add(failedKeys.get(i).asString());
+        }
+        String detail = "Snapshot: " + snapshot.meta().id() + "\nPlayer: " + snapshot.meta().player()
+                + "\nName: " + playerName + "\nFailed critical types: " + keys + "\n";
+        Files.writeString(body.resolveSibling(body.getFileName() + ".error.txt"), detail);
+        return body;
+    }
+
+    /**
      * 列出本地待重试的快照目录中的文件, 包含快照数据、快照头文件和临时文件.
      *
      * @return 目录中的直接子项, 目录不存在时返回空列表

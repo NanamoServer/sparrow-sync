@@ -87,7 +87,7 @@ public final class PlayerDataPipeline {
      *
      * @param player 本次采集的玩家
      * @param mode 本阶段的采集方式
-     * @return Ready 可编码, Pending 须继续 captureAsync, Failed 表示采集失败
+     * @return Ready 可编码, Pending 须继续 captureAsync, Failed 携带采集成功的部分及关键失败类型
      */
     @NotNull
     public CaptureResult capture(@NotNull Player player, @NotNull CaptureMode mode) {
@@ -95,10 +95,9 @@ public final class PlayerDataPipeline {
         // null 槽位表表示全部类型, 分阶段采集使用注册表预先分好的槽位
         int[] slots = mode == CaptureMode.ASYNC ? this.dataRegistry.syncCaptureSlots() : null;
         // OFFLINE 由退出后的串行任务读取, 其余同步阶段运行在玩家线程
-        CaptureResult.Failed failure = this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
-        if (failure != null) return failure;
+        this.captureSlots(player, mode == CaptureMode.ASYNC ? CaptureMode.SYNC : mode, slots, buffer);
         if (mode == CaptureMode.ASYNC) return new CaptureResult.Pending(buffer);
-        return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
+        return this.captureResult(buffer);
     }
 
     /**
@@ -109,21 +108,24 @@ public final class PlayerDataPipeline {
     public CaptureResult captureAsync(@NotNull Player player, @NotNull CaptureResult.Pending pending) {
         CaptureBuffer buffer = pending.buffer;
         // 两组写入不同槽位, 其他保存请求使用独立数组
-        CaptureResult.Failed failure = this.captureSlots(player, CaptureMode.ASYNC, this.dataRegistry.asyncCaptureSlots(), buffer);
-        if (failure != null) return failure;
-        return new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
+        this.captureSlots(player, CaptureMode.ASYNC, this.dataRegistry.asyncCaptureSlots(), buffer);
+        return this.captureResult(buffer);
+    }
+
+    // 汇总全部采集阶段, 关键失败时将成功部分连同失败类型交给本地留存流程
+    private CaptureResult captureResult(CaptureBuffer buffer) {
+        CaptureResult.Ready partial = new CaptureResult.Ready(buffer.player, buffer.playerName, this.dataRegistry, buffer.values, buffer.skipped, buffer.captureNanos);
+        return buffer.failedKeys.isEmpty() ? partial : new CaptureResult.Failed(partial, buffer.failedKeys);
     }
 
     /**
-     * 按槽位采集数据, 非关键失败留空并继续, 关键失败立即停止.
+     * 按槽位采集数据, 失败类型留空, 继续采集其余类型.
      * @param player 本次采集的玩家
      * @param mode 本阶段的采集方式
      * @param slots 要采集的槽位, null 表示全部
      * @param buffer 本次请求独占的采集结果
-     * @return 关键失败信息, 无关键失败时返回 null
      */
-    @Nullable
-    private CaptureResult.Failed captureSlots(Player player, CaptureMode mode, @Nullable int[] slots, CaptureBuffer buffer) {
+    private void captureSlots(Player player, CaptureMode mode, @Nullable int[] slots, CaptureBuffer buffer) {
         long started = System.nanoTime();
         try {
             int size = slots == null ? this.dataRegistry.size() : slots.length;
@@ -137,13 +139,13 @@ public final class PlayerDataPipeline {
                 } catch (Throwable throwable) {
                     if (type.critical()) {
                         this.logger.error(LogCategory.DATA, buffer.player, buffer.playerName, throwable, LogConstants.DATA_CAPTURE_FAILED, key.asString(), buffer.playerName);
-                        return new CaptureResult.Failed(key, String.valueOf(throwable.getMessage()));
+                        buffer.failedKeys.add(key);
+                        continue;
                     }
                     buffer.skipped.add(key);
                     this.logger.warn(LogCategory.DATA, buffer.player, buffer.playerName, throwable, LogConstants.DATA_CAPTURE_SKIPPED, key.asString(), buffer.playerName);
                 }
             }
-            return null;
         } finally {
             // 只计算实际采集耗时, 排队和编码不计入
             buffer.captureNanos += System.nanoTime() - started;
@@ -157,6 +159,7 @@ public final class PlayerDataPipeline {
         int size = this.dataRegistry.size();
         Tag[] tags = new Tag[size];
         List<DataKey> skipped = new ArrayList<>(captured.skipped());
+        List<DataKey> failedKeys = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             Object value = captured.values[i];
             if (value == null) continue;
@@ -165,17 +168,19 @@ public final class PlayerDataPipeline {
             try {
                 tags[i] = encodeValue(type, value);
             } catch (Throwable throwable) {
-                // 关键类型编码失败时终止整份快照
+                // 关键失败只保留其余类型, 整份结果供本地留存
                 if (type.critical()) {
                     this.logger.error(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_FAILED, key.asString(), captured.playerName());
-                    return new EncodeResult.Failed(key, String.valueOf(throwable.getMessage()));
+                    failedKeys.add(key);
+                    continue;
                 }
                 // 非关键失败不写入快照, 并记录到 skipped
                 skipped.add(key);
                 this.logger.warn(LogCategory.DATA, captured.player(), captured.playerName(), throwable, LogConstants.DATA_ENCODE_SKIPPED, key.asString(), captured.playerName());
             }
         }
-        return new EncodeResult.Ready(this.dataRegistry, tags, skipped);
+        EncodeResult.Ready partial = new EncodeResult.Ready(this.dataRegistry, tags, skipped);
+        return failedKeys.isEmpty() ? partial : new EncodeResult.Failed(partial, failedKeys);
     }
 
     /**
@@ -354,6 +359,7 @@ public final class PlayerDataPipeline {
         private final String playerName;
         private final Object[] values;
         private final List<DataKey> skipped = new ArrayList<>();
+        private final List<DataKey> failedKeys = new ArrayList<>();
         private long captureNanos; // 两阶段实际采集耗时, 不含排队
 
         private CaptureBuffer(Player player, int size) {
@@ -428,11 +434,14 @@ public final class PlayerDataPipeline {
             }
         }
 
-        record Failed(@NotNull DataKey key, @NotNull String detail) implements CaptureResult {
+        record Failed(@NotNull Ready partial, @NotNull List<DataKey> failedKeys) implements CaptureResult {
+            public Failed {
+                failedKeys = List.copyOf(failedKeys);
+            }
         }
     }
 
-    /** 关键类型编码失败时返回 Failed, 本次不生成快照. */
+    /** 关键类型编码失败时返回 Failed, 成功部分仅供本地留存. */
     public sealed interface EncodeResult {
 
         final class Ready implements EncodeResult {
@@ -463,7 +472,10 @@ public final class PlayerDataPipeline {
             }
         }
 
-        record Failed(@NotNull DataKey key, @NotNull String detail) implements EncodeResult {
+        record Failed(@NotNull Ready partial, @NotNull List<DataKey> failedKeys) implements EncodeResult {
+            public Failed {
+                failedKeys = List.copyOf(failedKeys);
+            }
         }
     }
 

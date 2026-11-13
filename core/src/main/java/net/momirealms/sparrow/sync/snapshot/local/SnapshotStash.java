@@ -6,6 +6,7 @@ import net.momirealms.sparrow.sync.plugin.SparrowSync;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
+import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
 import net.momirealms.sparrow.sync.snapshot.codec.DecodedSnapshot;
 import net.momirealms.sparrow.sync.storage.StorageProvider.SaveOutcome;
@@ -59,6 +60,31 @@ public final class SnapshotStash {
                     playerName,
                     snapshot.meta().id().toString(),
                     (pending ? this.files.pending() : this.files.exceptions().resolve(directoryOf(reason))).toString()
+            );
+        }
+    }
+
+    /**
+     * 留存残缺快照及关键失败类型, 写入失败时记录日志, 供管理员处理.
+     *
+     * @param snapshot 采集和编码成功的数据, 包含保留的未注册类型
+     * @param playerName 日志和快照文件名使用的玩家名
+     * @param failedKeys 采集或编码失败的关键类型
+     */
+    public void stashIncomplete(@NotNull Snapshot snapshot, @NotNull String playerName, @NotNull List<DataKey> failedKeys) {
+        try {
+            Path file = this.files.writeIncomplete(snapshot, playerName, failedKeys);
+            this.logger.warn(LogCategory.STASH, snapshot.meta().player(), playerName, LogConstants.STASH_EXCEPTION, playerName, file.toString());
+        } catch (Throwable throwable) {
+            this.logger.error(
+                    LogCategory.STASH,
+                    snapshot.meta().player(),
+                    playerName,
+                    throwable,
+                    LogConstants.STASH_WRITE_FAILED,
+                    playerName,
+                    snapshot.meta().id().toString(),
+                    this.files.exceptions().resolve("incomplete").toString()
             );
         }
     }
