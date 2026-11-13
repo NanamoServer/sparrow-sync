@@ -327,6 +327,7 @@ public class SparrowSync implements Plugin {
         this.playerManager.onDelayedEnable();
         this.snapshotService.onDelayedEnable();
         this.playerDirectory.onDelayedEnable();
+        this.snapshotStash.onDelayedEnable();
         // 注入读取器
         this.injectPlayerDataStorage();
         // 安装进入世界前的数据加载门
@@ -345,6 +346,7 @@ public class SparrowSync implements Plugin {
     @Override
     public void onPluginDisable() {
         this.apiReady = false;
+        this.snapshotStash.stopUploading();
         if (this.inventorySeeManager != null)   this.inventorySeeManager.close();
         if (this.remoteSnapshotManager != null) this.remoteSnapshotManager.shutdown();
         if (this.snapshotService != null)       this.snapshotService.stopOperations();

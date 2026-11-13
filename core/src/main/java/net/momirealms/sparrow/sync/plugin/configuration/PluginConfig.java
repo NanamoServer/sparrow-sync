@@ -331,12 +331,12 @@ public final class PluginConfig {
 
         @Comment({
                 "Maximum retries after a database save fails. Set to -1 to keep retrying through temporary network or database outages.",
-                "When retries run out, the plugin logs a warning and stores the snapshot locally for upload on the next startup.",
+                "When retries run out, the plugin logs a warning and stores the snapshot locally. See pending-upload for when it is uploaded again.",
                 "Invalid data is not retried. The plugin tries to save it locally and alerts an administrator."
         })
         @Comment(lang = "zh-CN", value = {
                 "数据库保存失败后的最多重试次数, -1 表示一直重试, 适合应对临时断网或数据库宕机.",
-                "重试用尽后会告警并将快照暂存到本地, 下次启动时再存入数据库.",
+                "重试用尽后会告警并将快照暂存到本地, 重新上传的时机见 pending-upload.",
                 "数据本身有问题时不会重试, 会尽量暂存到本地并提醒管理员处理."
         })
         int maxSaveRetries = -1;
@@ -400,6 +400,11 @@ public final class PluginConfig {
         @Comment("Cross-server snapshot cache settings")
         @Comment(lang = "zh-CN", value = "跨服快照缓存设置")
         SnapshotCacheOptions snapshotCache = new SnapshotCacheOptions();
+
+        @BlankLineBefore
+        @Comment("Upload locally stored snapshots to the database while the server is running")
+        @Comment(lang = "zh-CN", value = "服务器运行期间, 将暂存在本地的快照重新上传到数据库")
+        PendingUploadOptions pendingUpload = new PendingUploadOptions();
 
         @BlankLineBefore
         @Comment({
@@ -472,6 +477,31 @@ public final class PluginConfig {
 
         public int ttlSeconds() {
             return this.ttlSeconds;
+        }
+    }
+
+    @Configuration(naming = Configuration.Naming.KEBAB_CASE)
+    public static class PendingUploadOptions {
+        @Comment({
+                "Retry uploading locally stored snapshots without waiting for the next startup.",
+                "Nothing runs while there are no stored snapshots. When disabled, they are uploaded on the next startup only."
+        })
+        @Comment(lang = "zh-CN", value = {
+                "不必等到下次启动, 运行期间就重新上传暂存在本地的快照.",
+                "本地没有暂存的快照时不会执行任何操作. 关闭后只在下次启动时上传."
+        })
+        boolean enabled = true;
+
+        @Comment("How long to wait, in seconds, after one attempt finishes before the next one starts. The minimum is 1.")
+        @Comment(lang = "zh-CN", value = "一次尝试结束后, 等待多少秒再开始下一次, 最小为 1.")
+        int intervalSeconds = 5;
+
+        public boolean enabled() {
+            return this.enabled;
+        }
+
+        public int intervalSeconds() {
+            return this.intervalSeconds;
         }
     }
 
@@ -1383,6 +1413,11 @@ public final class PluginConfig {
     @NotNull
     public static SnapshotCacheOptions synchronization$snapshotCache() {
         return config.synchronization.snapshotCache;
+    }
+
+    @NotNull
+    public static PendingUploadOptions synchronization$pendingUpload() {
+        return config.synchronization.pendingUpload;
     }
 
     @NotNull

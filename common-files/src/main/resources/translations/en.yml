@@ -358,12 +358,12 @@ log.session.quit: Logged out
 # log.stash
 log.stash.corrupted: 'The local snapshot file <arg:0> is corrupted and was moved to exception/corrupted'
 log.stash.exception: 'Snapshot for <arg:0> saved to <arg:1>; requires admin attention'
-log.stash.pending: 'Snapshot for <arg:0> saved locally to <arg:1>; it will be reinserted into the database on the next startup'
-log.stash.restore_done: 'Local snapshot reinsertion finished: <arg:0> stored, <arg:1> moved to exception, <arg:2> pending retry on the next startup'
+log.stash.pending: 'Snapshot for <arg:0> saved locally to <arg:1>; it will be reinserted into the database later'
+log.stash.restore_done: 'Local snapshot reinsertion finished: <arg:0> stored, <arg:1> moved to exception, <arg:2> pending retry'
 log.stash.restore_failed: 'Failed to process the local snapshot <arg:0>'
 log.stash.restore_found: 'Found <arg:0> local snapshots pending retry; reinserting them into the database'
 log.stash.restore_rejected: 'The local snapshot <arg:0> was rejected by the database (<arg:1>) and moved to the exception directory'
-log.stash.restore_unavailable: 'Database still unavailable; <arg:0> local snapshots will be retried on the next startup'
+log.stash.restore_unavailable: 'Database still unavailable; <arg:0> local snapshots will be retried later'
 log.stash.write_failed: 'Failed to save local snapshot <arg:1> for <arg:0> to directory <arg:2>; this snapshot data is lost'
 
 # log.storage

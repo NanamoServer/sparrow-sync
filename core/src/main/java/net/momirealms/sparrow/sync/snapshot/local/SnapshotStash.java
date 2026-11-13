@@ -3,8 +3,10 @@ package net.momirealms.sparrow.sync.snapshot.local;
 import net.momirealms.sparrow.sync.cluster.cache.SnapshotCache;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.SparrowSync;
+import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
+import net.momirealms.sparrow.sync.plugin.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.sync.snapshot.model.Snapshot;
 import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.model.SnapshotMeta;
@@ -19,12 +21,21 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public final class SnapshotStash {
     private SparrowSync plugin;
     private SnapshotFiles files; // 与管理查询共用的快照文件操作
     private SyncLogger logger;
     private SnapshotCache cache;
+    private StorageProvider storage; // 运行期重新上传使用的存储后端
+
+    private final Object pendingLock = new Object(); // 写入本地快照和列出 pending 目录时持有, 列出的文件均已写完
+    private volatile boolean pendingPresent = true;  // pending 目录可能有文件, 为 false 时定时任务不扫描目录
+    private volatile boolean closed;                 // 关服开始后不再处理新的文件
+    private volatile SchedulerTask uploadTask;       // 下一轮重新上传的定时任务
+    private volatile CompletableFuture<SaveOutcome> uploading; // 正在等待结果的数据库写入
 
     public SnapshotStash(@NotNull SparrowSync plugin) {
         this.plugin = plugin;
@@ -34,6 +45,39 @@ public final class SnapshotStash {
         this.files = files;
         this.logger = this.plugin.logger();
         this.cache = this.plugin.snapshotCache();
+    }
+
+    /** 开始按配置的间隔将本地待重试的快照重新上传到数据库. */
+    public void onDelayedEnable() {
+        this.storage = this.plugin.storageProvider();
+        this.scheduleUpload();
+    }
+
+    /** 停止运行期的重新上传, 尚未处理的文件留给下次启动. */
+    public void stopUploading() {
+        this.closed = true;
+        SchedulerTask task = this.uploadTask;
+        if (task != null) task.cancel();
+        // 串行线程在关服时可能丢弃这次写入, 取消后等待方立即返回
+        CompletableFuture<SaveOutcome> uploading = this.uploading;
+        if (uploading != null) uploading.cancel(false);
+    }
+
+    // 每轮结束后按当前配置安排下一轮, 重载配置后下一轮即生效.
+    private void scheduleUpload() {
+        if (this.closed) return;
+        int interval = Math.max(1, PluginConfig.synchronization$pendingUpload().intervalSeconds());
+        this.uploadTask = this.plugin.scheduler().asyncLater(this::uploadPending, interval, TimeUnit.SECONDS);
+    }
+
+    private void uploadPending() {
+        try {
+            if (PluginConfig.synchronization$pendingUpload().enabled() && this.pendingPresent && !this.closed) {
+                this.restorePending(this.storage, false);
+            }
+        } finally {
+            this.scheduleUpload();
+        }
     }
 
     /**
@@ -46,7 +90,11 @@ public final class SnapshotStash {
     public void stash(@NotNull Snapshot snapshot, @NotNull String playerName, @NotNull SaveResult reason) {
         boolean pending = reason.retriable();
         try {
-            Path file = this.files.write(snapshot, playerName, pending ? null : directoryOf(reason));
+            Path file;
+            synchronized (this.pendingLock) {
+                file = this.files.write(snapshot, playerName, pending ? null : directoryOf(reason));
+                if (pending) this.pendingPresent = true;
+            }
             String key = pending ? LogConstants.STASH_PENDING : LogConstants.STASH_EXCEPTION;
             this.logger.warn(LogCategory.STASH, snapshot.meta().player(), playerName, key, playerName, file.toString());
         } catch (Throwable throwable) {
@@ -95,30 +143,49 @@ public final class SnapshotStash {
      * @param storage 当前存储后端
      */
     public void restorePending(@NotNull StorageProvider storage) {
-        List<Path> files = this.listPendingFiles();
+        this.restorePending(storage, true);
+    }
+
+    // 处理一轮本地快照. 运行期的轮次只在有文件离开 pending 目录时输出到控制台, 数据库不可用只写入文件日志.
+    private void restorePending(@NotNull StorageProvider storage, boolean startup) {
+        List<Path> files;
+        synchronized (this.pendingLock) {
+            files = this.listPendingFiles();
+            if (files.isEmpty()) this.pendingPresent = false;
+        }
         if (files.isEmpty()) {
             return;
         }
-        this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_FOUND, String.valueOf(files.size()));
+        if (startup) {
+            this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_FOUND, String.valueOf(files.size()));
+        }
         int restored = 0;
         int leftover = 0;
         for (int i = 0; i < files.size(); i++) {
-            RestoreOutcome outcome = this.restoreOne(files.get(i), storage);
+            if (this.closed) {
+                leftover = files.size() - i;
+                break;
+            }
+            RestoreOutcome outcome = this.restoreOne(files.get(i), storage, startup);
             if (outcome == RestoreOutcome.RESTORED) {
                 restored++;
             }
-            // 数据库又不行了, 剩下的文件原样留给下次启动
+            // 数据库又不行了, 剩下的文件原样留给下一轮
             if (outcome == RestoreOutcome.STORAGE_UNAVAILABLE) {
                 leftover = files.size() - i;
-                this.logger.warn(LogCategory.STASH, LogConstants.STASH_RESTORE_UNAVAILABLE, String.valueOf(leftover));
+                if (startup) {
+                    this.logger.warn(LogCategory.STASH, LogConstants.STASH_RESTORE_UNAVAILABLE, String.valueOf(leftover));
+                }
                 break;
             }
         }
-        this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_DONE, String.valueOf(restored), String.valueOf(files.size() - restored - leftover), String.valueOf(leftover));
+        if (startup || leftover < files.size()) {
+            this.logger.info(LogCategory.STASH, LogConstants.STASH_RESTORE_DONE, String.valueOf(restored), String.valueOf(files.size() - restored - leftover), String.valueOf(leftover));
+        }
     }
 
     // 读取一份本地待重试的快照并重新插入数据库, 根据结果删除、转为异常快照或保留.
-    private RestoreOutcome restoreOne(@NotNull Path file, @NotNull StorageProvider storage) {
+    private RestoreOutcome restoreOne(@NotNull Path file, @NotNull StorageProvider storage, boolean startup) {
         DecodedSnapshot decoded;
         try {
             decoded = this.files.readPending(file);
@@ -135,9 +202,17 @@ public final class SnapshotStash {
         }
         SaveOutcome saved;
         try {
-            saved = storage.saveSnapshotOutcome(snapshot).join();
+            CompletableFuture<SaveOutcome> saving = storage.saveSnapshotOutcome(snapshot);
+            // 先登记再检查关服标记, 与 stopUploading 的顺序相对, 两边至少有一方取消这次等待
+            this.uploading = saving;
+            if (this.closed) saving.cancel(false);
+            saved = saving.join();
         } catch (RuntimeException exception) {
-            this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
+            if (startup) {
+                this.logger.error(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
+            } else if (!this.closed) {
+                this.logger.file(LogCategory.STASH, null, null, exception, LogConstants.STASH_RESTORE_FAILED, file.getFileName().toString());
+            }
             return RestoreOutcome.STORAGE_UNAVAILABLE;
         }
         SaveResult result = saved.result();

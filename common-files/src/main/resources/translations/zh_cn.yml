@@ -358,12 +358,12 @@ log.session.quit: '退出服务器'
 # log.stash
 log.stash.corrupted: '本地快照文件 <arg:0> 已损坏，移入 exception/corrupted'
 log.stash.exception: '<arg:0> 的快照已保存到 <arg:1>，需要管理员处理'
-log.stash.pending: '<arg:0> 的快照已暂存到本地文件 <arg:1>，下次启动时会自动重新插入数据库'
-log.stash.restore_done: '本地快照重新插入结束：成功 <arg:0> 份，移入 exception <arg:1> 份，等待下次启动重试 <arg:2> 份'
+log.stash.pending: '<arg:0> 的快照已暂存到本地文件 <arg:1>，之后会自动重新插入数据库'
+log.stash.restore_done: '本地快照重新插入结束：成功 <arg:0> 份，移入 exception <arg:1> 份，等待重试 <arg:2> 份'
 log.stash.restore_failed: '处理本地快照 <arg:0> 失败'
 log.stash.restore_found: '发现 <arg:0> 份本地待重试的快照，正在重新插入数据库'
 log.stash.restore_rejected: '本地快照 <arg:0> 被数据库拒绝（<arg:1>），已移入 exception 目录'
-log.stash.restore_unavailable: '数据库仍然不可用，剩余 <arg:0> 份本地快照将在下次启动时重试'
+log.stash.restore_unavailable: '数据库仍然不可用，剩余 <arg:0> 份本地快照将在之后重试'
 log.stash.write_failed: '为 <arg:0> 保存本地快照 <arg:1> 到目录 <arg:2> 失败，该快照数据已丢失'
 
 # log.storage
