@@ -363,7 +363,7 @@ public class SparrowSync implements Plugin {
             this.playerExecutor.shutdown(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         }
         if (this.snapshotService != null)       this.snapshotService.stashUnsettled(); // 排空超时没保存完的快照落盘, 下次启动插回
-        if (this.playerManager != null)        this.playerManager.awaitReleases(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+        if (this.playerManager != null)         this.playerManager.awaitReleases(Math.max(0, shutdownDeadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         if (this.messageBrokerManager != null)  this.messageBrokerManager.shutdown();
         if (this.serverHeartBeats != null) {
             try {

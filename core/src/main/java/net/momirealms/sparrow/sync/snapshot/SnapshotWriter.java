@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.sync.snapshot;
 
 import net.momirealms.sparrow.sync.player.PlayerSerialExecutor;
+import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.locale.LogConstants;
 import net.momirealms.sparrow.sync.plugin.configuration.PluginConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
@@ -34,15 +35,24 @@ final class SnapshotWriter {
     private final SnapshotStash stash;
     private final PlayerSerialExecutor serialExecutor;
     private final SnapshotCache cache;
+    private final PlayerDataPipeline playerDataPipeline; // 关服线程补采集和编码未完成的最终快照
     private final Set<SaveRequest> pending = new HashSet<>(); // 尚未完成的保存请求, 并发访问时锁住此集合
     private boolean sealed; // 在 pending 锁内访问, 为 true 时只继续处理已有请求
 
-    SnapshotWriter(@NotNull SyncLogger logger, @NotNull StorageProvider storage, @NotNull SnapshotStash stash, @NotNull PlayerSerialExecutor serialExecutor, @NotNull SnapshotCache cache) {
+    SnapshotWriter(
+            @NotNull SyncLogger logger,
+            @NotNull StorageProvider storage,
+            @NotNull SnapshotStash stash,
+            @NotNull PlayerSerialExecutor serialExecutor,
+            @NotNull SnapshotCache cache,
+            @NotNull PlayerDataPipeline playerDataPipeline
+    ) {
         this.logger = logger;
         this.storage = storage;
         this.stash = stash;
         this.serialExecutor = serialExecutor;
         this.cache = cache;
+        this.playerDataPipeline = playerDataPipeline;
     }
 
     // 采集前登记请求, 关服时也要等待尚未编码的请求
@@ -308,7 +318,7 @@ final class SnapshotWriter {
     }
 
     /**
-     * 执行器结束后暂存剩余的完整快照, 尚未编码的请求按超时结束.
+     * 执行器停止接收任务后暂存剩余快照, 关服和退出请求在当前线程补采集和编码.
      * 已有线程正在写入本地文件时, 由该线程继续完成.
      */
     void stashUnsettled() {
@@ -320,6 +330,16 @@ final class SnapshotWriter {
             SaveRequest request = requests[i];
             if (!request.beginFinish()) continue;
             Snapshot snapshot = request.snapshot();
+            if (snapshot == null) {
+                SaveRequest.Encoded encoded = request.produceUnsettled(this.playerDataPipeline);
+                if (encoded != null) {
+                    if (!encoded.failedKeys().isEmpty()) {
+                        request.finishIncomplete(this.stash, encoded);
+                        continue;
+                    }
+                    snapshot = encoded.snapshot();
+                }
+            }
             if (snapshot == null) {
                 TimeoutException failure = new TimeoutException("snapshot was not encoded before shutdown timeout: " + request.meta().id());
                 this.logger.error(LogCategory.SAVE, request.meta().player(), request.playerName(), failure, LogConstants.SYNC_SAVE_FAILED, request.playerName());

@@ -9,7 +9,6 @@ import net.momirealms.sparrow.sync.plugin.configuration.ServerConfig;
 import net.momirealms.sparrow.sync.plugin.logger.LogCategory;
 import net.momirealms.sparrow.sync.plugin.logger.SyncLogger;
 import net.momirealms.sparrow.sync.snapshot.data.CaptureMode;
-import net.momirealms.sparrow.sync.snapshot.data.DataKey;
 import net.momirealms.sparrow.sync.snapshot.data.PlayerDataPipeline;
 import net.momirealms.sparrow.sync.snapshot.model.EagerSnapshotData;
 import net.momirealms.sparrow.sync.snapshot.model.SaveCause;
@@ -23,8 +22,6 @@ import net.momirealms.sparrow.sync.util.VersionHelper;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,7 +43,7 @@ final class SnapshotSaver {
         this.logger = plugin.logger();
         this.playerDataPipeline = plugin.playerDataPipeline();
         this.serialExecutor = plugin.playerExecutor();
-        this.writer = new SnapshotWriter(this.logger, plugin.storageProvider(), plugin.snapshotStash(), this.serialExecutor, plugin.snapshotCache());
+        this.writer = new SnapshotWriter(this.logger, plugin.storageProvider(), plugin.snapshotStash(), this.serialExecutor, plugin.snapshotCache(), this.playerDataPipeline);
     }
 
     // 在玩家线程采集 ACTIVE 会话, 等待保存结果
@@ -98,6 +95,9 @@ final class SnapshotSaver {
         try {
             if (request.finishing()) return request.completion();
             PlayerDataPipeline.CaptureResult captured = this.playerDataPipeline.capture(player, CaptureMode.SYNC);
+            if (cause == SaveCause.SHUTDOWN) {
+                request.captured(captured);
+            }
             this.submitSerial(request, () -> this.encodeAndSubmit(request, captured));
         } catch (RuntimeException | Error failure) {
             request.fail(failure);
@@ -132,36 +132,13 @@ final class SnapshotSaver {
     // 在玩家串行线程编码并等待地图处理, 随后发送事件并保存
     private void encodeAndSubmit(@NotNull SaveRequest request, @NotNull PlayerDataPipeline.CaptureResult captureResult) {
         if (request.finishing()) return;
-        List<DataKey> failedKeys = new ArrayList<>();
-        PlayerDataPipeline.CaptureResult.Ready captured = switch (captureResult) {
-            case PlayerDataPipeline.CaptureResult.Ready ready -> ready;
-            case PlayerDataPipeline.CaptureResult.Failed failed -> {
-                failedKeys.addAll(failed.failedKeys());
-                yield failed.partial();
-            }
-            case PlayerDataPipeline.CaptureResult.Pending ignored -> throw new IllegalStateException("capture is not finished");
-        };
-        long encodeStarted = System.nanoTime();
-        PlayerDataPipeline.EncodeResult result = this.playerDataPipeline.encode(captured);
-        request.encodeNanos(System.nanoTime() - encodeStarted);
-        PlayerDataPipeline.EncodeResult.Ready encoded = switch (result) {
-            case PlayerDataPipeline.EncodeResult.Ready ready -> ready;
-            case PlayerDataPipeline.EncodeResult.Failed failed -> {
-                failedKeys.addAll(failed.failedKeys());
-                yield failed.partial();
-            }
-        };
-        Snapshot snapshot = new Snapshot(request.meta(), request.retainedData().with(encoded.data()));
-        request.captureNanos(captured.captureNanos());
-        if (!failedKeys.isEmpty()) {
-            // 残缺数据不登记为完整快照, 结束请求前完成本地留存
+        SaveRequest.Encoded encoded = request.encode(this.playerDataPipeline, captureResult);
+        if (!encoded.failedKeys().isEmpty()) {
             if (!request.beginFinish()) return;
-            if (request.meta().cause() == SaveCause.DISCONNECT || request.meta().cause() == SaveCause.SHUTDOWN) {
-                this.plugin.snapshotStash().stashIncomplete(snapshot, request.playerName(), failedKeys);
-            }
-            request.completion().completeExceptionally(new IllegalStateException("critical data of " + request.playerName() + " could not be captured or encoded: " + failedKeys));
+            request.finishIncomplete(this.plugin.snapshotStash(), encoded);
             return;
         }
+        Snapshot snapshot = encoded.snapshot();
         // 等待地图前先保存完整快照引用, 停服时可将这份数据暂存到本地
         if (!request.updateSnapshot(snapshot)) return;
         if (request.mapType() != null) {
@@ -250,7 +227,7 @@ final class SnapshotSaver {
                 .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
         Snapshot restored = new Snapshot(meta, source.content());
-        SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, cause == SaveCause.EDIT ? this.playerDataPipeline.mapMode() : null);
+        SaveRequest request = new SaveRequest(meta, playerName, EagerSnapshotData.EMPTY, cause == SaveCause.EDIT ? this.playerDataPipeline.mapMode() : null, null);
         request.updateSnapshot(restored);
         this.writer.register(request);
         this.submitSerial(request, () -> {
@@ -295,7 +272,7 @@ final class SnapshotSaver {
         return this.writer.sealAndAwaitSaves(timeout, unit);
     }
 
-    /** 暂存未完成请求的完整快照, 尚未编码的请求按超时结束. */
+    /** 暂存未完成请求, 关服和退出请求在当前线程补齐快照后留存. */
     public void stashUnsettled() {
         this.writer.stashUnsettled();
     }
@@ -316,7 +293,7 @@ final class SnapshotSaver {
                 .mcDataVersion(VersionHelper.WORLD_VERSION)
                 .build();
         // 重载只影响新请求, 已排队的请求沿用原地图模式
-        SaveRequest request = new SaveRequest(snapshotMeta, player.getName(), retainedData, this.playerDataPipeline.mapMode());
+        SaveRequest request = new SaveRequest(snapshotMeta, player.getName(), retainedData, this.playerDataPipeline.mapMode(), cause == SaveCause.DISCONNECT ? player : null);
         this.writer.register(request);
         return request;
     }
